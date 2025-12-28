@@ -1,0 +1,127 @@
+.dashboard-layout {
+    display: flex;
+    min-height: 100vh;
+    background: radial-gradient(circle at top left, #1a1a2e, var(--bg-main));
+    --sidebar-width: 280px;
+}
+
+.dashboard-layout.collapsed {
+    --sidebar-width: 80px;
+}
+
+.main-content {
+    margin-left: var(--sidebar-width);
+    flex: 1;
+    padding: var(--spacing-lg);
+    position: relative;
+    overflow-y: auto;
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Sticky Header */
+.top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    /* Expand to cover parent padding */
+    margin: calc(-1 * var(--spacing-lg)) calc(-1 * var(--spacing-lg)) var(--spacing-lg) calc(-1 * var(--spacing-lg));
+    padding: var(--spacing-md) var(--spacing-lg);
+
+    /* Glass effect for header */
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.page-title {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.date-display {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 5px;
+}
+
+.account-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.1);
+    color: #60a5fa;
+    font-size: 0.75rem;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Mobile & Responsive */
+.mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-main);
+    cursor: pointer;
+    padding: 0;
+}
+
+.mobile-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-layout {
+        --sidebar-width: 0px;
+        /* Sidebar is overlay */
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 16px;
+        width: 100%;
+        padding-bottom: 80px;
+        /* Space for bottom nav if we decide to use it, or just extra scroll space */
+    }
+
+    .mobile-menu-btn {
+        display: block;
+    }
+
+    .page-title {
+        font-size: 1.25rem;
+    }
+
+    .top-bar {
+        /* Mobile negative margins to stretch full width over padding */
+        margin: -16px -16px 16px -16px;
+        padding: 12px 16px;
+    }
+
+    /* Hide clock on very small screens if needed */
+    .date-display {
+        display: none;
+    }
+}

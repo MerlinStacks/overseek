@@ -1,0 +1,176 @@
+.settings-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: row;
+    min-height: 600px;
+}
+
+.settings-sidebar {
+    width: 260px;
+    background: rgba(0, 0, 0, 0.2);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 1.5rem 1rem;
+}
+
+.settings-sidebar-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding-left: 12px;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.settings-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.settings-nav-item.active {
+    background: var(--primary);
+    color: white;
+}
+
+.nav-item-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.nav-item-desc {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+}
+
+.mb-6 {
+    margin-bottom: 1.5rem;
+}
+
+.mt-8 {
+    margin-top: 2rem;
+}
+
+.help-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+
+.link {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.link:hover {
+    text-decoration: underline;
+}
+
+/* Animations */
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Content Area */
+.settings-content {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .settings-container {
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .settings-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 1rem;
+    }
+
+    .settings-sidebar-title {
+        margin-bottom: 1rem;
+    }
+
+    .settings-nav-list {
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 8px;
+        padding-bottom: 4px;
+    }
+
+    .settings-nav-list::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .settings-nav-item {
+        width: auto;
+        flex: 0 0 auto;
+        white-space: nowrap;
+        padding: 8px 12px;
+    }
+
+    .nav-item-desc {
+        display: none;
+    }
+
+    /* Center the label vertically since description is gone */
+    .settings-nav-item div {
+        display: flex;
+        align-items: center;
+    }
+
+    .settings-content {
+        padding: 1rem;
+    }
+}

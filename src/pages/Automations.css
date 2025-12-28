@@ -1,0 +1,253 @@
+/* Automations.css */
+
+/* Base Layout */
+.automations-page {
+    animation: fadeIn 0.5s ease;
+}
+
+.automations-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.automations-icon-wrapper {
+    padding: 12px;
+    background: rgba(139, 92, 246, 0.2);
+    color: #8b5cf6;
+    border-radius: 12px;
+    display: flex;
+}
+
+.automations-title h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.automations-title p {
+    color: var(--text-muted);
+}
+
+.automations-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-main);
+}
+
+.automations-table th,
+.automations-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.automations-table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Status Toggle Button */
+.status-toggle {
+    width: 36px;
+    height: 20px;
+    border-radius: 20px;
+    border: 1px solid var(--border-glass);
+    background: rgba(255, 255, 255, 0.1);
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.status-toggle::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #94a3b8;
+    transition: all 0.3s ease;
+}
+
+.status-toggle.active {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+.status-toggle.active::after {
+    left: 18px;
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #a5b4fc;
+    letter-spacing: 0.02em;
+    text-transform: capitalize;
+}
+
+.flow-preview-stack {
+    display: flex;
+    align-items: center;
+}
+
+.flow-meta-info {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Mobile Labels */
+.mobile-label {
+    display: none;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .automations-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .header-content {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .automations-icon-wrapper {
+        display: none;
+    }
+
+    .automations-title h2 {
+        font-size: 1.5rem;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Table to Cards */
+    .automations-table thead {
+        display: none;
+    }
+
+    .automations-table,
+    .automations-table tbody,
+    .automations-table tr,
+    .automations-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .automations-table tr {
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 16px;
+        position: relative;
+    }
+
+    .automations-table td {
+        padding: 8px 0;
+        border: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-align: right;
+        min-height: 40px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .automations-table td:last-child {
+        border-bottom: none;
+        padding-top: 12px;
+        margin-top: 8px;
+        justify-content: flex-end;
+    }
+
+    .mobile-label {
+        display: inline-block;
+        font-weight: 500;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        margin-right: 1rem;
+        text-transform: uppercase;
+    }
+
+    /* Specific Cell Overrides */
+
+    /* Name acts as Header */
+    td[data-label="Name"] {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        font-size: 1.1rem;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        margin-bottom: 12px;
+    }
+
+    td[data-label="Name"] .mobile-label {
+        display: none;
+    }
+
+    /* Wrap flow preview */
+    td[data-label="Flow Preview"] {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        gap: 8px;
+    }
+
+    .flow-meta-info {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    /* Absolute Position Status */
+    td[data-label="Status"] {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: auto;
+        padding: 0;
+        border: none;
+        justify-content: flex-end;
+    }
+
+    td[data-label="Status"] .mobile-label {
+        display: none;
+    }
+}

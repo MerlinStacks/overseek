@@ -1,0 +1,70 @@
+/* DateRangePicker.css */
+.date-range-picker {
+    position: relative;
+    font-family: var(--font-body);
+}
+
+.picker-dropdown {
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.range-option {
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.range-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.range-option.active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981 !important;
+    font-weight: 500;
+}
+
+.compare-toggle {
+    transition: all 0.2s;
+    color: var(--text-muted);
+}
+
+.compare-toggle:hover {
+    color: var(--text);
+}
+
+.compare-toggle:hover .checkbox {
+    border-color: var(--text);
+}
+
+/* Enhanced visibility for the trigger button */
+.picker-trigger {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: var(--text-main);
+    transition: all 0.2s ease;
+}
+
+.picker-trigger:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: rgba(255, 255, 255, 0.4) !important;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+}

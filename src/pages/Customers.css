@@ -1,0 +1,254 @@
+/* Customers.css */
+
+/* --- Controls Layout --- */
+.customers-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+}
+
+.search-wrapper {
+    position: relative;
+    width: 300px;
+    /* Flexible on desktop */
+}
+
+.input-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.tools-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+    /* Push to right on desktop */
+}
+
+.mobile-label {
+    display: none;
+}
+
+/* --- Mobile Responsive --- */
+@media (max-width: 768px) {
+
+    /* Header Stack */
+    .customers-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .header-content {
+        /* Keep header content visible but stacked if needed, or hide big icon */
+        /* User seemingly wants functionality, let's keep it clean */
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .customers-icon-wrapper {
+        display: none;
+    }
+
+    /* Hide big icon on mobile to save space */
+
+    .customers-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        margin-top: 0;
+    }
+
+    /* 1. Search Bar (Top) */
+    .search-wrapper {
+        width: 100% !important;
+        order: 1;
+    }
+
+    /* 2. Tools Row (Scrollable) */
+    .tools-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        justify-content: flex-start !important;
+        gap: 8px !important;
+        width: 100% !important;
+        order: 2;
+        margin-left: 0;
+        overflow-x: auto !important;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .tools-wrapper::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Force children to be inline */
+    .tools-wrapper>*,
+    .tools-wrapper button,
+    .view-toggle {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: fit-content !important;
+        max-width: none !important;
+        display: inline-flex !important;
+        white-space: nowrap !important;
+        margin: 0 !important;
+    }
+
+    /* --- Table to Card --- */
+    .products-table thead {
+        display: none !important;
+    }
+
+    .products-table,
+    tbody,
+    tr,
+    td {
+        display: block;
+        width: 100%;
+    }
+
+    .products-table tr {
+        position: relative;
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 16px;
+        padding-top: 60px;
+        /* Space for absolute headers */
+    }
+
+    .products-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .products-table td:last-child {
+        border-bottom: none;
+        justify-content: flex-end;
+        padding-top: 12px;
+    }
+
+    .mobile-label {
+        display: inline-block;
+        font-weight: 500;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+    }
+
+    /* Special Positioning */
+    /* 1. Name/Avatar (Top Left) */
+    td[data-label="Customer"] {
+        position: absolute;
+        top: 12px;
+        left: 16px;
+        width: auto;
+        border: none;
+        padding: 0;
+    }
+
+    td[data-label="Customer"] .mobile-label {
+        display: none;
+    }
+
+    td[data-label="Customer"] .avatar-cell {
+        gap: 10px;
+    }
+
+    td[data-label="Customer"] .customer-info .customer-email {
+        display: block;
+        font-size: 0.75rem;
+    }
+
+    /* 2. Actions (Top Right) */
+    td[data-label="Actions"] {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        width: auto;
+        border: none;
+        padding: 0;
+    }
+
+    td[data-label="Actions"] .mobile-label {
+        display: none;
+    }
+
+    /* Other Cells */
+    td[data-label="Tags"] {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    td[data-label="Tags"]>div {
+        justify-content: flex-start !important;
+    }
+}
+
+/* Original Styles Preserved */
+.customers-icon-wrapper {
+    padding: 12px;
+    background: rgba(16, 185, 129, 0.2);
+    border-radius: 12px;
+    color: var(--success);
+    display: flex;
+}
+
+.avatar-cell {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.customer-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #ec4899);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.customer-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.customer-name {
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.customer-email {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.role-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+}

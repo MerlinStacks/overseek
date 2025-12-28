@@ -1,0 +1,449 @@
+/* Inventory specific styles */
+.inventory-page {
+    animation: fadeIn 0.5s ease;
+}
+
+.inventory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.inventory-icon-wrapper {
+    padding: 12px;
+    background: rgba(99, 102, 241, 0.2);
+    /* Primary color */
+    border-radius: 12px;
+    color: var(--primary);
+    display: flex;
+}
+
+.inventory-title h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.inventory-title p {
+    color: var(--text-muted);
+}
+
+.inventory-table-container {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.inventory-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-main);
+}
+
+.inventory-table th,
+.inventory-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.inventory-table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.inventory-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Chips/Badges */
+.chip {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chip-purple {
+    background: rgba(168, 85, 247, 0.2);
+    color: #c084fc;
+}
+
+.chip-blue {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+}
+
+.chip-green {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+
+.chip-red {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+.chip-yellow {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+}
+
+.chip-gray {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+}
+
+.input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-icon {
+    position: absolute;
+    right: 12px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.form-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.form-input:focus {
+    border-color: var(--primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-glass);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 800px;
+    position: relative;
+    box-shadow: var(--shadow-lg);
+    animation: zoomIn 0.2s ease;
+}
+
+.modal-header {
+    margin-bottom: 24px;
+}
+
+.modal-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.modal-desc {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.modal-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 32px;
+}
+
+@media (min-width: 768px) {
+    .modal-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.modal-section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+}
+
+.component-list {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    min-height: 200px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.component-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.component-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.quantity-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+
+.modal-footer {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+@keyframes zoomIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Hover Background Utility for Dropdowns */
+.hover-bg:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Mobile Labels */
+/* --- New Controls Layout --- */
+.inventory-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    width: 60%;
+    /* Desktop width */
+    justify-content: flex-end;
+}
+
+.search-wrapper {
+    position: relative;
+    width: 250px;
+}
+
+.input-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.tools-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.filter-select {
+    width: 150px;
+}
+
+/* Mobile Labels */
+.mobile-label {
+    display: none;
+}
+
+/* --- Mobile Responsive --- */
+@media (max-width: 768px) {
+    .inventory-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .header-content {
+        /* Hide icon if needed, or keep. Let's keep icon for now but stack */
+        margin-bottom: 0;
+    }
+
+    .inventory-icon-wrapper {
+        display: none;
+    }
+
+    /* Controls Stack */
+    .inventory-controls {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        margin-top: 0;
+    }
+
+    /* 1. Search (Top) */
+    .search-wrapper {
+        width: 100% !important;
+        order: 1;
+    }
+
+    /* 2. Tools (Horizontal Scroll) */
+    .tools-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        justify-content: flex-start !important;
+        gap: 8px !important;
+        width: 100% !important;
+        order: 2;
+        overflow-x: auto !important;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .tools-wrapper::-webkit-scrollbar {
+        display: none;
+    }
+
+    .filter-select {
+        width: auto !important;
+        min-width: 140px;
+        flex: 0 0 auto !important;
+    }
+
+    /* --- Table to Card --- */
+    .inventory-table thead {
+        display: none !important;
+    }
+
+    .inventory-table,
+    tbody,
+    tr,
+    td {
+        display: block;
+        width: 100%;
+    }
+
+    .inventory-table tr {
+        position: relative;
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 16px;
+        /* Padding top for absolute actions? Actions are usually bottom or inline. Here Actions are "Edit Recipe". Let's put it top right. */
+        padding-top: 60px;
+    }
+
+    .inventory-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        text-align: right;
+    }
+
+    .inventory-table td:last-child {
+        border-bottom: none;
+        padding-top: 0;
+        margin-top: 0;
+    }
+
+    .mobile-label {
+        display: inline-block;
+        font-weight: 500;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+    }
+
+    /* Cells */
+    /* 1. Product Name (Top Left) */
+    td[data-label="Product"] {
+        position: absolute;
+        top: 12px;
+        left: 16px;
+        width: auto;
+        padding: 0;
+        border: none;
+        text-align: left;
+    }
+
+    td[data-label="Product"] .mobile-label {
+        display: none;
+    }
+
+    td[data-label="Product"] div:first-child {
+        font-size: 1.1rem;
+        color: var(--text-main);
+    }
+
+    /* 2. Actions (Top Right) */
+    td[data-label="Actions"] {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        width: auto;
+        padding: 0;
+        border: none;
+    }
+
+    td[data-label="Actions"] .btn {
+        padding: 6px 12px !important;
+        font-size: 0.8rem;
+    }
+
+    /* Other Cells */
+    td[data-label="Type"] {
+        justify-content: space-between;
+    }
+}

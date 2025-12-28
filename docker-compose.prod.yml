@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # 1. Frontend (Nginx serving React App)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  # 2. Backend (Node.js API)
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://user:password@db:5432/woodash?schema=public
+      - PORT=4000
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # 3. Database (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=woodash
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 4. Redis (Cache)
+  redis:
+    image: redis:alpine
+    restart: always
+
+volumes:
+  postgres_data:

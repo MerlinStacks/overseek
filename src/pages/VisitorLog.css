@@ -1,0 +1,195 @@
+/* VisitorLog.css */
+
+.visitor-page {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header */
+.visitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.visitor-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Overview - Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+}
+
+.stat-card {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.stat-title {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.2;
+}
+
+.stat-subtext {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* Quick Links Grid (Channels/Campaigns) */
+.quick-links-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+/* Visit Row (Realtime) */
+.visit-row {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 0;
+    border-bottom: 1px solid var(--border-glass);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-glass);
+}
+
+.visit-meta {
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-right: 1px solid var(--border-glass);
+    display: flex;
+    flex-direction: column;
+}
+
+.visit-content {
+    padding: 1.5rem 2rem;
+}
+
+.visit-content-header {
+    margin-bottom: 1rem;
+    font-weight: bold;
+    font-size: 0.95rem;
+    border-bottom: 1px solid var(--border-glass);
+    padding-bottom: 0.5rem;
+}
+
+/* Tables */
+.velocity-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.velocity-table th,
+.velocity-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.velocity-table th {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .visitor-page {
+        padding: 1rem;
+    }
+
+    /* Header */
+    .visitor-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .visitor-controls {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .visitor-controls>button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .visitor-controls>div {
+        margin-left: 0 !important;
+        width: 100%;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* Quick Links Grid */
+    .quick-links-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* Visit Row */
+    .visit-row {
+        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .visit-meta {
+        border-right: none;
+        border-bottom: 1px solid var(--border-glass);
+        padding: 1rem;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .visit-meta>div {
+        margin: 0 !important;
+    }
+
+    /* Meta items specific tweaking for horizontal layout on mobile */
+    .visit-meta .date-time {
+        width: 100%;
+        margin-bottom: 8px;
+    }
+
+    .visit-content {
+        padding: 1rem;
+    }
+
+    /* Tables */
+    .velocity-table {
+        display: block;
+        overflow-x: auto;
+    }
+}

@@ -1,0 +1,658 @@
+/* Reuse existing content and Append new helpers */
+.invoice-builder-container {
+    display: flex;
+    height: calc(100vh - 90px);
+    gap: 0;
+    background: #0f172a;
+    font-family: 'Inter', sans-serif;
+    color: #e2e8f0;
+    overflow: hidden;
+}
+
+/* Custom File Upload */
+.custom-file-upload {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    transition: all 0.2s;
+    cursor: pointer;
+    text-align: center;
+    gap: 8px;
+    color: #94a3b8;
+}
+
+.custom-file-upload:hover {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.05);
+    color: white;
+}
+
+.custom-file-upload input[type="file"] {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+}
+
+/* Sidebar */
+.builder-sidebar {
+    width: 280px;
+    background: #1e293b;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    z-index: 20;
+}
+
+.sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sidebar-tools {
+    padding: 15px;
+    overflow-y: auto;
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    align-content: start;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.sidebar-tools::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-tools::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.tool-item {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 20px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    cursor: grab;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    height: 100px;
+    position: relative;
+    overflow: hidden;
+}
+
+.tool-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #60a5fa;
+    transform: translateY(-4px);
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.3);
+}
+
+.tool-item svg {
+    color: #94a3b8;
+    transition: 0.2s;
+}
+
+.tool-item:hover svg {
+    color: #60a5fa;
+    transform: scale(1.1);
+}
+
+/* Canvas Wrapper */
+.builder-canvas-wrapper {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 40px;
+    background-image: radial-gradient(#334155 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-color: #0f172a;
+}
+
+/* Invoice Paper */
+.invoice-paper {
+    width: 210mm;
+    min-height: 297mm;
+    background: white;
+    color: black;
+    padding: 0;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* Rows */
+.invoice-row {
+    position: relative;
+    display: flex;
+    min-height: 50px;
+    border: 1px dashed transparent;
+    transition: all 0.2s;
+}
+
+.invoice-row:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+    z-index: 5;
+}
+
+.invoice-row.selected {
+    box-shadow: 0 0 0 2px #3b82f6 inset;
+    z-index: 10;
+}
+
+.row-actions {
+    position: absolute;
+    left: -32px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.invoice-row:hover .row-actions,
+.invoice-row.selected .row-actions {
+    opacity: 1;
+}
+
+.row-handle {
+    width: 28px;
+    height: 28px;
+    background: #3b82f6;
+    color: white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.row-delete {
+    width: 28px;
+    height: 28px;
+    background: #ef4444;
+    color: white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Columns */
+.invoice-col {
+    position: relative;
+    padding: 10px;
+    min-height: 50px;
+    border: 1px dotted transparent;
+    transition: background 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.invoice-col:empty {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.invoice-col.drag-over {
+    background: #eff6ff;
+    border-color: #3b82f6;
+}
+
+/* Resize Handles */
+.col-resize-handle {
+    position: absolute;
+    right: -5px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.invoice-row:hover .col-resize-handle {
+    opacity: 1;
+}
+
+.col-resize-handle::after {
+    content: '';
+    width: 2px;
+    height: 100%;
+    background: #3b82f6;
+}
+
+/* Blocks */
+.invoice-block {
+    position: relative;
+    cursor: grab;
+    border: 2px solid transparent;
+}
+
+.invoice-block:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.invoice-block.selected {
+    border-color: #3b82f6;
+}
+
+.invoice-block.dragging {
+    opacity: 0.5;
+}
+
+.block-empty-placeholder {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    color: #ccc;
+    border: 1px dashed #e5e7eb;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+/* Properties Panel */
+.properties-panel {
+    width: 300px;
+    background: #1e293b;
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.props-header {
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-weight: 700;
+    color: white;
+}
+
+.props-content {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.prop-group {
+    margin-bottom: 20px;
+}
+
+.prop-label {
+    display: block;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.prop-input,
+.prop-select,
+.prop-textarea {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+}
+
+.prop-textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.prop-controls-row {
+    display: flex;
+    gap: 8px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    width: 100%;
+}
+
+.btn-danger:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.btn-icon {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+.btn-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.btn-icon.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+/* In-canvas Controls */
+.col-add-btn {
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    background: #3b82f6;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.invoice-row:hover .col-add-btn {
+    opacity: 1;
+}
+
+/* New Helpers for Properties Panel */
+.prop-section-info {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.prop-section-label {
+    font-size: 0.75rem;
+    color: #60a5fa;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.prop-section-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.empty-state {
+    text-align: center;
+    color: #64748b;
+    margin-top: 80px;
+    padding: 16px;
+}
+
+.empty-icon-circle {
+    width: 64px;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px auto;
+}
+
+.invoice-flex-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #9ca3af;
+    padding: 80px;
+    border: 2px dashed #e5e7eb;
+    margin: 40px;
+    border-radius: 8px;
+}
+
+/* Footer Styles */
+.invoice-footer {
+    transition: all 0.2s;
+    border: 2px dashed transparent;
+}
+
+.invoice-footer:hover {
+    background: rgba(241, 245, 249, 0.5);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.invoice-footer.selected {
+    background: rgba(239, 246, 255, 0.5);
+    border-color: #3b82f6;
+    color: #334155;
+    z-index: 10;
+}
+
+/* Font Picker */
+.font-picker-wrapper {
+    width: 100%;
+    position: relative;
+    user-select: none;
+}
+
+.font-picker-trigger {
+    min-height: 42px;
+}
+
+.font-picker-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    margin-top: 4px;
+    z-index: 100;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: fadeIn 0.1s ease-out;
+}
+
+.font-picker-search {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    outline: none;
+    font-size: 0.9rem;
+}
+
+.font-picker-list {
+    max-height: 250px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.font-picker-item {
+    padding: 10px 14px;
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.font-picker-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+.font-picker-item.selected {
+    background: #3b82f6;
+    color: white;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media print {
+    @page {
+        margin: 0;
+        size: auto;
+    }
+
+    body * {
+        visibility: hidden;
+    }
+
+    .builder-sidebar,
+    .properties-panel,
+    .header-content,
+    .btn,
+    .row-handle,
+    .row-delete,
+    .col-add-btn,
+    .col-resize-handle,
+    .block-empty-placeholder,
+    .invoice-flex-center,
+    .sonner-toaster {
+        display: none !important;
+    }
+
+    .builder-sidebar,
+    .properties-panel {
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute;
+    }
+
+    .builder-canvas-wrapper {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        overflow: visible !important;
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    .invoice-builder-container {
+        display: block !important;
+        height: auto !important;
+        background: white !important;
+        overflow: visible !important;
+        position: static !important;
+    }
+
+    #invoice-paper,
+    #invoice-paper * {
+        visibility: visible;
+    }
+
+    #invoice-paper {
+        position: static !important;
+        width: 210mm !important;
+        /* Force A4 Width */
+        max-width: 210mm !important;
+        margin: 0 !important;
+        transform: none !important;
+        box-shadow: none !important;
+        min-height: auto !important;
+        height: auto !important;
+        padding: 40px !important;
+        overflow: visible !important;
+    }
+
+    .invoice-row,
+    .invoice-block,
+    .invoice-col,
+    .invoice-footer {
+        border: none !important;
+        background: transparent !important;
+    }
+
+    .invoice-col:empty {
+        display: none;
+    }
+
+    .invoice-footer {
+        color: black !important;
+        margin-top: 20px !important;
+    }
+}

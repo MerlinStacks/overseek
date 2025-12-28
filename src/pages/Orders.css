@@ -1,0 +1,283 @@
+/* Orders Controls */
+.orders-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+}
+
+.search-wrapper {
+    position: relative;
+    width: 280px;
+    /* Flexible on desktop if needed, or fixed */
+}
+
+.search-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.tools-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+    /* Push tools to right on desktop */
+}
+
+.btn-tool {
+    white-space: nowrap;
+}
+
+.btn-create {
+    white-space: nowrap;
+    padding: 0.6rem 1.2rem;
+}
+
+
+/* Pick List Button Custom Style */
+.btn-pick {
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.btn-pick:hover {
+    background: rgba(16, 185, 129, 0.2);
+}
+
+/* Mobile Label Default */
+.mobile-label {
+    display: none;
+}
+
+/* Mobile Responsive */
+/* Mobile Responsive */
+/* Page Header Layout */
+.orders-page .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+/* Desktop Controls */
+.orders-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+
+    /* Stack Header */
+    .orders-page .page-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .orders-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        width: 100%;
+        margin-top: 0;
+    }
+
+    /* 1. Search Bar (Top) */
+    .search-wrapper {
+        width: 100%;
+        order: 1;
+    }
+
+    .search-wrapper input {
+        width: 100%;
+    }
+
+    /* 2. Horizontal Scroll Actions (Middle) */
+    .tools-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        justify-content: flex-start !important;
+        gap: 8px !important;
+        width: 100% !important;
+        order: 2;
+        margin-left: 0;
+        overflow-x: auto !important;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .tools-wrapper::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Force all direct children to be inline distinct items */
+    .tools-wrapper>*,
+    .tools-wrapper button,
+    .tools-wrapper .btn,
+    .tools-wrapper .column-selector-container,
+    .tools-wrapper .filter-wrapper {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: fit-content !important;
+        max-width: none !important;
+        display: inline-flex !important;
+        white-space: nowrap !important;
+        margin: 0 !important;
+    }
+
+    /* 3. Create Button (Bottom, Full Width) */
+    .btn-create {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+        height: 44px;
+        font-size: 1rem;
+        margin-top: 4px;
+    }
+
+    /* Table to Card Transformation */
+    .data-table thead {
+        display: none !important;
+    }
+
+    .data-table,
+    .data-table tbody,
+    .data-table tr,
+    .data-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .data-table tr {
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 16px;
+        position: relative;
+        padding-top: 48px;
+        /* Space for absolute header */
+    }
+
+    .data-table td {
+        padding: 6px 0;
+        border: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-align: right;
+        min-height: 32px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .data-table td:last-child {
+        border-bottom: none;
+        justify-content: flex-end;
+        padding-top: 12px;
+        margin-top: 4px;
+    }
+
+    .mobile-label {
+        display: inline-block;
+        font-weight: 500;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+    }
+
+    .cell-content {
+        text-align: right;
+        flex: 1;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    /* --- Custom Card Layout --- */
+
+    /* 1. Order ID (Top Left) */
+    td[data-label="Order"] {
+        position: absolute;
+        top: 12px;
+        left: 16px;
+        width: auto;
+        padding: 0;
+        border: none;
+    }
+
+    td[data-label="Order"] .mobile-label {
+        display: none;
+    }
+
+    td[data-label="Order"] .cell-content {
+        justify-content: flex-start;
+    }
+
+    td[data-label="Order"] span {
+        font-size: 1.1rem;
+    }
+
+    /* 2. Status (Top Right) */
+    td[data-label="Status"] {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        width: auto;
+        padding: 0;
+        border: none;
+    }
+
+    td[data-label="Status"] .mobile-label {
+        display: none;
+    }
+
+    /* 3. Customer (Full Width, Prominent) */
+    td[data-label="Customer"] {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 12px;
+        margin-bottom: 12px;
+    }
+
+    td[data-label="Customer"] .mobile-label {
+        display: none;
+    }
+
+    td[data-label="Customer"] .cell-content {
+        width: 100%;
+        justify-content: flex-start;
+        text-align: left;
+    }
+
+    /* 4. Date & Total (Inline if possible, or stacked) */
+    /* Default stacked is fine, maybe cleaner */
+
+    /* Hide less critical columns on very small screens? */
+    td[data-label="City"],
+    td[data-label="State"],
+    td[data-label="Country"] {
+        display: none;
+    }
+
+    /* Tags */
+    td[data-label="Tags"] .cell-content {
+        justify-content: flex-end;
+    }
+}

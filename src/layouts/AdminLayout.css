@@ -1,0 +1,115 @@
+/* Darker, technical "Command Center" theme overrides */
+.admin-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background-color: #0f172a;
+    /* Slate 900 */
+}
+
+.admin-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    flex-shrink: 0;
+    width: 260px;
+    background: rgba(15, 23, 42, 0.8);
+    border-right: 1px solid rgba(148, 163, 184, 0.1);
+    backdrop-filter: blur(20px);
+}
+
+.admin-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Card Styles */
+.admin-card {
+    background: rgba(30, 41, 59, 0.7);
+    /* Slate 800 */
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(12px);
+}
+
+.admin-card:hover {
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+    transform: translateY(-2px);
+}
+
+.admin-stat-value {
+    font-family: 'Inter', monospace;
+    /* Tech feel */
+    letter-spacing: -1px;
+}
+
+/* Charts */
+.chart-container {
+    margin-top: 1rem;
+    height: 200px;
+    width: 100%;
+}
+
+/* Status dots */
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-dot.green {
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+}
+
+.status-dot.yellow {
+    background: #f59e0b;
+    box-shadow: 0 0 8px #f59e0b;
+}
+
+/* Grid Layouts */
+.admin-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1.5rem;
+    padding: 2rem;
+}
+
+.col-span-12 {
+    grid-column: span 12;
+}
+
+.col-span-8 {
+    grid-column: span 8;
+}
+
+.col-span-4 {
+    grid-column: span 4;
+}
+
+.col-span-6 {
+    grid-column: span 6;
+}
+
+.col-span-3 {
+    grid-column: span 3;
+}
+
+/* Mobile */
+@media (max-width: 1024px) {
+
+    .col-span-8,
+    .col-span-6,
+    .col-span-4,
+    .col-span-3 {
+        grid-column: span 12;
+    }
+}

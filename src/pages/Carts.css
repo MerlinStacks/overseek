@@ -1,0 +1,244 @@
+/* Carts.css */
+
+.carts-page {
+    animation: fadeIn 0.5s ease;
+}
+
+.carts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.carts-icon-wrapper {
+    padding: 12px;
+    background: rgba(236, 72, 153, 0.2);
+    color: #ec4899;
+    border-radius: 12px;
+    display: flex;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.carts-title h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.carts-title p {
+    color: var(--text-muted);
+}
+
+.carts-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.carts-control-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.carts-table-container {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.carts-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-main);
+}
+
+.carts-table th,
+.carts-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.carts-table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Avatar Cell */
+.avatar-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.customer-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.customer-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.customer-name {
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* Spinner */
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.mobile-label {
+    display: none;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .carts-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .header-content {
+        margin-bottom: 0px;
+    }
+
+    .carts-icon-wrapper {
+        display: none;
+    }
+
+    .carts-controls {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        gap: 12px;
+    }
+
+    .carts-control-text {
+        text-align: center;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 8px;
+        border-radius: 6px;
+    }
+
+    .carts-controls button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Table to Cards */
+    .carts-table thead {
+        display: none !important;
+    }
+
+    .carts-table,
+    tbody,
+    tr,
+    td {
+        display: block;
+        width: 100%;
+    }
+
+    .carts-table tr {
+        position: relative;
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 16px;
+    }
+
+    .carts-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        text-align: right;
+    }
+
+    .carts-table td:last-child {
+        border-bottom: none;
+        padding-top: 12px;
+        justify-content: flex-end;
+    }
+
+    .mobile-label {
+        display: inline-block;
+        font-weight: 500;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        margin-right: 1rem;
+    }
+
+    /* Specific Cell Layouts */
+    /* Customer (Header) */
+    td[data-label="Customer"] {
+        flex-direction: row;
+        align-items: center;
+        margin-bottom: 8px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Center name on mobile if desired, or keep left? Keep left */
+    td[data-label="Customer"] .mobile-label {
+        display: none;
+    }
+
+    /* Total - Highlight */
+    td[data-label="Total"] {
+        font-size: 1.1rem;
+    }
+
+    td[data-label="Items"] {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    td[data-label="Items"] .mobile-label {
+        margin-bottom: 4px;
+        display: block;
+    }
+
+    /* Make items list explicitly align right or left? */
+    td[data-label="Items"]>div {
+        align-items: flex-end !important;
+        /* Force items to right */
+        text-align: right;
+        width: 100%;
+    }
+}

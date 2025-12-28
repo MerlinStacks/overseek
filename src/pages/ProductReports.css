@@ -1,0 +1,159 @@
+/* Main Container */
+.product-reports-container {
+    padding: var(--spacing-lg);
+    max-width: 1600px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.reports-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.reports-section-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.reports-section-subtitle {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+/* Specific Views */
+.bought-together-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.pair-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem;
+}
+
+.pair-info {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.pair-connector {
+    position: absolute;
+    left: 14px;
+    top: 24px;
+    width: 6px;
+    height: 30px;
+    border-left: 2px solid rgba(99, 102, 241, 0.3);
+    border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+    border-bottom-left-radius: 8px;
+    z-index: 0;
+}
+
+.pair-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: relative;
+    z-index: 1;
+}
+
+.pair-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--text-muted);
+}
+
+.pair-count-box {
+    text-align: center;
+    background: rgba(99, 102, 241, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    margin-left: 1rem;
+}
+
+.pair-count-val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.pair-count-label {
+    font-size: 0.75rem;
+    color: var(--primary-glow);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Stock Velocity Table */
+.velocity-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.velocity-table th {
+    text-align: left;
+    padding: 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-glass);
+}
+
+.velocity-table td {
+    padding: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+}
+
+.velocity-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.status-capsule {
+    padding: 0.25rem 0.75rem;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-block;
+}
+
+.status-healthy {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.status-low {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.status-critical {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+/* Dashboard Grid Overrides */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
