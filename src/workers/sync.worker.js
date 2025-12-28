@@ -124,7 +124,11 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
                             parent_id: item.id,
                             account_id: accountId,
                             status: v.status || 'publish',
-                            local_tags: item.local_tags || []
+                            local_tags: item.local_tags || [],
+                            // fallback metadata
+                            description: v.description || item.description,
+                            short_description: item.short_description,
+                            images: (v.image && v.image.src) ? [v.image] : item.images
                         }));
                         results.push(...enrichedVars);
                     } catch (e) {
