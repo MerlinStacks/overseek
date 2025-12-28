@@ -155,6 +155,19 @@ app.get('/api/proxy/*', async (req, res) => {
         // 3. Cache Result (TTL: 5 minutes default)
         await redisClient.set(cacheKey, JSON.stringify({ data, totalPages }), { EX: 300 });
 
+        // 4. Archival Storage (Postgres) - Fire and Forget
+        try {
+            if (endpoint === 'orders' && Array.isArray(data)) {
+                // Future Improvement: Implement full schema mapping here.
+                // For now, we validate the connection is ready for heavy lifting.
+                const client = await pool.connect();
+                // console.log(`[Archival] PG Connected. Ready to store ${data.length} orders.`);
+                client.release();
+            }
+        } catch (pgErr) {
+            console.warn('[Archival] PG Warning:', pgErr.message);
+        }
+
         console.log(`Cache Miss: ${cacheKey}`);
         res.json({ data, totalPages });
 
