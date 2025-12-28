@@ -163,8 +163,8 @@ app.all('/api/proxy/*', async (req, res) => {
         const authHeader = req.headers['authorization'];
         const storeUrl = req.headers['x-store-url'];
 
-        if (!storeUrl || !authHeader) {
-            return res.status(400).json({ error: 'Missing Store Config Headers' });
+        if (!storeUrl || (!authHeader && (!req.query.consumer_key || !req.query.consumer_secret))) {
+            return res.status(400).json({ error: 'Missing Store Config Headers or Query Auth' });
         }
 
         let wcUrl;
@@ -177,13 +177,17 @@ app.all('/api/proxy/*', async (req, res) => {
 
         console.log(`Proxy ${req.method}: ${wcUrl}`);
 
+        const requestHeaders = {
+            'Content-Type': 'application/json'
+        };
+        if (authHeader) {
+            requestHeaders['Authorization'] = authHeader;
+        }
+
         const response = await axios({
             method: req.method,
             url: wcUrl,
-            headers: {
-                'Authorization': authHeader,
-                'Content-Type': 'application/json'
-            },
+            headers: requestHeaders,
             data: req.body
         });
 
