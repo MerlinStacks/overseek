@@ -11,13 +11,18 @@ const SyncSettings = ({ settings, updateSettings }) => {
     // Local state for auto-refresh interval (persisted in DB)
     const [syncInterval, setSyncInterval] = useState(settings.syncInterval || 0);
 
-    const [syncOptions, setSyncOptions] = useState({
-        products: true,
-        orders: true,
-        customers: true,
-        reviews: true,
-        taxes: true
+    const [syncOptions, setSyncOptions] = useState(() => {
+        try {
+            const saved = localStorage.getItem('sync_prefs');
+            return saved ? JSON.parse(saved) : { products: true, orders: true, customers: true, reviews: true, taxes: true };
+        } catch (e) {
+            return { products: true, orders: true, customers: true, reviews: true, taxes: true };
+        }
     });
+
+    React.useEffect(() => {
+        localStorage.setItem('sync_prefs', JSON.stringify(syncOptions));
+    }, [syncOptions]);
 
     const isSyncing = syncStatus === 'running';
 
