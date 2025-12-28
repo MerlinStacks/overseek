@@ -48,30 +48,6 @@ const GeneralSettings = ({ settings, updateSettings }) => {
             // Clean URL first
             storeUrl = storeUrl.replace(/\/$/, '');
 
-            // 0. DIAGNOSTIC: Check public access first
-            toast.loading("Checking public access...", { id: 'conn-test' });
-            try {
-                await fetch(`${storeUrl}/wp-json/`, {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            } catch (err) {
-                toast.dismiss('conn-test');
-                console.error("Diagnostic Check Failed", err);
-                toast.error(
-                    <div>
-                        <strong>Site Unreachable / CORS Blocked</strong>
-                        <p style={{ fontSize: '0.8rem', marginTop: '4px' }}>
-                            Could not connect to <code>{storeUrl}</code>.
-                            <br />- Check if URL is correct (https vs http).
-                            <br />- Check if site is online.
-                            <br />- <strong>Update Plugin:</strong> Ensure <code>woo-dashboard-helper.php</code> is updated on your site.
-                        </p>
-                    </div>
-                    , { duration: 8000 });
-                return;
-            }
-
             toast.loading("Verifying credentials...", { id: 'conn-test' });
 
             // Attempt 1: Use selected or default auth
