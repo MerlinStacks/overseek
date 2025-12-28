@@ -1,61 +1,48 @@
 version: '3.8'
 
 services:
-  # 1. Frontend
+  # 1. Frontend (Nginx serving React App)
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    ports:
-      - "5173:5173"
-    volumes:
-      - .:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:4000
-      - CHOKIDAR_USEPOLLING=true
+      dockerfile: Dockerfile
     restart: always
+    ports:
+      - "80:80"
     depends_on:
       - backend
 
-  # 2. Backend
+  # 2. Backend (Node.js API)
   backend:
     build:
       context: ./server
       dockerfile: Dockerfile
-    command: npm run dev
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./server:/app
-      - /app/node_modules
-    depends_on:
-      - db
+    restart: always
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://user:password@db:5432/woodash?schema=public
       - PORT=4000
-    restart: always
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
   # 3. Database (PostgreSQL)
   db:
     image: postgres:15-alpine
-    ports:
-      - "5432:5432"
+    restart: always
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=woodash
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: always
 
   # 4. Redis (Cache)
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
     restart: always
 
 volumes:
