@@ -315,7 +315,7 @@ export const fetchCarts = async (settings) => {
     // We want .../wp-json/wc-dash/v1.
     // So we can pass a relative path that goes up: ../../wc-dash/v1/carts
 
-    const response = await client.get('../../overseek/v1/carts');
+    const response = await client.get('overseek/v1/carts');
     return response.data;
 };
 
@@ -328,35 +328,35 @@ export const sendEmail = async (settings, data) => {
         settings.authMethod
     );
     // Custom endpoint
-    const response = await client.post('../../overseek/v1/email/send', data);
+    const response = await client.post('overseek/v1/email/send', data);
     return response.data;
 };
 
 export const fetchSMTP = async (settings) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.get('../../overseek/v1/settings/smtp');
+    const response = await client.get('overseek/v1/settings/smtp');
     return response.data;
 };
 
 export const saveSMTP = async (settings, data) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.post('../../overseek/v1/settings/smtp', data);
+    const response = await client.post('overseek/v1/settings/smtp', data);
     return response.data;
 };
 
 export const fetchVisitorCount = async (settings) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.get('../../overseek/v1/visitors');
+    const response = await client.get('overseek/v1/visitors');
     return response.data;
 };
 
 export const fetchVisitorLog = async (settings) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.get('../../overseek/v1/visitor-log');
+    const response = await client.get('overseek/v1/visitor-log');
     return response.data;
 };
 
@@ -365,7 +365,7 @@ export const fetchSystemStatus = async (settings) => {
     // Use try-catch here as it is a debug endpoint
     try {
         const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-        const response = await client.get('../../overseek/v1/status');
+        const response = await client.get('overseek/v1/status');
         return response.data;
     } catch (e) {
         return null; // Endpoint might not exist on older versions
@@ -374,14 +374,14 @@ export const fetchSystemStatus = async (settings) => {
 export const installDB = async (settings) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.post('../../overseek/v1/install-db');
+    const response = await client.post('overseek/v1/install-db');
     return response.data;
 };
 
 export const createTestVisit = async (settings) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.post('../../overseek/v1/test-visit');
+    const response = await client.post('overseek/v1/test-visit');
     return response.data;
 };
 
@@ -413,14 +413,14 @@ export const fetchTaxRates = async (settings, params = {}) => {
 export const fetchChatMessages = async (settings, params = {}) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.get('../../overseek/v1/chat/messages', { params });
+    const response = await client.get('overseek/v1/chat/messages', { params });
     return response.data;
 };
 
 export const sendChatMessage = async (settings, data) => {
     if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
     const client = createWCClient(settings.storeUrl, settings.consumerKey, settings.consumerSecret, settings.authMethod);
-    const response = await client.post('../../overseek/v1/chat/send', data);
+    const response = await client.post('overseek/v1/chat/send', data);
     return response.data;
 };
 

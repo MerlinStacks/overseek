@@ -185,7 +185,7 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
 
                                     // Send Email via API (using fetch)
                                     // Helper Plugin Endpoint (via Proxy traversal)
-                                    const emailEndpoint = `/api/proxy/../../overseek/v1/email/send`;
+                                    const emailEndpoint = `/api/proxy/overseek/v1/email/send`;
 
                                     await fetch(emailEndpoint, {
                                         method: 'POST',

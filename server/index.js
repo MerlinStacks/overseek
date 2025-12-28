@@ -160,7 +160,14 @@ app.get('/api/proxy/*', async (req, res) => {
             return res.status(400).json({ error: 'Missing Store Config Headers' });
         }
 
-        const wcUrl = `${storeUrl}/wp-json/wc/v3/${endpoint}?${query}`;
+        let wcUrl;
+        // Support Custom Namespaces (bypass /wc/v3)
+        if (endpoint.startsWith('overseek') || endpoint.startsWith('wc-dash')) {
+            wcUrl = `${storeUrl}/wp-json/${endpoint}?${query}`;
+        } else {
+            wcUrl = `${storeUrl}/wp-json/wc/v3/${endpoint}?${query}`;
+        }
+
         console.log(`Target: ${wcUrl}`);
 
         const response = await axios.get(wcUrl, {
