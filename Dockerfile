@@ -5,7 +5,7 @@ FROM node:22-alpine as build
 WORKDIR /app
 
 # Install build dependencies for native modules
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 build-base
 
 # Copy package files (cache invalidation)
 COPY package*.json ./
