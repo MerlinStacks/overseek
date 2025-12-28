@@ -59,9 +59,10 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
     const syncEntity = async (endpoint, entityName, table, lastSyncKey, transformFn = null) => {
         let page = 1;
         let totalPages = 1;
+        let completedSuccess = true;
 
         // Prepare params
-        const params = { per_page: 20, page: 1 };
+        const params = { per_page: 50, page: 1 };
         if (!forceFull && lastSyncTimes[lastSyncKey]) {
             params.after = lastSyncTimes[lastSyncKey];
         }
@@ -85,17 +86,18 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
                 }
 
                 page++;
-
-                // Update progress based on strict task boundaries
-                // We'll manage overall progress in main loop, here just log
             } catch (err) {
                 log(`Error syncing ${entityName} page ${page}: ${err.message}`, 'error');
-                // Break or continue? For robustness, maybe break this entity but continue others
+                completedSuccess = false;
                 break;
             }
         } while (page <= totalPages);
 
-        newSyncTimes[lastSyncKey] = startTimeIso;
+        if (completedSuccess) {
+            newSyncTimes[lastSyncKey] = startTimeIso;
+        } else {
+            log(`Sync for ${entityName} incomplete. Will retry from previous timestamp next time.`, 'warning');
+        }
     };
 
     // 1. PRODUCTS
