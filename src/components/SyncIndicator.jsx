@@ -3,7 +3,7 @@ import { useSync } from '../context/SyncContext';
 import { RefreshCw, Wifi, WifiOff, CheckCircle2 } from 'lucide-react';
 
 const SyncIndicator = () => {
-    const { status, lastLiveSync, startSync } = useSync();
+    const { status, lastLiveSync, startSync, progress, task } = useSync();
     const [timeAgo, setTimeAgo] = useState(0);
 
     useEffect(() => {
@@ -18,7 +18,7 @@ const SyncIndicator = () => {
 
     // Derived State
     const isRunning = status === 'running';
-    const isLive = lastLiveSync && timeAgo < 45; // Considered live if synced in last 45s (polling is 10s)
+    const isLive = lastLiveSync && timeAgo < 45;
 
     // Status text
     let statusText = "Offline";
@@ -26,7 +26,7 @@ const SyncIndicator = () => {
     let Icon = WifiOff;
 
     if (isRunning) {
-        statusText = "Syncing...";
+        statusText = `${progress}% Processed`;
         statusColor = "var(--primary)";
         Icon = RefreshCw;
     } else if (isLive) {
@@ -50,10 +50,11 @@ const SyncIndicator = () => {
                 alignItems: 'center',
                 border: `1px solid ${status === 'error' ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
                 cursor: 'pointer',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                minWidth: '110px'
             }}
             onClick={() => !isRunning && startSync(false)}
-            title={isRunning ? "Sync in progress..." : "Click to force sync"}
+            title={isRunning ? `Current Task: ${task}` : "Click to force incremental sync"}
         >
             <div style={{ position: 'relative', display: 'flex' }}>
                 <Icon
@@ -78,13 +79,19 @@ const SyncIndicator = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
                     {status === 'error' ? 'Sync Error' : statusText}
                 </span>
-                {!isRunning && isLive && (
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                        Optimized
+                {isRunning ? (
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {task}
                     </span>
+                ) : (
+                    isLive && (
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                            Optimized
+                        </span>
+                    )
                 )}
             </div>
         </div>
