@@ -28,6 +28,17 @@ const Inventory = () => {
     const [selectedProduct, setSelectedProduct] = useState(null); // Product being edited
     const [isEditOpen, setIsEditOpen] = useState(false);
 
+    // Expansion State
+    const [expandedIds, setExpandedIds] = useState(new Set());
+    const toggleExpand = (id) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     // Reset page on filter change
     React.useEffect(() => {
         setCurrentPage(1);
@@ -37,9 +48,7 @@ const Inventory = () => {
     const { data: { items: sortedItems, totalItems } = { items: [], totalItems: 0 }, isLoading } = useLiveQuery(async () => {
         if (!activeAccount) return { items: [], totalItems: 0 };
 
-        // 1. Fetch needed metadata (Components) to determine Types
-        // We fetching ALL components for the account. This is usually acceptable (e.g. 500-2000 relations).
-        // If this becomes too large, we would need to index "is_composite" on products.
+        // 1. Fetch needed components
         const allComponents = await db.product_components.where('account_id').equals(activeAccount.id).toArray();
         const parentIds = new Set(allComponents.map(c => c.parent_id));
         const childIds = new Set(allComponents.map(c => c.child_id));
@@ -47,7 +56,6 @@ const Inventory = () => {
         // 2. Build Query
         let collection = db.products.where('account_id').equals(activeAccount.id);
 
-        // Search takes priority
         if (searchTerm.length > 1) {
             collection = db.products.where('[account_id+name]')
                 .between(
@@ -57,97 +65,68 @@ const Inventory = () => {
                 );
         }
 
-        // Apply Logic Filters (Intersecting Index and Set logic)
-        let finalIds = null; // If set, we query by these IDs
+        let finalCollection = collection;
 
-        // Note: We can't easily chain .filter() efficiently on a large DB for "Included in Set".
-        // Strategy: 
-        // A. If searching -> Get search results, then filter in memory (Search result usually small).
-        // B. If NOT searching -> Use the Set to drive the query if filtering by Type.
-
-        let queryStrategy = 'collection'; // 'collection' or 'ids'
-        let targetIds = [];
-
-        if (searchTerm.length > 1) {
-            // Strategy A: Collection Filter
-            // We just define the filter function
-        } else {
-            // Strategy B: Optimization for Browsing Types
-            if (filterType === 'composite') {
-                queryStrategy = 'ids';
-                targetIds = Array.from(parentIds).map(pid => [activeAccount.id, pid]);
-            } else if (filterType === 'component') {
-                queryStrategy = 'ids';
-                targetIds = Array.from(childIds).map(pid => [activeAccount.id, pid]);
+        // Apply Filter Function
+        finalCollection = finalCollection.filter(p => {
+            // Search Logic
+            if (searchTerm.length > 1) {
+                // ... logic handled by 'between' mostly, but filter maintains robustness
+            } else {
+                // Type Filtering
+                if (filterType === 'composite' && !parentIds.has(p.id)) return false;
+                if (filterType === 'component' && !childIds.has(p.id)) return false;
+                if (filterType === 'variation' && p.type !== 'variation') return false;
             }
-        }
 
-        let finalCollection;
+            // HIERARCHY RULE:
+            // If showing "All" or "Composite" or "Component", we only show PARENTS (Root nodes).
+            // Variants are hidden unless explicitly filtering for 'variation'.
+            if (filterType !== 'variation' && p.parent_id) return false;
 
-        if (queryStrategy === 'ids') {
-            finalCollection = db.products.where('[account_id+id]').anyOf(targetIds);
-        } else {
-            finalCollection = collection;
-        }
-
-        // Apply Filter Function (catches Search result filtering or 'variation' type)
-        if (filterType !== 'all') {
-            finalCollection = finalCollection.filter(p => {
-                // If we used strategy 'ids', we implicitly match the type, BUT
-                // if filterType is 'variation', we check p.type
-                // if filterType is 'composite' AND we are Searching, we check parentIds.
-
-                if (searchTerm.length > 1) {
-                    if (filterType === 'composite') return parentIds.has(p.id);
-                    if (filterType === 'component') return childIds.has(p.id);
-                }
-
-                if (filterType === 'variation') return p.type === 'variation';
-
-                return true;
-            });
-        }
+            return true;
+        });
 
         // Count
         const count = await finalCollection.count();
 
-        // Sort & Paginate
-        // Note: Complex sorting with filters is hard in IndexedDB. 
-        // We apply offset/limit then sort page for non-indexed sorts, 
-        // OR we just sort by name (default) if possible.
-
+        // Paginate Parents
         const offset = (currentPage - 1) * itemsPerPage;
+        const products = await finalCollection.offset(offset).limit(itemsPerPage).toArray();
 
-        let products = [];
-        // If sorting by name and using simple collection?
-        // For now, robust implementation:
-        products = await finalCollection.offset(offset).limit(itemsPerPage).toArray();
+        // 3. Fetch Variants for this Page (Hierarchy)
+        // We only fetch variants if we are NOT in 'variation' mode (where we show them flat)
+        let variantsMap = new Map();
+        if (filterType !== 'variation') {
+            const pageParentIds = products.map(p => p.id);
+            // Scan for variants of these parents
+            const pageVariants = await db.products
+                .where('account_id').equals(activeAccount.id)
+                .filter(p => pageParentIds.includes(p.parent_id))
+                .toArray();
 
-        // 3. Process the page (Calculate Stocks)
-        // We need components for THESE products to calc stock.
-        // We already have 'allComponents' loaded.
+            pageVariants.forEach(v => {
+                if (!variantsMap.has(v.parent_id)) variantsMap.set(v.parent_id, []);
+                variantsMap.get(v.parent_id).push(v);
+            });
+        }
 
+        // 4. Process (Calculations)
         const processed = products.map(p => {
-            const myComponents = allComponents.filter(c => c.parent_id === p.id);
+            // Attach Variants
+            const myVariants = variantsMap.get(p.id) || [];
 
-            // Calc Stock
-            let potential = 9999;
-            if (myComponents.length > 0) {
-                potential = Infinity;
-                // We need to know stock of children.
-                // ISSUE: We only loaded 'products' (the page). We don't have child products loaded.
-                // We need to fetch the child products for calculation.
-            }
+            // Component Logic
+            const myComponents = allComponents.filter(c => c.parent_id === p.id);
 
             return {
                 ...p,
                 _myComponents: myComponents,
-                // partial data, resolving below
+                _variants: myVariants
             };
         });
 
-        // 4. Batch Fetch needed children for potential stock calculation
-        // This makes it 2-step but accurate.
+        // 5. Batch Fetch needed component children for stock calc
         const neededChildIds = new Set();
         processed.forEach(p => {
             p._myComponents.forEach(c => neededChildIds.add(c.child_id));
@@ -173,11 +152,9 @@ const Inventory = () => {
                     let minCap = Infinity;
                     myComps.forEach(comp => {
                         const child = childProductsMap.get(comp.child_id);
-                        if (!child) return; // items missing?
-
+                        if (!child) return;
                         if (child.stock_status === 'onbackorder') return;
                         if (child.stock_quantity === null && child.stock_status === 'instock') return;
-
                         const childQty = child.stock_quantity || 0;
                         const canMake = Math.floor(childQty / comp.quantity);
                         if (canMake < minCap) minCap = canMake;
@@ -193,6 +170,7 @@ const Inventory = () => {
             let typeLabel = '-';
             if (_isComposite) typeLabel = 'Bundle';
             else if (_isComponent) typeLabel = 'Component';
+            else if (p.type === 'variable') typeLabel = 'Variable'; // Parent
             else if (p.type === 'variation') typeLabel = 'Variation';
 
             return {
@@ -204,15 +182,13 @@ const Inventory = () => {
             };
         });
 
-        // Page-Level Sort (for Calculated fields or if Index wasn't used)
+        // Page-Level Sort
         if (sortConfig.key) {
             finalItems.sort((a, b) => {
                 let aVal = a[sortConfig.key];
                 let bVal = b[sortConfig.key];
-                // Handle strings
                 if (typeof aVal === 'string') aVal = aVal.toLowerCase();
                 if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-
                 if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -305,47 +281,82 @@ const Inventory = () => {
                     </thead>
                     <tbody>
                         {sortedItems.map(product => {
+                            const hasVariants = product._variants && product._variants.length > 0;
+                            const isExpanded = expandedIds.has(product.id);
+
                             return (
-                                <tr key={product.id}>
-                                    <td data-label="Product">
-                                        <span className="mobile-label">Product:</span>
-                                        <div style={{ fontWeight: 600 }}>{product.name}</div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>SKU: {product.sku || 'N/A'}</div>
-                                    </td>
-                                    <td data-label="Type">
-                                        <span className="mobile-label">Type:</span>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            {product._isComposite && <span className="chip chip-purple">Bundle</span>}
-                                            {product._isComponent && <span className="chip chip-blue">Component</span>}
-                                            {product.type === 'variation' && !product._isComposite && !product._isComponent && (
-                                                <span className="chip" style={{ backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.3)' }}>Variation</span>
-                                            )}
-                                            {!product._isComposite && !product._isComponent && product.type !== 'variation' && <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                                        </div>
-                                    </td>
-                                    <td data-label="Physical Stock" style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                                        <span className="mobile-label">Physical Stock:</span>
-                                        {product.stock_quantity ?? '∞'}
-                                    </td>
-                                    <td data-label="Calculated Stock" style={{ fontFamily: 'monospace' }}>
-                                        <span className="mobile-label">Calculated:</span>
-                                        {product._isComposite ? (
-                                            <span style={{ color: product.potentialStock === 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 'bold' }}>
-                                                {product.potentialStock}
-                                            </span>
-                                        ) : '-'}
-                                    </td>
-                                    <td data-label="Actions" style={{ textAlign: 'right' }}>
-                                        <button
-                                            onClick={() => { setSelectedProduct(product); setIsEditOpen(true); }}
-                                            className="btn"
-                                            style={{ padding: '0.4rem 0.8rem', background: 'rgba(255,255,255,0.05)', fontSize: '0.85rem' }}
-                                            title="Edit Recipe"
-                                        >
-                                            <Layers size={16} /> Edit Recipe
-                                        </button>
-                                    </td>
-                                </tr>
+                                <React.Fragment key={product.id}>
+                                    <tr>
+                                        <td data-label="Product">
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                                {hasVariants && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); toggleExpand(product.id); }}
+                                                        className="btn-icon"
+                                                        style={{ padding: 0, height: 'fit-content', marginTop: '4px', cursor: 'pointer', minWidth: '20px' }}
+                                                    >
+                                                        {isExpanded ? <ArrowUp size={16} style={{ opacity: 0.7 }} /> : <ArrowDown size={16} style={{ opacity: 0.7 }} />}
+                                                    </button>
+                                                )}
+                                                {!hasVariants && <div style={{ width: 20 }}></div>}
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>{product.name}</div>
+                                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>SKU: {product.sku || 'N/A'}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td data-label="Type">
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                {product._isComposite && <span className="chip chip-purple">Bundle</span>}
+                                                {product._isComponent && <span className="chip chip-blue">Component</span>}
+                                                {product.type === 'variable' && <span className="chip" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>Variable</span>}
+                                                {!product._isComposite && !product._isComponent && product.type !== 'variable' && <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                                            </div>
+                                        </td>
+                                        <td data-label="Physical Stock" style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                                            {product.stock_quantity ?? '∞'}
+                                        </td>
+                                        <td data-label="Calculated Stock" style={{ fontFamily: 'monospace' }}>
+                                            {product._isComposite ? (
+                                                <span style={{ color: product.potentialStock === 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 'bold' }}>
+                                                    {product.potentialStock}
+                                                </span>
+                                            ) : '-'}
+                                        </td>
+                                        <td data-label="Actions" style={{ textAlign: 'right' }}>
+                                            <button
+                                                onClick={() => { setSelectedProduct(product); setIsEditOpen(true); }}
+                                                className="btn"
+                                                style={{ padding: '0.4rem 0.8rem', background: 'rgba(255,255,255,0.05)', fontSize: '0.85rem' }}
+                                                title="Edit Recipe"
+                                            >
+                                                <Layers size={16} /> Edit Recipe
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {/* Nested Variants */}
+                                    {isExpanded && product._variants?.map(v => (
+                                        <tr key={v.id} style={{ background: 'rgba(255,255,255,0.02)' }}>
+                                            <td style={{ paddingLeft: '50px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--border)' }}></div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 400, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                                            {v.name.replace(product.name, '').replace(/^[\s-\.]+/, '') || v.name}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>SKU: {v.sku}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td><span className="chip" style={{ fontSize: '0.75rem', opacity: 0.5, border: '1px solid var(--border)' }}>Variation</span></td>
+                                            <td style={{ fontFamily: 'monospace', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                                {v.stock_quantity ?? '∞'}
+                                            </td>
+                                            <td>-</td>
+                                            <td></td>
+                                        </tr>
+                                    ))}
+                                </React.Fragment>
                             );
                         })}
                         {sortedItems.length === 0 && (
