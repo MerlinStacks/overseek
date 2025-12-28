@@ -1,11 +1,11 @@
 # Stage 1: Build the React App
 # Stage 1: Build the React App
-FROM node:22-alpine as build
+FROM node:22-slim as build
 
 WORKDIR /app
 
-# Install build dependencies for native modules
-RUN apk add --no-cache python3 build-base
+# remove apk add command
+
 
 # Copy package files (cache invalidation)
 COPY package*.json ./
