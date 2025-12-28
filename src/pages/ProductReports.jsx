@@ -69,6 +69,10 @@ const ProductReports = () => {
 
         return allProducts.map(stat => {
             const product = products.find(p => p.id === stat.id) || {};
+
+            // Skip if not tracking stock (Explicitly false)
+            if (product.manage_stock === false) return null;
+
             const stock = product.stock_quantity || 0;
             const velocity = stat.itemsSold / (dateRange.days || 30); // items per day
             const daysRemaining = velocity > 0 ? (stock / velocity) : 9999;
@@ -79,7 +83,7 @@ const ProductReports = () => {
                 velocity,
                 daysRemaining
             };
-        }).sort((a, b) => {
+        }).filter(Boolean).sort((a, b) => {
             // Sort by "Urgency" (fewest days remaining, but ignore 0 velocity)
             if (a.velocity === 0) return 1;
             if (b.velocity === 0) return -1;

@@ -63,6 +63,7 @@ const InventoryPlanning = () => {
 
         const allNodes = products
             .filter(p => !compositeProductIds.has(p.id)) // Filter bundles if desired
+            .filter(p => p.manage_stock !== false)       // Filter explicitly untracked stock items
             .map(p => {
                 const sold90 = productSales.get(p.id) || 0;
                 const velocity = sold90 / DAYS_WINDOW; // Units per day
