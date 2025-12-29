@@ -2,17 +2,17 @@
 /**
  * Plugin Name: OverSeek Helper
  * Description: Exposes Cart Abandonment data, Visitor Logs, and SMTP Settings to the OverSeek Dashboard.
- * Version: 2.4
+ * Version: 2.5
  * Author: OverSeek
  */
 
 if (!defined('ABSPATH')) exit;
 
-if (class_exists('OverSeekHelper')) {
+if (class_exists('OverSeek_Helper_Latest')) {
     return;
 }
 
-class OverSeekHelper {
+class OverSeek_Helper_Latest {
 
     public function __construct() {
         // 1. Critical: Handle CORS and Auth immediately
@@ -279,7 +279,7 @@ class OverSeekHelper {
         
         return rest_ensure_response([
             'plugin_name' => 'OverSeek Helper',
-            'version' => '2.4',
+            'version' => '2.5',
             'namespace' => 'overseek/v1',
             'db_version' => get_option('overseek_db_version'),
             'table_exists' => $exists,
@@ -371,4 +371,4 @@ class OverSeekHelper {
     }
 }
 
-new OverSeekHelper();
+new OverSeek_Helper_Latest();
