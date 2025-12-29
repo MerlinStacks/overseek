@@ -78,8 +78,19 @@ const Orders = () => {
     const slowQueryItems = useLiveQuery(async () => {
         if (!activeAccount || isFastMode) return [];
         // Fetch ALL for this account (fallback)
-        // Optimization: limit to 2000? For now just fetch all matching account
-        return await db.orders.where('account_id').equals(activeAccount.id).toArray();
+        // Optimization: limit to 2000 recent orders to prevent browser crash on large datasets
+        const recentOrders = await db.orders
+            .where('account_id').equals(activeAccount.id)
+            .reverse() // Assuming id or natural sort is roughly chronological, or better use [account_id+date_created] if possible but here we use simple index for speed? 
+            // Actually 'account_id' is just an index. result is sorted by PK [account_id+id].
+            // So reverse() gives recent IDs.
+            .limit(2000)
+            .toArray();
+
+        if (recentOrders.length === 2000) {
+            toast.info("Search limited to most recent 2,000 orders for performance.");
+        }
+        return recentOrders;
     }, [activeAccount?.id, isFastMode]) || [];
 
 
