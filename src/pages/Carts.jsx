@@ -32,12 +32,14 @@ const Carts = () => {
             // Try to extract backend error message (e.g., "Sessions table not found")
             const backendMsg = error.response?.data?.message || error.response?.data?.error || error.message;
 
-            if (backendMsg && backendMsg.includes('404')) {
+            if (backendMsg && (backendMsg.includes('404') || backendMsg.includes('No route was found'))) {
                 // If we also have a specific message, show it.
-                if (error.response?.data?.message || error.response?.data?.code === 'no_table') {
+                if (error.response?.data?.code === 'no_table') {
                     // It's a structured error from our plugin
                     const specific = error.response.data.message || "Database Error";
                     toast.error(`Plugin Connected but Error: ${specific}`);
+                } else if (backendMsg.includes('No route was found')) {
+                    toast.error("Plugin Active but Routes Missing. Please Deactivate & Reactivate Plugin in WordPress.");
                 } else {
                     toast.error("Helper Plugin Endpoint Not Found (404). Please Check System Status.");
                 }
