@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSettings } from '../context/SettingsContext';
-import { Mail, Server, RefreshCw, Cpu, Database, LayoutGrid, Palette } from 'lucide-react';
+import { Mail, Server, RefreshCw, Cpu, Database, LayoutGrid, Palette, Activity } from 'lucide-react';
 import { Toaster } from 'sonner';
 import './Settings.css';
 
@@ -9,6 +9,7 @@ import GeneralSettings from '../components/settings/GeneralSettings';
 import SyncSettings from '../components/settings/SyncSettings';
 import SMTPSettings from '../components/settings/SMTPSettings';
 import AISettings from '../components/settings/AISettings';
+import SystemStatus from '../components/settings/SystemStatus';
 
 import BackupSettings from '../components/settings/BackupSettings';
 import AppearanceSettings from '../components/settings/AppearanceSettings';
@@ -19,6 +20,7 @@ const Settings = () => {
 
     const menuItems = [
         { id: 'general', label: 'General', icon: Server, desc: 'Store connection & keys' },
+        { id: 'status', label: 'System Status', icon: Activity, desc: 'Health Checks & Diagnostics' },
         { id: 'sync', label: 'Synchronization', icon: RefreshCw, desc: 'Data pull settings' },
         { id: 'appearance', label: 'Appearance', icon: Palette, desc: 'Colors & branding' },
         { id: 'email', label: 'Email Services', icon: Mail, desc: 'SMTP configuration' },
@@ -76,8 +78,14 @@ const Settings = () => {
                         <AISettings settings={settings} updateSettings={updateSettings} />
                     )}
 
+                    {/* ... existing tabs ... */}
+
                     {activeTab === 'backup' && (
                         <BackupSettings />
+                    )}
+
+                    {activeTab === 'status' && (
+                        <SystemStatus settings={settings} />
                     )}
 
                 </div>

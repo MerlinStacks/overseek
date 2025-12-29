@@ -82,7 +82,7 @@ const Inventory = () => {
             // HIERARCHY RULE:
             // If showing "All" or "Composite" or "Component", we only show PARENTS (Root nodes).
             // Variants are hidden unless explicitly filtering for 'variation'.
-            if (filterType !== 'variation' && p.parent_id) return false;
+            if (filterType !== 'variation' && (p.parent_id || p.type === 'variation')) return false;
 
             return true;
         });
