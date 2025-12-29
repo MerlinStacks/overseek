@@ -61,16 +61,45 @@ if (isset($_GET['overseek_direct'])) {
         if ($row) {
              return true;
         }
+    if (!function_exists('os_validate_direct_auth')) {
+        function os_validate_direct_auth() {
+            global $wpdb;
+            $key = '';
+            $secret = '';
 
-        return false;
+            // 1. Try Headers First
+            $auth = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : '';
+            if (!$auth && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+                $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+            }
+
+            if ($auth && strpos($auth, 'Basic ') === 0) {
+                $creds = base64_decode(substr($auth, 6));
+                list($key, $secret) = explode(':', $creds);
+            }
+
+            // 2. Try Query/Body Parameters
+            if (!$key && isset($_REQUEST['consumer_key'])) {
+                $key = $_REQUEST['consumer_key'];
+            }
+
+            if (!$key) return false;
+
+            // 3. Hash Key
+            $key_hash = hash_hmac('sha256', $key, 'wc-api');
+            $table = $wpdb->prefix . 'woocommerce_api_keys';
+            
+            $row = $wpdb->get_row($wpdb->prepare("SELECT key_id, permissions FROM $table WHERE consumer_key = %s LIMIT 1", $key_hash));
+            return (bool) $row;
+        }
     }
 
     // BLOCK UNAUTHORIZED REQUESTS
-    // Exception: Options (Preflight)
     if ($_SERVER['REQUEST_METHOD'] !== 'OPTIONS') {
         if (!os_validate_direct_auth()) {
              http_response_code(401);
-             echo json_encode(['error' => 'unauthorized', 'message' => 'Invalid API Credentials']);
+             header('Content-Type: application/json');
+             echo json_encode(['error' => 'unauthorized', 'message' => 'Invalid or Missing API Credentials']);
              exit;
         }
     }
@@ -89,7 +118,7 @@ if (isset($_GET['overseek_direct'])) {
          $exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name;
          echo json_encode([
              'status' => 'ok', 
-             'type' => 'direct_global_secure',
+             'type' => 'direct_wp_loaded_secure',
              'db_version' => get_option('overseek_db_version'),
              'table_exists' => $exists,
              'wc_version' => class_exists('WooCommerce') ? WC()->version : 'Unknown'
@@ -161,11 +190,11 @@ if (isset($_GET['overseek_direct'])) {
         exit;
     }
 
-    // 5. EMAIL SENDING (Missing in previous update)
+    // 5. EMAIL SENDING
     if ($action === 'email/send') {
         // Read JSON body
         $input = json_decode(file_get_contents('php://input'), true);
-        if ($input) {
+        if ($input && function_exists('wp_mail')) { // Safe check
             $to = sanitize_email($input['to']);
             $subject = sanitize_text_field($input['subject']);
             $message = wp_kses_post($input['message']);
@@ -194,12 +223,12 @@ if (isset($_GET['overseek_direct'])) {
             $sent = wp_mail($to, $subject, $message, ['Content-Type: text/html; charset=UTF-8']);
             echo json_encode(['success' => $sent]);
         } else {
-            echo json_encode(['success' => false, 'error' => 'invalid_json']);
+            echo json_encode(['success' => false, 'error' => 'wp_mail_missing_or_invalid_json']);
         }
         exit;
     }
 
-    // 6. SMTP SETTINGS (GET & POST)
+    // 6. SMTP SETTINGS
     if ($action === 'smtp') {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Read JSON body
@@ -216,7 +245,7 @@ if (isset($_GET['overseek_direct'])) {
         exit;
     }
 
-    // 6. DB INSTALL
+    // 7. DB INSTALL
     if ($action === 'install-db') {
         // We can't easily call class methods here without instantiation, so we instantiate the class temporarily or duplicate logic.
         // Duplicating basic logic for robustness.
@@ -241,7 +270,7 @@ if (isset($_GET['overseek_direct'])) {
         echo json_encode(['success' => true, 'message' => 'DB Repair Executed']);
         exit;
     }
-}
+});
 
 if (class_exists('OverSeek_Helper_Latest')) {
     return;
