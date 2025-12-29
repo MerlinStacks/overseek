@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 const redisClient = redis.createClient({
-    url: process.env.REDIS_URL || 'redis://redis:6379'
+    url: process.env.REDIS_URL || 'redis://127.0.0.1:6379'
 });
 redisClient.connect().catch(console.error);
 
