@@ -143,16 +143,40 @@ add_action('wp_loaded', function() {
                     foreach ($cart_data as $item) {
                         $total += isset($item['line_total']) ? $item['line_total'] : 0;
                         $items[] = ['qty' => isset($item['quantity']) ? $item['quantity'] : 1];
+                        // Optionally fetch product name if simple
                     }
                 }
                 
-                // Fetch customer guess if possible
-                $customer_id = $session->session_key; 
+                // Fetch Customer Data
+                $customer = ['first_name' => 'Guest', 'last_name' => '', 'email' => '', 'id' => 0];
+                
+                // 1. Registered User
+                if (is_numeric($session->session_key)) {
+                    $user = get_userdata($session->session_key);
+                    if ($user) {
+                        $customer['first_name'] = $user->first_name ?: $user->display_name;
+                        $customer['last_name'] = $user->last_name;
+                        $customer['email'] = $user->user_email;
+                        $customer['id'] = $user->ID;
+                    }
+                } 
+                // 2. Guest with Data in Session
+                else {
+                     if (isset($data['customer']) && !empty($data['customer'])) {
+                         $cust_data = is_serialized($data['customer']) ? unserialize($data['customer']) : $data['customer'];
+                         
+                         if (isset($cust_data['first_name'])) $customer['first_name'] = $cust_data['first_name'];
+                         if (isset($cust_data['last_name'])) $customer['last_name'] = $cust_data['last_name'];
+                         if (isset($cust_data['email'])) $customer['email'] = $cust_data['email'];
+                         if (isset($cust_data['billing_email'])) $customer['email'] = $cust_data['billing_email'];
+                     }
+                }
 
                 $carts[] = [
                     'session_key' => $session->session_key,
                     'total' => $total,
                     'items' => $items,
+                    'customer' => $customer,
                     'last_update' => date('Y-m-d H:i:s', $session->session_expiry)
                 ];
             }
