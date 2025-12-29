@@ -150,10 +150,31 @@ app.all('/api/proxy/*', async (req, res) => {
         !endpoint.startsWith('wc-dash') &&
         !endpoint.startsWith('woodash');
 
+    // Helper: Safe Cache (Fail-Open)
+    const safeCache = {
+        get: async (key) => {
+            try {
+                if (!redisClient.isOpen) return null;
+                return await redisClient.get(key);
+            } catch (e) {
+                console.warn(`[Redis] Get Failed: ${e.message}`);
+                return null;
+            }
+        },
+        set: async (key, val, opts) => {
+            try {
+                if (!redisClient.isOpen) return;
+                await redisClient.set(key, val, opts);
+            } catch (e) {
+                console.warn(`[Redis] Set Failed: ${e.message}`);
+            }
+        }
+    };
+
     try {
         // 1. Check Cache
         if (isCacheable) {
-            const cached = await redisClient.get(cacheKey);
+            const cached = await safeCache.get(cacheKey);
             if (cached) {
                 console.log(`Cache Hit: ${cacheKey}`);
                 return res.json(JSON.parse(cached));
@@ -197,7 +218,7 @@ app.all('/api/proxy/*', async (req, res) => {
 
         // 3. Cache Result (TTL: 5 minutes default)
         if (isCacheable) {
-            await redisClient.set(cacheKey, JSON.stringify({ data, totalPages }), { EX: 300 });
+            await safeCache.set(cacheKey, JSON.stringify({ data, totalPages }), { EX: 300 });
         }
 
         // 4. Archival Storage (Postgres) - Fire and Forget (Only for GET Orders for now)
