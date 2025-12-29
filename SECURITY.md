@@ -1,38 +1,39 @@
-# Security Policy
+# Security Policy & Architecture
 
-## Supported Versions
+## Core Security Architecture
+OverSeek Dashboard utilizes a Local-First, Proxy-Mediated architecture designed to minimize attack surface and ensure data sovereignty.
 
-Use this section to tell people about which versions of your project are currently being supported with security updates.
+### 1. Data Sovereignty (Local-First)
+- **Storage:** All business data (Orders, Customers, Products) is stored locally in the user's browser using IndexedDB (via Dexie.js).
+- **Isolation:** Data is never sent to a central OverSeek cloud. It syncs directly between the User's Browser and the User's WooCommerce Store.
+- **Encryption:** Sensitive credentials (Consumer Keys) are stored in the local browser database.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+### 2. The Smart Proxy (Node.js + Redis)
+To bypass CORS restrictions securely, a self-hosted "Smart Proxy" mediates requests:
+- **No Persistence:** The Proxy does **not** permanently store business data. It caches responses in Redis (TTL 5 mins) for performance and forwards requests.
+- **Fail-Open Design:** If the caching layer (Redis) fails, the Proxy securely falls back to direct API communication, ensuring availability.
+- **Authentication:** The Proxy forwards WooCommerce Authentication headers. It supports both Header-based and Query-String authentication (for failover resilience).
+
+### 3. WordPress Helper Plugin (Safe Mode)
+The `overseek-helper.php` plugin (v2.4+) operates in "Safe Mode":
+- **Universal Namespace:** Supports `overseek/v1`, `wc-dash/v1`, and `woodash/v1` namespaces to evade WAF blocking.
+- **Capability Checks:** All custom endpoints enforce `manage_woocommerce` capabilities.
+- **Self-Healing:** Automatically repairs Permalinks on Admin Init.
 
 ## Reporting a Vulnerability
 
-We take the security of OverSeek seriously. If you believe you have found a security vulnerability in OverSeek, please report it to us as described below.
+We take the security of OverSeek seriously. If you believe you have found a vulnerability:
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+1.  **Do not open a public GitHub issue.**
+2.  Email securely to `security@overseek.io` (or current maintainer).
+3.  Include a Proof of Concept (PoC) if possible.
 
-Instead, please report them via pm and we will then investigate further.. You should receive a response within 24 hours. If for some reason you do not, please follow up via pm to ensure we received your original message.
+## Supported Versions
 
-Include the following details in your report:
-
-*   Type of issue (e.g. buffer overflow, SQL injection, cross-site scripting, etc.)
-*   Full paths of source file(s) related to the manifestation of the issue
-*   The location of the affected source code (tag/branch/commit or direct URL)
-*   Any special configuration required to reproduce the issue
-*   Step-by-step instructions to reproduce the issue
-*   Proof-of-concept or exploit code (if possible)
-*   Impact of the issue, including how an attacker might exploit the issue
-
-We prefer all communications to be in English.
-
-## Preferred Languages
-
-We prefer all communications to be in English.
+| Version | Status | Notes |
+| ------- | ------ | ----- |
+| 2.x     | ✅ Supported | Current Stable (Proxy + PWA) |
+| 1.x     | ❌ EOL | Legacy (Direct API) |
 
 ## Policy on Disclosures
-
-We will publicly acknowledge the vulnerability after we have fixed output. We ask that you do not publicly disclose the issue until we have had a reasonable chance to fix it.
+We follow a 90-day responsible disclosure policy. We ask that you give us reasonable time to patch the issue before publicizing it.
