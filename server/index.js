@@ -147,7 +147,8 @@ app.all('/api/proxy/*', async (req, res) => {
     // Caching Rules: Only GET, and Exclude specific namespaces (real-time status/actions)
     const isCacheable = req.method === 'GET' &&
         !endpoint.startsWith('overseek') &&
-        !endpoint.startsWith('wc-dash');
+        !endpoint.startsWith('wc-dash') &&
+        !endpoint.startsWith('woodash');
 
     try {
         // 1. Check Cache
@@ -169,7 +170,7 @@ app.all('/api/proxy/*', async (req, res) => {
 
         let wcUrl;
         // Support Custom Namespaces (bypass /wc/v3)
-        if (endpoint.startsWith('overseek') || endpoint.startsWith('wc-dash')) {
+        if (endpoint.startsWith('overseek') || endpoint.startsWith('wc-dash') || endpoint.startsWith('woodash')) {
             wcUrl = `${storeUrl}/wp-json/${endpoint}?${query}`;
         } else {
             wcUrl = `${storeUrl}/wp-json/wc/v3/${endpoint}?${query}`;
