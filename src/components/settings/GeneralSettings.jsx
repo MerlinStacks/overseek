@@ -4,15 +4,18 @@ import { toast } from 'sonner';
 import { fetchProducts } from '../../services/api';
 
 import { useSync } from '../../context/SyncContext';
+import { useAccount } from '../../context/AccountContext';
 
 const GeneralSettings = ({ settings, updateSettings }) => {
     const { startSync, status: syncStatus } = useSync();
+    const { activeAccount } = useAccount();
     const [formData, setFormData] = useState({
         storeUrl: '',
         consumerKey: '',
         consumerSecret: '',
         authMethod: 'auto',
         minProfitMargin: 0,
+        goldPrice: 0,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
     });
     const [loading, setLoading] = useState(false);
@@ -25,6 +28,7 @@ const GeneralSettings = ({ settings, updateSettings }) => {
             consumerSecret: settings.consumerSecret || '',
             authMethod: settings.authMethod || 'auto',
             minProfitMargin: settings.minProfitMargin || 0,
+            goldPrice: settings.goldPrice || 2600, // Default ~$2600 if not set
             timeZone: settings.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone
         });
     }, [settings]);
@@ -181,6 +185,24 @@ const GeneralSettings = ({ settings, updateSettings }) => {
                 </div>
                 <p className="help-text">Products with margin below this % will be highlighted in red.</p>
             </div>
+
+            {activeAccount?.features?.goldPrice && (
+                <div className="form-group" style={{ animation: 'fadeIn 0.3s ease' }}>
+                    <label className="form-label" style={{ color: '#f59e0b' }}>Live Gold Price ($/oz)</label>
+                    <div className="input-wrapper">
+                        <input
+                            type="number"
+                            name="goldPrice"
+                            value={formData.goldPrice}
+                            onChange={handleChange}
+                            className="form-input"
+                            placeholder="e.g. 2650.50"
+                            style={{ borderColor: 'rgba(245, 158, 11, 0.3)' }}
+                        />
+                    </div>
+                    <p className="help-text">Used for estimating costs of metal-based products.</p>
+                </div>
+            )}
             <div className="form-actions mt-8" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <button type="button" onClick={handleTestConnection} disabled={loading || isSaving} className="btn" style={{ background: 'rgba(255,255,255,0.05)' }}>
                     {loading ? 'Testing...' : 'Test Connection'}

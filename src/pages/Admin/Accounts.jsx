@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Globe, Server, User, Database, MoreVertical, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import '../../layouts/AdminLayout.css'; // Use shared admin styles
+import '../../layouts/AdminLayout.css';
+import { db } from '../../db/db';
 
 const AdminAccountsPage = () => {
     const { accounts, activeAccount, switchAccount, createAccount } = useAccount();
@@ -11,6 +12,8 @@ const AdminAccountsPage = () => {
     const [newAccountDomain, setNewAccountDomain] = useState('');
     const navigate = useNavigate();
 
+    const [configAccount, setConfigAccount] = useState(null);
+
     const handleCreate = async (e) => {
         e.preventDefault();
         try {
@@ -18,10 +21,29 @@ const AdminAccountsPage = () => {
             setIsCreating(false);
             setNewAccountName('');
             setNewAccountDomain('');
-            switchAccount(acc.id); // Auto switch
+            switchAccount(acc.id);
         } catch (error) {
             console.error(error);
             alert('Failed to create account');
+        }
+    };
+
+    const handleUpdateFeatures = async (e) => {
+        e.preventDefault();
+        try {
+            await db.accounts.update(configAccount.id, {
+                features: {
+                    ...configAccount.features,
+                    goldPrice: e.target.goldPrice.checked,
+                    bom: e.target.bom.checked
+                }
+            });
+            alert('Features updated');
+            setConfigAccount(null);
+            window.location.reload(); // Simple reload to reflect changes in context
+        } catch (error) {
+            console.error(error);
+            alert('Failed to update features');
         }
     };
 
@@ -42,7 +64,53 @@ const AdminAccountsPage = () => {
                 </button>
             </div>
 
-            {/* Create Modal - Keeping simple inline for now */}
+            {/* Config Modal */}
+            {configAccount && (
+                <div className="modal-overlay" style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+                }}>
+                    <div className="admin-card" style={{ padding: '2rem', maxWidth: '500px', background: '#0f172a', border: '1px solid #3b82f6', width: '100%' }}>
+                        <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                            Feature Flags: {configAccount.name}
+                        </h3>
+                        <form onSubmit={handleUpdateFeatures}>
+                            <div style={{ display: 'grid', gap: '1rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        name="goldPrice"
+                                        defaultChecked={configAccount.features?.goldPrice}
+                                        style={{ width: '18px', height: '18px' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600 }}>Enable Gold Price Settings</div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Allows setting a daily gold price for jewelry calculations.</div>
+                                    </div>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        name="bom"
+                                        defaultChecked={configAccount.features?.bom}
+                                        style={{ width: '18px', height: '18px' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600 }}>Enable BOM (Bill of Materials)</div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Advanced stock parts tracking.</div>
+                                    </div>
+                                </label>
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                                    <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save Features</button>
+                                    <button type="button" onClick={() => setConfigAccount(null)} className="btn btn-secondary">Cancel</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Modal */}
             {isCreating && (
                 <div className="admin-card" style={{ marginBottom: '2rem', padding: '2rem', maxWidth: '600px', border: '1px solid #10b981' }}>
                     <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', fontWeight: 'bold' }}>New Tenant Configuration</h3>
@@ -152,13 +220,14 @@ const AdminAccountsPage = () => {
                                     {isActive ? 'Active' : 'Switch Context'}
                                 </button>
                                 <button
-                                    onClick={() => navigate('/settings')}
+                                    onClick={() => setConfigAccount(account)}
+                                    title="Configure Features"
                                     style={{
                                         width: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-muted)'
                                     }}
                                 >
-                                    <User size={18} />
+                                    <ShieldCheck size={18} />
                                 </button>
                             </div>
                         </div>
