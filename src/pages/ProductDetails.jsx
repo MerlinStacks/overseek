@@ -277,15 +277,14 @@ const ProductDetails = () => {
             delete dataToSend.cost_price; // Don't send this root field to WP, it's custom on our side or meta on theirs.
 
             // Add meta_data for cost, bin location, and supplier
+            // Add meta_data for cost, bin location, supplier, and gold price flag
             dataToSend.meta_data = [
-                // Add meta_data for cost, bin location, supplier, and gold price flag
-                dataToSend.meta_data = [
-                    { key: '_alg_wc_cog_cost', value: editForm.cost_price },
-                    { key: '_bin_location', value: editForm.bin_location },
-                    { key: '_supplier_id', value: editForm.supplier_id },
-                    { key: '_seo_focus_keyword', value: editForm.focus_keyword },
-                    { key: '_is_gold_priced', value: editForm.is_gold_priced ? 'yes' : 'no' }
-                ];
+                { key: '_alg_wc_cog_cost', value: editForm.cost_price },
+                { key: '_bin_location', value: editForm.bin_location },
+                { key: '_supplier_id', value: editForm.supplier_id },
+                { key: '_seo_focus_keyword', value: editForm.focus_keyword },
+                { key: '_is_gold_priced', value: editForm.is_gold_priced ? 'yes' : 'no' }
+            ];
 
             // Reconstruct dimensions
             dataToSend.dimensions = {
