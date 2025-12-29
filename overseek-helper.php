@@ -15,19 +15,141 @@ if (isset($_GET['os_check']) && $_GET['os_check'] === 'die') {
 
 // 4. DIRECT ACCESS FALLBACK (Global Scope - Ultimate Bypass)
 if (isset($_GET['overseek_direct'])) {
+    // Attempt early Auth restore for Basic Auth headers
+    if (!isset($_SERVER['HTTP_AUTHORIZATION']) && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        $_SERVER['HTTP_AUTHORIZATION'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+    }
+
     $action = $_GET['overseek_direct'];
+    global $wpdb;
     
-    // Basic Security/CORS for direct access
+    // Headers
     header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Allow-Headers: Authorization, Content-Type');
     header('Content-Type: application/json');
 
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit;
+
+    // 1. STATUS
     if ($action === 'status') {
+         $table_name = $wpdb->prefix . 'overseek_visits';
+         $exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name;
          echo json_encode([
              'status' => 'ok', 
-             'method' => 'global_scope_bypass',
-             'plugin_version' => '2.7'
+             'type' => 'direct_global',
+             'db_version' => get_option('overseek_db_version'),
+             'table_exists' => $exists,
+             'wc_version' => class_exists('WooCommerce') ? WC()->version : 'Unknown'
          ]);
          exit;
+    }
+    
+    // 2. VISITORS COUNT
+    if ($action === 'visitors') {
+        $table_name = $wpdb->prefix . 'overseek_visits';
+        // Check table existence first to avoid crash
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+            echo json_encode(['count' => 0, 'error' => 'no_table']);
+        } else {
+            $count = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE last_activity > DATE_SUB(NOW(), INTERVAL 5 MINUTE)");
+            echo json_encode(['count' => (int)$count]);
+        }
+        exit;
+    }
+
+    // 3. VISITOR LOG
+    if ($action === 'visitor-log') {
+        $table_name = $wpdb->prefix . 'overseek_visits';
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name) {
+            $visits = $wpdb->get_results("SELECT * FROM $table_name ORDER BY last_activity DESC LIMIT 50");
+            echo json_encode($visits);
+        } else {
+            echo json_encode([]);
+        }
+        exit;
+    }
+
+    // 4. CARTS
+    if ($action === 'carts') {
+        $table_name = $wpdb->prefix . 'woocommerce_sessions';
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name) {
+            $sessions = $wpdb->get_results("SELECT * FROM $table_name ORDER BY session_expiry DESC LIMIT 50");
+            $carts = [];
+            foreach ($sessions as $session) {
+                // Determine unserialization method
+                $data = is_serialized($session->session_value) ? unserialize($session->session_value) : $session->session_value;
+                
+                if (!isset($data['cart']) || empty($data['cart'])) continue;
+                $cart_data = is_serialized($data['cart']) ? unserialize($data['cart']) : $data['cart'];
+                
+                $items = [];
+                $total = 0;
+                if (is_array($cart_data)) {
+                    foreach ($cart_data as $item) {
+                        $total += isset($item['line_total']) ? $item['line_total'] : 0;
+                        $items[] = ['qty' => isset($item['quantity']) ? $item['quantity'] : 1];
+                    }
+                }
+                
+                // Fetch customer guess if possible
+                $customer_id = $session->session_key; // Often contains ID or hash
+
+                $carts[] = [
+                    'session_key' => $session->session_key,
+                    'total' => $total,
+                    'items' => $items, // Simplified output for safety
+                    'last_update' => date('Y-m-d H:i:s', $session->session_expiry)
+                ];
+            }
+            echo json_encode($carts);
+        } else {
+             echo json_encode([]);
+        }
+        exit;
+    }
+
+    // 5. SMTP SETTINGS (GET & POST)
+    if ($action === 'smtp') {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // Read JSON body
+            $input = json_decode(file_get_contents('php://input'), true);
+            if ($input) {
+                update_option('overseek_smtp_settings', $input);
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'invalid_json']);
+            }
+        } else {
+            echo json_encode(get_option('overseek_smtp_settings', []));
+        }
+        exit;
+    }
+
+    // 6. DB INSTALL
+    if ($action === 'install-db') {
+        // We can't easily call class methods here without instantiation, so we instantiate the class temporarily or duplicate logic.
+        // Duplicating basic logic for robustness.
+        $table_name = $wpdb->prefix . 'overseek_visits';
+        $charset_collate = $wpdb->get_charset_collate();
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            visit_id varchar(50) NOT NULL, 
+            start_time datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            last_activity datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            ip varchar(100) NOT NULL,
+            customer_id mediumint(9) DEFAULT 0,
+            referrer text,
+            device_info text, 
+            actions longtext, 
+            PRIMARY KEY  (id),
+            UNIQUE KEY visit_id (visit_id)
+        ) $charset_collate;";
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+        update_option('overseek_db_version', '2.5');
+        echo json_encode(['success' => true, 'message' => 'DB Repair Executed']);
+        exit;
     }
 }
 
