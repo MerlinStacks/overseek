@@ -2,13 +2,20 @@
 /**
  * Plugin Name: OverSeek Helper
  * Description: Exposes Cart Abandonment data, Visitor Logs, and SMTP Settings to the OverSeek Dashboard.
- * Version: 2.2
+ * Version: 2.3
  * Author: OverSeek
  */
 
 if (!defined('ABSPATH')) exit;
 
+register_activation_hook(__FILE__, ['OverSeekHelper', 'activate']);
+
 class OverSeekHelper {
+    public static function activate() {
+        // Force flush rewrite rules to ensure REST API routes are recognized immediately
+        flush_rewrite_rules();
+    }
+
     public function __construct() {
         // 1. Critical: Handle CORS and Auth immediately
         add_action('init', [$this, 'handle_cors'], 0); // Priority 0 to run before others
@@ -25,150 +32,78 @@ class OverSeekHelper {
         add_action('woocommerce_thankyou', [$this, 'log_order_action'], 10, 1);
     }
 
-    public function handle_cors() {
-        // Only run for REST API requests to ensure we don't open up the whole site
-        if (strpos($_SERVER['REQUEST_URI'], '/wp-json/') === false) return;
-
-        // 1. Restore Authorization Header
-        if (!isset($_SERVER['HTTP_AUTHORIZATION'])) {
-            if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-                $_SERVER['HTTP_AUTHORIZATION'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
-            } elseif (isset($_SERVER['PHP_AUTH_USER'])) {
-                // Keep existing basic auth
-            }
-        }
-
-        // 2. Clear existing headers to prevent duplicates
-        header_remove('Access-Control-Allow-Origin');
-        header_remove('Access-Control-Allow-Methods');
-        header_remove('Access-Control-Allow-Headers');
-        header_remove('Access-Control-Allow-Credentials');
-
-        // 3. Send Correct CORS Headers with Security Check
-        $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-        
-        // Allowed origins filter
-        $allowed_origins = apply_filters('overseek_allowed_origins', [
-            'http://localhost:5173',
-            'http://localhost:3000',
-            'http://127.0.0.1:5173',
-            'app://.' 
-        ]);
-
-        // Smart Origin handling:
-        // If the origin is in our whitelist OR looks like a local dev environment, echo it back.
-        // Otherwise, do not send the header (effectively blocking CORS for browsers).
-        $allow_origin = null;
-        
-        $is_local = strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false;
-        
-        if (in_array($origin, $allowed_origins) || $is_local) {
-            $allow_origin = $origin;
-        }
-
-        if ($allow_origin) {
-            header("Access-Control-Allow-Origin: $allow_origin");
-            header("Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE");
-            header("Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With, X-WP-Nonce");
-            header("Access-Control-Allow-Credentials: true");
-        }
-
-        // 4. Handle Preflight immediately
-        if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-            status_header(200);
-            exit();
-        }
-    }
-
-    public function install_db_v2() {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'overseek_visits';
-        $charset_collate = $wpdb->get_charset_collate();
-
-        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            visit_id varchar(50) NOT NULL, 
-            start_time datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            last_activity datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            ip varchar(100) NOT NULL,
-            customer_id mediumint(9) DEFAULT 0,
-            referrer text,
-            device_info text, 
-            actions longtext, 
-            PRIMARY KEY  (id),
-            UNIQUE KEY visit_id (visit_id)
-        ) $charset_collate;";
-
-        $wpdb->query($sql);
-
-        update_option('overseek_db_version', '2.5');
-        return true;
-    }
+    // ... handle_cors ... (omitted from diff, keep existing)
 
     public function register_routes() {
-        // Force Install/Repair DB
-        register_rest_route('overseek/v1', '/install-db', [
-            'methods' => 'POST',
-            'callback' => function() {
-                $this->install_db_v2();
-                return rest_ensure_response(['success' => true, 'message' => 'Database repair attempted']);
-            },
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
-        
-        // Manual Test Visit
-        register_rest_route('overseek/v1', '/test-visit', [
-            'methods' => 'POST',
-            'callback' => [$this, 'create_test_visit'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
+        // Register routes for ALL potential namespaces to ensure maximum compatibility
+        // This solves "404" if the dashboard is looking for 'wc-dash' but plugin is 'overseek' or vice-versa.
+        $namespaces = ['overseek/v1', 'wc-dash/v1', 'woodash/v1'];
 
-        // Status Debug
-        register_rest_route('overseek/v1', '/status', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_system_status'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
+        foreach ($namespaces as $ns) {
+            // Force Install/Repair DB
+            register_rest_route($ns, '/install-db', [
+                'methods' => 'POST',
+                'callback' => function() {
+                    $this->install_db_v2();
+                    return rest_ensure_response(['success' => true, 'message' => 'Database repair attempted']);
+                },
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
+            
+            // Manual Test Visit
+            register_rest_route($ns, '/test-visit', [
+                'methods' => 'POST',
+                'callback' => [$this, 'create_test_visit'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
 
-        // Carts
-        register_rest_route('overseek/v1', '/carts', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_carts'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
+            // Status Debug
+            register_rest_route($ns, '/status', [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_system_status'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
 
-        // Email
-        register_rest_route('overseek/v1', '/email/send', [
-            'methods' => 'POST',
-            'callback' => [$this, 'send_email'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
+            // Carts
+            register_rest_route($ns, '/carts', [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_carts'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
 
-        // SMTP
-        register_rest_route('overseek/v1', '/settings/smtp', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_smtp_settings'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
-        register_rest_route('overseek/v1', '/settings/smtp', [
-            'methods' => 'POST',
-            'callback' => [$this, 'update_smtp_settings'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
+            // Email
+            register_rest_route($ns, '/email/send', [
+                'methods' => 'POST',
+                'callback' => [$this, 'send_email'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
 
-        // Visitor Log
-        register_rest_route('overseek/v1', '/visitor-log', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_visitor_log'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
-        
-        // Count for legacy/simple view
-        register_rest_route('overseek/v1', '/visitors', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_visitor_count'],
-            'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
-        ]);
+            // SMTP
+            register_rest_route($ns, '/settings/smtp', [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_smtp_settings'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
+            register_rest_route($ns, '/settings/smtp', [
+                'methods' => 'POST',
+                'callback' => [$this, 'update_smtp_settings'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
+
+            // Visitor Log
+            register_rest_route($ns, '/visitor-log', [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_visitor_log'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
+            
+            // Count for legacy/simple view
+            register_rest_route($ns, '/visitors', [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_visitor_count'],
+                'permission_callback' => function() { return current_user_can('manage_woocommerce'); }
+            ]);
+        }
     }
 
     // --- Tracking Logic ---
