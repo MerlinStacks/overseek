@@ -2,7 +2,7 @@
 /**
  * Plugin Name: OverSeek Helper (vs DEBUG)
  * Description: Exposes Cart Abandonment data, Visitor Logs, and SMTP Settings to the OverSeek Dashboard.
- * Version: 2.6
+ * Version: 2.7
  * Author: OverSeek
  */
 
@@ -11,6 +11,24 @@ if (!defined('ABSPATH')) exit;
 // DEBUG: Global Scope Check
 if (isset($_GET['os_check']) && $_GET['os_check'] === 'die') {
     die('OVERSEEK FILE IS LOADED! Global Scope.');
+}
+
+// 4. DIRECT ACCESS FALLBACK (Global Scope - Ultimate Bypass)
+if (isset($_GET['overseek_direct'])) {
+    $action = $_GET['overseek_direct'];
+    
+    // Basic Security/CORS for direct access
+    header('Access-Control-Allow-Origin: *');
+    header('Content-Type: application/json');
+
+    if ($action === 'status') {
+         echo json_encode([
+             'status' => 'ok', 
+             'method' => 'global_scope_bypass',
+             'plugin_version' => '2.7'
+         ]);
+         exit;
+    }
 }
 
 if (class_exists('OverSeek_Helper_Latest')) {
@@ -30,7 +48,8 @@ class OverSeek_Helper_Latest {
         // 3. Visitor Tracking
         add_action('template_redirect', [$this, 'track_visit']);
 
-        // 4. DIRECT ACCESS FALLBACK (Bypasses REST API & Permalinks)
+        // 4. DIRECT ACCESS FALLBACK
+        add_action('init', [$this, 'handle_direct_request']);
         add_action('template_redirect', [$this, 'handle_direct_request']);
         
         // 5. Log Events
