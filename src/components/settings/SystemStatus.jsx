@@ -22,7 +22,7 @@ const SystemStatus = ({ settings }) => {
                 products: await db.products.count(),
                 orders: await db.orders.count(),
                 customers: await db.customers.count(),
-                events: await db.logs.count()
+                visits: await db.visits.count()
             };
             setDbCounts(counts);
 
@@ -119,7 +119,7 @@ const SystemStatus = ({ settings }) => {
                     icon={Database}
                     label="Local Database (Dexie)"
                     status={dbCounts ? 'ok' : 'error'}
-                    detail={dbCounts ? `${dbCounts.products} Products • ${dbCounts.orders} Orders` : "Not initialized"}
+                    detail={dbCounts ? `${dbCounts.products} Products • ${dbCounts.orders} Orders • ${dbCounts.visits} Visits` : "Not initialized"}
                 />
 
                 {/* 5. Sync Engine */}
