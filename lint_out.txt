@@ -1,0 +1,9 @@
+﻿
+C:\Users\ratte\Desktop\Dashboard\src\workers\sync.worker.js
+    1:1   warning  Unused eslint-disable directive (no problems were reported from 'no-restricted-globals')
+  167:39  error    'vars' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u      no-unused-vars
+  179:30  error    'e' is defined but never used                                                             no-unused-vars
+
+Γ£û 3 problems (2 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+

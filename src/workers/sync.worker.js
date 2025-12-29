@@ -48,13 +48,22 @@ const reportProgress = (task, percentage) => {
 };
 
 const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull }) => {
-    const { storeUrl, consumerKey, consumerSecret } = config;
-    const authHeader = getAuthHeader(consumerKey, consumerSecret);
+    const { storeUrl, consumerKey, consumerSecret, authMethod } = config;
+
+    // Prepare Auth
     const headers = {
-        'Authorization': authHeader,
         'Content-Type': 'application/json',
         'x-store-url': storeUrl.replace(/\/$/, '') // Inject for Proxy
     };
+    const globalParams = {};
+
+    if (authMethod === 'query_string') {
+        globalParams.consumer_key = consumerKey;
+        globalParams.consumer_secret = consumerSecret;
+    } else {
+        // Default to Basic
+        headers['Authorization'] = getAuthHeader(consumerKey, consumerSecret);
+    }
 
     // Use Local Proxy
     const apiBase = `/api/proxy`;
@@ -76,7 +85,7 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
         let completedSuccess = true;
 
         // Prepare params
-        const params = { per_page: 50, page: 1 };
+        const params = { per_page: 50, page: 1, ...globalParams };
         if (!forceFull && lastSyncTimes[lastSyncKey]) {
             params.after = lastSyncTimes[lastSyncKey];
         }
@@ -155,7 +164,7 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
 
                 if (item.type === 'variable') {
                     try {
-                        const { data: vars } = await fetchPage(`${apiBase}/products/${item.id}/variations`, { per_page: 50 }, headers);
+                        await fetchPage(`${apiBase}/products/${item.id}/variations`, { per_page: 50, ...globalParams }, headers);
                         // We fetch them. The Proxy sees them.
                         // Does Proxy save them? 
                         // Proxy logic: `if (endpoint === 'orders' || endpoint === 'products')`.
@@ -167,7 +176,7 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
                         // Let's assume Top Level Products are enough for now.
 
                         // We return results for hypothetical checks, but we don't save.
-                    } catch (e) {
+                    } catch (_) {
                         // ignore
                     }
                 }
@@ -217,7 +226,8 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
                                         .replace('{order_id}', newOrder.id)
                                         .replace('{customer_name}', customerName);
 
-                                    const emailEndpoint = `/api/proxy/overseek/v1/email/send`;
+                                    const query = new URLSearchParams(globalParams).toString();
+                                    const emailEndpoint = `/api/proxy/overseek/v1/email/send?${query}`;
 
                                     await fetch(emailEndpoint, {
                                         method: 'POST',
@@ -251,7 +261,7 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
     if (options.taxes) {
         reportProgress('Syncing Taxes', 85);
         try {
-            const { data } = await fetchPage(`${apiBase}/taxes`, {}, headers);
+            const { data } = await fetchPage(`${apiBase}/taxes`, { ...globalParams }, headers);
             // Check for wrapped data if Proxy logic applies unexpectedly (though custom endpoints usually consistent)
             // But taxes is standard WP.
             // fetchPage unwraps json.data || json now.
