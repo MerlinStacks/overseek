@@ -120,10 +120,44 @@ app.post('/admin/ping', async (req, res) => {
 });
 
 // --- Database Initialization ---
-// --- Database Initialization ---
 const initDB = async () => {
     try {
-        const client = await pool.connect();
+        let client;
+        try {
+            client = await pool.connect();
+        } catch (err) {
+            // Auto-Healing: Create DB if missing (Error 3D000)
+            if (err.code === '3D000') {
+                console.warn("[initDB] Database 'overseek' missing. Attempting auto-creation...");
+                const adminConfig = {};
+                // Determine connection to default 'postgres' db
+                if (process.env.DATABASE_URL) {
+                    try {
+                        const url = new URL(process.env.DATABASE_URL);
+                        url.pathname = '/postgres';
+                        adminConfig.connectionString = url.toString();
+                    } catch (_) {
+                        adminConfig.connectionString = process.env.DATABASE_URL.replace(/\/overseek(\?|$)/, '/postgres$1');
+                    }
+                } else {
+                    adminConfig.database = 'postgres';
+                }
+
+                const adminPool = new Pool(adminConfig);
+                try {
+                    await adminPool.query('CREATE DATABASE overseek');
+                    console.log("[initDB] Database 'overseek' created.");
+                } catch (ce) {
+                    if (ce.code !== '42P04') console.warn("[initDB] Auto-create failed:", ce.message);
+                }
+                await adminPool.end();
+
+                // Retry
+                client = await pool.connect();
+            } else {
+                throw err;
+            }
+        }
 
         // Optimization: Enable Trigram Extension for high-performance fuzzy search
         await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm;');

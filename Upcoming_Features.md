@@ -17,8 +17,4 @@ The reviews are not syncing.
 
 Dark/Light mode don't really change everything including the side bar.
 
-- [x] Add a Gold Price setting - make this a feature that we need to enable per account in the admin panel
-
 Make the BOM feature a feature that we need to enable per account in the admin panel
-
-products can be toggled to be "gold priced" and they will display the current gold price on the product edit page. it will calculate the cost based on the gold price and the weight of the product, then it will calculate the profit margin based on the gold price and the weight of the product. it will then display the profit margin on the product edit page as we currently do with the profit margin. This feature must only show if enabled in the admin panel for the account.
