@@ -161,7 +161,7 @@ export const SyncProvider = ({ children }) => {
 
                     // Bulk Put (Upsert)
                     await db.table(entity).bulkPut(rows);
-                    log(`Downloaded ${rows.length} ${entity}`, 'success');
+                    log(`Downloaded ${rows.length} ${entity}. Sample Account ID: ${rows[0].account_id}`, 'success');
                 }
             } catch (e) {
                 console.error(`Failed to download ${entity}`, e);

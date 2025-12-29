@@ -1,24 +1,19 @@
 <?php
 /**
- * Plugin Name: OverSeek Helper (vs DEBUG)
+ * Plugin Name: OverSeek Helper
  * Description: Exposes Cart Abandonment data, Visitor Logs, and SMTP Settings to the OverSeek Dashboard.
  * Version: 2.7
- * Author: OverSeek
  */
 
 if (!defined('ABSPATH')) exit;
 
-// DEBUG: Global Scope Check
 if (isset($_GET['os_check']) && $_GET['os_check'] === 'die') {
     die('OVERSEEK FILE IS LOADED! Global Scope.');
 }
 
-// 4. DIRECT ACCESS FALLBACK (Safe wp_loaded Execution)
 add_action('wp_loaded', function() {
-    // Only run if our parameter is present
     if (!isset($_GET['overseek_direct'])) return;
 
-    // Restore Auth Headers if missing (common in some server configs)
     if (!isset($_SERVER['HTTP_AUTHORIZATION']) && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
         $_SERVER['HTTP_AUTHORIZATION'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
     }
@@ -26,7 +21,6 @@ add_action('wp_loaded', function() {
     $action = $_GET['overseek_direct'];
     global $wpdb;
 
-    // --- SECURITY: MANUAL AUTHENTICATION ---
     if (!function_exists('os_validate_direct_auth')) {
         function os_validate_direct_auth() {
             global $wpdb;
@@ -34,10 +28,8 @@ add_action('wp_loaded', function() {
             $key = '';
             $secret = '';
 
-            // 1. Try Headers First
             $auth = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : '';
             if (!$auth) {
-                // Fallback for Apache/FastCGI
                 if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
                     $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
                 }
@@ -48,26 +40,22 @@ add_action('wp_loaded', function() {
                 list($key, $secret) = explode(':', $creds);
             }
 
-            // 2. Try Query/Body Parameters (Fallback if headers strictly blocked)
             if (!$key && isset($_REQUEST['consumer_key'])) {
                 $key = $_REQUEST['consumer_key'];
             }
 
             if (!$key) return false;
 
-            // 3. Hash Key (Standard WC Logic: SHA256 hmac with 'wc-api')
             $key_hash = hash_hmac('sha256', $key, 'wc-api');
 
             $table = $wpdb->prefix . 'woocommerce_api_keys';
             
-            // Check if key exists
             $row = $wpdb->get_row($wpdb->prepare("SELECT key_id, permissions FROM $table WHERE consumer_key = %s LIMIT 1", $key_hash));
 
             return (bool) $row;
         }
     }
 
-    // BLOCK UNAUTHORIZED REQUESTS (Except OPTIONS for CORS)
     if ($_SERVER['REQUEST_METHOD'] !== 'OPTIONS') {
         if (!os_validate_direct_auth()) {
              http_response_code(401);
@@ -78,7 +66,6 @@ add_action('wp_loaded', function() {
         }
     }
 
-    // Headers
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
     header('Access-Control-Allow-Headers: Authorization, Content-Type, x-store-url, X-WP-Nonce');
@@ -86,13 +73,12 @@ add_action('wp_loaded', function() {
 
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit;
 
-    // 1. STATUS
     if ($action === 'status') {
          $table_name = $wpdb->prefix . 'overseek_visits';
          $exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name;
          echo json_encode([
              'status' => 'ok', 
-             'type' => 'direct_wp_loaded_secure', // Signal that we are using the secure hook
+             'type' => 'direct_wp_loaded_secure', 
              'db_version' => get_option('overseek_db_version'),
              'table_exists' => $exists,
              'wc_version' => class_exists('WooCommerce') ? WC()->version : 'Unknown'
@@ -100,7 +86,6 @@ add_action('wp_loaded', function() {
          exit;
     }
     
-    // 2. VISITORS COUNT
     if ($action === 'visitors') {
         $table_name = $wpdb->prefix . 'overseek_visits';
         if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
@@ -112,7 +97,6 @@ add_action('wp_loaded', function() {
         exit;
     }
 
-    // 3. VISITOR LOG
     if ($action === 'visitor-log') {
         $table_name = $wpdb->prefix . 'overseek_visits';
         if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name) {
@@ -124,14 +108,12 @@ add_action('wp_loaded', function() {
         exit;
     }
 
-    // 4. CARTS
     if ($action === 'carts') {
         $table_name = $wpdb->prefix . 'woocommerce_sessions';
         if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name) {
             $sessions = $wpdb->get_results("SELECT * FROM $table_name ORDER BY session_expiry DESC LIMIT 50");
             $carts = [];
             foreach ($sessions as $session) {
-                // Determine unserialization method
                 $data = is_serialized($session->session_value) ? unserialize($session->session_value) : $session->session_value;
                 
                 if (!isset($data['cart']) || empty($data['cart'])) continue;
@@ -150,10 +132,8 @@ add_action('wp_loaded', function() {
                     }
                 }
                 
-                // Fetch Customer Data
                 $customer = ['first_name' => 'Guest', 'last_name' => '', 'email' => '', 'id' => 0];
                 
-                // 1. Registered User
                 if (is_numeric($session->session_key)) {
                     $user = get_userdata($session->session_key);
                     if ($user) {
@@ -163,7 +143,6 @@ add_action('wp_loaded', function() {
                         $customer['id'] = $user->ID;
                     }
                 } 
-                // 2. Guest with Data in Session
                 else {
                      if (isset($data['customer']) && !empty($data['customer'])) {
                          $cust_data = is_serialized($data['customer']) ? unserialize($data['customer']) : $data['customer'];
@@ -190,7 +169,6 @@ add_action('wp_loaded', function() {
         exit;
     }
 
-    // 5. EMAIL SENDING
     if ($action === 'email/send') {
         $input = json_decode(file_get_contents('php://input'), true);
         if ($input && function_exists('wp_mail')) {
@@ -198,7 +176,6 @@ add_action('wp_loaded', function() {
             $subject = sanitize_text_field($input['subject']);
             $message = wp_kses_post($input['message']);
             
-            // Apply Custom SMTP settings if they exist
             add_action('phpmailer_init', function($phpmailer) {
                 $smtp = get_option('overseek_smtp_settings', []);
                 if (!empty($smtp['enabled']) && $smtp['enabled'] === 'yes') {
@@ -222,7 +199,6 @@ add_action('wp_loaded', function() {
         exit;
     }
 
-    // 6. SMTP SETTINGS (GET & POST)
     if ($action === 'smtp') {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $input = json_decode(file_get_contents('php://input'), true);
@@ -238,7 +214,6 @@ add_action('wp_loaded', function() {
         exit;
     }
 
-    // 7. DB INSTALL
     if ($action === 'install-db') {
         $table_name = $wpdb->prefix . 'overseek_visits';
         $charset_collate = $wpdb->get_charset_collate();
@@ -270,26 +245,10 @@ if (class_exists('OverSeek_Helper_Latest')) {
 class OverSeek_Helper_Latest {
 
     public function __construct() {
-        // 1. Critical: Handle CORS and Auth immediately
         add_action('init', [$this, 'handle_cors'], 0);
-        
-        // 2. Initialize
         add_action('rest_api_init', [$this, 'register_routes']);
         add_action('phpmailer_init', [$this, 'configure_smtp']);
-
-        // 3. Visitor Tracking
         add_action('template_redirect', [$this, 'track_visit']);
-
-        // 4. DIRECT ACCESS FALLBACK
-        // Note: The global hook above handles 'wp_loaded', but we keep these simple hooks
-        // just in case 'wp_loaded' is too late/early for some specific environment quirks.
-        // However, we should be careful about double-execution.
-        // The global hook is self-contained with exit; so if it runs, these won't do much harm,
-        // but to handle things cleaner, we can remove the logic from the class method used for direct access 
-        // OR just leave it as a tertiary backup (if global hook fails for some reason?).
-        // For Critical Error avoidance, let's keep the class method simpler or empty if the global hook is preferred.
-        // Actually, let's leave duplicate listeners as failsafes, but ensure they don't crash.
-        // The methods exist below.
         add_action('init', [$this, 'handle_direct_request']); // Fallback
         
         add_action('admin_init', [$this, 'install_db_v2']);
@@ -298,7 +257,6 @@ class OverSeek_Helper_Latest {
     }
 
     public function handle_cors() {
-        // SAFETY: Only apply CORS modification to our specific API namespaces
         $uri = $_SERVER['REQUEST_URI'];
         $is_relevant_route = (
             strpos($uri, '/wp-json/overseek/') !== false || 
@@ -309,20 +267,17 @@ class OverSeek_Helper_Latest {
 
         if (!$is_relevant_route) return;
 
-        // Restore Auth
         if (!isset($_SERVER['HTTP_AUTHORIZATION'])) {
             if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
                 $_SERVER['HTTP_AUTHORIZATION'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
             }
         }
 
-        // Clear existing
         header_remove('Access-Control-Allow-Origin');
         header_remove('Access-Control-Allow-Methods');
         header_remove('Access-Control-Allow-Headers');
         header_remove('Access-Control-Allow-Credentials');
 
-        // Allow Origin
         $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
         $allowed_origins = apply_filters('overseek_allowed_origins', [
             'http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'app://.' 
@@ -374,7 +329,6 @@ class OverSeek_Helper_Latest {
         return true;
     }
 
-    // Wrapped Endpoint used in Register Routes
     public function api_install_db() {
         $this->install_db_v2();
         return rest_ensure_response(['success' => true, 'message' => 'Database repair attempted']);
@@ -440,16 +394,9 @@ class OverSeek_Helper_Latest {
         }
     }
     
-    // DIRECT ACCESS HANDLER (Backstop in Class)
     public function handle_direct_request() {
-        // Often pre-empted by global hook, but acts as backup
         if (!isset($_GET['overseek_direct'])) return;
 
-        // Same logic, simplified or just exit if we want to force global hook usage
-        // But for safety, let's just let it run if it reaches here (meaning global hook didn't exit)
-        // Which implies global hook MIGHT have failed? 
-        // Let's keep it minimal.
-        
         $action = $_GET['overseek_direct'];
         header('Access-Control-Allow-Origin: *');
         header('Content-Type: application/json');
@@ -464,12 +411,9 @@ class OverSeek_Helper_Latest {
         }
     }
     
-    // Auth Helper
     public function auth_check() {
         return current_user_can('manage_woocommerce');
     }
-
-    // --- Tracking Logic ---
 
     public function create_test_visit() {
         $this->update_visit_log('test_' . time(), [
@@ -558,8 +502,6 @@ class OverSeek_Helper_Latest {
          // Placeholder for future logic
     }
 
-    // --- API Handlers ---
-    
     public function get_system_status($request) {
         global $wpdb;
         $table_name = $wpdb->prefix . 'overseek_visits';

@@ -1,6 +1,5 @@
 const axios = require('axios');
 
-// Global Status (In-Memory for MVP)
 let currentStatus = {
     running: false,
     progress: 0,
@@ -12,13 +11,10 @@ let currentStatus = {
 const getStatus = () => currentStatus;
 
 const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountId, options }, dependencies) => {
-    if (currentStatus.running) {
-        return; // Already running
-    }
+    if (currentStatus.running) return;
 
     const { pool, redisClient } = dependencies;
 
-    // Reset Status
     currentStatus = {
         running: true,
         progress: 0,
@@ -27,19 +23,16 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
         details: 'Connecting to store...'
     };
 
-    // Run in Background (Fire and Forget)
     (async () => {
         try {
             const https = require('https');
 
-            // Helper to create client
             const createClient = (method) => {
-                // Robust URL cleaning: remove trailing slashes, remove /wp-json if user added it
                 let cleanUrl = storeUrl.replace(/\/$/, '').replace(/\/wp-json\/?$/, '');
 
                 const config = {
                     baseURL: `${cleanUrl}/wp-json/wc/v3`,
-                    timeout: 120000, // 2 mins
+                    timeout: 120000,
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                         'Accept': 'application/json'
@@ -56,7 +49,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 return axios.create(config);
             };
 
-            // Smart Auth Discovery
             let api = null;
             let finalAuthMethod = authMethod;
 
@@ -65,30 +57,25 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
             } else if (authMethod === 'basic') {
                 api = createClient('basic');
             } else {
-                // Auto: Try Basic first, then Query String
                 try {
                     currentStatus.details = 'Verifying connection (Basic Auth)...';
                     const testClient = createClient('basic');
                     await testClient.get('/products', { params: { per_page: 1 } });
                     api = testClient;
                     finalAuthMethod = 'basic';
-                    // console.log("Auth Discovery: Basic Auth succeeded");
                 } catch (e1) {
-                    // console.log("Auth Discovery: Basic Auth failed", e1.message);
                     try {
                         currentStatus.details = 'Verifying connection (Query String)...';
                         const testClient = createClient('query_string');
                         await testClient.get('/products', { params: { per_page: 1 } });
                         api = testClient;
                         finalAuthMethod = 'query_string';
-                        // console.log("Auth Discovery: Query String succeeded");
                     } catch (e2) {
                         throw new Error(`Connection failed: ${e1.message} (Basic) / ${e2.message} (Query String)`);
                     }
                 }
             }
 
-            // Fallback if direct selection was used without test (though UI should catch it)
             if (!api) api = createClient(finalAuthMethod || 'basic');
 
             const saveBatch = async (table, items) => {
@@ -101,10 +88,10 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                         ON CONFLICT (id) DO UPDATE SET data = $2, synced_at = NOW();
                     `;
                     for (const item of items) {
-                        // Enrich with account_id for isolation
                         item.account_id = accountId;
                         await client.query(query, [item.id, JSON.stringify(item)]);
                     }
+                    console.log(`[Sync] Saved batch of ${items.length} ${table} for account ${accountId}`);
                     await client.query('COMMIT');
                 } catch (e) {
                     await client.query('ROLLBACK');
@@ -114,7 +101,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 }
             };
 
-            // 1. PRODUCTS
             if (options.products) {
                 currentStatus.entity = 'Products';
                 let page = 1;
@@ -122,12 +108,10 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
 
                 do {
                     currentStatus.details = `Fetching page ${page}...`;
-                    // Fetch
                     const res = await api.get('/products', { params: { page, per_page: 50 } });
                     totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
                     const items = res.data;
 
-                    // Process Variations
                     const processedItems = [...items];
                     for (const p of items) {
                         if (p.type === 'variable') {
@@ -141,19 +125,16 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                         }
                     }
 
-                    // Save
                     if (processedItems.length > 0) {
                         await saveBatch('products', processedItems);
                     }
 
-                    // Progress
                     currentStatus.progress = Math.round((page / totalPages) * 100);
                     page++;
 
                 } while (page <= totalPages);
             }
 
-            // 2. ORDERS
             if (options.orders) {
                 currentStatus.entity = 'Orders';
                 currentStatus.progress = 0;
@@ -175,7 +156,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 } while (page <= totalPages);
             }
 
-            // 3. REVIEWS
             if (options.reviews) {
                 currentStatus.entity = 'Reviews';
                 currentStatus.progress = 0;
@@ -197,7 +177,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 } while (page <= totalPages);
             }
 
-            // 4. CUSTOMERS
             if (options.customers) {
                 currentStatus.entity = 'Customers';
                 currentStatus.progress = 0;
@@ -219,7 +198,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 } while (page <= totalPages);
             }
 
-            // 5. COUPONS
             if (options.coupons) {
                 currentStatus.entity = 'Coupons';
                 currentStatus.progress = 0;
@@ -241,7 +219,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 } while (page <= totalPages);
             }
 
-            // Complete
             currentStatus.running = false;
             currentStatus.entity = 'Complete';
             currentStatus.progress = 100;

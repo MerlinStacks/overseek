@@ -30,13 +30,14 @@ import {
     X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAccount } from '../context/AccountContext';
 import './Sidebar.css';
-// Icons imported
 
 const Sidebar = ({ collapsed, toggleCollapsed, mobileOpen, closeMobile }) => {
     const location = useLocation();
-    const auth = useAuth(); // Access hook safely first
-    const hasPermission = auth?.hasPermission || (() => false); // Fallback
+    const auth = useAuth();
+    const { activeAccount } = useAccount();
+    const hasPermission = auth?.hasPermission || (() => false);
     const [expandedItems, setExpandedItems] = useState({});
 
     // Auto-expand groups based on current path
@@ -106,7 +107,7 @@ const Sidebar = ({ collapsed, toggleCollapsed, mobileOpen, closeMobile }) => {
                     permission: 'view_products',
                     children: [
                         { label: 'Products', path: '/products' },
-                        { label: 'Stock & BOM', path: '/inventory' },
+                        { label: 'Stock & BOM', path: '/inventory', feature: 'bom' },
                         { label: 'Purchase Orders', path: '/purchase-orders' },
                         { label: 'Suppliers', path: '/suppliers' },
                     ]
@@ -184,12 +185,27 @@ const Sidebar = ({ collapsed, toggleCollapsed, mobileOpen, closeMobile }) => {
         }
     ];
 
-    // Filter Items based on permissions
+    // Filter Items based on permissions and features (including children)
     const visibleNavGroups = navGroups.map(group => {
-        const visibleItems = group.items.filter(item => {
-            if (!item.permission) return true; // Default allow if no permission set
-            return hasPermission(item.permission);
-        });
+        const visibleItems = group.items.map(item => {
+            // Check Parent Permission
+            if (item.permission && !hasPermission(item.permission)) return null;
+            if (item.feature && !activeAccount?.features?.[item.feature]) return null;
+
+            // Filter Children if present
+            if (item.children) {
+                const visibleChildren = item.children.filter(child => {
+                    if (child.permission && !hasPermission(child.permission)) return false;
+                    if (child.feature && !activeAccount?.features?.[child.feature]) return false;
+                    return true;
+                });
+                if (visibleChildren.length === 0 && !item.path) return null; // Hide parent if no children (and no direct path)
+                return { ...item, children: visibleChildren };
+            }
+
+            return item;
+        }).filter(Boolean); // Remove nulls
+
         return { ...group, items: visibleItems };
     }).filter(group => group.items.length > 0);
 
