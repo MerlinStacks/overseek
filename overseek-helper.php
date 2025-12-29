@@ -142,8 +142,11 @@ add_action('wp_loaded', function() {
                 if (is_array($cart_data)) {
                     foreach ($cart_data as $item) {
                         $total += isset($item['line_total']) ? $item['line_total'] : 0;
-                        $items[] = ['qty' => isset($item['quantity']) ? $item['quantity'] : 1];
-                        // Optionally fetch product name if simple
+                        $product_name = get_the_title($item['product_id']);
+                        $items[] = [
+                            'name' => $product_name ? $product_name : 'Product #' . $item['product_id'],
+                            'qty' => isset($item['quantity']) ? $item['quantity'] : 1
+                        ];
                     }
                 }
                 
