@@ -154,11 +154,16 @@ initDB();
 // DATABASE API (Local Access to Postgres)
 app.get('/api/db/:table', async (req, res) => {
     const { table } = req.params;
-    const { page = 1, limit = 50, search = '', hide_variants = 'false' } = req.query;
+    const { page = 1, limit = 50, search = '', hide_variants = 'false', account_id } = req.query;
 
     // Validate table
     if (!['products', 'orders'].includes(table)) {
         return res.status(400).json({ error: 'Invalid table' });
+    }
+
+    // Validate Account
+    if (!account_id) {
+        return res.status(400).json({ error: 'Missing account_id' });
     }
 
     try {
@@ -168,6 +173,10 @@ app.get('/api/db/:table', async (req, res) => {
         let countQueryStr = `SELECT COUNT(*) FROM ${table}`;
         const params = [];
         const whereClauses = [];
+
+        // Account Isolation (CRITICAL)
+        params.push(account_id);
+        whereClauses.push(`data->>'account_id' = $${params.length}`); // $1
 
         // Search Logic
         if (search) {
@@ -181,8 +190,6 @@ app.get('/api/db/:table', async (req, res) => {
         }
 
         // Variant Hiding (Products Only)
-        // Checks if 'parent_id' is '0' or NULL or 'null' (depending on JSON serialization)
-        // WC 'parent_id' is usually 0 for parents.
         if (table === 'products' && hide_variants === 'true') {
             whereClauses.push(`(data->>'parent_id' = '0' OR data->>'parent_id' IS NULL)`);
         }
@@ -193,7 +200,7 @@ app.get('/api/db/:table', async (req, res) => {
             countQueryStr += clause;
         }
 
-        // Count First (reuse params)
+        // Count First
         const countRes = await client.query(countQueryStr, params);
         const totalItems = parseInt(countRes.rows[0].count, 10);
 
@@ -201,8 +208,11 @@ app.get('/api/db/:table', async (req, res) => {
         const pLimit = parseInt(limit);
         const pOffset = (parseInt(page) - 1) * pLimit;
 
+        const limitIdx = params.length + 1;
+        const offsetIdx = params.length + 2;
         params.push(pLimit, pOffset);
-        queryStr += ` ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+
+        queryStr += ` ORDER BY id DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
 
         const result = await client.query(queryStr, params);
 
