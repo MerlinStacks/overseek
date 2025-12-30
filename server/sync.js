@@ -1,4 +1,4 @@
-// eslint-disable-next-line no-undef
+ 
 const axios = require('axios');
 const https = require('https');
 
@@ -357,7 +357,13 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                     }
 
                     // Update Sync State on Success
-                    await updateSyncState(task.key, new Date().toISOString());
+                    try {
+                        const now = new Date().toISOString();
+                        await updateSyncState(task.key, now);
+                        console.log(`[Sync] Updated sync_state for ${task.key} to ${now}`);
+                    } catch (e) {
+                        console.error(`[Sync] Failed to update sync_state for ${task.key}:`, e.message);
+                    }
 
                 } catch (taskErr) {
                     console.error(`[Sync] Failed to sync ${task.name}:`, taskErr.message);

@@ -39,4 +39,20 @@ router.get('/geoip', async (req, res) => {
     }
 });
 
+// Debug: Check Sync State
+router.get('/debug/sync-state', async (req, res) => {
+    const { account_id } = req.query;
+    if (!account_id) return res.status(400).json({ error: 'Missing account_id' });
+
+    try {
+        const { pool } = require('../db');
+        const client = await pool.connect();
+        const result = await client.query('SELECT * FROM sync_state WHERE account_id = $1', [account_id]);
+        client.release();
+        res.json(result.rows);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 module.exports = router;
