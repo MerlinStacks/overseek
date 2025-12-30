@@ -32,3 +32,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Testing
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.nyc_output/
+
+# Build & Caching
+build/
+.eslintcache
+.stylelintcache
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
