@@ -24,8 +24,8 @@ const Analytics = () => {
         avgOrderValue = 0,
         comparison = {},
         showCompare = false,
-        chartData: revenueData = [],
-        statusDistribution: statusData = []
+        chartData: revenueData, // Alias for component usage
+        statusDistribution: statusData // Alias for component usage
     } = stats || {};
 
     // Remap stats object to match what the component expects if it uses 'stats.revenueData' etc.
@@ -35,10 +35,7 @@ const Analytics = () => {
     // So let's just alias it in the stats object we pass down or use.
 
     // Quick fix: mutated stats object or new object? useStats returns a new object.
-    if (stats) {
-        stats.revenueData = stats.chartData;
-        stats.statusData = stats.statusDistribution;
-    }
+
 
     // Automation Data
     const automations = useLiveQuery(() => db.automations.toArray()) || [];

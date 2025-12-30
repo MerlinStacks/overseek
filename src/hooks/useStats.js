@@ -236,7 +236,13 @@ export const useStats = (rangeOption = { label: 'Last 30 Days', days: 30 }, comp
                 // For Chart Mapping
                 if (days < 1000) {
                     const targetDate = new Date(orderDate);
-                    targetDate.setDate(targetDate.getDate() + offsetDays); // Shift forward to overlay
+
+                    if (compareMode === 'year') {
+                        targetDate.setFullYear(targetDate.getFullYear() + 1);
+                    } else {
+                        targetDate.setDate(targetDate.getDate() + offsetDays);
+                    }
+
                     const targetKey = targetDate.toLocaleDateString();
                     const entry = chartMap.get(targetKey);
 
