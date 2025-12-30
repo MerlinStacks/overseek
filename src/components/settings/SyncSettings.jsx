@@ -26,10 +26,7 @@ const SyncSettings = ({ settings, updateSettings }) => {
 
     const isSyncing = syncStatus === 'running';
 
-    const handleSync = async () => {
-        // Force full sync to ensure we catch new schema changes (like variations)
-        startSync(true, syncOptions);
-    };
+
 
     const handleClearData = async () => {
         if (!window.confirm("ARE YOU SURE? This will delete all products, orders, and customers from this dashboard. This action cannot be undone.")) return;
@@ -118,10 +115,36 @@ const SyncSettings = ({ settings, updateSettings }) => {
                     ))}
                 </div>
 
-                <button type="button" onClick={handleSync} disabled={isSyncing || !settings.storeUrl} className="btn btn-primary" style={{ background: '#10b981' }}>
-                    {isSyncing ? 'Syncing...' : 'Sync Data Now'}
-                </button>
-                {syncStatus && <p style={{ color: '#10b981', marginTop: '10px', fontSize: '0.9rem' }}>{syncStatus}</p>}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <button
+                        type="button"
+                        onClick={() => startSync({ ...syncOptions, forceFull: false })}
+                        disabled={isSyncing || !settings.storeUrl}
+                        className="btn btn-primary"
+                        style={{ background: '#10b981', flex: 1 }}
+                    >
+                        {isSyncing ? 'Syncing...' : 'Quick Sync (New Items)'}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => startSync({ ...syncOptions, forceFull: true })}
+                        disabled={isSyncing || !settings.storeUrl}
+                        className="btn btn-secondary"
+                        style={{ borderColor: 'var(--border-glass)', background: 'transparent', width: 'auto' }}
+                        title="Performs specialized deletion scan and re-verifies all data"
+                    >
+                        Full Re-Sync
+                    </button>
+                </div>
+                {syncStatus && <div style={{ color: '#10b981', marginTop: '14px', fontSize: '0.9rem', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '6px' }}>
+                    {typeof syncStatus === 'string' ? syncStatus : (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>{syncStatus.entity}: {syncStatus.details || 'Processing...'}</span>
+                            <span>{syncStatus.progress}%</span>
+                        </div>
+                    )}
+                </div>}
             </div>
 
             <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '1.5rem', borderRadius: '8px', marginTop: '2rem' }}>

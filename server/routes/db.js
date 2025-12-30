@@ -40,6 +40,13 @@ router.get('/:table', async (req, res) => {
             whereClauses.push(`(data->>'parent_id' = '0' OR data->>'parent_id' IS NULL)`);
         }
 
+        // Incremental Download Logic
+        const { modified_after } = req.query;
+        if (modified_after) {
+            params.push(modified_after);
+            whereClauses.push(`synced_at > $${params.length}`);
+        }
+
         if (whereClauses.length > 0) {
             const clause = ` WHERE ` + whereClauses.join(' AND ');
             queryStr += clause;

@@ -15,15 +15,43 @@ export const SyncProvider = ({ children }) => {
 
     const [status, setStatus] = useState('idle'); // idle, running, error, complete
     const [progress, setProgress] = useState(0);
-    const [task, setTask] = useState('');
+    const [task, setTask] = useState('Idle');
     const [logs, setLogs] = useState([]);
     const [lastLiveSync, setLastLiveSync] = useState(null);
     const [lastFullSync, setLastFullSync] = useState(null);
+    const [syncMode, setSyncMode] = useState('quick'); // 'quick' or 'full'
 
     const pollInterval = useRef(null);
+    const workerRef = useRef(null);
 
     // 1. Resume Sync on Load (If server is running)
     useEffect(() => {
+        // Initialize Worker
+        workerRef.current = new Worker(new URL('../workers/sync.worker.js', import.meta.url));
+
+        workerRef.current.onmessage = (e) => {
+            if (e.data.type === 'LOG') {
+                log(e.data.message, e.data.level);
+            } else if (e.data.type === 'PROGRESS') {
+                setTask(e.data.task);
+                setProgress(e.data.percentage);
+            } else if (e.data.type === 'COMPLETE') {
+                setStatus('complete'); // Simplified from original snippet
+                setTask('Idle');
+                if (e.data.newSyncTimes) {
+                    Object.entries(e.data.newSyncTimes).forEach(([key, val]) => {
+                        localStorage.setItem(key, val);
+                    });
+                    setLastFullSync(new Date());
+                    log("Data download complete.", "success");
+                }
+            } else if (e.data.type === 'ERROR') {
+                log(e.data.error, 'error');
+                setStatus('error'); // Simplified from original snippet
+                setTask('Error');
+            }
+        };
+
         const checkServerStatus = async () => {
             if (status === 'running') return;
             try {
@@ -41,7 +69,12 @@ export const SyncProvider = ({ children }) => {
         };
         checkServerStatus();
 
-        return () => stopPolling();
+        return () => {
+            stopPolling();
+            if (workerRef.current) {
+                workerRef.current.terminate();
+            }
+        };
     }, []);
 
     // 2. Logging Helper
@@ -79,11 +112,11 @@ export const SyncProvider = ({ children }) => {
                         await downloadFromServer();
 
                         setStatus('complete');
-                        setProgress(100);
-                        setTask('Completed (All Data Synced)');
-                        setLastFullSync(new Date());
-                        log('Sync Process Fully Completed', 'success');
-                        setTimeout(() => setStatus('idle'), 5000);
+                        // The actual 'complete' status and final logging will be handled by the worker's onmessage handler
+                        // once the download is done.
+                        // For now, we just set status to running for the download phase.
+                        setStatus('running');
+                        setTask('Downloading data to local device...');
                     } else {
                         // Stopped unexpectedly
                         setStatus('idle');
@@ -101,8 +134,10 @@ export const SyncProvider = ({ children }) => {
         log('UI detached from Sync (Server process continues)', 'warning');
     };
 
-    const startSync = async (forceFull = false, options = {}) => {
-        if (status === 'running') return;
+    const startSync = async (options = { forceFull: false }) => {
+        if (status.running) return;
+
+        setSyncMode(options.forceFull ? 'full' : 'quick');
         if (!activeAccount) {
             log('No active account selected', 'error');
             return;
@@ -113,19 +148,20 @@ export const SyncProvider = ({ children }) => {
         setLogs([]);
 
         try {
+            // Note: We sync ALL entities by default now, incremental handles the filtering.
             await axios.post('/api/sync/start', {
-                storeUrl: settings.storeUrl,
-                consumerKey: settings.consumerKey,
-                consumerSecret: settings.consumerSecret,
-                authMethod: settings.authMethod, // Pass auth method
+                storeUrl: activeAccount.wc_url,
+                consumerKey: activeAccount.consumer_key,
+                consumerSecret: activeAccount.consumer_secret,
+                authMethod: activeAccount.auth_method || 'basic', // Default to basic
                 accountId: parseInt(activeAccount.id, 10),
-                forceFull: forceFull,
                 options: {
-                    products: options.products !== false,
-                    orders: options.orders !== false,
-                    reviews: options.reviews !== false,
-                    customers: options.customers !== false,
-                    coupons: options.coupons !== false,
+                    products: true,
+                    orders: true,
+                    reviews: true,
+                    customers: true,
+                    coupons: true,
+                    forceFull: options.forceFull // Pass to server
                 }
             });
             log('Sync initiated on server...', 'info');
@@ -140,59 +176,29 @@ export const SyncProvider = ({ children }) => {
     };
 
     // 3. Download from Server (Post-Processing)
-    const downloadFromServer = async () => {
-        if (!activeAccount) return;
+    const downloadFromServer = async (account = activeAccount, entitiesToDownload = ['products', 'orders', 'reviews', 'customers', 'coupons']) => {
+        if (!account) return;
         setTask('Downloading data to local device...');
 
-        // Helper to get correct table name per entity (due to V2 migration)
-        const getTableName = (entity) => {
-            switch (entity) {
-                case 'products': return 'products_v2';
-                case 'orders': return 'orders_v2';
-                case 'customers': return 'customers_v2';
-                case 'coupons': return 'coupons_v2';
-                case 'reviews': return 'reviews_v2';
-                case 'tax_rates': return 'tax_rates_v2';
-                default: return entity;
-            }
-        };
-
-        const entities = ['products', 'orders', 'reviews', 'customers', 'coupons'];
-
-        for (const entity of entities) {
-            try {
-                // Fetch from Local Postgres (which was just synced)
-                // Use a large limit or paginate. For MVP we use large limit (10k)
-                const { data } = await axios.get(`/api/db/${entity}`, {
-                    params: {
-                        account_id: activeAccount.id,
-                        limit: 10000
-                    }
-                });
-
-                if (data.data && data.data.length > 0) {
-                    // Normalize data for Dexie (add account_id if missing)
-                    const rows = data.data.map(item => ({
-                        ...item,
-                        account_id: parseInt(activeAccount.id, 10),
-                        // Ensure ID is unique per account for compound keys
-                    }));
-
-                    // Bulk Put (Upsert) to correct table
-                    const tableName = getTableName(entity);
-
-                    if (entity === 'reviews') {
-                        console.log(`[Sync] Downloading ${rows.length} reviews. Sample:`, rows[0]);
-                    }
-
-                    await db.table(tableName).bulkPut(rows);
-                    log(`Downloaded ${rows.length} ${entity}. Sample Account ID: ${rows[0].account_id}`, 'success');
-                }
-            } catch (e) {
-                console.error(`Failed to download ${entity}`, e);
-                log(`Failed to download ${entity}: ${e.message}`, 'error');
-            }
+        // Gather last sync times for worker
+        const lastSyncTimes = {};
+        for (const entity of entitiesToDownload) {
+            const key = `last_client_sync_${account.id}_${entity}`;
+            lastSyncTimes[key] = localStorage.getItem(key);
         }
+
+        // Delegate to Worker
+        workerRef.current.postMessage({
+            type: 'DOWNLOAD_DB',
+            accountId: parseInt(account.id, 10),
+            entities: entitiesToDownload,
+            lastSyncTimes,
+            forceFull: syncMode === 'full'
+        });
+
+        // Note: The 'startSync' function handles the Server-side trigger. 
+        // This function is for "Client download". 
+        // We rely on the Worker onmessage handler (already in useEffect) to handle progress/completion.
     };
 
     // Background Live Sync (Orders Only) - Kept for Real-Time notifications logic

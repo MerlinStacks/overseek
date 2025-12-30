@@ -84,7 +84,7 @@ const PurchaseOrders = () => {
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <button
-                        onClick={startSync}
+                        onClick={() => startSync({ forceFull: false })}
                         className="btn"
                         title="Sync All Data (Taxes, Products, Orders...)"
                         disabled={syncStatus === 'running' || syncStatus === 'paused'}

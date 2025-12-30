@@ -82,7 +82,7 @@ const initDB = async () => {
             `);
 
             if (colRes.rows.length === 0) {
-                console.log(`[Schema] Upgrading ${table} to multi-tenant schema (Dropping old data)...`);
+                console.log(`[Schema] Upgrading ${table} to multi-tenancy...`);
                 await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
             }
 
@@ -90,13 +90,27 @@ const initDB = async () => {
                 CREATE TABLE IF NOT EXISTS "${table}" (
                     account_id INTEGER NOT NULL,
                     id BIGINT NOT NULL,
-                    data JSONB,
+                    data JSONB NOT NULL,
                     synced_at TIMESTAMPTZ DEFAULT NOW(),
                     PRIMARY KEY (account_id, id)
                 );
             `);
+
+            // Index for faster lookups
+            // await client.query(`CREATE INDEX IF NOT EXISTS idx_${table}_account ON "${table}" (account_id);`);
         }
 
+        // --- NEW: Sync State Table for Incremental Sync ---
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS sync_state (
+                account_id INTEGER NOT NULL,
+                entity VARCHAR(50) NOT NULL,
+                last_synced_at TIMESTAMPTZ,
+                last_id_scan TIMESTAMPTZ,
+                PRIMARY KEY (account_id, entity)
+            );
+        `);
+        console.log("[Schema] sync_state table verified.");
         await client.query(`CREATE INDEX IF NOT EXISTS idx_products_name_trgm ON products USING GIN ((data->>'name') gin_trgm_ops);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_products_parent ON products ((data->>'parent_id'));`);
 

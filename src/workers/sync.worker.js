@@ -31,6 +31,12 @@ self.onmessage = async (e) => {
         } catch (err) {
             self.postMessage({ type: 'ERROR', error: err.message });
         }
+    } else if (msg.type === 'DOWNLOAD_DB') {
+        try {
+            await downloadFromDb(msg);
+        } catch (err) {
+            self.postMessage({ type: 'ERROR', error: err.message });
+        }
     }
 };
 
@@ -234,5 +240,99 @@ const startSync = async ({ config, accountId, options, lastSyncTimes, forceFull 
     }
 
     reportProgress('Sync Complete', 100);
+    self.postMessage({ type: 'COMPLETE', newSyncTimes });
+};
+
+const downloadFromDb = async ({ accountId, entities, forceFull, lastSyncTimes }) => {
+    const apiBase = `/api/db`;
+    const newSyncTimes = { ...lastSyncTimes };
+
+    // Map of entity key to DB table
+    const tableMap = {
+        products: db.products,
+        orders: db.orders,
+        reviews: db.reviews,
+        customers: db.customers,
+        coupons: db.coupons
+    };
+
+    let totalProgress = 0;
+    const progressStep = 100 / entities.length;
+
+    for (const entity of entities) {
+        const table = tableMap[entity];
+        if (!table) continue;
+
+        // Full Sync: Clear local data first to handle deletions
+        if (forceFull) {
+            log(`[Worker] Full Sync: Clearing ${entity}...`);
+            await table.where('account_id').equals(accountId).delete();
+        }
+
+        const lastSyncKey = `last_client_sync_${accountId}_${entity}`;
+        const lastSynced = forceFull ? null : lastSyncTimes[lastSyncKey];
+
+        let page = 1;
+        let totalPages = 1;
+
+        const params = {
+            limit: 500, // Balanced batch size
+            account_id: accountId
+        };
+
+        if (lastSynced) {
+            params.modified_after = lastSynced;
+            log(`[Worker] Incremental ${entity} since ${lastSynced}`);
+        } else {
+            log(`[Worker] Full download ${entity}`);
+        }
+
+        const query = new URLSearchParams(params);
+
+        do {
+            try {
+                // Fetch from our local server API
+                const url = `${apiBase}/${entity}?page=${page}&${query.toString()}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`DB API Error ${res.status}`);
+
+                const json = await res.json();
+                const rows = json.data;
+                totalPages = json.totalPages || 1;
+
+                if (rows && rows.length > 0) {
+                    // Normalize data
+                    const processed = rows.map(item => ({
+                        ...item,
+                        account_id: accountId
+                    }));
+
+                    await table.bulkPut(processed);
+
+                    if (entity === 'reviews') {
+                        /* Minimal log for debug */
+                        // log(`[Worker] Saved ${processed.length} reviews`);
+                    }
+                }
+
+                // Report Progress
+                const entityProgress = (page / totalPages);
+                const currentTotal = totalProgress + (entityProgress * progressStep);
+                reportProgress(`Downloading ${entity} (${Math.round(entityProgress * 100)}%)`, Math.round(currentTotal));
+
+                page++;
+            } catch (e) {
+                log(`Failed to download ${entity} page ${page}: ${e.message}`, 'error');
+                break; // Skip to next entity on critical failure
+            }
+        } while (page <= totalPages);
+
+        // Update timestamp if successful
+        newSyncTimes[lastSyncKey] = new Date().toISOString();
+        log(`Completed ${entity}`);
+        totalProgress += progressStep;
+    }
+
+    reportProgress('Download Complete', 100);
     self.postMessage({ type: 'COMPLETE', newSyncTimes });
 };

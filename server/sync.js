@@ -50,7 +50,7 @@ const detectAuth = async (storeUrl, consumerKey, consumerSecret, preferredMethod
 };
 
 // --- Helper: Fetch & Save Loop ---
-const syncEntity = async (api, entity, saveBatch, statusUpdater) => {
+const syncEntity = async (api, entity, saveBatch, statusUpdater, lastSynced) => {
     // Standardize Entity Endpoints
     const endpoints = {
         products: '/products',
@@ -71,6 +71,12 @@ const syncEntity = async (api, entity, saveBatch, statusUpdater) => {
 
         const params = { page, per_page: 50 };
         if (entity === 'customers') params.role = 'all';
+
+        // Incremental Sync Logic
+        if (lastSynced) {
+            params.modified_after = new Date(lastSynced).toISOString();
+            console.log(`[Sync] Incremental: Fetching ${entity} modified after ${params.modified_after}`);
+        }
 
         const res = await api.get(endpoint, { params });
         const items = res.data;
@@ -135,6 +141,35 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
             // 1. Establish Connection
             const api = await detectAuth(storeUrl, consumerKey, consumerSecret, authMethod);
 
+            // --- Sync State Helpers ---
+            const getSyncState = async (entity) => {
+                const client = await pool.connect();
+                try {
+                    const res = await client.query(
+                        'SELECT last_synced_at FROM sync_state WHERE account_id = $1 AND entity = $2',
+                        [accountId, entity]
+                    );
+                    return res.rows[0]?.last_synced_at || null;
+                } finally {
+                    client.release();
+                }
+            };
+
+            const updateSyncState = async (entity, lastSynced) => {
+                const client = await pool.connect();
+                try {
+                    await client.query(
+                        `INSERT INTO sync_state (account_id, entity, last_synced_at)
+                         VALUES ($1, $2, $3)
+                         ON CONFLICT (account_id, entity) 
+                         DO UPDATE SET last_synced_at = $3`,
+                        [accountId, entity, lastSynced]
+                    );
+                } finally {
+                    client.release();
+                }
+            };
+
             // 2. Define Batch Saver
             const saveBatch = async (table, items) => {
                 const client = await pool.connect();
@@ -171,19 +206,87 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
             const activeTasks = tasks.filter(t => options[t.key]);
             let completedTasks = 0;
 
+            // --- Helper: Reconcile Deletions (Full Sync Only) ---
+            const reconcileDeletions = async (entity, api) => {
+                const endpoints = {
+                    products: '/products',
+                    orders: '/orders',
+                    reviews: '/products/reviews',
+                    customers: '/customers',
+                    coupons: '/coupons'
+                };
+                const endpoint = endpoints[entity.toLowerCase()];
+
+                // 1. Fetch ALL Remote IDs
+                const remoteIds = new Set();
+                let page = 1;
+                while (true) {
+                    // Optimized: Fetch minimal fields if possible (WC V3 doesn't support 'fields' param natively well, but we use context=view)
+                    const res = await api.get(endpoint, { params: { page, per_page: 100, fields: 'id' } }); // Try fields, ignored if unsupported
+                    const ids = res.data.map(i => i.id);
+                    ids.forEach(id => remoteIds.add(id));
+
+                    const totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
+                    if (page >= totalPages) break;
+                    page++;
+                }
+
+                // 2. Fetch ALL Local IDs
+                const client = await pool.connect();
+                try {
+                    const res = await client.query(`SELECT id FROM "${entity}" WHERE account_id = $1`, [accountId]);
+                    const localIds = res.rows.map(r => parseInt(r.id, 10));
+
+                    // 3. Find Deletions
+                    const toDelete = localIds.filter(id => !remoteIds.has(id));
+
+                    if (toDelete.length > 0) {
+                        console.log(`[Sync] Deleting ${toDelete.length} orphaned ${entity}. IDs: ${toDelete.slice(0, 5)}...`);
+                        await client.query(`DELETE FROM "${entity}" WHERE account_id = $1 AND id = ANY($2)`, [accountId, toDelete]);
+                    }
+                } finally {
+                    client.release();
+                }
+            };
+
             for (const task of activeTasks) {
                 currentStatus.entity = task.name;
                 currentStatus.progress = 0;
+
+                // Determine Sync Mode
+                let lastSynced = null;
+                if (!options.forceFull) {
+                    lastSynced = await getSyncState(task.key);
+                }
+
+                if (lastSynced) {
+                    currentStatus.details = `Checking for updates since ${new Date(lastSynced).toLocaleTimeString()}...`;
+                } else if (options.forceFull) {
+                    currentStatus.details = `Performing Full Sync & Deletion scan...`;
+                }
 
                 await syncEntity(
                     api,
                     task.key,
                     saveBatch,
                     (ent, page, total) => {
-                        currentStatus.details = `Page ${page} of ${total}`;
+                        currentStatus.details = `Page ${page} of ${total} ${lastSynced ? '(Incremental)' : ''}`;
                         currentStatus.progress = Math.round((page / total) * 100);
-                    }
+                    },
+                    lastSynced
                 );
+
+                // Run Deletion Scan if Full Sync
+                if (options.forceFull) {
+                    try {
+                        await reconcileDeletions(task.key, api);
+                    } catch (e) {
+                        console.warn(`[Sync] Deletion scan failed for ${task.key}:`, e.message);
+                    }
+                }
+
+                // Update Sync State on Success
+                await updateSyncState(task.key, new Date().toISOString());
 
                 completedTasks++;
             }

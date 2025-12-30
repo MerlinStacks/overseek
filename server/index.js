@@ -35,6 +35,28 @@ app.use('/api/db', dbRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/utils', utilsRoutes);
 
+// NEW: Get Sync State (Last Sync Times)
+app.get('/api/sync/state', async (req, res) => {
+    const { account_id } = req.query;
+    if (!account_id) return res.status(400).json({ error: 'Missing account_id' });
+
+    try {
+        const client = await pool.connect();
+        const result = await client.query('SELECT entity, last_synced_at FROM sync_state WHERE account_id = $1', [account_id]);
+        client.release();
+
+        // Convert to map: { products: '2023...', orders: '...' }
+        const state = result.rows.reduce((acc, row) => {
+            acc[row.entity] = row.last_synced_at;
+            return acc;
+        }, {});
+
+        res.json(state);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Health Check
 app.get('/health', async (req, res) => {
     let dbStatus = 'disconnected';

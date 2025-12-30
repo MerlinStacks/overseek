@@ -104,7 +104,7 @@ const GeneralSettings = ({ settings, updateSettings }) => {
 
     const handleFullResync = () => {
         if (window.confirm("This will re-download ALL data (Products, Orders, Customers). This may take several minutes. Continue?")) {
-            startSync(true); // forceFull = true
+            startSync({ forceFull: true }); // forceFull = true
             toast.info("Full resync started in background...");
         }
     };

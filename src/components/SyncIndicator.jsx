@@ -53,7 +53,7 @@ const SyncIndicator = () => {
                 transition: 'all 0.2s',
                 minWidth: '110px'
             }}
-            onClick={() => !isRunning && startSync(false)}
+            onClick={() => !isRunning && startSync({ forceFull: false })}
             title={isRunning ? `Current Task: ${task}` : "Click to force incremental sync"}
         >
             <div style={{ position: 'relative', display: 'flex' }}>
