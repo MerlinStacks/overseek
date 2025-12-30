@@ -44,7 +44,19 @@ export const SyncProvider = ({ children }) => {
         return () => stopPolling();
     }, []);
 
-    // 2. Polling
+    // 2. Logging Helper
+    const log = (message, type = 'info') => {
+        setLogs(prev => [...prev, { timestamp: new Date(), message, type }]);
+    };
+
+    const stopPolling = () => {
+        if (pollInterval.current) {
+            clearInterval(pollInterval.current);
+            pollInterval.current = null;
+        }
+    };
+
+    // 3. Polling
     const startPolling = () => {
         if (pollInterval.current) clearInterval(pollInterval.current);
 
@@ -83,17 +95,6 @@ export const SyncProvider = ({ children }) => {
         }, 2000);
     };
 
-    const stopPolling = () => {
-        if (pollInterval.current) {
-            clearInterval(pollInterval.current);
-            pollInterval.current = null;
-        }
-    };
-
-    const log = (message, type = 'info') => {
-        setLogs(prev => [...prev, { timestamp: new Date(), message, type }]);
-    };
-
     const cancelSync = () => {
         stopPolling();
         setStatus('idle');
@@ -118,6 +119,7 @@ export const SyncProvider = ({ children }) => {
                 consumerSecret: settings.consumerSecret,
                 authMethod: settings.authMethod, // Pass auth method
                 accountId: activeAccount.id,
+                forceFull: forceFull,
                 options: {
                     products: options.products !== false,
                     orders: options.orders !== false,
@@ -140,6 +142,19 @@ export const SyncProvider = ({ children }) => {
         if (!activeAccount) return;
         setTask('Downloading data to local device...');
 
+        // Helper to get correct table name per entity (due to V2 migration)
+        const getTableName = (entity) => {
+            switch (entity) {
+                case 'products': return 'products_v2';
+                case 'orders': return 'orders_v2';
+                case 'customers': return 'customers_v2';
+                case 'coupons': return 'coupons_v2';
+                case 'reviews': return 'reviews_v2';
+                case 'tax_rates': return 'tax_rates_v2';
+                default: return entity;
+            }
+        };
+
         const entities = ['products', 'orders', 'reviews', 'customers', 'coupons'];
 
         for (const entity of entities) {
@@ -161,8 +176,9 @@ export const SyncProvider = ({ children }) => {
                         // Ensure ID is unique per account for compound keys
                     }));
 
-                    // Bulk Put (Upsert)
-                    await db.table(entity).bulkPut(rows);
+                    // Bulk Put (Upsert) to correct table
+                    const tableName = getTableName(entity);
+                    await db.table(tableName).bulkPut(rows);
                     log(`Downloaded ${rows.length} ${entity}. Sample Account ID: ${rows[0].account_id}`, 'success');
                 }
             } catch (e) {
@@ -232,7 +248,7 @@ export const SyncProvider = ({ children }) => {
                     localStorage.setItem(`last_sync_orders_${accountId}`, safeNextSync);
                     setLastLiveSync(new Date());
                 }
-            } catch (e) {
+            } catch {
                 // Silent fail
             }
         };
