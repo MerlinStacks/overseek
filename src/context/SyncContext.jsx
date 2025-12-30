@@ -18,6 +18,7 @@ export const SyncProvider = ({ children }) => {
     const [task, setTask] = useState('');
     const [logs, setLogs] = useState([]);
     const [lastLiveSync, setLastLiveSync] = useState(null);
+    const [lastFullSync, setLastFullSync] = useState(null);
 
     const pollInterval = useRef(null);
 
@@ -68,6 +69,7 @@ export const SyncProvider = ({ children }) => {
                         setStatus('complete');
                         setProgress(100);
                         setTask('Completed (All Data Synced)');
+                        setLastFullSync(new Date());
                         log('Sync Process Fully Completed', 'success');
                         setTimeout(() => setStatus('idle'), 5000);
                     } else {
@@ -247,7 +249,8 @@ export const SyncProvider = ({ children }) => {
             logs,
             startSync,
             cancelSync,
-            lastLiveSync
+            lastLiveSync,
+            lastFullSync
         }}>
             {children}
         </SyncContext.Provider>

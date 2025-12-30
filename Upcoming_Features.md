@@ -8,6 +8,10 @@
 - [x] **Fix Reviews Sync**: Resolved syntax errors in the worker preventing reviews from syncing and indexing correctly.
 - [x] **Fix Sidebar Dark/Light Mode**: Sidebar logo is now visible in Light Mode via dynamic CSS variables.
 - [x] **BOM Feature Flag**: Implemented account-specific feature toggles. The BOM (Bill of Materials) view is now hidden unless enabled in the Admin Panel per tenant.
+- [x] **Refactored Overseek Helper**: Converted legacy PHP plugin to modern Class-based architecture with optimized performance.
+- [x] **Server Security**: Added Helmet (Headers), Compression (Gzip), and Morgan (Logging) to Node.js server.
+- [x] **Frontend Performance**: Implemented Route-based Code Splitting (React.lazy) to reduce initial bundle size.
+- [x] **Testing Infrastructure**: Setup Playwright for End-to-End testing and Husky/Lint-Staged for pre-commit quality checks.
 
 ## Planned
 - [ ] Full Data Export feature

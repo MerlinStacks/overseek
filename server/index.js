@@ -4,6 +4,10 @@ const { Pool } = require('pg');
 const redis = require('redis');
 const axios = require('axios');
 
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -12,6 +16,9 @@ const redisClient = redis.createClient({
 });
 redisClient.connect().catch(console.error);
 
+app.use(helmet());
+app.use(compression());
+app.use(morgan('tiny')); // Using tiny format for cleaner logs
 app.use(cors());
 app.use(express.json());
 

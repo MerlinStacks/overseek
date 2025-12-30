@@ -127,6 +127,11 @@ db.version(24).stores({
     products_v2: '[account_id+id], [account_id+name], [account_id+date_created], account_id, name, status, price, stock_quantity, sku, date_modified, cost_price, *local_tags, tax_status, tax_class, bin_location, supplier_id, parent_id, type'
 });
 
+// Version 25: Reviews Indexing Fix
+db.version(25).stores({
+    reviews_v2: '[account_id+id], [account_id+date_created], account_id, product_id, order_id, customer_id, status, rating, date_created'
+});
+
 // Map old table names to new ones for code compatibility
 db.products = db.table('products_v2');
 db.orders = db.table('orders_v2');

@@ -26,9 +26,11 @@ const orderFields = [
 ];
 
 import { useAccount } from '../context/AccountContext';
+import { useSync } from '../context/SyncContext';
 
 const Orders = () => {
     const { activeAccount } = useAccount();
+    const { lastFullSync, lastLiveSync } = useSync(); // Get sync signals
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilters, setActiveFilters] = useState([]);
     const [showFilters, setShowFilters] = useState(false);
@@ -72,7 +74,7 @@ const Orders = () => {
 
         return { items, total };
 
-    }, [activeAccount?.id, currentPage, itemsPerPage, isFastMode]);
+    }, [activeAccount?.id, currentPage, itemsPerPage, isFastMode, lastFullSync, lastLiveSync]); // Add sync signals used
 
     // 2. Live Query for SLOW MODE (Client Filter)
     const slowQueryItems = useLiveQuery(async () => {

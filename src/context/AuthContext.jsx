@@ -33,36 +33,41 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         const checkSession = async () => {
-            // Ensure Admin role exists (Seeding for fresh installs)
-            const allRoles = await db.roles.toArray();
-            if (!allRoles.some(r => r.name.toLowerCase() === 'admin')) {
-                console.log("Seeding Admin Role...");
-                await db.roles.add({ name: 'Admin', permissions: ['*'] });
-            }
+            try {
+                // Ensure Admin role exists (Seeding for fresh installs)
+                const allRoles = await db.roles.toArray();
+                if (!allRoles.some(r => r.name.toLowerCase() === 'admin')) {
+                    console.log("Seeding Admin Role...");
+                    await db.roles.add({ name: 'Admin', permissions: ['*'] });
+                }
 
-            const storedId = sessionStorage.getItem('dashboard_user_id');
-            if (storedId) {
-                const foundUser = await db.dashboard_users.get(parseInt(storedId));
-                if (foundUser) {
-                    setUser(foundUser);
-                    setIsAuthenticated(true);
-                    await loadPermissions(foundUser.role);
+                const storedId = sessionStorage.getItem('dashboard_user_id');
+                if (storedId) {
+                    const foundUser = await db.dashboard_users.get(parseInt(storedId));
+                    if (foundUser) {
+                        setUser(foundUser);
+                        setIsAuthenticated(true);
+                        await loadPermissions(foundUser.role);
+                    }
+                } else {
+                    // Check if any users exist, if not create default admin
+                    const count = await db.dashboard_users.count();
+                    if (count === 0) {
+                        const hashedPassword = await bcrypt.hash('admin', 10);
+                        await db.dashboard_users.add({
+                            username: 'admin',
+                            password: hashedPassword,
+                            name: 'Administrator',
+                            role: 'Admin',
+                            avatar: ''
+                        });
+                    }
                 }
-            } else {
-                // Check if any users exist, if not create default admin
-                const count = await db.dashboard_users.count();
-                if (count === 0) {
-                    const hashedPassword = await bcrypt.hash('admin', 10);
-                    await db.dashboard_users.add({
-                        username: 'admin',
-                        password: hashedPassword,
-                        name: 'Administrator',
-                        role: 'Admin',
-                        avatar: ''
-                    });
-                }
+            } catch (err) {
+                console.error("Session Check Failed:", err);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
         checkSession();
     }, []);

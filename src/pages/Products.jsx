@@ -15,10 +15,12 @@ import './Products.css';
 import CreateProduct from './CreateProduct';
 
 import { useAccount } from '../context/AccountContext';
+import { useSync } from '../context/SyncContext';
 
 const Products = () => {
     const { settings } = useSettings();
     const { activeAccount } = useAccount();
+    const { lastFullSync } = useSync();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedIds, setSelectedIds] = useState([]);
@@ -133,7 +135,7 @@ const Products = () => {
 
         return { items, totalItems: count };
 
-    }, [activeAccount, searchTerm, currentPage, itemsPerPage, statusFilter, sortConfig]) || {};
+    }, [activeAccount, searchTerm, currentPage, itemsPerPage, statusFilter, sortConfig, lastFullSync]) || {};
 
     const requestSort = (key) => {
         let direction = 'asc';
