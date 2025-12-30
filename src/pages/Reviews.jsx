@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 
 const ReviewsPage = () => {
     const { activeAccount } = useAccount();
-    const { status, progress } = useSync();
+    const { status, progress, startSync } = useSync();
 
     // Fetch all reviews for this account
     // Note: In a larger app, we'd add an index on [account_id+date_created] for sorting
@@ -119,6 +119,23 @@ const ReviewsPage = () => {
                         }}
                     >
                         Debug Data
+                    </button>
+                    <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                            toast.info("Starting Force Reviews Sync...");
+                            // Explicitly disable others to test selective sync
+                            startSync({
+                                forceFull: true,
+                                reviews: true,
+                                products: false,
+                                orders: false,
+                                customers: false,
+                                coupons: false
+                            });
+                        }}
+                    >
+                        Force Resync Reviews
                     </button>
                     <div className="btn-group" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
                         {['all', 'approved', 'hold', 'spam'].map(f => (
