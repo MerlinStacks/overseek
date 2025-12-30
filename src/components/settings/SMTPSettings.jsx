@@ -50,105 +50,98 @@ const SMTPSettings = ({ settings }) => {
 
     if (!settings.storeUrl) return (
         <div>
-            <div className="settings-header">
-                <div className="settings-icon-wrapper">
-                    <Mail size={32} />
-                </div>
-                <div className="settings-title">
-                    <h2>SMTP Configuration</h2>
-                    <p>Configure how your store sends emails.</p>
-                </div>
+            <div className="settings-content-header">
+                <h2 className="settings-title">SMTP Configuration</h2>
+                <p className="settings-subtitle">Manage email delivery settings for your store.</p>
             </div>
-            <div className="warning-box" style={{ padding: '2rem', textAlign: 'center', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)', color: '#f59e0b' }}>
-                <p>Please configure your <strong>Store URL</strong> in the General tab before setting up SMTP.</p>
+            <div className="glass-card glass-card-warning text-center">
+                <p className="text-warning">Please configure your <strong>Store URL</strong> in the General tab before setting up SMTP.</p>
             </div>
         </div>
     );
 
     return (
         <div>
-            <div className="settings-header">
-                <div className="settings-icon-wrapper">
-                    <Mail size={32} />
-                </div>
-                <div className="settings-title">
-                    <h2>SMTP Configuration</h2>
-                    <p>Configure how your store sends emails.</p>
-                </div>
+            <div className="settings-content-header">
+                <h2 className="settings-title">SMTP Configuration</h2>
+                <p className="settings-subtitle">Manage email delivery settings for your store.</p>
             </div>
 
-            {loading ? <p>Loading...</p> : (
+            {loading ? <p className="p-4 text-center text-muted">Loading configuration...</p> : (
                 <form onSubmit={handleSave} className="settings-form">
-                    <div className="form-group">
-                        <label className="form-label">Enable SMTP</label>
-                        <select name="enabled" value={formData.enabled} onChange={handleChange} className="form-input">
-                            <option value="no">No (Use default WP Mail)</option>
-                            <option value="yes">Yes (Use SMTP)</option>
-                        </select>
+                    <div className="glass-card">
+                        <div className="form-group">
+                            <label className="form-label">Enable SMTP</label>
+                            <select name="enabled" value={formData.enabled} onChange={handleChange} className="form-input">
+                                <option value="no">No (Use default WP Mail)</option>
+                                <option value="yes">Yes (Use SMTP)</option>
+                            </select>
+                        </div>
+
+                        {formData.enabled === 'yes' && (
+                            <div className="animate-fade-in space-y-4">
+                                <div className="form-group">
+                                    <label className="form-label">SMTP Host</label>
+                                    <input name="host" value={formData.host} onChange={handleChange} className="form-input" placeholder="smtp.gmail.com" />
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div className="form-group">
+                                        <label className="form-label">Port</label>
+                                        <input name="port" value={formData.port} onChange={handleChange} className="form-input" placeholder="587" />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Encryption</label>
+                                        <select name="encryption" value={formData.encryption} onChange={handleChange} className="form-input">
+                                            <option value="tls">TLS</option>
+                                            <option value="ssl">SSL</option>
+                                            <option value="none">None</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Username</label>
+                                    <input name="username" value={formData.username} onChange={handleChange} className="form-input" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Password</label>
+                                    <input type="password" name="password" value={formData.password} onChange={handleChange} className="form-input" />
+                                </div>
+
+                                <div className="border-t border-glass my-4"></div>
+
+                                <div className="form-group">
+                                    <label className="form-label">From Email</label>
+                                    <input name="from_email" value={formData.from_email} onChange={handleChange} className="form-input" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">From Name</label>
+                                    <input name="from_name" value={formData.from_name} onChange={handleChange} className="form-input" />
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">Rate Limiting (Max Emails / Minute)</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <input
+                                            type="number"
+                                            name="max_rate"
+                                            value={formData.max_rate || 60}
+                                            onChange={handleChange}
+                                            className="form-input"
+                                            style={{ width: '120px' }}
+                                            min="1"
+                                        />
+                                        <span className="text-muted text-sm">
+                                            Set to 0 to disable limits.
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {formData.enabled === 'yes' && (
-                        <>
-                            <div className="form-group">
-                                <label className="form-label">SMTP Host</label>
-                                <input name="host" value={formData.host} onChange={handleChange} className="form-input" placeholder="smtp.gmail.com" />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div className="form-group">
-                                    <label className="form-label">Port</label>
-                                    <input name="port" value={formData.port} onChange={handleChange} className="form-input" placeholder="587" />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Encryption</label>
-                                    <select name="encryption" value={formData.encryption} onChange={handleChange} className="form-input">
-                                        <option value="tls">TLS</option>
-                                        <option value="ssl">SSL</option>
-                                        <option value="none">None</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Username</label>
-                                <input name="username" value={formData.username} onChange={handleChange} className="form-input" />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Password</label>
-                                <input type="password" name="password" value={formData.password} onChange={handleChange} className="form-input" />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">From Email</label>
-                                <input name="from_email" value={formData.from_email} onChange={handleChange} className="form-input" />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">From Name</label>
-                                <input name="from_name" value={formData.from_name} onChange={handleChange} className="form-input" />
-                            </div>
-
-                            <hr style={{ margin: '20px 0', borderColor: 'var(--border-light)' }} />
-
-                            <div className="form-group">
-                                <label className="form-label">Rate Limiting (Max Emails / Minute)</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <input
-                                        type="number"
-                                        name="max_rate"
-                                        value={formData.max_rate || 60}
-                                        onChange={handleChange}
-                                        className="form-input"
-                                        style={{ width: '120px' }}
-                                        min="1"
-                                    />
-                                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                                        Set to 0 to disable limits.
-                                    </span>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    <div className="form-actions">
-                        <button type="submit" disabled={saving} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                            {saving ? 'Saving...' : 'Save SMTP Settings'}
+                    <div className="form-actions mt-6 flex justify-end">
+                        <button type="submit" disabled={saving} className="btn btn-primary min-w-[140px]">
+                            {saving ? 'Saving...' : 'Save Configuration'}
                         </button>
                     </div>
                 </form>

@@ -83,83 +83,95 @@ const SyncSettings = ({ settings, updateSettings }) => {
     };
 
     return (
+    return (
         <form onSubmit={handleSave} className="fade-in">
-            <h2 className="section-title mb-6">Synchronization</h2>
-            <div className="form-group">
-                <label className="form-label">Auto-Refresh Interval (Live Carts)</label>
-                <select className="form-input" value={syncInterval} onChange={(e) => setSyncInterval(parseInt(e.target.value, 10))}>
-                    <option value="0">Manual Only</option>
-                    <option value="1">Every 1 Minute</option>
-                    <option value="5">Every 5 Minutes</option>
-                    <option value="15">Every 15 Minutes</option>
-                    <option value="30">Every 30 Minutes</option>
-                </select>
+            <div className="settings-content-header">
+                <h2 className="settings-title">Data Synchronization</h2>
+                <p className="settings-subtitle">Manage how often your dashboard pulls data from WooCommerce.</p>
             </div>
 
-            <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '1.5rem', borderRadius: '8px', marginTop: '2rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#34d399', marginBottom: '1rem' }}>Manual Sync</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Pull the latest data from your store immediately.</p>
-
-                {/* Granular Sync Options */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px', marginBottom: '1.5rem' }}>
-                    {Object.entries(syncOptions).map(([key, value]) => (
-                        <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                            <input
-                                type="checkbox"
-                                checked={value}
-                                onChange={e => setSyncOptions(prev => ({ ...prev, [key]: e.target.checked }))}
-                                style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
-                            />
-                            {key.charAt(0).toUpperCase() + key.slice(1)}
-                        </label>
-                    ))}
+            <div className="settings-section">
+                <div className="glass-card">
+                    <h3 className="section-label">Auto-Sync</h3>
+                    <div className="form-group mb-0">
+                        <label className="form-label">Refresh Interval</label>
+                        <select className="form-input" value={syncInterval} onChange={(e) => setSyncInterval(parseInt(e.target.value, 10))}>
+                            <option value="0">Manual Only</option>
+                            <option value="1">Every 1 Minute</option>
+                            <option value="5">Every 5 Minutes</option>
+                            <option value="15">Every 15 Minutes</option>
+                            <option value="30">Every 30 Minutes</option>
+                        </select>
+                        <p className="help-text">Controls how frequently live carts and orders are checked.</p>
+                    </div>
                 </div>
+            </div>
 
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <button
-                        type="button"
-                        onClick={() => startSync({ ...syncOptions, forceFull: false })}
-                        disabled={isSyncing || !settings.storeUrl}
-                        className="btn btn-primary"
-                        style={{ background: '#10b981', flex: 1 }}
-                    >
-                        {isSyncing ? 'Syncing...' : 'Quick Sync (New Items)'}
-                    </button>
+            <div className="settings-section">
+                <div className="glass-card glass-card-success">
+                    <h3 className="section-label text-success">Manual Sync</h3>
+                    <p className="text-muted text-sm mb-4">Pull the latest data from your store immediately.</p>
 
-                    <button
-                        type="button"
-                        onClick={() => startSync({ ...syncOptions, forceFull: true })}
-                        disabled={isSyncing || !settings.storeUrl}
-                        className="btn btn-secondary"
-                        style={{ borderColor: 'var(--border-glass)', background: 'transparent', width: 'auto' }}
-                        title="Performs specialized deletion scan and re-verifies all data"
-                    >
-                        Full Re-Sync
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px', marginBottom: '1.5rem' }}>
+                        {Object.entries(syncOptions).map(([key, value]) => (
+                            <label key={key} className="flex items-center gap-2 cursor-pointer select-none text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={value}
+                                    onChange={e => setSyncOptions(prev => ({ ...prev, [key]: e.target.checked }))}
+                                    style={{ accentColor: '#10b981' }}
+                                />
+                                {key.charAt(0).toUpperCase() + key.slice(1)}
+                            </label>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-4">
+                        <button
+                            type="button"
+                            onClick={() => startSync({ ...syncOptions, forceFull: false })}
+                            disabled={isSyncing || !settings.storeUrl}
+                            className="btn btn-primary bg-success border-none flex-1 justify-center"
+                        >
+                            {isSyncing ? 'Syncing...' : 'Quick Sync'}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => startSync({ ...syncOptions, forceFull: true })}
+                            disabled={isSyncing || !settings.storeUrl}
+                            className="btn btn-secondary"
+                            title="Full re-verification of all data"
+                        >
+                            Full Re-Sync
+                        </button>
+                    </div>
+
+                    {syncStatus && <div className="mt-4 p-2 rounded bg-black/20 text-success text-sm font-mono">
+                        {typeof syncStatus === 'string' ? syncStatus : (
+                            <div className="flex justify-between">
+                                <span>{syncStatus.entity}: {syncStatus.details || 'Processing...'}</span>
+                                <span>{syncStatus.progress}%</span>
+                            </div>
+                        )}
+                    </div>}
+                </div>
+            </div>
+
+            <div className="settings-section">
+                <div className="glass-card glass-card-danger">
+                    <h3 className="section-label text-danger">Danger Zone</h3>
+                    <p className="text-muted text-sm mb-4">
+                        Switching stores? Clear all local data to prevent mixing products from different sites.
+                    </p>
+                    <button type="button" onClick={handleClearData} disabled={isClearing || isSyncing} className="btn btn-secondary border-danger text-danger hover:bg-danger-10 w-full justify-center">
+                        {isClearing ? 'Processing...' : 'Reset / Clear All Data'}
                     </button>
                 </div>
-                {syncStatus && <div style={{ color: '#10b981', marginTop: '14px', fontSize: '0.9rem', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '6px' }}>
-                    {typeof syncStatus === 'string' ? syncStatus : (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>{syncStatus.entity}: {syncStatus.details || 'Processing...'}</span>
-                            <span>{syncStatus.progress}%</span>
-                        </div>
-                    )}
-                </div>}
             </div>
 
-            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '1.5rem', borderRadius: '8px', marginTop: '2rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ef4444', marginBottom: '1rem' }}>Danger Zone</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                    Switching stores? Clear all local data to prevent mixing products from different sites.
-                    This will remove all synced Orders, Products, and Customers from this device.
-                </p>
-                <button type="button" onClick={handleClearData} disabled={isClearing || isSyncing} className="btn" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderColor: '#ef4444' }}>
-                    {isClearing ? 'Processing...' : 'Reset / Clear All Data'}
-                </button>
-            </div>
-
-            <div className="form-actions mt-8">
-                <button type="submit" disabled={isSaving} className="btn btn-primary">Save Settings</button>
+            <div className="form-actions mt-4 flex justify-end">
+                <button type="submit" disabled={isSaving} className="btn btn-primary min-w-[140px]">Save Settings</button>
             </div>
         </form>
     );

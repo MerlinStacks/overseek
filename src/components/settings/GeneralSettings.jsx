@@ -131,93 +131,110 @@ const GeneralSettings = ({ settings, updateSettings }) => {
 
     return (
         <form onSubmit={handleSubmit} className="fade-in">
-            <h2 className="section-title mb-6">Store Configuration</h2>
-            <div className="form-group">
-                <label className="form-label">Store URL</label>
-                <div className="input-wrapper">
-                    <input type="url" name="storeUrl" value={formData.storeUrl} onChange={handleChange} placeholder="https://your-store.com" className="form-input" required />
-                </div>
-            </div>
-            <div className="form-group">
-                <label className="form-label">Consumer Key</label>
-                <div className="input-wrapper">
-                    <input type="text" name="consumerKey" value={formData.consumerKey} onChange={handleChange} className="form-input font-mono" required />
-                    <Lock className="input-icon" size={16} />
-                </div>
-            </div>
-            <div className="form-group">
-                <label className="form-label">Consumer Secret</label>
-                <div className="input-wrapper">
-                    <input type="password" name="consumerSecret" value={formData.consumerSecret} onChange={handleChange} className="form-input font-mono" required />
-                    <Lock className="input-icon" size={16} />
-                </div>
-            </div>
-            <div className="form-group">
-                <label className="form-label">Auth Method</label>
-                <select name="authMethod" value={formData.authMethod} onChange={handleChange} className="form-input">
-                    <option value="auto">Auto (Recommended)</option>
-                    <option value="query_string">Query String</option>
-                    <option value="basic">Basic Auth Header</option>
-                </select>
+            <div className="settings-content-header">
+                <h2 className="settings-title">Store Configuration</h2>
+                <p className="settings-subtitle">Manage your WooCommerce connection and global shop defaults.</p>
             </div>
 
-            <div className="form-group">
-                <label className="form-label">Dashboard Time Zone</label>
-                <select name="timeZone" value={formData.timeZone} onChange={handleChange} className="form-input">
-                    {Intl.supportedValuesOf('timeZone').map(tz => (
-                        <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
-                    ))}
-                </select>
-            </div>
-
-            <h2 className="section-title mb-6" style={{ marginTop: '2rem' }}>Product Defaults</h2>
-            <div className="form-group">
-                <label className="form-label">Minimum Profit Margin (%)</label>
-                <div className="input-wrapper">
-                    <input
-                        type="number"
-                        name="minProfitMargin"
-                        value={formData.minProfitMargin}
-                        onChange={handleChange}
-                        className="form-input"
-                        placeholder="e.g. 20"
-                    />
-                </div>
-                <p className="help-text">Products with margin below this % will be highlighted in red.</p>
-            </div>
-
-            {activeAccount?.features?.goldPrice && (
-                <div className="form-group" style={{ animation: 'fadeIn 0.3s ease' }}>
-                    <label className="form-label" style={{ color: '#f59e0b' }}>Live Gold Price ($/oz)</label>
-                    <div className="input-wrapper">
-                        <input
-                            type="number"
-                            name="goldPrice"
-                            value={formData.goldPrice}
-                            onChange={handleChange}
-                            className="form-input"
-                            placeholder="e.g. 2650.50"
-                            style={{ borderColor: 'rgba(245, 158, 11, 0.3)' }}
-                        />
+            <div className="settings-section">
+                <div className="glass-card">
+                    <h3 className="section-label"><Server size={18} /> Connection Details</h3>
+                    <div className="form-group">
+                        <label className="form-label">Store URL</label>
+                        <div className="input-wrapper">
+                            <input type="url" name="storeUrl" value={formData.storeUrl} onChange={handleChange} placeholder="https://your-store.com" className="form-input" required />
+                        </div>
                     </div>
-                    <p className="help-text">Used for estimating costs of metal-based products.</p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="form-group">
+                            <label className="form-label">Consumer Key</label>
+                            <div className="input-wrapper">
+                                <input type="text" name="consumerKey" value={formData.consumerKey} onChange={handleChange} className="form-input font-mono" required />
+                                <Lock className="input-icon" size={16} />
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Consumer Secret</label>
+                            <div className="input-wrapper">
+                                <input type="password" name="consumerSecret" value={formData.consumerSecret} onChange={handleChange} className="form-input font-mono" required />
+                                <Lock className="input-icon" size={16} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="form-group mb-0">
+                        <label className="form-label">Auth Method</label>
+                        <select name="authMethod" value={formData.authMethod} onChange={handleChange} className="form-input">
+                            <option value="auto">Auto (Recommended)</option>
+                            <option value="query_string">Query String</option>
+                            <option value="basic">Basic Auth Header</option>
+                        </select>
+                    </div>
                 </div>
-            )}
-            <div className="form-actions mt-8" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <button type="button" onClick={handleTestConnection} disabled={loading || isSaving} className="btn" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            </div>
+
+            <div className="settings-section">
+                <div className="glass-card">
+                    <h3 className="section-label">Default Preferences</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="form-group">
+                            <label className="form-label">Dashboard Time Zone</label>
+                            <select name="timeZone" value={formData.timeZone} onChange={handleChange} className="form-input">
+                                {Intl.supportedValuesOf('timeZone').map(tz => (
+                                    <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Min Profit Margin (%)</label>
+                            <div className="input-wrapper">
+                                <input
+                                    type="number"
+                                    name="minProfitMargin"
+                                    value={formData.minProfitMargin}
+                                    onChange={handleChange}
+                                    className="form-input"
+                                    placeholder="e.g. 20"
+                                />
+                            </div>
+                            <p className="help-text">Low margin warning threshold.</p>
+                        </div>
+                    </div>
+
+                    {activeAccount?.features?.goldPrice && (
+                        <div className="form-group mt-4 pt-4 border-t border-glass">
+                            <label className="form-label text-warning">Live Gold Price ($/oz)</label>
+                            <div className="input-wrapper">
+                                <input
+                                    type="number"
+                                    name="goldPrice"
+                                    value={formData.goldPrice}
+                                    onChange={handleChange}
+                                    className="form-input border-warning-20 box-shadow-none"
+                                    placeholder="e.g. 2650.50"
+                                    style={{ borderColor: 'rgba(245, 158, 11, 0.3)' }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="form-actions" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '2rem' }}>
+                <button type="button" onClick={handleTestConnection} disabled={loading || isSaving} className="btn btn-secondary">
                     {loading ? 'Testing...' : 'Test Connection'}
                 </button>
                 <button
                     type="button"
                     onClick={handleFullResync}
                     disabled={syncStatus === 'running'}
-                    className="btn"
-                    style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.3)' }}
+                    className="btn btn-secondary text-warning border-warning-20 bg-warning-10"
                 >
-                    {syncStatus === 'running' ? 'Syncing...' : 'Resync All Data'}
+                    {syncStatus === 'running' ? 'Syncing...' : 'Resync Data'}
                 </button>
-                <button type="submit" disabled={isSaving} className="btn btn-primary" style={{ marginLeft: 'auto' }}>
-                    {isSaving ? 'Saving...' : 'Save Configuration'}
+                <button type="submit" disabled={isSaving} className="btn btn-primary min-w-[140px]">
+                    {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
             </div>
         </form>
