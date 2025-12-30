@@ -83,7 +83,7 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 try {
                     await client.query('BEGIN');
                     const query = `
-                        INSERT INTO ${table} (id, data, synced_at)
+                        INSERT INTO "${table}" (id, data, synced_at)
                         VALUES ($1, $2, NOW())
                         ON CONFLICT (id) DO UPDATE SET data = $2, synced_at = NOW();
                     `;
