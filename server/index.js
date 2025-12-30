@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/admin');
 const syncRoutes = require('./routes/sync');
 const dbRoutes = require('./routes/db');
 const proxyRoutes = require('./routes/proxy');
+const utilsRoutes = require('./routes/utils');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -32,6 +33,7 @@ app.use('/admin', adminRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/db', dbRoutes);
 app.use('/api/proxy', proxyRoutes);
+app.use('/api/utils', utilsRoutes);
 
 // Health Check
 app.get('/health', async (req, res) => {

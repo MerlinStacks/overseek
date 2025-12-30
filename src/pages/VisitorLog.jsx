@@ -401,7 +401,7 @@ const VisitorLog = () => {
 
         try {
             // Free IP API (Rate limited, but works for low volume)
-            const res = await fetch(`https://ipapi.co/${ip}/json/`);
+            const res = await fetch(`/api/utils/geoip?ip=${ip}`);
             const data = await res.json();
             if (data.country_code) {
                 setLocations(prev => ({
