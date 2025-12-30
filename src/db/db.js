@@ -132,6 +132,13 @@ db.version(25).stores({
     reviews_v2: '[account_id+id], [account_id+date_created], account_id, product_id, order_id, customer_id, status, rating, date_created'
 });
 
+// Version 26: Ad Revenue Intelligence
+db.version(26).stores({
+    ad_integrations: '[account_id+platform], account_id, platform, status',
+    ad_campaigns: '[account_id+id], account_id, platform, status, *local_tags',
+    ad_suggestions: '++id, account_id, campaign_id, type, status'
+});
+
 // Map old table names to new ones for code compatibility
 db.products = db.table('products_v2');
 db.orders = db.table('orders_v2');

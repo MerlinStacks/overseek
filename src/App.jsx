@@ -37,6 +37,7 @@ const InvoiceBuilder = React.lazy(() => import('./pages/InvoiceBuilder'));
 const ReviewsPage = React.lazy(() => import('./pages/Reviews'));
 const InboxPage = React.lazy(() => import('./pages/Inbox'));
 const HelpPage = React.lazy(() => import('./pages/Help'));
+const MarketingPage = React.lazy(() => import('./pages/Marketing'));
 
 import AIChat from './components/AIChat';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -111,6 +112,7 @@ function App() {
                       <Route path="/inbox" element={<InboxPage />} />
                       <Route path="/invoices/builder" element={<InvoiceBuilder />} />
                       <Route path="/help" element={<HelpPage />} />
+                      <Route path="/marketing" element={<MarketingPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                     </Route>
 

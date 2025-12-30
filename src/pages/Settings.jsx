@@ -14,6 +14,7 @@ import SystemStatus from '../components/settings/SystemStatus';
 import BackupSettings from '../components/settings/BackupSettings';
 import AppearanceSettings from '../components/settings/AppearanceSettings';
 import AutoTagSettings from '../components/settings/AutoTagSettings';
+import MarketingSettings from '../components/settings/MarketingSettings';
 import { useAccount } from '../context/AccountContext';
 
 const Settings = () => {
@@ -30,6 +31,11 @@ const Settings = () => {
         { id: 'ai', label: 'Intelligence', icon: Cpu, desc: 'AI assistant models' },
         { id: 'backup', label: 'Backup & Restore', icon: Database, desc: 'Export/Import dashboard data' },
     ];
+
+    // Feature Flag: Marketing
+    if (activeAccount?.features?.adRevenueTracking) {
+        menuItems.splice(3, 0, { id: 'marketing', label: 'Marketing', icon: LayoutGrid, desc: 'Ad platforms & Pixel' });
+    }
 
     return (
         <div className="settings-page">
@@ -96,6 +102,10 @@ const Settings = () => {
                         <div style={{ marginTop: '2rem' }}>
                             <AutoTagSettings />
                         </div>
+                    )}
+
+                    {activeTab === 'marketing' && activeAccount?.features?.adRevenueTracking && (
+                        <MarketingSettings />
                     )}
 
                 </div>
