@@ -1,4 +1,109 @@
 const axios = require('axios');
+const https = require('https');
+
+// --- Helper: Create Axios Client ---
+const createClient = (storeUrl, consumerKey, consumerSecret, method) => {
+    let cleanUrl = storeUrl.replace(/\/$/, '').replace(/\/wp-json\/?$/, '');
+
+    const config = {
+        baseURL: `${cleanUrl}/wp-json/wc/v3`,
+        timeout: 120000,
+        headers: {
+            'User-Agent': 'OverSeek-Sync-Agent/1.0',
+            'Accept': 'application/json'
+        },
+        httpsAgent: new https.Agent({
+            rejectUnauthorized: false
+        })
+    };
+
+    if (method === 'query_string') {
+        config.params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
+        config.auth = undefined;
+    } else {
+        // Basic Auth
+        config.headers['Authorization'] = 'Basic ' + Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+    }
+    return axios.create(config);
+};
+
+// --- Helper: Auto-Detect Auth Method ---
+const detectAuth = async (storeUrl, consumerKey, consumerSecret, preferredMethod) => {
+    // If preference is strict, just return client
+    if (preferredMethod === 'query_string') return createClient(storeUrl, consumerKey, consumerSecret, 'query_string');
+    if (preferredMethod === 'basic') return createClient(storeUrl, consumerKey, consumerSecret, 'basic');
+
+    // Auto-detect: Try Basic first, then Query String
+    try {
+        const client = createClient(storeUrl, consumerKey, consumerSecret, 'basic');
+        await client.get('/products', { params: { per_page: 1 } });
+        return client;
+    } catch (e1) {
+        try {
+            const client = createClient(storeUrl, consumerKey, consumerSecret, 'query_string');
+            await client.get('/products', { params: { per_page: 1 } });
+            return client;
+        } catch (e2) {
+            throw new Error(`Auth Failed: Basic (${e1.message}) & Query String (${e2.message})`);
+        }
+    }
+};
+
+// --- Helper: Fetch & Save Loop ---
+const syncEntity = async (api, entity, saveBatch, statusUpdater) => {
+    // Standardize Entity Endpoints
+    const endpoints = {
+        products: '/products',
+        orders: '/orders',
+        reviews: '/products/reviews',
+        customers: '/customers',
+        coupons: '/coupons'
+    };
+
+    const endpoint = endpoints[entity.toLowerCase()];
+    if (!endpoint) throw new Error(`Unknown entity: ${entity}`);
+
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+        statusUpdater(entity, page, totalPages);
+
+        const params = { page, per_page: 50 };
+        if (entity === 'customers') params.role = 'all';
+
+        const res = await api.get(endpoint, { params });
+        const items = res.data;
+        totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
+
+        if (items.length > 0) {
+            // Pre-processing
+            const processedItems = [...items];
+
+            // Special Logic: Product Variations
+            if (entity === 'products') {
+                for (const p of items) {
+                    if (p.type === 'variable') {
+                        try {
+                            const vRes = await api.get(`/products/${p.id}/variations`, { params: { per_page: 100 } });
+                            const variations = vRes.data.map(v => ({ ...v, type: 'variation', parent_id: p.id }));
+                            processedItems.push(...variations);
+                        } catch (e) {
+                            console.warn(`[Sync] Failed variations for #${p.id}: ${e.message}`);
+                        }
+                    }
+                }
+            }
+
+            // Save to DB
+            await saveBatch(entity.toLowerCase(), processedItems);
+        }
+
+        page++;
+    } while (page <= totalPages);
+};
+
+// --- Main Standardized Sync Manager ---
 
 let currentStatus = {
     running: false,
@@ -20,78 +125,29 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
         progress: 0,
         entity: 'Initializing',
         error: null,
-        details: 'Connecting to store...'
+        details: 'Connecting...'
     };
 
     (async () => {
         try {
-            const https = require('https');
+            // 1. Establish Connection
+            const api = await detectAuth(storeUrl, consumerKey, consumerSecret, authMethod);
 
-            const createClient = (method) => {
-                let cleanUrl = storeUrl.replace(/\/$/, '').replace(/\/wp-json\/?$/, '');
-
-                const config = {
-                    baseURL: `${cleanUrl}/wp-json/wc/v3`,
-                    timeout: 120000,
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'application/json'
-                    },
-                    httpsAgent: new https.Agent({
-                        rejectUnauthorized: false
-                    })
-                };
-                if (method === 'query_string') {
-                    config.params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
-                } else {
-                    config.headers['Authorization'] = 'Basic ' + Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
-                }
-                return axios.create(config);
-            };
-
-            let api = null;
-            let finalAuthMethod = authMethod;
-
-            if (authMethod === 'query_string') {
-                api = createClient('query_string');
-            } else if (authMethod === 'basic') {
-                api = createClient('basic');
-            } else {
-                try {
-                    currentStatus.details = 'Verifying connection (Basic Auth)...';
-                    const testClient = createClient('basic');
-                    await testClient.get('/products', { params: { per_page: 1 } });
-                    api = testClient;
-                    finalAuthMethod = 'basic';
-                } catch (e1) {
-                    try {
-                        currentStatus.details = 'Verifying connection (Query String)...';
-                        const testClient = createClient('query_string');
-                        await testClient.get('/products', { params: { per_page: 1 } });
-                        api = testClient;
-                        finalAuthMethod = 'query_string';
-                    } catch (e2) {
-                        throw new Error(`Connection failed: ${e1.message} (Basic) / ${e2.message} (Query String)`);
-                    }
-                }
-            }
-
-            if (!api) api = createClient(finalAuthMethod || 'basic');
-
+            // 2. Define Batch Saver
             const saveBatch = async (table, items) => {
                 const client = await pool.connect();
                 try {
                     await client.query('BEGIN');
                     const query = `
-                        INSERT INTO "${table}" (id, data, synced_at)
-                        VALUES ($1, $2, NOW())
-                        ON CONFLICT (id) DO UPDATE SET data = $2, synced_at = NOW();
+                        INSERT INTO "${table}" (account_id, id, data, synced_at)
+                        VALUES ($1, $2, $3, NOW())
+                        ON CONFLICT (account_id, id) DO UPDATE SET data = $3, synced_at = NOW();
                     `;
                     for (const item of items) {
+                        // Inject Context
                         item.account_id = accountId;
-                        await client.query(query, [item.id, JSON.stringify(item)]);
+                        await client.query(query, [accountId, item.id, JSON.stringify(item)]);
                     }
-                    console.log(`[Sync] Saved batch of ${items.length} ${table} for account ${accountId}`);
                     await client.query('COMMIT');
                 } catch (e) {
                     await client.query('ROLLBACK');
@@ -101,124 +157,36 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                 }
             };
 
-            if (options.products) {
-                currentStatus.entity = 'Products';
-                let page = 1;
-                let totalPages = 1;
+            // 3. Run Syncs based on Options
+            const tasks = [
+                { key: 'products', name: 'Products' },
+                { key: 'orders', name: 'Orders' },
+                { key: 'reviews', name: 'Reviews' },
+                { key: 'customers', name: 'Customers' },
+                { key: 'coupons', name: 'Coupons' }
+            ];
 
-                do {
-                    currentStatus.details = `Fetching page ${page}...`;
-                    const res = await api.get('/products', { params: { page, per_page: 50 } });
-                    totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
-                    const items = res.data;
+            const activeTasks = tasks.filter(t => options[t.key]);
+            let completedTasks = 0;
 
-                    const processedItems = [...items];
-                    for (const p of items) {
-                        if (p.type === 'variable') {
-                            try {
-                                const vRes = await api.get(`/products/${p.id}/variations`, { params: { per_page: 100 } });
-                                const variations = vRes.data.map(v => ({ ...v, type: 'variation', parent_id: p.id }));
-                                processedItems.push(...variations);
-                            } catch (ve) {
-                                console.warn(`Failed to fetch variations for ${p.id}: ${ve.message}`);
-                            }
-                        }
-                    }
-
-                    if (processedItems.length > 0) {
-                        await saveBatch('products', processedItems);
-                    }
-
-                    currentStatus.progress = Math.round((page / totalPages) * 100);
-                    page++;
-
-                } while (page <= totalPages);
-            }
-
-            if (options.orders) {
-                currentStatus.entity = 'Orders';
+            for (const task of activeTasks) {
+                currentStatus.entity = task.name;
                 currentStatus.progress = 0;
-                let page = 1;
-                let totalPages = 1;
 
-                do {
-                    currentStatus.details = `Fetching page ${page}...`;
-                    const res = await api.get('/orders', { params: { page, per_page: 50 } });
-                    totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
-
-                    if (res.data.length > 0) {
-                        await saveBatch('orders', res.data);
+                await syncEntity(
+                    api,
+                    task.key,
+                    saveBatch,
+                    (ent, page, total) => {
+                        currentStatus.details = `Page ${page} of ${total}`;
+                        currentStatus.progress = Math.round((page / total) * 100);
                     }
+                );
 
-                    currentStatus.progress = Math.round((page / totalPages) * 100);
-                    page++;
-
-                } while (page <= totalPages);
+                completedTasks++;
             }
 
-            if (options.reviews) {
-                currentStatus.entity = 'Reviews';
-                currentStatus.progress = 0;
-                let page = 1;
-                let totalPages = 1;
-
-                do {
-                    currentStatus.details = `Fetching page ${page}...`;
-                    const res = await api.get('/products/reviews', { params: { page, per_page: 50 } });
-                    totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
-
-                    if (res.data.length > 0) {
-                        await saveBatch('reviews', res.data);
-                    }
-
-                    currentStatus.progress = Math.round((page / totalPages) * 100);
-                    page++;
-
-                } while (page <= totalPages);
-            }
-
-            if (options.customers) {
-                currentStatus.entity = 'Customers';
-                currentStatus.progress = 0;
-                let page = 1;
-                let totalPages = 1;
-
-                do {
-                    currentStatus.details = `Fetching page ${page}...`;
-                    const res = await api.get('/customers', { params: { page, per_page: 50, role: 'all' } });
-                    totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
-
-                    if (res.data.length > 0) {
-                        await saveBatch('customers', res.data);
-                    }
-
-                    currentStatus.progress = Math.round((page / totalPages) * 100);
-                    page++;
-
-                } while (page <= totalPages);
-            }
-
-            if (options.coupons) {
-                currentStatus.entity = 'Coupons';
-                currentStatus.progress = 0;
-                let page = 1;
-                let totalPages = 1;
-
-                do {
-                    currentStatus.details = `Fetching page ${page}...`;
-                    const res = await api.get('/coupons', { params: { page, per_page: 50 } });
-                    totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
-
-                    if (res.data.length > 0) {
-                        await saveBatch('coupons', res.data);
-                    }
-
-                    currentStatus.progress = Math.round((page / totalPages) * 100);
-                    page++;
-
-                } while (page <= totalPages);
-            }
-
+            // 4. Finish
             currentStatus.running = false;
             currentStatus.entity = 'Complete';
             currentStatus.progress = 100;
@@ -227,10 +195,8 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
         } catch (err) {
             console.error("Server Sync Error:", err);
             currentStatus.running = false;
-            // Capture Axios errors (upstream API) or DB errors
             const upstreamError = err.response?.data?.message || err.response?.statusText;
             const dbError = err.code ? `DB Error ${err.code}` : null;
-
             currentStatus.error = upstreamError || dbError || err.message;
             currentStatus.details = `Failed at ${currentStatus.entity}. ${err.response?.status ? `HTTP ${err.response.status}` : ''} ${err.code || ''}`;
         }

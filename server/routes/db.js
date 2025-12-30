@@ -24,7 +24,7 @@ router.get('/:table', async (req, res) => {
         const whereClauses = [];
 
         params.push(account_id);
-        whereClauses.push(`data->>'account_id' = $${params.length}`);
+        whereClauses.push(`account_id = $${params.length}`);
 
         if (search) {
             params.push(`%${search}%`);

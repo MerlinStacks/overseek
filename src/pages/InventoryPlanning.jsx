@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import { useSortableData } from '../hooks/useSortableData';
 import { TrendingUp, AlertCircle, Calendar, Truck, CheckCircle, Search, ArrowRight, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import './Inventory.css';
 
 const InventoryPlanning = () => {
     // 1. Fetch Data
@@ -219,7 +220,7 @@ const InventoryPlanning = () => {
 
                         <div>
                             <div style={{ fontWeight: isChild ? 400 : 600, color: isChild ? 'var(--text-secondary)' : 'var(--text-main)' }}>
-                                {isChild ? (item.name.includes(parentName) ? item.name.replace(parentName, '').replace(/^[\s-,\.]+/, '') : item.name) : item.name}
+                                {isChild ? (item.name.includes(parentName) ? item.name.replace(parentName, '').replace(/^[\s-,.]+/, '') : item.name) : item.name}
                             </div>
                             {!isChild && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.supplierName}</div>}
                         </div>

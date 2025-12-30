@@ -6,6 +6,7 @@ import { calculateForecast } from '../utils/forecasting';
 import { useSettings } from '../context/SettingsContext';
 import DateRangePicker from '../components/DateRangePicker';
 import InventoryPlanning from './InventoryPlanning';
+import './Forecasting.css'; // Import the styles
 
 const Forecasting = () => {
     const [activeTab, setActiveTab] = useState('stock'); // Default to Stock Planning as per user request

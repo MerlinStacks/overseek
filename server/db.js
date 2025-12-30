@@ -67,17 +67,37 @@ const initDB = async () => {
 
         const tables = ['orders', 'products', 'reviews', 'customers', 'coupons'];
         for (const table of tables) {
+            // Drop old table to enforce new schema (Safe for this local dashboard context)
+            // warning: this clears local cache, but sync restores it.
+            // checks if table exists has only 'id' column to decide? 
+            // simpler to just try migrate or drop. Let's DROP to be clean.
+            // But we wrap in logic to ONLY drop if schema is old? 
+            // For now, let's assume valid state is needed.
+
+            // Check if account_id column exists
+            const colRes = await client.query(`
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='${table}' AND column_name='account_id'
+            `);
+
+            if (colRes.rows.length === 0) {
+                console.log(`[Schema] Upgrading ${table} to multi-tenant schema (Dropping old data)...`);
+                await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
+            }
+
             await client.query(`
                 CREATE TABLE IF NOT EXISTS "${table}" (
-                    id BIGINT PRIMARY KEY,
+                    account_id INTEGER NOT NULL,
+                    id BIGINT NOT NULL,
                     data JSONB,
-                    synced_at TIMESTAMPTZ DEFAULT NOW()
+                    synced_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (account_id, id)
                 );
             `);
         }
 
         await client.query(`CREATE INDEX IF NOT EXISTS idx_products_name_trgm ON products USING GIN ((data->>'name') gin_trgm_ops);`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_products_account ON products ((data->>'account_id'));`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_products_parent ON products ((data->>'parent_id'));`);
 
         console.log('PostgreSQL initialized: Tables, Extensions & Indexes ready.');
