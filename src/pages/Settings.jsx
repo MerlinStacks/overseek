@@ -13,9 +13,12 @@ import SystemStatus from '../components/settings/SystemStatus';
 
 import BackupSettings from '../components/settings/BackupSettings';
 import AppearanceSettings from '../components/settings/AppearanceSettings';
+import AutoTagSettings from '../components/settings/AutoTagSettings';
+import { useAccount } from '../context/AccountContext';
 
 const Settings = () => {
     const { settings, updateSettings } = useSettings();
+    const { activeAccount } = useAccount();
     const [activeTab, setActiveTab] = useState('general');
 
     const menuItems = [
@@ -86,6 +89,13 @@ const Settings = () => {
 
                     {activeTab === 'status' && (
                         <SystemStatus settings={settings} />
+                    )}
+
+                    {/* Auto Tagging (Feature Flagged) */}
+                    {activeAccount?.features?.autoTagging && activeTab === 'general' && (
+                        <div style={{ marginTop: '2rem' }}>
+                            <AutoTagSettings />
+                        </div>
                     )}
 
                 </div>

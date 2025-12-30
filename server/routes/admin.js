@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const redisClient = require('../redis');
-const { LOG_BUFFER } = require('../logger');
+const { getLogs } = require('../logger');
 const { restrictToLocalhost } = require('../middleware/security');
 
 const router = express.Router();
@@ -10,7 +10,8 @@ const router = express.Router();
 router.use(restrictToLocalhost);
 
 router.get('/logs', (req, res) => {
-    res.json(LOG_BUFFER);
+    console.log(`Admin logs accessed by ${req.ip}`);
+    res.json(getLogs());
 });
 
 router.post('/restart', (req, res) => {

@@ -13,7 +13,7 @@ const CustomerDetails = () => {
     const customerId = parseInt(id);
 
     // Fetch data
-    const customer = useLiveQuery(() => db.customers.get(customerId), [customerId]);
+    const customer = useLiveQuery(() => db.customers.get(customerId).then(result => result === undefined ? null : result), [customerId]);
     const orders = useLiveQuery(() => db.orders.where('customer_id').equals(customerId).reverse().sortBy('date_created'), [customerId]);
     const notes = useLiveQuery(() => db.customer_notes.where('customer_id').equals(customerId).reverse().sortBy('date_created'), [customerId]);
 
@@ -56,7 +56,7 @@ const CustomerDetails = () => {
             });
             setNoteContent('');
             toast.success('Note added');
-        } catch (e) {
+        } catch {
             toast.error('Failed to add note');
         }
     };
@@ -71,7 +71,14 @@ const CustomerDetails = () => {
     const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
     const getInitials = (first, last) => `${(first || '')[0] || ''}${(last || '')[0] || ''}`.toUpperCase();
 
-    if (!customer) return <div className="p-8">Loading customer...</div>;
+    if (customer === undefined) return <div className="p-8">Loading customer...</div>;
+    if (customer === null) return (
+        <div className="p-8 text-center">
+            <h3>Customer not found</h3>
+            <p className="text-muted">The customer with ID #{customerId} could not be found in the local database.</p>
+            <button onClick={() => navigate('/customers')} className="btn btn-secondary mt-4">Back to Customers</button>
+        </div>
+    );
 
     return (
         <div className="customer-details-page">

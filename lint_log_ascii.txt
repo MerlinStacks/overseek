@@ -1,0 +1,961 @@
+
+> overseek-dashboard@0.0.0 lint
+> eslint .
+
+
+C:\Users\ratte\Desktop\Dashboard\playwright.config.js
+   6:19  error  'process' is not defined  no-undef
+   7:14  error  'process' is not defined  no-undef
+   8:14  error  'process' is not defined  no-undef
+  23:31  error  'process' is not defined  no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\db.js
+    1:18  error  'require' is not defined       no-undef
+    4:23  error  'process' is not defined       no-undef
+   18:21  error  'process' is not defined       no-undef
+   20:47  error  'process' is not defined       no-undef
+   25:30  error  'e' is defined but never used  no-unused-vars
+   27:49  error  'process' is not defined       no-undef
+   30:21  error  'adminConfig' is constant      no-const-assign
+  124:1   error  'module' is not defined        no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\index.js
+   1:1   error  'require' is not defined  no-undef
+   2:17  error  'require' is not defined  no-undef
+   3:14  error  'require' is not defined  no-undef
+   4:14  error  'require' is not defined  no-undef
+   5:16  error  'require' is not defined  no-undef
+   6:21  error  'require' is not defined  no-undef
+   7:16  error  'require' is not defined  no-undef
+   9:1   error  'require' is not defined  no-undef
+  10:26  error  'require' is not defined  no-undef
+  11:24  error  'require' is not defined  no-undef
+  12:24  error  'require' is not defined  no-undef
+  14:21  error  'require' is not defined  no-undef
+  15:20  error  'require' is not defined  no-undef
+  16:18  error  'require' is not defined  no-undef
+  17:21  error  'require' is not defined  no-undef
+  18:21  error  'require' is not defined  no-undef
+  21:14  error  'process' is not defined  no-undef
+  69:30  error  'require' is not defined  no-undef
+  79:23  error  'require' is not defined  no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\logger.js
+  30:1  error  'module' is not defined  no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\middleware\rateLimiter.js
+   1:19  error  'require' is not defined  no-undef
+  17:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\middleware\security.js
+  12:1  error  'module' is not defined  no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\redis.js
+   1:15  error  'require' is not defined  no-undef
+   4:10  error  'process' is not defined  no-undef
+  11:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\routes\admin.js
+   1:17  error  'require' is not defined  no-undef
+   2:15  error  'require' is not defined  no-undef
+   3:21  error  'require' is not defined  no-undef
+   4:21  error  'require' is not defined  no-undef
+   5:33  error  'require' is not defined  no-undef
+  21:9   error  'process' is not defined  no-undef
+  64:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\routes\db.js
+   1:17  error  'require' is not defined  no-undef
+   2:18  error  'require' is not defined  no-undef
+  89:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\routes\proxy.js
+   1:17  error  'require' is not defined                                                              no-undef
+   2:15  error  'require' is not defined                                                              no-undef
+   3:21  error  'require' is not defined                                                              no-undef
+   4:9   error  'pool' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+   4:18  error  'require' is not defined                                                              no-undef
+  30:56  error  'process' is not defined                                                              no-undef
+  87:1   error  'module' is not defined                                                               no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\routes\sync.js
+   1:17  error  'require' is not defined  no-undef
+   2:21  error  'require' is not defined  no-undef
+   3:18  error  'require' is not defined  no-undef
+   4:21  error  'require' is not defined  no-undef
+  34:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\routes\utils.js
+   1:17  error  'require' is not defined  no-undef
+   2:15  error  'require' is not defined  no-undef
+   3:21  error  'require' is not defined  no-undef
+  42:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\server\socket.js
+   1:20  error  'require' is not defined  no-undef
+  47:1   error  'module' is not defined   no-undef
+
+C:\Users\ratte\Desktop\Dashboard\src\components\AIChat.jsx
+  101:8   warning  React Hook useEffect has missing dependencies: 'messages.length', 'orders', and 'products'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react-hooks/exhaustive-deps
+  110:21  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  108 |     // Mark read on open
+  109 |     useEffect(() => {
+> 110 |         if (isOpen) setHasUnread(false);
+      |                     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  111 |     }, [isOpen]);
+  112 |
+  113 |  react-hooks/set-state-in-effect
+  279:30  error    'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\AdminSidebar.jsx
+  2:19  error  'useLocation' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  2:32  error  'useNavigate' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\CustomReportBuilder.jsx
+  54:9  error  Error: Cannot access variable before it is declared
+
+`loadReports` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  52 |
+  53 |     useEffect(() => {
+> 54 |         loadReports();
+     |         ^^^^^^^^^^^ `loadReports` accessed before it is declared
+  55 |     }, []);
+  56 |
+  57 |     const loadReports = async () => {
+
+  55 |     }, []);
+  56 |
+> 57 |     const loadReports = async () => {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 58 |         const reports = await db.custom_reports.toArray();
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 59 |         setSavedReports(reports);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 60 |     };
+     | ^^^^^^^ `loadReports` is declared here
+  61 |
+  62 |     const handleCreateNew = () => {
+  63 |         setReportName('');  react-hooks/immutability
+
+C:\Users\ratte\Desktop\Dashboard\src\components\CustomerMap.jsx
+  74:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  72 |
+  73 |         // Initial set of already geocoded
+> 74 |         setGeocodedCustomers(customers.filter(c => c.latitude));
+     |         ^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  75 |
+  76 |         // Start processing background queue
+  77 |         if (customers.length > 0) {  react-hooks/set-state-in-effect
+
+C:\Users\ratte\Desktop\Dashboard\src\components\EmailDesigner\EmailDesigner.jsx
+    1:27  error    'useRef' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         no-unused-vars
+   87:12  error    'draggedTool' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           no-unused-vars
+   87:25  error    'setDraggedTool' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        no-unused-vars
+  136:8   warning  React Hook useEffect has missing dependencies: 'redo' and 'undo'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  react-hooks/exhaustive-deps
+  339:8   warning  React Hook useEffect has a missing dependency: 'generateHtml'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react-hooks/exhaustive-deps
+  349:17  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  347 |
+  348 |         const newBlock = {
+> 349 |             id: Date.now().toString(),
+      |                 ^^^^^^^^^^ Cannot call impure function
+  350 |             type: structureTool ? 'section' : type,
+  351 |             content: {},
+  352 |             styles: {}                                                   react-hooks/purity
+  400:17  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  398 |         // Let's copy-paste the creation logic for now for safety/speed.
+  399 |         const newBlock = {
+> 400 |             id: Date.now().toString(),
+      |                 ^^^^^^^^^^ Cannot call impure function
+  401 |             type: toolType,
+  402 |             content: {},
+  403 |             styles: {}  react-hooks/purity
+
+C:\Users\ratte\Desktop\Dashboard\src\components\FilterBuilder.jsx
+   1:27  error  'useEffect' is defined but never used. Allowed unused vars must match /^[A-Z_]/u        no-unused-vars
+  24:7   error  'fields' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\FlowNodes.jsx
+  96:27  error  'data' is defined but never used  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\GlobalSearch.jsx
+   73:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  71 |     // Close mobile search on navigate
+  72 |     useEffect(() => {
+> 73 |         setMobileOpen(false);
+     |         ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  74 |     }, [location.pathname]);
+  75 |
+  76 |     // Keyboard Shortcut (Ctrl+K / Cmd+K)  react-hooks/set-state-in-effect
+  216:66  error  'idx' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 no-unused-vars
+  235:63  error  'idx' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\InvoiceRenderer.jsx
+  4:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\ratte\Desktop\Dashboard\src\components\PresenceIndicator.jsx
+  12:41  error  'i' is defined but never used  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\RoleEditor.jsx
+  35:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  33 |
+  34 |     useEffect(() => {
+> 35 |         loadRoles();
+     |         ^^^^^^^^^ Avoid calling setState() directly within an effect
+  36 |     }, []);
+  37 |
+  38 |     const handleSave = async (e) => {  react-hooks/set-state-in-effect
+
+C:\Users\ratte\Desktop\Dashboard\src\components\ShipmentTracking.jsx
+  5:10  error  'updateOrder' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  8:58  error  'settings' is defined but never used                                                no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\Sidebar.jsx
+   49:9   error    Error: Cannot access variable before it is declared
+
+`visibleNavGroups` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  47 |         // Find which item should be active
+  48 |         let activeLabel = null;
+> 49 |         visibleNavGroups.forEach(group => {
+     |         ^^^^^^^^^^^^^^^^ `visibleNavGroups` accessed before it is declared
+  50 |             group.items.forEach(item => {
+  51 |                 if (item.children && location.pathname.startsWith(item.path)) {
+  52 |                     activeLabel = item.label;
+
+  187 |
+  188 |     // Filter Items based on permissions and features (including children)
+> 189 |     const visibleNavGroups = navGroups.map(group => {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 190 |         const visibleItems = group.items.map(item => {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 191 |             // Check Parent Permission
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 209 |         return { ...group, items: visibleItems };
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 210 |     }).filter(group => group.items.length > 0);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `visibleNavGroups` is declared here
+  211 |
+  212 |     return (
+  213 |         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>  react-hooks/immutability
+   60:8   warning  React Hook useEffect has a missing dependency: 'visibleNavGroups'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 react-hooks/exhaustive-deps
+  255:71  error    'isActive' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\StepSelectionModal.jsx
+  1:27  error  'useMemo' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\TodoPanel.jsx
+  17:11  warning  The 'incomingPOs' logical expression could make the dependencies of useEffect Hook (at line 45) change on every render. Move it inside the useEffect callback. Alternatively, wrap the initialization of 'incomingPOs' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\AISettings.jsx
+  39:8   warning  React Hook useEffect has a missing dependency: 'fetchModels'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  87:18  error    'error' is defined but never used                                                                               no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\AppearanceSettings.jsx
+  21:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  19 |
+  20 |     useEffect(() => {
+> 21 |         setThemeColors({
+     |         ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  22 |             brandColor: settings.brandColor || '#6366f1',
+  23 |             accentColor: settings.accentColor || '#8b5cf6'
+  24 |         });  react-hooks/set-state-in-effect
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\AutoTagSettings.jsx
+  2:10  error  'useLiveQuery' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\BackupSettings.jsx
+  16:18  error  'e' is defined but never used  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\SMTPSettings.jsx
+  44:18  error  'e' is defined but never used  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\SyncSettings.jsx
+  18:18  error  'e' is defined but never used      no-unused-vars
+  78:18  error  'error' is defined but never used  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\components\settings\SystemStatus.jsx
+   6:10  error    'toast' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                       no-unused-vars
+   9:57  error    'task' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                               no-unused-vars
+  51:8   warning  React Hook useEffect has a missing dependency: 'runDiagnostics'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  53:32  error    'Icon' is defined but never used                                                                                   no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\context\AccountContext.jsx
+  6:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\ratte\Desktop\Dashboard\src\context\AuthContext.jsx
+  7:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\ratte\Desktop\Dashboard\src\context\PresenceContext.jsx
+   8:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react-refresh/only-export-components
+  20:13  error  'settings' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  no-unused-vars
+  29:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  27 |     useEffect(() => {
+  28 |         const newSocket = io(backendUrl);
+> 29 |         setSocket(newSocket);
+     |         ^^^^^^^^^ Avoid calling setState() directly within an effect
+  30 |
+  31 |         const myColor = getRandomColor();
+  32 |         const myName = `User ${Math.floor(Math.random() * 1000)}`; // Replace with Auth user name later  react-hooks/set-state-in-effect
+  60:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  58 |
+  59 |         // Clear previous users when changing page
+> 60 |         setActiveUsers([]);
+     |         ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  61 |
+  62 |         socket.emit('join_page', {
+  63 |             page: location.pathname,                                                                                      react-hooks/set-state-in-effect
+
+C:\Users\ratte\Desktop\Dashboard\src\hooks\useProductStats.js
+  6:11  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 93) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'orders' in its own useMemo() Hook      react-hooks/exhaustive-deps
+  7:11  warning  The 'products' logical expression could make the dependencies of useMemo Hook (at line 93) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'products' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+C:\Users\ratte\Desktop\Dashboard\src\hooks\useStats.js
+   1:10  error    'useState' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                          no-unused-vars
+   1:20  error    'useEffect' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                         no-unused-vars
+  42:11  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 310) change on every render. To fix this, wrap the initialization of 'orders' in its own useMemo() Hook                                             react-hooks/exhaustive-deps
+  46:11  warning  The 'products' logical expression could make the dependencies of useMemo Hook (at line 310) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'products' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  74:11  error    'customers' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\layouts\DashboardLayout.jsx
+   64:9   error  'toast' is not defined                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        no-undef
+  159:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  157 |     useEffect(() => {
+  158 |         const saved = localStorage.getItem('theme') || 'dark';
+> 159 |         setTheme(saved);
+      |         ^^^^^^^^ Avoid calling setState() directly within an effect
+  160 |         document.documentElement.setAttribute('data-theme', saved);
+  161 |     }, []);
+  162 |  react-hooks/set-state-in-effect
+  202:22  error  'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 no-unused-vars
+  218:11  error  'navigate' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      no-unused-vars
+  226:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  224 |     // Close mobile menu on route change
+  225 |     useEffect(() => {
+> 226 |         setMobileMenuOpen(false);
+      |         ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  227 |     }, [location]);
+  228 |
+  229 |     return (                                                     react-hooks/set-state-in-effect
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Admin\Accounts.jsx
+  13:11  error  'navigate' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Admin\Logs.jsx
+  4:10  error  'fetchSystemStatus' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  9:13  error  'settings' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Admin\Tools.jsx
+  4:10  error  'restartServer' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Analytics.jsx
+   27:20  error  'revenueData' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                         no-unused-vars
+   28:29  error  'statusData' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                          no-unused-vars
+   39:9   error  Error: This value cannot be modified
+
+Modifying a value returned from a hook is not allowed. Consider moving the modification into the hook where the value is constructed.
+
+  37 |     // Quick fix: mutated stats object or new object? useStats returns a new object.
+  38 |     if (stats) {
+> 39 |         stats.revenueData = stats.chartData;
+     |         ^^^^^ value cannot be modified
+  40 |         stats.statusData = stats.statusDistribution;
+  41 |     }
+  42 |  react-hooks/immutability
+   40:9   error  Error: This value cannot be modified
+
+Modifying a value returned from a hook is not allowed. Consider moving the modification into the hook where the value is constructed.
+
+  38 |     if (stats) {
+  39 |         stats.revenueData = stats.chartData;
+> 40 |         stats.statusData = stats.statusDistribution;
+     |         ^^^^^ value cannot be modified
+  41 |     }
+  42 |
+  43 |     // Automation Data                                                                react-hooks/immutability
+   45:11  error  'automationStats' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                     no-unused-vars
+  353:49  error  'Icon' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                    no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Automations.jsx
+  15:13  error  'settings' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Behaviour.jsx
+   19:12  error    'loading' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                      no-unused-vars
+   46:8   warning  React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+   88:26  error    'e' is defined but never used                                                                                no-unused-vars
+  125:38  error    'e' is defined but never used                                                                                no-unused-vars
+  125:41  error    Empty block statement                                                                                        no-empty
+  211:18  error    'e' is defined but never used                                                                                no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Carts.jsx
+  72:8  warning  React Hook useEffect has a missing dependency: 'loadCarts'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Coupons.jsx
+  45:8  warning  React Hook useEffect has missing dependencies: 'coupons' and 'loadCoupons'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\CustomerDetails.jsx
+  59:18  error  'e' is defined but never used  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Customers.jsx
+   33:11  warning  The 'customers' logical expression could make the dependencies of useMemo Hook (at line 91) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'customers' in its own useMemo() Hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react-hooks/exhaustive-deps
+   38:11  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 91) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'orders' in its own useMemo() Hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             react-hooks/exhaustive-deps
+  252:34  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  250 |                         <thead>
+  251 |                             <tr>
+> 252 |                                 <SortableHeader label="Customer" sortKey="first_name" />
+      |                                  ^^^^^^^^^^^^^^ This component is created during render
+  253 |                                 <SortableHeader label="Total Spent" sortKey="total_spent" />
+  254 |                                 <SortableHeader label="Orders" sortKey="orders_count" />
+  255 |                                 <SortableHeader label="Role" sortKey="role" />
+
+  159 |
+  160 |     // Helper for Header
+> 161 |     const SortableHeader = ({ label, sortKey, align = 'left' }) => {
+      |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 162 |         const isActive = sortConfig?.key === sortKey;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 163 |         return (
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 179 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 180 |     };
+      | ^^^^^^ The component is created during render here
+  181 |
+  182 |     return (
+  183 |         <div className="products-page page-container">                                                                 react-hooks/static-components
+  253:34  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  251 |                             <tr>
+  252 |                                 <SortableHeader label="Customer" sortKey="first_name" />
+> 253 |                                 <SortableHeader label="Total Spent" sortKey="total_spent" />
+      |                                  ^^^^^^^^^^^^^^ This component is created during render
+  254 |                                 <SortableHeader label="Orders" sortKey="orders_count" />
+  255 |                                 <SortableHeader label="Role" sortKey="role" />
+  256 |                                 <SortableHeader label="Tags" sortKey={null} />
+
+  159 |
+  160 |     // Helper for Header
+> 161 |     const SortableHeader = ({ label, sortKey, align = 'left' }) => {
+      |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 162 |         const isActive = sortConfig?.key === sortKey;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 163 |         return (
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 179 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 180 |     };
+      | ^^^^^^ The component is created during render here
+  181 |
+  182 |     return (
+  183 |         <div className="products-page page-container">                  react-hooks/static-components
+  254:34  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  252 |                                 <SortableHeader label="Customer" sortKey="first_name" />
+  253 |                                 <SortableHeader label="Total Spent" sortKey="total_spent" />
+> 254 |                                 <SortableHeader label="Orders" sortKey="orders_count" />
+      |                                  ^^^^^^^^^^^^^^ This component is created during render
+  255 |                                 <SortableHeader label="Role" sortKey="role" />
+  256 |                                 <SortableHeader label="Tags" sortKey={null} />
+  257 |                                 <th>Actions</th>
+
+  159 |
+  160 |     // Helper for Header
+> 161 |     const SortableHeader = ({ label, sortKey, align = 'left' }) => {
+      |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 162 |         const isActive = sortConfig?.key === sortKey;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 163 |         return (
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 179 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 180 |     };
+      | ^^^^^^ The component is created during render here
+  181 |
+  182 |     return (
+  183 |         <div className="products-page page-container">  react-hooks/static-components
+  255:34  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  253 |                                 <SortableHeader label="Total Spent" sortKey="total_spent" />
+  254 |                                 <SortableHeader label="Orders" sortKey="orders_count" />
+> 255 |                                 <SortableHeader label="Role" sortKey="role" />
+      |                                  ^^^^^^^^^^^^^^ This component is created during render
+  256 |                                 <SortableHeader label="Tags" sortKey={null} />
+  257 |                                 <th>Actions</th>
+  258 |                             </tr>
+
+  159 |
+  160 |     // Helper for Header
+> 161 |     const SortableHeader = ({ label, sortKey, align = 'left' }) => {
+      |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 162 |         const isActive = sortConfig?.key === sortKey;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 163 |         return (
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 179 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 180 |     };
+      | ^^^^^^ The component is created during render here
+  181 |
+  182 |     return (
+  183 |         <div className="products-page page-container">                                                         react-hooks/static-components
+  256:34  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  254 |                                 <SortableHeader label="Orders" sortKey="orders_count" />
+  255 |                                 <SortableHeader label="Role" sortKey="role" />
+> 256 |                                 <SortableHeader label="Tags" sortKey={null} />
+      |                                  ^^^^^^^^^^^^^^ This component is created during render
+  257 |                                 <th>Actions</th>
+  258 |                             </tr>
+  259 |                         </thead>
+
+  159 |
+  160 |     // Helper for Header
+> 161 |     const SortableHeader = ({ label, sortKey, align = 'left' }) => {
+      |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 162 |         const isActive = sortConfig?.key === sortKey;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 163 |         return (
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 179 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 180 |     };
+      | ^^^^^^ The component is created during render here
+  181 |
+  182 |     return (
+  183 |         <div className="products-page page-container">                                                                                                                     react-hooks/static-components
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\DashboardHome.jsx
+   88:48  error    'Icon' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              no-unused-vars
+  158:28  error    'countData' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     no-unused-vars
+  176:59  error    Error: Cannot access variable before it is declared
+
+`resolveLocation` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  174 |
+  175 |                         activeVisitors.forEach(v => {
+> 176 |                             if (v.ip && !locations[v.ip]) resolveLocation(v.ip);
+      |                                                           ^^^^^^^^^^^^^^^ `resolveLocation` accessed before it is declared
+  177 |                         });
+  178 |                     }
+  179 |                 } catch (err) {
+
+  187 |     }, [settings]);
+  188 |
+> 189 |     const resolveLocation = async (ip) => {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 190 |         if (locations[ip]) return;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 191 |         const cachedStr = localStorage.getItem('geo_cache');
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 220 |         }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 221 |     };
+      | ^^^^^^^ `resolveLocation` is declared here
+  222 |
+  223 |     const getFlag = (ip) => {
+  224 |         const loc = locations[ip];  react-hooks/immutability
+  179:26  error    'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               no-unused-vars
+  187:8   warning  React Hook useEffect has missing dependencies: 'locations' and 'resolveLocation'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/exhaustive-deps
+  218:18  error    'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\EmailFlowBuilder.jsx
+   3:5  error  'addEdge' is defined but never used. Allowed unused vars must match /^[A-Z_]/u       no-unused-vars
+  10:5  error  'useReactFlow' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Forecasting.jsx
+   6:10  error  'useSettings' is defined but never used. Allowed unused vars must match /^[A-Z_]/u             no-unused-vars
+  14:24  error  'totalSales' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u     no-unused-vars
+  14:36  error  'avgOrderValue' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  37:62  error  'i' is defined but never used                                                                  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Help.jsx
+  443:25   error    Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+  441 |
+  442 |     // --- Derived State for View ---
+> 443 |     const allArticles = useMemo(() => helpData.flatMap(cat => cat.articles.map(art => ({ ...art, categoryId: cat.id, categoryLabel: cat.label }))), []);
+      |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing memoization
+  444 |
+  445 |     const currentArticle = useMemo(() => {
+  446 |         return allArticles.find(a => a.id === activeArticle);  react-hooks/preserve-manual-memoization
+  443:149  warning  React Hook useMemo has a missing dependency: 'helpData'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 react-hooks/exhaustive-deps
+  452:19   error    'rawText' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Inbox.jsx
+    16:5   error    'activeAccount' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           no-unused-vars
+   136:82  error    'onBack' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  no-unused-vars
+   319:34  error    'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+   872:34  error    'setTypingConversationId' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+   922:9   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  920 |             }
+  921 |         }
+> 922 |         setPrevUnreadCount(totalUnread);
+      |         ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  923 |     }, [conversations]);
+  924 |
+  925 |  react-hooks/set-state-in-effect
+   923:8   warning  React Hook useEffect has a missing dependency: 'prevUnreadCount'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  react-hooks/exhaustive-deps
+  1007:22  error    'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Inventory.jsx
+   51:11   warning  The 'allComponents' logical expression could make the dependencies of useMemo Hook (at line 120) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'allComponents' in its own useMemo() Hook                react-hooks/exhaustive-deps
+   58:12   error    'isLoading' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                        no-unused-vars
+  268:109  error    Unnecessary escape character: \.                                                                                                                                                                                                                                 no-useless-escape
+  318:11   warning  The 'existingComponents' logical expression could make the dependencies of useEffect Hook (at line 335) change on every render. Move it inside the useEffect callback. Alternatively, wrap the initialization of 'existingComponents' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  340:12   error    'searching' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                        no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\InventoryPlanning.jsx
+  11:11  warning  The 'products' logical expression could make the dependencies of useMemo Hook (at line 165) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'products' in its own useMemo() Hook      react-hooks/exhaustive-deps
+  12:11  warning  The 'suppliers' logical expression could make the dependencies of useMemo Hook (at line 165) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'suppliers' in its own useMemo() Hook    react-hooks/exhaustive-deps
+  13:11  warning  The 'components' logical expression could make the dependencies of useMemo Hook (at line 165) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'components' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  14:11  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 165) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'orders' in its own useMemo() Hook          react-hooks/exhaustive-deps
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\InvoiceBuilder.jsx
+  101:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+   99 |     // Reset limit on search
+  100 |     useEffect(() => {
+> 101 |         setDisplayLimit(20);
+      |         ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  102 |         if (listRef.current) listRef.current.scrollTop = 0;
+  103 |     }, [searchTerm]);
+  104 |                                                                  react-hooks/set-state-in-effect
+  283:17  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  281 |         if (settings?.invoiceLayout) {
+  282 |             try {
+> 283 |                 setRows(JSON.parse(settings.invoiceLayout));
+      |                 ^^^^^^^ Avoid calling setState() directly within an effect
+  284 |             } catch (e) {
+  285 |                 console.error("Failed to parse invoice layout", e);
+  286 |             }  react-hooks/set-state-in-effect
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\OrderDetails.jsx
+   15:19  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+   21:59  error  'onRemove' is defined but never used                                           no-unused-vars
+  125:26  error  'title' is defined but never used                                              no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Orders.jsx
+   80:11  warning  The 'slowQueryItems' logical expression could make the dependencies of useMemo Hook (at line 138) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'slowQueryItems' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  244:15  error    'sourceData' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                           no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\ProductReports.jsx
+   19:49  error    'worstSellers' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 no-unused-vars
+   20:11  warning  The 'products' logical expression could make the dependencies of useMemo Hook (at line 64) change on every render. To fix this, wrap the initialization of 'products' in its own useMemo() Hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              react-hooks/exhaustive-deps
+   20:11  warning  The 'products' logical expression could make the dependencies of useMemo Hook (at line 92) change on every render. To fix this, wrap the initialization of 'products' in its own useMemo() Hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              react-hooks/exhaustive-deps
+   21:11  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 64) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'orders' in its own useMemo() Hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-hooks/exhaustive-deps
+  195:44  error    'idx' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              no-unused-vars
+  331:47  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  329 |
+  330 |             {/* Content Switcher */}
+> 331 |             {activeSection === 'overview' && <OverviewView />}
+      |                                               ^^^^^^^^^^^^ This component is created during render
+  332 |             {activeSection === 'products' && <ProductsTable data={allProducts} />}
+  333 |             {activeSection === 'top_sellers' && <ProductsTable data={topSellers} />}
+  334 |             {activeSection === 'bought_together' && <BoughtTogetherView />}
+
+   95 |     // --- View Components ---
+   96 |
+>  97 |     const OverviewView = () => (
+      |                          ^^^^^^^
+>  98 |         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  99 |             {/* KPIs */}
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 186 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 187 |     );
+      | ^^^^^^ The component is created during render here
+  188 |
+  189 |     const BoughtTogetherView = () => (
+  190 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>  react-hooks/static-components
+  332:47  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  330 |             {/* Content Switcher */}
+  331 |             {activeSection === 'overview' && <OverviewView />}
+> 332 |             {activeSection === 'products' && <ProductsTable data={allProducts} />}
+      |                                               ^^^^^^^^^^^^^ This component is created during render
+  333 |             {activeSection === 'top_sellers' && <ProductsTable data={topSellers} />}
+  334 |             {activeSection === 'bought_together' && <BoughtTogetherView />}
+  335 |             {activeSection === 'velocity' && <StockVelocityView />}
+
+  276 |     );
+  277 |
+> 278 |     const ProductsTable = ({ data }) => (
+      |                           ^^^^^^^^^^^^^^^
+> 279 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 280 |             <h3 className="section-title">All Products</h3>
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 305 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 306 |     );
+      | ^^^^^^ The component is created during render here
+  307 |
+  308 |     // --- Render ---
+  309 |                                     react-hooks/static-components
+  333:50  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  331 |             {activeSection === 'overview' && <OverviewView />}
+  332 |             {activeSection === 'products' && <ProductsTable data={allProducts} />}
+> 333 |             {activeSection === 'top_sellers' && <ProductsTable data={topSellers} />}
+      |                                                  ^^^^^^^^^^^^^ This component is created during render
+  334 |             {activeSection === 'bought_together' && <BoughtTogetherView />}
+  335 |             {activeSection === 'velocity' && <StockVelocityView />}
+  336 |         </div>
+
+  276 |     );
+  277 |
+> 278 |     const ProductsTable = ({ data }) => (
+      |                           ^^^^^^^^^^^^^^^
+> 279 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 280 |             <h3 className="section-title">All Products</h3>
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 305 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 306 |     );
+      | ^^^^^^ The component is created during render here
+  307 |
+  308 |     // --- Render ---
+  309 |                                                        react-hooks/static-components
+  334:54  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  332 |             {activeSection === 'products' && <ProductsTable data={allProducts} />}
+  333 |             {activeSection === 'top_sellers' && <ProductsTable data={topSellers} />}
+> 334 |             {activeSection === 'bought_together' && <BoughtTogetherView />}
+      |                                                      ^^^^^^^^^^^^^^^^^^ This component is created during render
+  335 |             {activeSection === 'velocity' && <StockVelocityView />}
+  336 |         </div>
+  337 |     );
+
+  187 |     );
+  188 |
+> 189 |     const BoughtTogetherView = () => (
+      |                                ^^^^^^^
+> 190 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 191 |             <h3 className="section-title">Frequently Bought Together</h3>
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 224 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 225 |     );
+      | ^^^^^^ The component is created during render here
+  226 |
+  227 |     const StockVelocityView = () => (
+  228 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>           react-hooks/static-components
+  335:47  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  333 |             {activeSection === 'top_sellers' && <ProductsTable data={topSellers} />}
+  334 |             {activeSection === 'bought_together' && <BoughtTogetherView />}
+> 335 |             {activeSection === 'velocity' && <StockVelocityView />}
+      |                                               ^^^^^^^^^^^^^^^^^ This component is created during render
+  336 |         </div>
+  337 |     );
+  338 | };
+
+  225 |     );
+  226 |
+> 227 |     const StockVelocityView = () => (
+      |                               ^^^^^^^
+> 228 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 229 |             <h3 className="section-title">Stock Velocity</h3>
+      ???
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 275 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 276 |     );
+      | ^^^^^^ The component is created during render here
+  277 |
+  278 |     const ProductsTable = ({ data }) => (
+  279 |         <div className="glass-panel" style={{ padding: '1.5rem' }}>                                                                                                             react-hooks/static-components
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Products.jsx
+  12:10  error  'useSortableData' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\PurchaseOrders.jsx
+    8:10  error  'fetchTaxRates' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   no-unused-vars
+   15:11  error  'taxRates' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               no-unused-vars
+   16:13  error  'settings' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               no-unused-vars
+   53:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  51 |     // Reset pagination on filter change
+  52 |     useEffect(() => {
+> 53 |         setCurrentPage(1);
+     |         ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  54 |     }, [searchTerm, statusFilter]);
+  55 |
+  56 |     const filtered = orders.filter(o => {  react-hooks/set-state-in-effect
+  221:18  error  'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Reports.jsx
+  1:27  error  'useEffect' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\Users.jsx
+  51:8  warning  React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\ratte\Desktop\Dashboard\src\pages\VisitorLog.jsx
+   39:54  error    'e' is defined but never used                                                                                                         no-unused-vars
+   63:11  error    'totalGoals' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                            no-unused-vars
+  232:8   warning  React Hook useEffect has a missing dependency: 'checkStatus'. Either include it or remove the dependency array                        react-hooks/exhaustive-deps
+  428:8   warning  React Hook useEffect has missing dependencies: 'locations' and 'resolveLocation'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  457:8   warning  React Hook useEffect has a missing dependency: 'loadLogs'. Either include it or remove the dependency array                           react-hooks/exhaustive-deps
+  459:11  error    'getDeviceIcon' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                         no-unused-vars
+  492:11  error    'getActionIcon' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                         no-unused-vars
+  541:15  error    'currentSource' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                         no-unused-vars
+  619:26  error    'e' is defined but never used                                                                                                         no-unused-vars
+  619:29  error    Empty block statement                                                                                                                 no-empty
+  706:22  error    'e' is defined but never used                                                                                                         no-unused-vars
+  864:35  error    'exitPage' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                              no-unused-vars
+  883:42  error    'e' is defined but never used                                                                                                         no-unused-vars
+  886:35  error    'utms' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\services\api.js
+  243:17  error  'baseURL' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\utils\pdfGenerator.js
+   4:49  error  'settings' is defined but never used                                                              no-unused-vars
+  14:15  error  'originalPosition' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  15:15  error  'originalDisplay' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u   no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\src\workers\sync.worker.js
+    1:1   warning  Unused eslint-disable directive (no problems were reported from 'no-restricted-globals')
+  136:30  error    '_' is defined but never used                                                             no-unused-vars
+
+C:\Users\ratte\Desktop\Dashboard\vite.config.js
+  18:17  error  'process' is not defined  no-undef
+  23:17  error  'process' is not defined  no-undef
+
+??? 231 problems (197 errors, 34 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+

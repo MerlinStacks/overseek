@@ -356,7 +356,6 @@ a {
 }
 
 /* Light Mode Handling */
-/* Light Mode Handling */
 :root[data-theme="light"] {
   --bg-main: #f1f5f9;
   --bg-panel: #ffffff;
@@ -390,7 +389,7 @@ a {
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
-  --logo-text-gradient: linear-gradient(to right, #0f172a, #475569);
+  --logo-text-gradient: linear-gradient(to right, #1e293b, #64748b);
 }
 
 /* Dropdown Fix */

@@ -227,6 +227,12 @@ if (!class_exists('OverSeek_Helper')) {
                     },
                     'permission_callback' => [$this, 'auth_check']
                 ]);
+
+                register_rest_route($ns, '/test-visit', [
+                    'methods' => 'POST',
+                    'callback' => [$this, 'create_test_visit'],
+                    'permission_callback' => [$this, 'auth_check']
+                ]);
             }
         }
 
@@ -336,6 +342,28 @@ if (!class_exists('OverSeek_Helper')) {
         public function send_email_data($input) {
             if (!$input || !isset($input['to'])) return ['success' => false, 'error' => 'missing_recipient'];
             
+            // Rate Limit Check
+            $smtp = get_option('overseek_smtp_settings', []);
+            $max_rate = isset($smtp['max_rate']) ? (int)$smtp['max_rate'] : 0;
+
+            if ($max_rate > 0) {
+                // Fixed Bucket Strategy
+                $bucket = get_transient('overseek_email_throttle');
+                
+                // If bucket is missing or expired (though get_transient handles expiration, manual check is safer for logic)
+                if (!$bucket || !isset($bucket['reset_time']) || $bucket['reset_time'] < time()) {
+                    $bucket = ['count' => 0, 'reset_time' => time() + 60];
+                }
+
+                if ($bucket['count'] >= $max_rate) {
+                    return ['success' => false, 'error' => 'rate_limit_exceeded', 'message' => "Email rate limit of {$max_rate}/min reached."];
+                }
+
+                $bucket['count']++;
+                // Save back. 60 seconds TTL is close enough
+                set_transient('overseek_email_throttle', $bucket, 60);
+            }
+
             $to = sanitize_email($input['to']);
             $subject = sanitize_text_field($input['subject'] ?? 'No Subject');
             $message = wp_kses_post($input['message'] ?? '');
@@ -377,6 +405,44 @@ if (!class_exists('OverSeek_Helper')) {
             require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
             dbDelta($sql);
             update_option('overseek_db_version', self::DB_VERSION);
+        }
+
+        public function create_test_visit() {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'overseek_visits';
+            
+            // Random IP to simulate different users
+            $ip = '192.168.1.' . rand(1, 255);
+            $visit_id = 'test_' . uniqid();
+            $time = current_time('mysql');
+            
+            $referrers = ['https://google.com', 'https://facebook.com', 'https://twitter.com', 'Direct'];
+            $ref = $referrers[array_rand($referrers)];
+
+            $devices = [
+                ['ua' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'is_mobile' => false, 'os' => 'Windows', 'browser' => 'Chrome'],
+                ['ua' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)', 'is_mobile' => true, 'os' => 'iOS', 'browser' => 'Safari'],
+            ];
+            $device = $devices[array_rand($devices)];
+
+            $actions = [
+                ['type' => 'page_view', 'url' => home_url('/'), 'title' => 'Home Page', 'time' => time() - 120],
+                ['type' => 'page_view', 'url' => home_url('/shop/'), 'title' => 'Shop', 'time' => time() - 60],
+                ['type' => 'add_to_cart', 'url' => home_url('/product/test/'), 'title' => 'Test Product', 'name' => 'Test Product', 'qty' => 1, 'time' => time()]
+            ];
+
+            $wpdb->insert($table_name, [
+                'visit_id' => $visit_id,
+                'start_time' => $time,
+                'last_activity' => $time,
+                'ip' => $ip,
+                'customer_id' => 0,
+                'referrer' => $ref,
+                'device_info' => json_encode($device),
+                'actions' => json_encode($actions)
+            ]);
+
+            return ['success' => true, 'visit_id' => $visit_id];
         }
 
         public function track_visit() {

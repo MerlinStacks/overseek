@@ -41,7 +41,7 @@ const SMTPSettings = ({ settings }) => {
         try {
             await saveSMTP(settings, formData);
             toast.success("SMTP Settings Saved");
-        } catch (e) {
+        } catch {
             toast.error("Failed to save SMTP settings");
         } finally {
             setSaving(false);
@@ -122,6 +122,26 @@ const SMTPSettings = ({ settings }) => {
                             <div className="form-group">
                                 <label className="form-label">From Name</label>
                                 <input name="from_name" value={formData.from_name} onChange={handleChange} className="form-input" />
+                            </div>
+
+                            <hr style={{ margin: '20px 0', borderColor: 'var(--border-light)' }} />
+
+                            <div className="form-group">
+                                <label className="form-label">Rate Limiting (Max Emails / Minute)</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input
+                                        type="number"
+                                        name="max_rate"
+                                        value={formData.max_rate || 60}
+                                        onChange={handleChange}
+                                        className="form-input"
+                                        style={{ width: '120px' }}
+                                        min="1"
+                                    />
+                                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                        Set to 0 to disable limits.
+                                    </span>
+                                </div>
                             </div>
                         </>
                     )}

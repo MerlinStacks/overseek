@@ -51,15 +51,15 @@ const Analytics = () => {
 
     const AutomationAnalytics = () => (
         <div className="animate-fade-in">
-            <div className="dashboard-grid" style={{ marginBottom: '2rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+            <div className="analytics-stats-grid">
                 <StatCard title="Active Flows" value={automations.filter(a => a.active).length} change={0} icon={Zap} color="139, 92, 246" />
                 <StatCard title="Emails Sent" value="0" change={0} icon={Mail} color="59, 130, 246" />
                 <StatCard title="Avg Open Rate" value="0%" change={0} icon={BarChart2} color="16, 185, 129" />
                 <StatCard title="Attributed Revenue" value="$0" change={0} icon={TrendingUp} color="245, 158, 11" />
             </div>
 
-            <div className="glass-panel">
-                <h3 className="section-title mb-4">Flow Performance</h3>
+            <div className="analytics-card full-width">
+                <h3 className="card-title">Flow Performance</h3>
                 <table className="products-table">
                     <thead>
                         <tr>
@@ -112,53 +112,55 @@ const Analytics = () => {
 
     return (
         <div className="analytics-page">
-            <div className="products-header">
-                <div className="header-content">
-                    <div className="products-icon-wrapper" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b' }}>
-                        <BarChart2 size={32} />
-                    </div>
-                    <div className="products-title">
-                        <h2>Analytics</h2>
-                        <p>Deep dive into your store performance.</p>
-                    </div>
-                </div>
-                <div className="header-actions">
-                    <div className="glass-toggle-group" style={{ marginRight: '1rem', display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '8px' }}>
-                        <button
-                            className={`toggle-btn ${activeTab === 'overview' ? 'active' : ''}`}
-                            style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: activeTab === 'overview' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeTab === 'overview' ? 'white' : 'var(--text-muted)', cursor: 'pointer' }}
-                            onClick={() => setActiveTab('overview')}
-                        >
-                            Overview
-                        </button>
-                        <button
-                            className={`toggle-btn ${activeTab === 'automations' ? 'active' : ''}`}
-                            style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: activeTab === 'automations' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeTab === 'automations' ? 'white' : 'var(--text-muted)', cursor: 'pointer' }}
-                            onClick={() => setActiveTab('automations')}
-                        >
-                            Automations
-                        </button>
+            <div className="analytics-header-section">
+                <div className="analytics-header-content">
+                    <div className="analytics-title-group">
+                        <div className="products-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', width: '56px', height: '56px' }}>
+                            <BarChart2 size={32} />
+                        </div>
+                        <div>
+                            <h2>Performance Overview</h2>
+                            <p>Real-time insights into your store's revenue, traffic, and growth metrics.</p>
+                        </div>
                     </div>
 
-                    <DateRangePicker
-                        range={dateRange}
-                        onChange={setDateRange}
-                        compareMode={compareMode}
-                        onCompareChange={setCompareMode}
-                    />
+                    <div className="header-actions">
+                        <div className="analytics-controls">
+                            <button
+                                className={`toggle-btn ${activeTab === 'overview' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('overview')}
+                            >
+                                Overview
+                            </button>
+                            <button
+                                className={`toggle-btn ${activeTab === 'automations' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('automations')}
+                            >
+                                Automations
+                            </button>
+                        </div>
+
+                        <DateRangePicker
+                            range={dateRange}
+                            onChange={setDateRange}
+                            compareMode={compareMode}
+                            onCompareChange={setCompareMode}
+                        />
+                    </div>
                 </div>
             </div>
 
             {activeTab === 'automations' ? <AutomationAnalytics /> : (
                 <>
                     {/* Summary Cards */}
-                    <div className="dashboard-grid" style={{ marginBottom: '2rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                    <div className="analytics-stats-grid">
                         <StatCard
-                            title="Total Sales"
+                            title="Total Revenue"
                             value={formatCurrency(totalSales)}
                             change={comparison.salesChange}
                             icon={BarChart2}
                             color="99, 102, 241"
+                            trendLabel="vs last period"
                         />
                         <StatCard
                             title="Net Profit"
@@ -166,6 +168,7 @@ const Analytics = () => {
                             change={comparison.profitChange}
                             icon={TrendingUp}
                             color="16, 185, 129"
+                            trendLabel="vs last period"
                         />
                         <StatCard
                             title="Avg Order Value"
@@ -173,6 +176,15 @@ const Analytics = () => {
                             change={comparison.aovChange}
                             icon={Activity}
                             color="236, 72, 153"
+                            trendLabel="vs last period"
+                        />
+                        <StatCard
+                            title="Conversion Rate"
+                            value="3.2%"
+                            change={1.5}
+                            icon={Zap}
+                            color="245, 158, 11"
+                            trendLabel="vs last period"
                         />
                     </div>
 
@@ -181,28 +193,76 @@ const Analytics = () => {
                         <div className="analytics-card full-width">
                             <h3 className="card-title">
                                 <TrendingUp size={20} className="text-primary" />
-                                {dateRange.label} Performance
+                                Revenue Trends
                             </h3>
-                            <div className="chart-wrapper" style={{ height: '350px', width: '100%' }}>
+                            <div className="chart-wrapper">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                                    <LineChart data={stats.revenueData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                                        <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
-                                        <YAxis stroke="#64748b" tickFormatter={(v) => `$${v}`} />
+                                    <LineChart data={stats.revenueData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                            </linearGradient>
+                                            <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis
+                                            dataKey="name"
+                                            stroke="#64748b"
+                                            fontSize={12}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            dy={10}
+                                        />
+                                        <YAxis
+                                            stroke="#64748b"
+                                            tickFormatter={(v) => `$${v}`}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            dx={-10}
+                                        />
                                         <Tooltip
-                                            contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }}
+                                            contentStyle={{
+                                                backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                                                borderColor: 'rgba(255,255,255,0.1)',
+                                                backdropFilter: 'blur(8px)',
+                                                borderRadius: '12px',
+                                                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)'
+                                            }}
+                                            itemStyle={{ color: '#e2e8f0' }}
                                             formatter={(value, name) => {
                                                 if (name === 'sales') return [formatCurrency(value), 'Revenue'];
-                                                if (name === 'prevSales') return [formatCurrency(value), 'Prev Revenue'];
+                                                if (name === 'prevSales') return [formatCurrency(value), 'Previous'];
                                                 if (name === 'profit') return [formatCurrency(value), 'Profit'];
                                                 return [value, name];
                                             }}
                                         />
-                                        <Line type="monotone" dataKey="sales" name="sales" stroke="#6366f1" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                                        <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="sales"
+                                            name="sales"
+                                            stroke="#6366f1"
+                                            strokeWidth={3}
+                                            dot={false}
+                                            activeDot={{ r: 6, stroke: '#6366f1', strokeWidth: 2, fill: '#1e1e2d' }}
+                                            fill="url(#colorSales)"
+                                        />
                                         {showCompare && (
-                                            <Line type="monotone" dataKey="prevSales" name="prevSales" stroke="#6366f1" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 4 }} />
+                                            <Line type="monotone" dataKey="prevSales" name="prevSales" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 4 }} />
                                         )}
-                                        <Line type="monotone" dataKey="profit" name="profit" stroke="#10b981" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="profit"
+                                            name="profit"
+                                            stroke="#10b981"
+                                            strokeWidth={3}
+                                            dot={false}
+                                            activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2, fill: '#1e1e2d' }}
+                                        />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -212,29 +272,38 @@ const Analytics = () => {
                         <div className="analytics-card">
                             <h3 className="card-title">
                                 <PieIcon size={20} className="text-secondary" />
-                                Order Status Distribution
+                                Order Status
                             </h3>
-                            <div className="chart-wrapper" style={{ height: '300px', width: '100%' }}>
+                            <div className="chart-wrapper">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                     <PieChart>
                                         <Pie
                                             data={stats.statusData}
                                             cx="50%"
                                             cy="50%"
-                                            innerRadius={60}
-                                            outerRadius={80}
+                                            innerRadius={80}
+                                            outerRadius={100}
                                             paddingAngle={5}
                                             dataKey="value"
+                                            stroke="none"
                                         >
                                             {stats.statusData.map((entry, index) => (
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                             ))}
                                         </Pie>
                                         <Tooltip
-                                            contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }}
+                                            contentStyle={{
+                                                backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                                                borderColor: 'rgba(255,255,255,0.1)',
+                                                borderRadius: '8px'
+                                            }}
                                             itemStyle={{ color: '#fff' }}
                                         />
-                                        <Legend />
+                                        <Legend
+                                            verticalAlign="bottom"
+                                            height={36}
+                                            iconType="circle"
+                                        />
                                     </PieChart>
                                 </ResponsiveContainer>
                             </div>
@@ -244,19 +313,31 @@ const Analytics = () => {
                         <div className="analytics-card">
                             <h3 className="card-title">
                                 <Activity size={20} className="text-success" />
-                                Traffic vs Sales
+                                Sales Volume
                             </h3>
-                            <div className="chart-wrapper" style={{ height: '300px', width: '100%' }}>
+                            <div className="chart-wrapper">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                     <BarChart data={stats.revenueData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" hide />
-                                        <YAxis stroke="#64748b" />
+                                        <YAxis stroke="#64748b" axisLine={false} tickLine={false} />
                                         <Tooltip
-                                            contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }}
-                                            cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                                            cursor={{ fill: 'rgba(255,255,255,0.05)', radius: 4 }}
+                                            contentStyle={{
+                                                backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                                                borderColor: 'rgba(255,255,255,0.1)',
+                                                borderRadius: '8px'
+                                            }}
                                         />
-                                        <Bar dataKey="sales" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.8} />
+                                        <Bar
+                                            dataKey="sales"
+                                            fill="#10b981"
+                                            radius={[6, 6, 0, 0]}
+                                        >
+                                            {stats.revenueData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#10b981' : '#34d399'} opacity={0.8} />
+                                            ))}
+                                        </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -269,36 +350,26 @@ const Analytics = () => {
 };
 
 
-const StatCard = ({ title, value, change, icon: Icon, color }) => {
+const StatCard = ({ title, value, change, icon: Icon, color, trendLabel }) => {
     // Determine arrow and color based on change
     const noPrevData = change === null;
     const isPositive = !noPrevData && change >= 0;
-    const arrowColor = noPrevData ? 'text-gray-400' : (isPositive ? 'text-green-400' : 'text-red-400');
 
     return (
-        <div className="glass-panel stat-card" style={{ position: 'relative', overflow: 'hidden' }}>
-            <div className="glass-shine"></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
-                <div>
-                    <h3 style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>{title}</h3>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{value}</div>
-                </div>
-                <div style={{
-                    padding: '10px',
-                    borderRadius: '12px',
-                    background: `rgba(${color}, 0.1)`,
-                    color: `rgb(${color})`
-                }}>
-                    <Icon size={24} />
-                </div>
+        <div className="premium-stat-card">
+            <div className="stat-icon-wrapper" style={{ background: `rgba(${color}, 0.15)`, color: `rgb(${color})` }}>
+                <Icon size={24} />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
-                <span className={arrowColor} style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
+            <h3 style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 500 }}>{title}</h3>
+            <div className="stat-value large">{value}</div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '0.5rem' }}>
+                <span className={`stat-change-badge ${isPositive ? 'positive' : 'negative'}`}>
                     {noPrevData ? <Minus size={14} /> : (isPositive ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                    {noPrevData ? 'No prev data' : `${Math.abs(change)}%`}
+                    {noPrevData ? 'N/A' : `${Math.abs(change)}%`}
                 </span>
-                <span style={{ color: 'var(--text-muted)' }}>{noPrevData ? '' : 'vs previous period'}</span>
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{trendLabel || 'vs previous'}</span>
             </div>
         </div>
     );
@@ -310,7 +381,7 @@ const formatCurrency = (val) => {
         currency: 'USD',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
-    }).format(val);
+    }).format(val || 0);
 };
 
 export default Analytics;

@@ -175,6 +175,76 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
             const saveBatch = async (table, items) => {
                 const client = await pool.connect();
                 try {
+                    // --- Auto-Tagging Logic for Orders ---
+                    if (table === 'orders' && options.autoTaggingRules && options.autoTaggingRules.length > 0) {
+                        try {
+                            // 1. Collect all product IDs from the batch
+                            const productIds = new Set();
+                            items.forEach(order => {
+                                if (order.line_items && Array.isArray(order.line_items)) {
+                                    order.line_items.forEach(item => {
+                                        if (item.product_id) productIds.add(item.product_id);
+                                    });
+                                }
+                            });
+
+                            if (productIds.size > 0) {
+                                // 2. Fetch tags for these products from DB
+                                const pIdsArray = Array.from(productIds);
+                                const tagRes = await client.query(`
+                                    SELECT id, data->'tags' as tags 
+                                    FROM products 
+                                    WHERE account_id = $1 AND id = ANY($2)
+                                `, [accountId, pIdsArray]);
+
+                                const productTagsMap = {}; // ID -> Set of Tag Names
+                                tagRes.rows.forEach(row => {
+                                    if (row.tags && Array.isArray(row.tags)) {
+                                        const tags = row.tags.map(t => (t.name || t).toLowerCase()); // Standardize to lower case for comparison? User input might be mixed.
+                                        productTagsMap[row.id] = new Set(tags);
+                                    }
+                                });
+
+                                // 3. Apply tags to orders
+                                const rules = new Set(options.autoTaggingRules.map(r => r.toLowerCase())); // Standardize rules
+
+                                items.forEach(order => {
+                                    const orderTags = new Set(order.local_tags || []);
+                                    let matched = false;
+
+                                    if (order.line_items) {
+                                        order.line_items.forEach(item => {
+                                            const pTags = productTagsMap[item.product_id];
+                                            if (pTags) {
+                                                pTags.forEach(tag => {
+                                                    // Check if this product tag is in our rules
+                                                    // We check case-insensitive match against rules
+                                                    if (rules.has(tag)) {
+                                                        // Add the ORIGINAL casing from the rule? Or form the product?
+                                                        // Let's add the rule string to keep it consistent with what user selected
+                                                        // Find the original casing from options if possible, or just add the lowercase. 
+                                                        // Simpler: use the rule string.
+                                                        const originalRule = options.autoTaggingRules.find(r => r.toLowerCase() === tag);
+                                                        if (originalRule) {
+                                                            orderTags.add(originalRule);
+                                                            matched = true;
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+
+                                    if (matched) {
+                                        order.local_tags = Array.from(orderTags);
+                                        // console.log(`[AutoTag] Tagged Order #${order.id} with:`, order.local_tags);
+                                    }
+                                });
+                            }
+                        } catch (tagErr) {
+                            console.error("[AutoTag] Error applying tags:", tagErr);
+                        }
+                    }
                     await client.query('BEGIN');
                     const query = `
                         INSERT INTO "${table}" (account_id, id, data, synced_at)

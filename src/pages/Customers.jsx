@@ -25,6 +25,28 @@ const customerFields = [
 
 import { useAccount } from '../context/AccountContext';
 
+const SortableHeader = ({ label, sortKey, align = 'left', sortConfig, requestSort }) => {
+    const isActive = sortConfig?.key === sortKey;
+    return (
+        <th
+            onClick={() => sortKey && requestSort(sortKey)}
+            style={{ cursor: sortKey ? 'pointer' : 'default', userSelect: 'none', textAlign: align }}
+        >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+                {label}
+                {sortKey && (
+                    isActive ? (
+                        sortConfig.direction === 'ascending' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                    ) : (
+                        <ArrowUpDown size={14} style={{ opacity: 0.3 }} />
+                    )
+                )}
+            </div>
+        </th>
+    );
+};
+
+
 const Customers = () => {
     // Optimization: In a real app with 1M+ rows, we would query Dexie specifically.
     // V1: Load all into memory and filter (fast for < 10k rows).
@@ -33,12 +55,12 @@ const Customers = () => {
     const customers = useLiveQuery(async () => {
         if (!activeAccount) return [];
         return await db.customers.where('account_id').equals(activeAccount.id).toArray();
-    }, [activeAccount?.id]) || [];
+    }, [activeAccount?.id]);
 
     const orders = useLiveQuery(async () => {
         if (!activeAccount) return [];
         return await db.orders.where('account_id').equals(activeAccount.id).toArray();
-    }, [activeAccount?.id]) || [];
+    }, [activeAccount?.id]);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilters, setActiveFilters] = useState([]);
     const [showFilters, setShowFilters] = useState(false);
@@ -54,7 +76,7 @@ const Customers = () => {
 
     // Enrich customers with aggregate data (Total Spent, Order Count)
     const enrichedCustomers = useMemo(() => {
-        if (!customers.length) return [];
+        if (!customers || !orders) return [];
 
         // Map customer ID/email to stats
         const stats = {};
@@ -157,47 +179,27 @@ const Customers = () => {
         }
     };
 
-    // Helper for Header
-    const SortableHeader = ({ label, sortKey, align = 'left' }) => {
-        const isActive = sortConfig?.key === sortKey;
-        return (
-            <th
-                onClick={() => sortKey && requestSort(sortKey)}
-                style={{ cursor: sortKey ? 'pointer' : 'default', userSelect: 'none', textAlign: align }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
-                    {label}
-                    {sortKey && (
-                        isActive ? (
-                            sortConfig.direction === 'ascending' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
-                        ) : (
-                            <ArrowUpDown size={14} style={{ opacity: 0.3 }} />
-                        )
-                    )}
-                </div>
-            </th>
-        );
-    };
+
 
     return (
-        <div className="products-page">
+        <div className="products-page page-container">
             <div className="products-header">
                 <div className="header-content">
                     <div className="customers-icon-wrapper">
-                        <Users size={32} />
+                        <Users size={28} />
                     </div>
                     <div className="products-title">
                         <h2>Customers</h2>
-                        <p>Manage your customer base.</p>
+                        <p>Manage your customer base</p>
                     </div>
                 </div>
 
                 <div className="customers-controls">
-                    <div className="input-wrapper search-wrapper">
+                    <div className="search-wrapper">
                         <input
                             type="text"
                             placeholder="Search customers..."
-                            className="form-input"
+                            className="input-field"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -205,31 +207,30 @@ const Customers = () => {
                     </div>
 
                     <div className="tools-wrapper">
-                        <div className="view-toggle" style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px', display: 'flex', gap: '4px' }}>
+                        <div className="view-toggle" style={{ background: 'var(--bg-glass-lighter)', borderRadius: '10px', padding: '4px', display: 'flex', gap: '4px', border: '1px solid var(--border-glass)' }}>
                             <button
                                 className={`btn-icon ${viewMode === 'list' ? 'active' : ''}`}
-                                style={{ background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
                                 onClick={() => setViewMode('list')}
                                 title="List View"
+                                style={{ borderRadius: '8px', width: '36px', height: '36px' }}
                             >
                                 <List size={18} />
                             </button>
                             <button
                                 className={`btn-icon ${viewMode === 'map' ? 'active' : ''}`}
-                                style={{ background: viewMode === 'map' ? 'rgba(255,255,255,0.1)' : 'transparent', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
                                 onClick={() => setViewMode('map')}
                                 title="Map View"
+                                style={{ borderRadius: '8px', width: '36px', height: '36px' }}
                             >
                                 <MapIcon size={18} />
                             </button>
                         </div>
 
                         <button
-                            className={`btn ${showFilters ? 'btn-primary' : ''} btn-filter`}
-                            style={{ background: showFilters ? '' : 'rgba(255,255,255,0.05)' }}
+                            className={`btn-filter ${showFilters ? 'btn-primary' : ''}`}
                             onClick={() => setShowFilters(!showFilters)}
                         >
-                            <Filter size={18} /> <span className="btn-text">Segment</span>
+                            <Filter size={18} /> <span>Segment</span>
                         </button>
                     </div>
                 </div>
@@ -246,15 +247,15 @@ const Customers = () => {
             {viewMode === 'map' ? (
                 <CustomerMap customers={filteredCustomers} />
             ) : (
-                <div className="glass-panel products-table-container">
+                <div className="products-table-container">
                     <table className="products-table">
                         <thead>
                             <tr>
-                                <SortableHeader label="Customer" sortKey="first_name" />
-                                <SortableHeader label="Total Spent" sortKey="total_spent" />
-                                <SortableHeader label="Orders" sortKey="orders_count" />
-                                <SortableHeader label="Role" sortKey="role" />
-                                <SortableHeader label="Tags" sortKey={null} />
+                                <SortableHeader label="Customer" sortKey="first_name" sortConfig={sortConfig} requestSort={requestSort} />
+                                <SortableHeader label="Total Spent" sortKey="total_spent" sortConfig={sortConfig} requestSort={requestSort} />
+                                <SortableHeader label="Orders" sortKey="orders_count" sortConfig={sortConfig} requestSort={requestSort} />
+                                <SortableHeader label="Role" sortKey="role" sortConfig={sortConfig} requestSort={requestSort} />
+                                <SortableHeader label="Tags" sortKey={null} sortConfig={sortConfig} requestSort={requestSort} />
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -274,28 +275,28 @@ const Customers = () => {
                                             </div>
                                         </td>
                                         <td data-label="Total Spent">
-                                            <span className="mobile-label">Total Spent:</span>
-                                            {formatCurrency(customer.total_spent)}
+                                            <span className="mobile-label">Total Spent</span>
+                                            <span style={{ fontWeight: 600 }}>{formatCurrency(customer.total_spent)}</span>
                                         </td>
                                         <td data-label="Orders">
-                                            <span className="mobile-label">Orders:</span>
+                                            <span className="mobile-label">Orders</span>
                                             {customer.orders_count}
                                         </td>
                                         <td data-label="Role">
-                                            <span className="mobile-label">Role:</span>
+                                            <span className="mobile-label">Role</span>
                                             <span className="role-badge">{customer.role}</span>
                                         </td>
                                         <td data-label="Tags">
-                                            <span className="mobile-label">Tags:</span>
-                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                            <span className="mobile-label">Tags</span>
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                                 {(customer.local_tags || []).map((tag, idx) => (
-                                                    <span key={idx} className="status-badge" style={{ fontSize: '0.75rem', padding: '2px 6px', background: 'rgba(255,255,255,0.1)' }}>
+                                                    <span key={idx} className="badge badge-info status-badge" style={{ fontSize: '0.75rem' }}>
                                                         {tag}
                                                     </span>
                                                 ))}
                                                 <button
-                                                    className="btn-icon-sm"
-                                                    style={{ padding: '2px', opacity: 0.5, cursor: 'pointer', border: 'none', background: 'transparent', color: 'inherit' }}
+                                                    className="btn-icon"
+                                                    style={{ width: '24px', height: '24px', padding: 0 }}
                                                     onClick={() => handleAddTag(customer.id, customer.local_tags)}
                                                     title="Add Tag"
                                                 >
@@ -305,35 +306,38 @@ const Customers = () => {
                                         </td>
                                         <td data-label="Actions">
                                             <button
-                                                className="btn"
-                                                style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.05)' }}
+                                                className="table-action-btn"
                                                 onClick={() => navigate(`/customers/${customer.id}`)}
                                             >
-                                                View
+                                                View Profile
                                             </button>
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center', padding: '3rem' }}>
+                                    <td colSpan="6" style={{ textAlign: 'center', padding: '4rem' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', color: 'var(--text-muted)' }}>
-                                            <Users size={48} style={{ opacity: 0.5 }} />
-                                            <p>No customers found matching your segment.</p>
+                                            <div style={{ background: 'var(--bg-glass-lighter)', padding: '2rem', borderRadius: '50%' }}>
+                                                <Users size={48} style={{ opacity: 0.5 }} />
+                                            </div>
+                                            <p style={{ fontSize: '1.1rem' }}>No customers found matching your segment.</p>
                                         </div>
                                     </td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        itemsPerPage={itemsPerPage}
-                        onPageChange={setCurrentPage}
-                        onItemsPerPageChange={setItemsPerPage}
-                        totalItems={totalItems}
-                    />
+                    <div style={{ padding: '1rem', borderTop: '1px solid var(--border-glass)' }}>
+                        <Pagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            itemsPerPage={itemsPerPage}
+                            onPageChange={setCurrentPage}
+                            onItemsPerPageChange={setItemsPerPage}
+                            totalItems={totalItems}
+                        />
+                    </div>
                 </div>
             )}
         </div>

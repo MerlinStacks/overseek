@@ -23,7 +23,16 @@ const Behaviour = () => {
         setLoading(true);
         try {
             const data = await fetchVisitorLog(settings);
-            setVisits(Array.isArray(data) ? data : []);
+            if (Array.isArray(data)) {
+                // Sanitize actions to ensure they are arrays (fixes TypeError: (h.actions || []).filter...)
+                const safeData = data.map(v => ({
+                    ...v,
+                    actions: Array.isArray(v.actions) ? v.actions : []
+                }));
+                setVisits(safeData);
+            } else {
+                setVisits([]);
+            }
         } catch (error) {
             console.error(error);
             toast.error("Failed to load behaviour data");

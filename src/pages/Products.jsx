@@ -2,20 +2,92 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Dexie from 'dexie';
 import { db } from '../db/db';
-import { Package, Search, Trash2, CheckSquare, Square, Tag, Plus, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Package, Search, Trash2, CheckSquare, Square, Tag, Plus, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast, Toaster } from 'sonner';
 import ColumnSelector from '../components/ColumnSelector';
 import Pagination from '../components/Pagination';
 import { useSettings } from '../context/SettingsContext';
 import { batchProducts } from '../services/api';
-import { useSortableData } from '../hooks/useSortableData';
 import './Products.css';
 
 import CreateProduct from './CreateProduct';
 
 import { useAccount } from '../context/AccountContext';
 import { useSync } from '../context/SyncContext';
+
+const ProductTags = ({ product, onAddTag }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Combine WP tags and Local tags
+    const wcTags = (product.tags || []).map(t => ({ ...t, type: 'wc', key: `wc-${t.id}` }));
+    const localTags = (product.local_tags || []).map((t, i) => ({ name: t, id: `local-${i}`, type: 'local', key: `local-${i}` }));
+    const allTags = [...wcTags, ...localTags];
+
+    // Limit visible tags when collapsed
+    const INITIAL_LIMIT = 2;
+    const shouldCollapse = allTags.length > INITIAL_LIMIT;
+    const visibleTags = isExpanded ? allTags : (shouldCollapse ? allTags.slice(0, INITIAL_LIMIT) : allTags);
+
+    return (
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center', maxWidth: '400px' }}>
+            {visibleTags.map((tag) => (
+                <span
+                    key={tag.key}
+                    className="status-badge"
+                    style={{
+                        fontSize: '0.75rem',
+                        padding: '2px 6px',
+                        background: tag.type === 'wc' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255,255,255,0.1)',
+                        color: tag.type === 'wc' ? '#60a5fa' : 'inherit',
+                        whiteSpace: 'nowrap'
+                    }}
+                >
+                    {tag.name}
+                </span>
+            ))}
+
+            {shouldCollapse && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsExpanded(!isExpanded);
+                    }}
+                    className="btn-icon-sm"
+                    style={{
+                        padding: '2px 6px',
+                        fontSize: '0.70rem',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: '20px',
+                        minWidth: '20px',
+                        justifyContent: 'center'
+                    }}
+                    title={isExpanded ? "Show Less" : "Show More"}
+                >
+                    {isExpanded ? <ChevronUp size={12} /> : <span>+{allTags.length - INITIAL_LIMIT}</span>}
+                </button>
+            )}
+
+            <button
+                className="btn-icon-sm"
+                style={{ padding: '2px', opacity: 0.5, cursor: 'pointer', border: 'none', background: 'transparent', color: 'inherit' }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onAddTag(product.id, product.local_tags);
+                }}
+                title="Add Tag"
+            >
+                <Plus size={14} />
+            </button>
+        </div>
+    );
+};
 
 const Products = () => {
     const { settings } = useSettings();
@@ -290,26 +362,7 @@ const Products = () => {
             label: 'Tags',
             sortKey: null,
             render: (product) => (
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center', maxWidth: '150px' }}>
-                    {(product.tags || []).map((tag) => (
-                        <span key={`wc-${tag.id}`} className="status-badge" style={{ fontSize: '0.75rem', padding: '2px 6px', background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa' }}>
-                            {tag.name}
-                        </span>
-                    ))}
-                    {(product.local_tags || []).map((tag, idx) => (
-                        <span key={`local-${idx}`} className="status-badge" style={{ fontSize: '0.75rem', padding: '2px 6px', background: 'rgba(255,255,255,0.1)' }}>
-                            {tag}
-                        </span>
-                    ))}
-                    <button
-                        className="btn-icon-sm"
-                        style={{ padding: '2px', opacity: 0.5, cursor: 'pointer', border: 'none', background: 'transparent', color: 'inherit' }}
-                        onClick={() => handleAddTag(product.id, product.local_tags)}
-                        title="Add Tag"
-                    >
-                        <Plus size={14} />
-                    </button>
-                </div>
+                <ProductTags product={product} onAddTag={handleAddTag} />
             )
         },
         {

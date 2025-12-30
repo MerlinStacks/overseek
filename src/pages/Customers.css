@@ -1,216 +1,161 @@
-/* Customers.css */
+/* Customers.css - Premium Glassmorphism */
 
-/* --- Controls Layout --- */
+.products-page {
+    position: relative;
+    animation: fadeIn 0.4s ease-out;
+}
+
+/* --- Hero Header --- */
+.products-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    border-radius: 20px;
+    padding: 1.5rem 2rem;
+    box-shadow: var(--shadow-md);
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.customers-icon-wrapper {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(236, 72, 153, 0.2));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-main);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.products-title h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0;
+    margin-bottom: 0.25rem;
+    /* Use variable for gradient to support light/dark */
+    background: var(--logo-text-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.02em;
+}
+
+.products-title p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+/* --- Controls --- */
 .customers-controls {
     display: flex;
     gap: 12px;
     align-items: center;
-    width: 100%;
 }
 
 .search-wrapper {
     position: relative;
-    width: 300px;
-    /* Flexible on desktop */
-}
-
-.input-icon {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-muted);
-    pointer-events: none;
+    width: 280px;
 }
 
 .tools-wrapper {
     display: flex;
     gap: 8px;
     align-items: center;
-    margin-left: auto;
-    /* Push to right on desktop */
 }
 
-.mobile-label {
-    display: none;
-}
-
-/* --- Mobile Responsive --- */
-@media (max-width: 768px) {
-
-    /* Header Stack */
-    .customers-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 16px;
-    }
-
-    .header-content {
-        /* Keep header content visible but stacked if needed, or hide big icon */
-        /* User seemingly wants functionality, let's keep it clean */
-        display: flex;
-        align-items: center;
-        margin-bottom: 8px;
-    }
-
-    .customers-icon-wrapper {
-        display: none;
-    }
-
-    /* Hide big icon on mobile to save space */
-
-    .customers-controls {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 12px;
-        margin-top: 0;
-    }
-
-    /* 1. Search Bar (Top) */
-    .search-wrapper {
-        width: 100% !important;
-        order: 1;
-    }
-
-    /* 2. Tools Row (Scrollable) */
-    .tools-wrapper {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        justify-content: flex-start !important;
-        gap: 8px !important;
-        width: 100% !important;
-        order: 2;
-        margin-left: 0;
-        overflow-x: auto !important;
-        padding-bottom: 4px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-
-    .tools-wrapper::-webkit-scrollbar {
-        display: none;
-    }
-
-    /* Force children to be inline */
-    .tools-wrapper>*,
-    .tools-wrapper button,
-    .view-toggle {
-        flex: 0 0 auto !important;
-        width: auto !important;
-        min-width: fit-content !important;
-        max-width: none !important;
-        display: inline-flex !important;
-        white-space: nowrap !important;
-        margin: 0 !important;
-    }
-
-    /* --- Table to Card --- */
-    .products-table thead {
-        display: none !important;
-    }
-
-    .products-table,
-    tbody,
-    tr,
-    td {
-        display: block;
-        width: 100%;
-    }
-
-    .products-table tr {
-        position: relative;
-        margin-bottom: 1rem;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 16px;
-        padding-top: 60px;
-        /* Space for absolute headers */
-    }
-
-    .products-table td {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 6px 0;
-        border: none;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    }
-
-    .products-table td:last-child {
-        border-bottom: none;
-        justify-content: flex-end;
-        padding-top: 12px;
-    }
-
-    .mobile-label {
-        display: inline-block;
-        font-weight: 500;
-        color: var(--text-muted);
-        font-size: 0.8rem;
-        text-transform: uppercase;
-    }
-
-    /* Special Positioning */
-    /* 1. Name/Avatar (Top Left) */
-    td[data-label="Customer"] {
-        position: absolute;
-        top: 12px;
-        left: 16px;
-        width: auto;
-        border: none;
-        padding: 0;
-    }
-
-    td[data-label="Customer"] .mobile-label {
-        display: none;
-    }
-
-    td[data-label="Customer"] .avatar-cell {
-        gap: 10px;
-    }
-
-    td[data-label="Customer"] .customer-info .customer-email {
-        display: block;
-        font-size: 0.75rem;
-    }
-
-    /* 2. Actions (Top Right) */
-    td[data-label="Actions"] {
-        position: absolute;
-        top: 12px;
-        right: 16px;
-        width: auto;
-        border: none;
-        padding: 0;
-    }
-
-    td[data-label="Actions"] .mobile-label {
-        display: none;
-    }
-
-    /* Other Cells */
-    td[data-label="Tags"] {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-    }
-
-    td[data-label="Tags"]>div {
-        justify-content: flex-start !important;
-    }
-}
-
-/* Original Styles Preserved */
-.customers-icon-wrapper {
-    padding: 12px;
-    background: rgba(16, 185, 129, 0.2);
-    border-radius: 12px;
-    color: var(--success);
+.btn-filter {
+    height: 42px;
     display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 1.2rem;
+    border-radius: 10px;
+    font-weight: 500;
+    border: 1px solid var(--border-glass);
+    transition: all 0.2s ease;
+    color: var(--text-muted);
 }
 
+.btn-filter:hover,
+.btn-filter.btn-primary {
+    color: white;
+    background: var(--primary);
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.view-toggle button.active {
+    background: var(--bg-panel-hover) !important;
+    color: var(--primary);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Table Styles --- */
+.products-table-container {
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.3s ease;
+}
+
+.products-table-container:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-glass-hover);
+}
+
+.products-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.products-table th {
+    padding: 1.25rem 1.5rem;
+    background: rgba(var(--bg-main), 0.5);
+    /* Semi-transp base */
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-glass);
+    text-align: left;
+}
+
+.products-table td {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-glass);
+    color: var(--text-main);
+    vertical-align: middle;
+    transition: background 0.2s ease;
+}
+
+.products-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.products-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* --- Cells --- */
 .avatar-cell {
     display: flex;
     align-items: center;
@@ -218,26 +163,24 @@
 }
 
 .customer-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #6366f1, #ec4899);
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
     font-weight: 600;
-    font-size: 1.1rem;
-}
-
-.customer-info {
-    display: flex;
-    flex-direction: column;
+    font-size: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .customer-name {
     font-weight: 600;
     color: var(--text-main);
+    display: block;
+    margin-bottom: 2px;
 }
 
 .customer-email {
@@ -246,9 +189,95 @@
 }
 
 .role-badge {
-    padding: 4px 12px;
+    padding: 4px 10px;
     border-radius: 20px;
-    font-size: 0.8rem;
-    background: rgba(255, 255, 255, 0.1);
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--bg-panel-hover);
     color: var(--text-muted);
+    border: 1px solid var(--border-glass);
+}
+
+/* User Links */
+.table-action-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid var(--border-glass);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.table-action-btn:hover {
+    background: var(--bg-panel-hover);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+/* --- Responsive --- */
+@media (max-width: 1024px) {
+    .products-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .customers-controls {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .search-wrapper {
+        width: 100%;
+        flex: 1;
+    }
+
+    .tools-wrapper {
+        margin-left: initial;
+    }
+}
+
+@media (max-width: 768px) {
+
+    /* Mobile Card View */
+    .products-table thead {
+        display: none;
+    }
+
+    .products-table tr {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-glass-lighter);
+        border: 1px solid var(--border-glass);
+        border-radius: 16px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .products-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: none;
+        padding: 0.5rem 0;
+        width: 100%;
+    }
+
+    .mobile-label {
+        display: inline-block;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    /* Special Layout for Avatar Row */
+    td[data-label="Customer"] {
+        order: -1;
+        margin-bottom: 0.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-glass);
+    }
 }

@@ -35,7 +35,8 @@ const AdminAccountsPage = () => {
                 features: {
                     ...configAccount.features,
                     goldPrice: e.target.goldPrice.checked,
-                    bom: e.target.bom.checked
+                    bom: e.target.bom.checked,
+                    autoTagging: e.target.autoTagging.checked
                 }
             });
             alert('Features updated');
@@ -98,6 +99,18 @@ const AdminAccountsPage = () => {
                                     <div>
                                         <div style={{ fontWeight: 600 }}>Enable BOM (Bill of Materials)</div>
                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Advanced stock parts tracking.</div>
+                                    </div>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        name="autoTagging"
+                                        defaultChecked={configAccount.features?.autoTagging}
+                                        style={{ width: '18px', height: '18px' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600 }}>Enable Order Auto-Tagging</div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Automatically tag incoming orders based on product tags.</div>
                                     </div>
                                 </label>
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>

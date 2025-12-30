@@ -25,4 +25,6 @@ console.warn = (...args) => {
     originalWarn.apply(console, args);
 };
 
-module.exports = { LOG_BUFFER };
+const getLogs = () => LOG_BUFFER;
+
+module.exports = { LOG_BUFFER, getLogs, captureLog };

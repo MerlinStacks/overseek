@@ -10,7 +10,7 @@ const SyncContext = createContext();
 // eslint-disable-next-line react-refresh/only-export-components
 export const useSync = () => useContext(SyncContext);
 
- 
+
 export const SyncProvider = ({ children }) => {
     const { settings } = useSettings();
     const { activeAccount } = useAccount();
@@ -164,7 +164,8 @@ export const SyncProvider = ({ children }) => {
                     reviews: options.reviews ?? true,
                     customers: options.customers ?? true,
                     coupons: options.coupons ?? true,
-                    forceFull: options.forceFull // Pass to server
+                    forceFull: options.forceFull, // Pass to server
+                    autoTaggingRules: activeAccount.features?.autoTaggingRules || []
                 }
             });
             log('Sync initiated on server...', 'info');
