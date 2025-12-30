@@ -76,6 +76,8 @@ const syncEntity = async (api, entity, saveBatch, statusUpdater) => {
         const items = res.data;
         totalPages = parseInt(res.headers['x-wp-totalpages'] || 1, 10);
 
+        console.log(`[Sync] Fetched ${items.length} ${entity} (Page ${page}/${totalPages})`);
+
         if (items.length > 0) {
             // Pre-processing
             const processedItems = [...items];
