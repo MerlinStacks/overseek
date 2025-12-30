@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAccount } from '../context/AccountContext';
 import { db } from '../db/db';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { TrendingUp, Target, DollarSign, MousePointer2, Megaphone, Lightbulb, ExternalLink } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import './Marketing.css';
 
 const MarketingPage = () => {
     const { activeAccount } = useAccount();
@@ -51,7 +51,7 @@ const MarketingPage = () => {
 
     return (
         <div className="marketing-page animate-fade-in">
-            <div className="page-header mb-6">
+            <div className="marketing-header">
                 <div>
                     <h1>Marketing Intelligence</h1>
                     <p className="text-muted">Real-time ad performance and AI optimization suggestions.</p>
@@ -91,29 +91,29 @@ const MarketingPage = () => {
             </div>
 
             {/* AI Suggestions Grid */}
-            <h3 className="section-title mb-4 flex items-center gap-2">
-                <Lightbulb size={20} className="text-yellow-400" />
+            <h3 className="section-title mb-4 flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Lightbulb size={20} className="text-yellow-400" color="#facc15" />
                 AI Optimization Suggestions
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="glass-panel p-6 border-l-4 border-yellow-500">
-                    <div className="flex justify-between items-start mb-2">
-                        <h4 className="m-0">Low Inventory Warning</h4>
-                        <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-1 rounded">Action Needed</span>
+            <div className="marketing-grid">
+                <div className="suggestion-card warning">
+                    <div className="suggestion-header">
+                        <h4 style={{ margin: 0 }}>Low Inventory Warning</h4>
+                        <span className="badge-warning">Action Needed</span>
                     </div>
-                    <p className="text-sm text-muted mb-4">
+                    <p className="text-sm text-muted mb-4" style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
                         Campaign <strong>"Summer Sale 2025"</strong> is driving traffic to <strong>Striped T-Shirt</strong> which has only 5 units left.
                     </p>
                     <button className="btn btn-sm btn-secondary">Pause Ad Set</button>
                 </div>
 
-                <div className="glass-panel p-6 border-l-4 border-green-500">
-                    <div className="flex justify-between items-start mb-2">
-                        <h4 className="m-0">High Margin Opportunity</h4>
-                        <span className="text-xs bg-green-500/20 text-green-500 px-2 py-1 rounded">Opportunity</span>
+                <div className="suggestion-card opportunity">
+                    <div className="suggestion-header">
+                        <h4 style={{ margin: 0 }}>High Margin Opportunity</h4>
+                        <span className="badge-success">Opportunity</span>
                     </div>
-                    <p className="text-sm text-muted mb-4">
+                    <p className="text-sm text-muted mb-4" style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
                         Product <strong>"Premium Leather Bag"</strong> has a high margin (60%) and positive reviews (4.8/5). Increase ad budget?
                     </p>
                     <button className="btn btn-sm btn-primary">Increase Budget by 20%</button>
@@ -121,14 +121,14 @@ const MarketingPage = () => {
             </div>
 
             {/* Charts */}
-            <div className="glass-panel p-6 h-80">
+            <div className="chart-container">
                 <h3 className="mb-4">Ad Spend vs Revenue</h3>
                 <ResponsiveContainer width="100%" height="90%">
                     <LineChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                         <XAxis dataKey="name" stroke="#64748b" />
                         <YAxis stroke="#64748b" />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} />
                         <Line type="monotone" dataKey="spend" stroke="#ef4444" strokeWidth={2} name="Ad Spend" />
                         <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} name="Revenue" />
                     </LineChart>
