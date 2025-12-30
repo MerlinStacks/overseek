@@ -7,8 +7,10 @@ import { toast } from 'sonner';
 
 const SyncContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useSync = () => useContext(SyncContext);
 
+ 
 export const SyncProvider = ({ children }) => {
     const { settings } = useSettings();
     const { activeAccount } = useAccount();
@@ -114,7 +116,7 @@ export const SyncProvider = ({ children }) => {
                     setProgress(data.progress);
                     startPolling();
                 }
-            } catch (e) {
+            } catch {
                 // ignore
             }
         };

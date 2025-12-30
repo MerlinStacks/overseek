@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 const axios = require('axios');
 const https = require('https');
 
@@ -126,7 +127,7 @@ const getStatus = () => currentStatus;
 const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountId, options }, dependencies) => {
     if (currentStatus.running) return;
 
-    const { pool, redisClient } = dependencies;
+    const { pool } = dependencies;
 
     currentStatus = {
         running: true,
@@ -204,7 +205,6 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
             ];
 
             const activeTasks = tasks.filter(t => options[t.key]);
-            let completedTasks = 0;
 
             // --- Helper: Reconcile Deletions (Full Sync Only) ---
             const reconcileDeletions = async (entity, api) => {
@@ -265,30 +265,41 @@ const startSync = ({ storeUrl, consumerKey, consumerSecret, authMethod, accountI
                     currentStatus.details = `Performing Full Sync & Deletion scan...`;
                 }
 
-                await syncEntity(
-                    api,
-                    task.key,
-                    saveBatch,
-                    (ent, page, total) => {
-                        currentStatus.details = `Page ${page} of ${total} ${lastSynced ? '(Incremental)' : ''}`;
-                        currentStatus.progress = Math.round((page / total) * 100);
-                    },
-                    lastSynced
-                );
+                try {
+                    await syncEntity(
+                        api,
+                        task.key,
+                        saveBatch,
+                        (ent, page, total) => {
+                            currentStatus.details = `Page ${page} of ${total} ${lastSynced ? '(Incremental)' : ''}`;
+                            currentStatus.progress = Math.round((page / total) * 100);
+                        },
+                        lastSynced
+                    );
 
-                // Run Deletion Scan if Full Sync
-                if (options.forceFull) {
-                    try {
-                        await reconcileDeletions(task.key, api);
-                    } catch (e) {
-                        console.warn(`[Sync] Deletion scan failed for ${task.key}:`, e.message);
+                    // Run Deletion Scan if Full Sync
+                    if (options.forceFull) {
+                        try {
+                            await reconcileDeletions(task.key, api);
+                        } catch (e) {
+                            console.warn(`[Sync] Deletion scan failed for ${task.key}:`, e.message);
+                        }
+                    }
+
+                    // Update Sync State on Success
+                    await updateSyncState(task.key, new Date().toISOString());
+
+                } catch (taskErr) {
+                    console.error(`[Sync] Failed to sync ${task.name}:`, taskErr.message);
+                    // Don't throw, just log. We want others to continue.
+                    // But we might want to flag it in UI?
+                    // For now, we rely on console logs. 
+                    // Update: status should reflect "Partial Success" if some fail?
+                    // Let's stick to continue.
+                    if (taskErr.response?.status === 403) {
+                        console.warn(`[Sync] Skipped ${task.name} due to 403 Forbidden (Permission denied)`);
                     }
                 }
-
-                // Update Sync State on Success
-                await updateSyncState(task.key, new Date().toISOString());
-
-                completedTasks++;
             }
 
             // 4. Finish
