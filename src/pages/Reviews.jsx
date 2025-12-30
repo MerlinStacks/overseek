@@ -60,7 +60,9 @@ const ReviewsPage = () => {
         // Search Filter
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
-            const contentMatch = (r.content || '').toLowerCase().includes(term);
+            // WooCommerce API uses 'review' for content. Support both.
+            const content = r.review || r.content || '';
+            const contentMatch = content.toLowerCase().includes(term);
             const product = productMap[r.product_id];
             const customer = customerMap[r.customer_id];
             const productMatch = product && product.name.toLowerCase().includes(term);
@@ -154,9 +156,10 @@ const ReviewsPage = () => {
                             const customer = customerMap[review.customer_id];
 
                             // Fallback to reviewer_name stored on the review object itself (for guests)
+                            // WooCommerce uses 'reviewer'
                             const reviewerName = customer
                                 ? `${customer.first_name} ${customer.last_name}`
-                                : (review.reviewer_name || 'Guest');
+                                : (review.reviewer || review.reviewer_name || 'Guest');
 
                             const reviewerInitial = reviewerName ? reviewerName[0] : '?';
 
@@ -202,9 +205,10 @@ const ReviewsPage = () => {
                                             </div>
                                         </div>
 
-                                        <p style={{ color: 'var(--text-main)', lineHeight: '1.5', marginBottom: '0.75rem' }}>
-                                            "{review.content}"
-                                        </p>
+                                        <div
+                                            style={{ color: 'var(--text-main)', lineHeight: '1.5', marginBottom: '0.75rem' }}
+                                            dangerouslySetInnerHTML={{ __html: review.review || review.content || '' }}
+                                        />
 
                                         {product && (
                                             <div style={{
