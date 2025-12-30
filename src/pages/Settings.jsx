@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSettings } from '../context/SettingsContext';
-import { Mail, Server, RefreshCw, Cpu, Database, LayoutGrid, Palette, Activity } from 'lucide-react';
+import { Mail, Server, RefreshCw, Cpu, Database, LayoutGrid, Palette, Activity, MessageCircle } from 'lucide-react';
 import { Toaster } from 'sonner';
 import './Settings.css';
 
@@ -15,6 +15,7 @@ import BackupSettings from '../components/settings/BackupSettings';
 import AppearanceSettings from '../components/settings/AppearanceSettings';
 import AutoTagSettings from '../components/settings/AutoTagSettings';
 import MarketingSettings from '../components/settings/MarketingSettings';
+import ChatSettings from '../components/settings/ChatSettings';
 import { useAccount } from '../context/AccountContext';
 
 const Settings = () => {
@@ -29,6 +30,7 @@ const Settings = () => {
         { id: 'appearance', label: 'Appearance', icon: Palette, desc: 'Colors & branding' },
         { id: 'email', label: 'Email Services', icon: Mail, desc: 'SMTP configuration' },
         { id: 'ai', label: 'Intelligence', icon: Cpu, desc: 'AI assistant models' },
+        { id: 'chat', label: 'Live Chat', icon: MessageCircle, desc: 'Widget & Business Hours' },
         { id: 'backup', label: 'Backup & Restore', icon: Database, desc: 'Export/Import dashboard data' },
     ];
 
@@ -85,6 +87,10 @@ const Settings = () => {
 
                     {activeTab === 'ai' && (
                         <AISettings settings={settings} updateSettings={updateSettings} />
+                    )}
+
+                    {activeTab === 'chat' && (
+                        <ChatSettings />
                     )}
 
                     {/* ... existing tabs ... */}

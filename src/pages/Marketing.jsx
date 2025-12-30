@@ -1,28 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useAccount } from '../context/AccountContext';
 import { db } from '../db/db';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { TrendingUp, Target, DollarSign, MousePointer2, Megaphone, Lightbulb, ExternalLink } from 'lucide-react';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { TrendingUp, DollarSign, MousePointer2, Megaphone, Lightbulb } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import './Marketing.css';
 
 const MarketingPage = () => {
     const { activeAccount } = useAccount();
-    const [connectStatus, setConnectStatus] = useState({ meta: false, google: false });
-
-    // Check connection status
+    // Check connection status - Derived State
     const integrations = useLiveQuery(() =>
         db.ad_integrations.where('account_id').equals(activeAccount?.id || 0).toArray(),
         [activeAccount?.id]
     );
 
-    useEffect(() => {
-        if (integrations) {
-            setConnectStatus({
-                meta: integrations.some(i => i.platform === 'meta' && i.enabled),
-                google: integrations.some(i => i.platform === 'google' && i.enabled)
-            });
-        }
+    const connectStatus = React.useMemo(() => {
+        if (!integrations) return { meta: false, google: false };
+        return {
+            meta: integrations.some(i => i.platform === 'meta' && i.enabled),
+            google: integrations.some(i => i.platform === 'google' && i.enabled)
+        };
     }, [integrations]);
 
     // Mock Data for UI demonstration
@@ -123,7 +120,7 @@ const MarketingPage = () => {
             {/* Charts */}
             <div className="chart-container">
                 <h3 className="mb-4">Ad Spend vs Revenue</h3>
-                <ResponsiveContainer width="100%" height="90%">
+                <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                         <XAxis dataKey="name" stroke="#64748b" />

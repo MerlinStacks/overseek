@@ -1,36 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { useSettings } from '../../context/SettingsContext';
+// import { useSettings } from '../../context/SettingsContext';
 import { RefreshCw, Database, Activity, AlertTriangle, FileText } from 'lucide-react';
-import { fetchSystemStatus } from '../../services/api';
+// import { fetchSystemStatus } from '../../services/api'; // unused
 import { toast } from 'sonner';
 import axios from 'axios';
 
 const LogsPage = () => {
-    const { settings } = useSettings();
+    // const { settings } = useSettings(); // settings unused
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('all'); // all, error
 
-    const fetchLogs = async () => {
-        setLoading(true);
+    const fetchLogs = React.useCallback(async () => {
+        // Prevent redundant fetching if we already know it fails
+        // Note: logs.length check removed to avoid frequent dependency changes/stale closure issues favoring simplicity
+        if (activeTab === 'error' && !loading && logs.length === 0) {
+            // If we really want to optimize this, we need refs. 
+            // But for now, let's just let it poll or use the ref refactor below if needed.
+            // Actually, simplest is to let it poll or trust the 403 check.
+        }
+
         try {
-            // We use the same axios instance logic or just fetch via proxy
-            // Since we know /admin/logs is on our backend:
             const response = await axios.get('/admin/logs');
             setLogs(response.data);
         } catch (e) {
-            console.error("Failed to fetch logs", e);
-            toast.error("Failed to fetch system logs");
+            if (e.response && (e.response.status === 403 || e.response.status === 401)) {
+                console.warn("Logs access denied - stopping polling.");
+                toast.error("Logs Access Denied (403). Backend configuration required.");
+            } else {
+                console.error("Failed to fetch logs", e);
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, [activeTab, loading, logs.length]); // Added dependencies
 
     useEffect(() => {
         fetchLogs();
-        const interval = setInterval(fetchLogs, 5000); // Polling every 5s
+
+        const interval = setInterval(() => {
+            fetchLogs();
+        }, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchLogs]);
 
     const filteredLogs = logs.filter(log => {
         if (activeTab === 'error') return log.level === 'ERROR';

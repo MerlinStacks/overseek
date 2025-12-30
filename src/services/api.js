@@ -246,7 +246,7 @@ const executeHelperRequest = async (settings, method, pathSuffix, data = null) =
         // Actually the proxy reads `req.headers['authorization']` OR `req.query`.
         // So I can control Auth from here.
 
-        const { baseURL, config: axiosConfig } = getClientConfig(settings.storeUrl, settings.consumerKey, settings.consumerSecret, config.auth);
+        const { config: axiosConfig } = getClientConfig(settings.storeUrl, settings.consumerKey, settings.consumerSecret, config.auth);
         axiosConfig.baseURL = `/api/proxy`;
         return axios.create(axiosConfig);
     };
@@ -310,6 +310,8 @@ export const fetchCarts = async (settings) => executeHelperRequest(settings, 'GE
 export const sendEmail = async (settings, data) => executeHelperRequest(settings, 'POST', 'email/send', data);
 export const fetchSMTP = async (settings) => executeHelperRequest(settings, 'GET', 'settings/smtp');
 export const saveSMTP = async (settings, data) => executeHelperRequest(settings, 'POST', 'settings/smtp', data);
+export const fetchChatSettings = async (settings) => executeHelperRequest(settings, 'GET', 'settings/chat');
+export const saveChatSettings = async (settings, data) => executeHelperRequest(settings, 'POST', 'settings/chat', data);
 export const fetchVisitorCount = async (settings) => executeHelperRequest(settings, 'GET', 'visitors');
 export const fetchVisitorLog = async (settings) => executeHelperRequest(settings, 'GET', 'visitor-log');
 export const fetchSystemStatus = async (settings) => {

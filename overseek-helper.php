@@ -26,6 +26,7 @@ if (!class_exists('OverSeek_Helper')) {
             // Init
             add_action('init', [$this, 'handle_cors'], 0);
             add_action('rest_api_init', [$this, 'register_routes']);
+            add_action('wp_enqueue_scripts', [$this, 'enqueue_chat_widget']);
             add_action('phpmailer_init', [$this, 'configure_smtp']);
             
             // Tracking
@@ -213,6 +214,16 @@ if (!class_exists('OverSeek_Helper')) {
                     'permission_callback' => [$this, 'auth_check']
                 ]);
 
+                register_rest_route($ns, '/settings/chat', [
+                    'methods' => ['GET', 'POST'],
+                    'callback' => function($req) {
+                        return $req->get_method() === 'POST'
+                            ? rest_ensure_response($this->update_chat_settings_data($req->get_params()))
+                            : rest_ensure_response($this->get_chat_settings_data());
+                    },
+                    'permission_callback' => [$this, 'auth_check']
+                ]);
+
                 register_rest_route($ns, '/email/send', [
                     'methods' => 'POST',
                     'callback' => function($req) { return rest_ensure_response($this->send_email_data($req->get_params())); },
@@ -337,6 +348,48 @@ if (!class_exists('OverSeek_Helper')) {
                 return ['success' => true];
             }
             return ['success' => false, 'error' => 'invalid_data'];
+        }
+
+        public function get_chat_settings_data() {
+            return get_option('overseek_chat_settings', []);
+        }
+
+        public function update_chat_settings_data($settings) {
+            if ($settings) {
+                update_option('overseek_chat_settings', $settings);
+                return ['success' => true];
+            }
+            return ['success' => false, 'error' => 'invalid_data'];
+        }
+
+        public function enqueue_chat_widget() {
+             // Load Chat Config
+             $config = get_option('overseek_chat_settings', []);
+             
+             if (empty($config) || empty($config['chatEnabled'])) return;
+             
+             // Enqueue JS
+             // Assuming the JS file is in an 'assets' folder relative to this plugin file
+             $url = plugin_dir_url(__FILE__) . 'assets/overseek-chat.js';
+             // Version based on file time for cache busting
+             $ver = file_exists(plugin_dir_path(__FILE__) . 'assets/overseek-chat.js') 
+                  ? filemtime(plugin_dir_path(__FILE__) . 'assets/overseek-chat.js') 
+                  : '1.0';
+
+             wp_enqueue_script('overseek-chat', $url, [], $ver, true);
+             
+             // Pass Config
+             wp_localize_script('overseek-chat', 'overseekChatConfig', [
+                 'enabled' => $config['chatEnabled'],
+                 'businessHours' => $config['businessHours'] ?? [],
+                 'timezone' => $config['timeZone'] ?? '', // Fallback to WP? get_option('timezone_string')
+                 'offlineBehavior' => $config['offlineBehavior'] ?? 'hide',
+                 'offlineMessage' => $config['offlineMessage'] ?? '',
+                 'styles' => [
+                     'primaryColor' => $config['primaryColor'] ?? '#6366f1',
+                     'position' => $config['position'] ?? 'right'
+                 ]
+             ]);
         }
 
         public function send_email_data($input) {
