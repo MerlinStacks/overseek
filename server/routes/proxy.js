@@ -37,7 +37,7 @@ router.all('/*', async (req, res) => {
 
         // If the client is requesting WP Core API or Custom Namespaces
         // We switch the base namespace to just /wp-json
-        if (endpoint.startsWith('wp/v2') || endpoint.startsWith('overseek/') || endpoint.startsWith('wc-dash/')) {
+        if (endpoint.startsWith('wp/v2') || endpoint.startsWith('overseek') || endpoint.startsWith('wc-dash')) {
             apiNamespace = '/wp-json';
         }
 

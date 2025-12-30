@@ -7,8 +7,9 @@ const compression = require('compression');
 const morgan = require('morgan');
 
 require('./logger'); // Override console
-const { initDB } = require('./db');
+const { initDB, pool } = require('./db');
 const { initSocket } = require('./socket');
+const { apiLimiter } = require('./middleware/rateLimiter');
 
 const adminRoutes = require('./routes/admin');
 const syncRoutes = require('./routes/sync');
@@ -23,6 +24,7 @@ app.use(helmet());
 app.use(compression());
 app.use(morgan('tiny'));
 app.use(cors());
+app.use(apiLimiter); // Apply Rate Limiting Globally
 app.use(express.json());
 
 // Init DB

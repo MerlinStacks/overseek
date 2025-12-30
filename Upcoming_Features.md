@@ -15,9 +15,18 @@
 
 ## Planned
 - [ ] Full Data Export feature
-- [ ] Ad revenue tracking [Meta Ads, Google Ads]
+- [ ] Ad revenue tracking [Meta Ads, Google Ads] with AI suggestions for improvements using all the data in the dashboard such as stock levels, reviews, profit margins etc.
 - [ ] Integrate emails into the inbox
 - [ ] Improve WooCommerce plugin: Include Live Chat features with UI editor.
 
+The sync needs to only sync new items not already in the database, and update existing items if there was a change on that item. In this context item refers to orders, products, reviews etc.
+
+The sync should have a Full Sync option that syncs all items from the database regardless of whether they have changed or not.
+The sync should also have seperate options to update the sync for product, reviews etc.
+The quick sync button should only sync new items not already in the database. This should be the default sync option.
+All syncing should be done in the background and not block the user from using the dashboard and have a overlay.
+The refreshing of the page should not alter the syncing process.
+
+Knowing all this we need need to ensure the sync works and is reliable. It should also work for the account that is active.
 
 Auto tagging orders when they first come in based on selected product tags.

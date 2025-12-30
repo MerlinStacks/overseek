@@ -65,7 +65,7 @@ router.get('/:table', async (req, res) => {
 
         queryStr += ` ORDER BY id DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
 
-        queryStr += ` ORDER BY id DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+
 
         console.log(`[DB API] Fetching ${table} for account ${account_id}. Params:`, params);
         // console.log(`[DB API] Query: ${queryStr}`); // Uncomment to debug SQL
