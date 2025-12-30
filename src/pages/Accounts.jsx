@@ -83,53 +83,7 @@ const AccountsPage = () => {
                 </div>
             )}
 
-            {/* Features Modal */}
-            {editingAccount && (
-                <div className="create-account-panel">
-                    <h3>Manage Features: {editingAccount.name}</h3>
-                    <div className="features-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px', margin: '20px 0' }}>
 
-                        <div className="feature-item glass-panel" style={{ padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <h4 style={{ margin: 0, marginBottom: '5px' }}>Ad Revenue Tracking & AI</h4>
-                                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                                    Enable Meta/Google Ads tracking and AI performance suggestions.
-                                </p>
-                            </div>
-                            <button
-                                className={`btn-icon ${editingAccount.features?.adRevenueTracking ? 'success' : ''}`}
-                                onClick={() => toggleFeature(editingAccount.id, 'adRevenueTracking')}
-                                style={{
-                                    width: '40px', height: '24px',
-                                    borderRadius: '12px',
-                                    background: editingAccount.features?.adRevenueTracking ? '#10b981' : '#334155',
-                                    position: 'relative',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                <div style={{
-                                    width: '18px', height: '18px',
-                                    background: 'white',
-                                    borderRadius: '50%',
-                                    position: 'absolute',
-                                    top: '3px',
-                                    left: editingAccount.features?.adRevenueTracking ? '19px' : '3px',
-                                    transition: 'all 0.2s'
-                                }} />
-                            </button>
-                        </div>
-                        {/* More features can go here */}
-
-                    </div>
-                    <button
-                        onClick={() => setEditingAccount(null)}
-                        className="btn-cancel"
-                        style={{ width: '100%' }}
-                    >
-                        Close
-                    </button>
-                </div>
-            )}
 
             <div className="accounts-grid">
                 {accounts.map(account => {
