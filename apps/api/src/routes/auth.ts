@@ -19,10 +19,13 @@ export async function authRoutes(fastify: FastifyInstance) {
             return reply.status(400).send({ error: 'User already exists' });
         }
 
-        // Check for super admin (first user)
-        // Efficient count check
+        // Check for super admin (first user or no existing super admins)
         const userCountResult = await db.select({ count: sql<number>`count(*)` }).from(users);
+        const superAdminCountResult = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.isSuperAdmin, true));
+
         const isFirstUser = Number(userCountResult[0].count) === 0;
+        const noSuperAdmins = Number(superAdminCountResult[0].count) === 0;
+        const shouldBeSuperAdmin = isFirstUser || noSuperAdmins;
 
         // Hash Password
         const passwordHash = await hashPassword(password);
@@ -43,7 +46,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             passwordHash,
             fullName,
             defaultStoreId,
-            isSuperAdmin: isFirstUser
+            isSuperAdmin: shouldBeSuperAdmin
         }).returning();
 
         // Login (Create Session)
@@ -52,8 +55,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         reply.setCookie('session_id', sessionId, {
             path: '/',
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: false, // process.env.NODE_ENV === 'production', // Relaxed for Docker HTTP
+            sameSite: 'lax', // Relaxed from strict to allow navigation flexibility
             maxAge: 60 * 60 * 24 * 7
         });
 
@@ -75,8 +78,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         reply.setCookie('session_id', sessionId, {
             path: '/',
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: false, // process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
             maxAge: 60 * 60 * 24 * 7 // 7 days
         });
 
@@ -101,7 +104,8 @@ export async function authRoutes(fastify: FastifyInstance) {
             id: req.user.id,
             email: req.user.email,
             fullName: req.user.fullName,
-            storeId: req.user.defaultStoreId
+            storeId: req.user.defaultStoreId,
+            isSuperAdmin: req.user.isSuperAdmin // Expose this
         };
     });
 }
