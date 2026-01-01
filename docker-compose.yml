@@ -84,9 +84,9 @@ services:
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
-      - "--entrypoints.web.address=:8080"
+      - "--entrypoints.web.address=:80"
     ports:
-      - "8090:8080" # Map host 8090 to Traefik 8080 (Avoid host 80)
+      - "8090:80" # Map host 8090 to Traefik 80 (Avoid host 80)
       - "8888:8080" # Dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
