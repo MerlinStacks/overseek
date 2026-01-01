@@ -14,6 +14,12 @@ const SystemStatus = ({ settings }) => {
     const [connError, setConnError] = useState(null);
 
     const runDiagnostics = async () => {
+        if (!settings.storeUrl || !settings.consumerKey) {
+            setLoading(false);
+            setConnError("API Connection Not Configured");
+            return;
+        }
+
         setLoading(true);
         setConnError(null);
         try {

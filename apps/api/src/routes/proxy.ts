@@ -47,7 +47,6 @@ export async function proxyRoutes(fastify: FastifyInstance) {
             method: req.method,
             url: finalUrl,
             headers: {
-                'Authorization': req.headers['authorization'] as string,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
@@ -55,6 +54,20 @@ export async function proxyRoutes(fastify: FastifyInstance) {
             data: req.body,
             httpsAgent: new https.Agent({ rejectUnauthorized: false }) // Allow self-signed
         };
+
+        // Legacy Auth Fallback: If Authorization header missing, use query params if provided
+        const authHeader = req.headers['authorization'];
+        if (authHeader) {
+            config.headers['Authorization'] = authHeader;
+        }
+
+        // Fix issues where axios sends data on GET
+        if (req.method === 'GET' || req.method === 'HEAD') {
+            delete config.data;
+        }
+
+        // Log proxy attempt for debugging
+        console.log(`[Proxy] ${req.method} -> ${finalUrl}`);
 
         try {
             const response = await axios(config);

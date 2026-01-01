@@ -69,7 +69,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setLoading(true);
             try {
                 // Try fetching from API
-                const { data: serverSettings } = await axios.get('/api/settings');
+                const { data: serverSettings } = await axios.get('/api/settings', { withCredentials: true });
 
                 // If Server has settings, use them
                 if (serverSettings && (serverSettings.storeUrl || serverSettings.brandColor)) {
@@ -96,7 +96,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 if (Object.keys(migratedSettings).length > 0) {
                     // We found local data! Migrate it to Server.
                     console.info("Migrating local settings to server...", migratedSettings);
-                    await axios.post('/api/settings', migratedSettings);
+                    await axios.post('/api/settings', migratedSettings, { withCredentials: true });
                     setSettings(prev => ({ ...prev, ...migratedSettings }));
                     toast.success("Settings migrated to server.");
                 }
@@ -169,7 +169,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         try {
             // Update Server
-            await axios.post('/api/settings', newSettings);
+            await axios.post('/api/settings', newSettings, { withCredentials: true });
 
             // Update Local Legacy (Dual Write for Safety/Offline?)
             // Rework says: "Hot Tier (Local/Dexie)". 

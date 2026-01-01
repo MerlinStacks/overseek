@@ -32,6 +32,9 @@ const getClientConfig = (url, key, secret, authMethod) => {
     // Inject Store URL for Proxy header
     config.headers['x-store-url'] = cleanUrl;
 
+    // Explicitly enable credentials for Cross-Site (if applicable) and Proxy Auth
+    config.withCredentials = true;
+
     return { baseURL: cleanUrl, config };
 };
 

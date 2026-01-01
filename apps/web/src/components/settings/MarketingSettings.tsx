@@ -36,7 +36,7 @@ const MarketingSettings = () => {
         const loadSettings = async () => {
             if (!activeAccount) return;
             try {
-                const { data } = await axios.get('/api/marketing/integrations');
+                const { data } = await axios.get('/api/marketing/integrations', { withCredentials: true });
                 // data is array: [{ platform: 'meta', status: 'active', ... }]
 
                 const meta = data.find((i: any) => i.platform === 'meta');
@@ -84,7 +84,7 @@ const MarketingSettings = () => {
         }
 
         try {
-            await axios.post('/api/marketing/integrations', payload);
+            await axios.post('/api/marketing/integrations', payload, { withCredentials: true });
             toast.success(`${platform === 'meta' ? 'Meta' : 'Google'} settings saved`);
         } catch (e) {
             console.error(e);

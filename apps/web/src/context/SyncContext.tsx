@@ -64,7 +64,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         pollInterval.current = setInterval(async () => {
             try {
-                const { data } = await axios.get('/api/sync/status');
+                const { data } = await axios.get('/api/sync/status', { withCredentials: true });
 
                 if (data.running) {
                     setProgress(data.progress);
@@ -120,7 +120,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const checkServerStatus = async () => {
             if (status === 'running') return;
             try {
-                const { data } = await axios.get('/api/sync/status');
+                const { data } = await axios.get('/api/sync/status', { withCredentials: true });
                 if (data.running) {
                     console.log("Resuming Sync UI attachment...");
                     setStatus('running');
@@ -178,7 +178,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     forceFull: options.forceFull,
                     autoTaggingRules: activeAccount.features?.autoTaggingRules || []
                 }
-            });
+            }, { withCredentials: true });
             log('Sync initiated on server...', 'info');
             startPolling();
         } catch (e: any) {
@@ -233,7 +233,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 }
 
-                const res = await axios.post('/api/sync/latest-orders', payload);
+                const res = await axios.post('/api/sync/latest-orders', payload, { withCredentials: true });
 
                 // Processing logic remains similar but uses the proxied response
                 if (res.data && res.data.orders && res.data.orders.length > 0) {

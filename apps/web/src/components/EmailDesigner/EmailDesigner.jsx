@@ -5,14 +5,15 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import './EmailDesigner.css';
 import {
-    Layout, Image as ImageIcon, Type, MousePointer2,
-    Move, Trash2, ArrowUp, ArrowDown, Code, Eye,
-    Save, X, Palette, Link as LinkIcon,
-    List, Square, Share2, Code2, Globe, Settings,
-    ShoppingBag, Ticket, ClipboardList, Download, Search,
-    Columns, PanelLeft, PanelRight, ArrowLeft,
-    AlertTriangle, CheckCircle, Info
-} from 'lucide-react';
+import {
+        Layout, Image as ImageIcon, Type, MousePointer2,
+        Move, Trash2, ArrowUp, ArrowDown, Code, Eye,
+        Save, X, Palette, Link as LinkIcon,
+        List, Square, Share2, Code2, Globe, Settings,
+        ShoppingBag, Ticket, ClipboardList, Download, Search,
+        Columns, PanelLeft, PanelRight, ArrowLeft,
+        AlertTriangle, CheckCircle, Info, Zap
+    } from 'lucide-react';
 import { validateEmail } from './EmailValidator';
 import { renderEmail } from '../../services/api';
 
@@ -136,209 +137,6 @@ export default function EmailDesigner({ initialData, onClose, onSave }) {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [history, historyIndex]);
-
-    // --- HTML GENERATOR ---
-    // --- HTML GENERATOR ---
-    const renderBlockToHtml = (block) => {
-        let content = '';
-        const padding = block.styles?.padding || '20px';
-        const bg = block.styles?.backgroundColor || '#ffffff';
-        const align = block.styles?.textAlign || 'left';
-
-        if (block.type === 'section') {
-            const columns = block.columns || [];
-            const layout = block.layout || '1-col';
-
-            // Calculate widths
-            // 1-col: 100%
-            // 2-col: 50%, 50%
-            // 3-col: 33.33%...
-            // 1-2-col: 33.33%, 66.66%
-            // 2-1-col: 66.66%, 33.33%
-
-            let widths = ['100%'];
-            if (layout === '2-col') widths = ['50%', '50%'];
-            if (layout === '3-col') widths = ['33.33%', '33.33%', '33.33%'];
-            if (layout === '1-2-col') widths = ['33.33%', '66.66%'];
-            if (layout === '2-1-col') widths = ['66.66%', '33.33%'];
-
-            const columnsHtml = columns.map((colBlocks, index) => {
-                const width = widths[index] || '100%';
-                const colContent = colBlocks.map(b => renderBlockToHtml(b)).join('');
-                return `
-                    <td width="${width}" valign="top" class="column-cell" style="padding: 0; vertical-align: top;">
-                        <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                            ${colContent}
-                        </table>
-                    </td>
-                `;
-            }).join('');
-
-            return `
-                <tr>
-                    <td align="center" style="background-color: ${bg}; padding: ${padding};">
-                        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="table-layout: fixed;">
-                            <tr>
-                                ${columnsHtml}
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-            `;
-        }
-
-        // Standard Blocks
-        if (block.type === 'text') {
-            content = `<div style="font-size: ${block.styles?.fontSize || '16px'}; color: ${block.styles?.color || '#333'}; line-height: ${block.styles?.lineHeight || '1.5'}; text-align: ${align};">${block.content?.text || 'Edit this text...'}</div>`;
-        } else if (block.type === 'image') {
-            const imgUrl = block.content?.url;
-            const width = block.styles?.width || '100%';
-            if (imgUrl) {
-                content = `<img src="${imgUrl}" alt="${block.content?.alt || ''}" style="width: ${width}; max-width: 100%; height: auto; display: block; margin: 0 auto;" />`;
-            } else {
-                content = `<div style="width: ${width}; height: 200px; background-color: #f1f5f9; color: #94a3b8; text-align: center; line-height: 200px; border: 2px dashed #e2e8f0; margin: 0 auto;">Select Image</div>`;
-            }
-        } else if (block.type === 'button') {
-            const btnBg = block.styles?.backgroundColor || '#3b82f6';
-            const btnColor = block.styles?.color || '#ffffff';
-            const btnAlign = block.styles?.align || 'center';
-            const btnPadding = block.styles?.padding || '12px 24px';
-            const btnRadius = block.styles?.borderRadius || '4px';
-
-            content = `
-                <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                    <tr>
-                        <td align="${btnAlign}">
-                            <a href="${block.content?.link || '#'}" style="background-color: ${btnBg}; color: ${btnColor}; padding: ${btnPadding}; border-radius: ${btnRadius}; text-decoration: none; display: inline-block; font-weight: bold; font-size: ${block.styles?.fontSize || '16px'};">${block.content?.text || 'Click Me'}</a>
-                        </td>
-                    </tr>
-                </table>
-            `;
-        } else if (block.type === 'spacer') {
-            const height = block.styles?.height || '20px';
-            content = `<div style="height: ${height}; line-height: ${height}; font-size: 0;">&nbsp;</div>`;
-        } else if (block.type === 'divider') {
-            const color = block.styles?.color || '#e2e8f0';
-            content = `<hr style="border: 0; border-top: 1px solid ${color}; margin: 0;" />`;
-        } else if (block.type === 'footer') {
-            content = `
-                <div style="text-align: center; color: #94a3b8; font-size: 12px; padding: 20px;">
-                    <p>${block.content?.companyName || 'Your Company'}</p>
-                    <p>${block.content?.address || '123 Business St, City, Country'}</p>
-                    <p><a href="{{unsubscribe_url}}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a></p>
-                </div>
-            `;
-        } else if (block.type === 'social') {
-            const fb = block.content?.facebook;
-            const tw = block.content?.twitter;
-            const insta = block.content?.instagram;
-            content = `<div style="text-align: center; padding: 10px;">
-                ${fb ? `<a href="${fb}" style="margin: 0 10px; text-decoration: none; color: ${block.styles.color || '#333'}; font-weight: bold;">Facebook</a>` : ''}
-                ${tw ? `<a href="${tw}" style="margin: 0 10px; text-decoration: none; color: ${block.styles.color || '#333'}; font-weight: bold;">Twitter</a>` : ''}
-                ${insta ? `<a href="${insta}" style="margin: 0 10px; text-decoration: none; color: ${block.styles.color || '#333'}; font-weight: bold;">Instagram</a>` : ''}
-            </div>`;
-        } else if (block.type === 'html') {
-            content = block.content.html || '<div style="background: #f8f8f8; padding: 10px; font-family: monospace;">Custom HTML Block</div>';
-        } else if (block.type === 'product') {
-            const img = block.content?.imageUrl;
-            const name = block.content?.name || 'Product Name';
-            const price = block.content?.price || '$99.00';
-            const link = block.content?.link || '#';
-
-            const imgHtml = img
-                ? `<img src="${img}" alt="${name}" style="display: block; margin: 0 auto 15px; max-width: 100%; height: auto; border-radius: 4px;" width="200" />`
-                : `<div style="width: 200px; height: 200px; background-color: #f1f5f9; margin: 0 auto 15px; text-align: center; line-height: 200px; color: #cbd5e1; border-radius: 4px;">No Image</div>`;
-
-            content = `
-                <div style="border: 1px solid #eee; padding: 15px; text-align: center; background: #fff; border-radius: 4px;">
-                    ${imgHtml}
-                    <h3 style="margin: 0 0 10px; font-size: 18px; color: #333;">${name}</h3>
-                    <p style="margin: 0 0 15px; font-size: 16px; font-weight: bold; color: #333;">${price}</p>
-                    <a href="${link}" style="display: inline-block; padding: 10px 20px; background: #1e293b; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">Buy Now</a>
-                </div>
-            `;
-        } else if (block.type === 'order_summary') {
-            content = `
-                <table width="100%" border="0" cellspacing="0" cellpadding="10" style="border: 1px solid #eee; font-family: sans-serif;">
-                    <tr style="background: #f8f8f8;">
-                        <th align="left" style="color: #666; font-weight: 600; border-bottom: 1px solid #eee;">Product</th>
-                        <th align="right" style="color: #666; font-weight: 600; border-bottom: 1px solid #eee;">Total</th>
-                    </tr>
-                    <tr>
-                        <td style="border-bottom: 1px solid #eee; color: #333;">{{first_product_name}} x {{first_product_qty}}</td>
-                        <td align="right" style="border-bottom: 1px solid #eee; color: #333;">{{first_product_price}}</td>
-                    </tr>
-                    <tr>
-                         <td style="color: #999; font-size: 12px; font-style: italic;">(More items...)</td>
-                         <td></td>
-                    </tr>
-                    <tr>
-                        <td align="right" style="color: #333;"><strong>Total:</strong></td>
-                        <td align="right" style="color: #333;"><strong>{{order_total}}</strong></td>
-                    </tr>
-                </table>
-            `;
-        }
-
-        // Wrapper for Block (Table Row)
-        return `
-            <tr>
-                <td align="center" style="background-color: ${bg}; padding: ${padding};">
-                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                        <tr>
-                            <td>${content}</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        `;
-    };
-
-    const generateHtml = (currentBlocks, styles) => {
-        const bodyContent = currentBlocks.map(renderBlockToHtml).join('');
-
-        return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Preview</title>
-    <style>
-        body { margin: 0; padding: 0; width: 100%; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-        table { border-collapse: collapse; }
-        .wrapper-table { width: 100%; table-layout: fixed; }
-        .main-table { margin: 0 auto; width: 100%; max-width: 600px; }
-        
-        @media screen and (max-width: 600px) {
-            .main-table { width: 100% !important; }
-            .column-cell { display: block !important; width: 100% !important; box-sizing: border-box; padding-bottom: 20px !important; }
-            .mobile-padding { padding: 10px !important; }
-            img { max-width: 100% !important; height: auto !important; }
-        }
-    </style>
-</head>
-<body style="margin: 0; padding: 0; background-color: ${styles.backgroundColor}; font-family: ${styles.fontFamily};">
-    <table width="100%" border="0" cellspacing="0" cellpadding="0" class="wrapper-table">
-        <tr>
-            <td align="center" style="padding: 20px 0;" class="mobile-padding">
-                <table width="600" border="0" cellspacing="0" cellpadding="0" class="main-table" style="background-color: #ffffff; max-width: 600px; width: 100%;">
-                    ${bodyContent}
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-        `.trim();
-    };
-
-    // Update HTML when blocks change
-    useEffect(() => {
-        if (mode === 'visual') {
-            setHtmlCode(generateHtml(blocks, globalStyles));
-        }
-    }, [blocks, globalStyles, mode]);
 
 
     // --- ACTIONS ---
@@ -956,6 +754,27 @@ export default function EmailDesigner({ initialData, onClose, onSave }) {
         );
     };
 
+    const compileHtml = async () => {
+        try {
+            const res = await renderEmail({ blocks, globalStyles });
+            if (res.html) {
+                setHtmlCode(res.html);
+                return res.html;
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error('Compilation failed');
+        }
+        return '';
+    };
+
+    const handleSave = async () => {
+        const html = await compileHtml();
+        if (html) {
+            onSave({ html, design: { blocks, globalStyles }, type: mode });
+        }
+    };
+
     return createPortal(
         <div className="email-designer-modal">
             {/* Header */}
@@ -967,23 +786,22 @@ export default function EmailDesigner({ initialData, onClose, onSave }) {
 
                 <div className="mode-toggle">
                     <button className={`mode-btn ${mode === 'visual' ? 'active' : ''}`} onClick={() => setMode('visual')}><Eye size={14} /> Visual</button>
-                    <button className={`mode-btn ${mode === 'code' ? 'active' : ''}`} onClick={() => setMode('code')}><Code size={14} /> Code</button>
+                    <button className={`mode-btn ${mode === 'code' ? 'active' : ''}`} onClick={() => { setMode('code'); compileHtml(); }}><Code size={14} /> Code</button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
                     <div style={{ marginRight: '10px', display: 'flex', gap: '5px' }}>
                         <button className="btn" onClick={undo} disabled={historyIndex <= 0} style={{ padding: '8px', opacity: historyIndex <= 0 ? 0.5 : 1 }}>
-                            <ArrowLeft size={16} /> {/* Need to import ArrowLeft or similar, using RotateCcw for now if available, or just Text */}
+                            <ArrowLeft size={16} />
                             <span style={{ marginLeft: '5px' }}>Undo</span>
                         </button>
                         <button className="btn" onClick={redo} disabled={historyIndex >= history.length - 1} style={{ padding: '8px', opacity: historyIndex >= history.length - 1 ? 0.5 : 1 }}>
                             <span style={{ marginRight: '5px' }}>Redo</span>
-                            {/* Icon here */}
                         </button>
                     </div>
 
                     <button className="btn" onClick={onClose} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)' }}>Cancel</button>
-                    <button className="btn btn-primary" onClick={() => onSave({ html: htmlCode, design: { blocks, globalStyles }, type: mode })}>
+                    <button className="btn btn-primary" onClick={handleSave}>
                         <Save size={16} /> Save Email
                     </button>
                 </div>

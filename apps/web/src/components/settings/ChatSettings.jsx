@@ -50,17 +50,32 @@ const ChatSettings = () => {
 
     const handleSave = async () => {
         setIsSaving(true);
+        let remoteSuccess = false;
+
         try {
+            // Attempt to update Remote Store (WooCommerce) via Overseek Plugin
+            // This might fail if the plugin is not active or proxy issues occur
             await saveChatSettings(settings, formData);
-            // Also update local context if needed, but primary is backend
+            remoteSuccess = true;
+        } catch (error) {
+            console.warn("Failed to sync chat settings to storefront:", error);
+            toast.error("Could not sync with storefront. Settings saved internally.");
+        }
+
+        try {
+            // Update Local Database & Context
+            // This ensures the dashboard UI remembers the settings even if remote failed
             await updateSettings({
-                ...settings,
+                ...settings, // Pass full settings to ensure no data loss in context
                 chatConfig: formData
             });
-            toast.success("Chat settings saved successfully!");
+
+            if (remoteSuccess) {
+                toast.success("Chat settings saved and synced!");
+            }
         } catch (error) {
             console.error(error);
-            toast.error("Failed to save settings.");
+            toast.error("Failed to save settings locally.");
         } finally {
             setIsSaving(false);
         }

@@ -22,12 +22,15 @@ export async function settingsRoutes(fastify: FastifyInstance) {
 
         const creds = await db.select().from(storeCredentials).where(eq(storeCredentials.storeId, storeId)).limit(1);
 
+        const settingsObj = store[0].settings as Record<string, any> || {};
+
         // Merge JSON settings with Credentials
         const combined = {
-            ...store[0].settings as object,
+            ...settingsObj,
             storeUrl: store[0].url,
-            consumerKey: creds[0]?.consumerKey || '',
-            consumerSecret: creds[0]?.consumerSecret || '', // Should be decrypted if encryption was implemented
+            // Fallback to JSON settings if Credentials table entry is missing or empty
+            consumerKey: creds[0]?.consumerKey || settingsObj.consumerKey || '',
+            consumerSecret: creds[0]?.consumerSecret || settingsObj.consumerSecret || '', // Should be decrypted if encryption was implemented
         };
 
         return combined;
