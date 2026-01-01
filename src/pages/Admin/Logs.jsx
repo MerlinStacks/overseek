@@ -21,7 +21,7 @@ const LogsPage = () => {
         }
 
         try {
-            const response = await axios.get('/admin/logs');
+            const response = await axios.get('/api/admin/logs');
             setLogs(response.data);
         } catch (e) {
             if (e.response && (e.response.status === 403 || e.response.status === 401)) {

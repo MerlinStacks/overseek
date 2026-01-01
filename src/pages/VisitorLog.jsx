@@ -452,7 +452,7 @@ const VisitorLog = () => {
 
     useEffect(() => {
         loadLogs();
-        const interval = setInterval(loadLogs, 5000);
+        const interval = setInterval(loadLogs, 60000); // Poll every 60s instead of 5s to save bandwidth/perf
         return () => clearInterval(interval);
     }, [loadLogs]);
 
@@ -818,23 +818,21 @@ const VisitorLog = () => {
                                 activeView === 'url_builder' ? 'Create trackable links for your marketing.' : 'Analyze where your traffic is coming from.'}
                     </p>
                 </div>
-                <div className="visitor-controls">
+                <div className="log-controls">
                     <button
                         onClick={loadLogs}
-                        className="btn"
-                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)' }}
+                        className="btn btn-secondary"
+                        title="Refresh Logs"
+                        disabled={loading}
                     >
-                        <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-                        Refresh
+                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                     </button>
-                    <div style={{ marginLeft: '10px' }}>
-                        <DateRangePicker
-                            range={dateRange}
-                            onChange={setDateRange}
-                            compareMode={compareMode}
-                            onCompareChange={setCompareMode}
-                        />
-                    </div>
+                    <DateRangePicker
+                        range={dateRange}
+                        onChange={setDateRange}
+                        compareMode={compareMode}
+                        onCompareChange={setCompareMode}
+                    />
                 </div>
             </div>
 
@@ -843,121 +841,122 @@ const VisitorLog = () => {
             {activeView === 'campaigns' && <CampaignsView />}
             {activeView === 'url_builder' && <UrlBuilderView />}
 
-            {activeView === 'realtime' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {paginatedVisits.length > 0 ? (
-                        paginatedVisits.map((visit) => {
-                            // Analysis Logic
-                            const actions = visit.actions || [];
+            {
+                activeView === 'realtime' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {paginatedVisits.length > 0 ? (
+                            paginatedVisits.map((visit) => {
+                                // Analysis Logic
+                                const actions = visit.actions || [];
 
 
 
-                            // Calculate Duration
-                            const startTime = actions.length > 0 ? actions[0].time : 0;
-                            const endTime = actions.length > 0 ? actions[actions.length - 1].time : 0;
-                            const durationSeconds = endTime - startTime;
+                                // Calculate Duration
+                                const startTime = actions.length > 0 ? actions[0].time : 0;
+                                const endTime = actions.length > 0 ? actions[actions.length - 1].time : 0;
+                                const durationSeconds = endTime - startTime;
 
-                            // Parse UTMs/MTMs from Entry URL
+                                // Parse UTMs/MTMs from Entry URL
 
 
 
-                            // --- NEW LAYOUT: Matomo/Screenshot Style ---
-                            return (
-                                <div key={visit.id} className="visit-row">
+                                // --- NEW LAYOUT: Matomo/Screenshot Style ---
+                                return (
+                                    <div key={visit.id} className="visit-row">
 
-                                    {/* Left Column: Visitor Meta */}
-                                    <div className="visit-meta">
-                                        <div className="date-time" style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '4px' }}>
-                                            {new Date(visit.last_activity).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                                            {' - '}
-                                            {new Date(visit.last_activity).toLocaleTimeString()}
-                                        </div>
-
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '1rem' }}>
-                                            {getFlag(visit.ip)}
-                                            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                                                {locations[visit.ip] ? locations[visit.ip].city : maskIP(visit.ip)}
-                                            </span>
-                                        </div>
-
-                                        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                                                {/* Identity Icon */}
-                                                {(() => {
-                                                    const identity = getVisitorIdentity(visit);
-                                                    if (identity) return <span title={identity.label}>{identity.icon}</span>;
-                                                    return null;
-                                                })()}
-
-                                                {visit.device_info?.is_mobile ? <Smartphone size={14} /> : <Monitor size={14} />}
-                                                {visit.device_info?.os}
-                                                {visit.device_info?.browser && ` / ${visit.device_info.browser}`}
+                                        {/* Left Column: Visitor Meta */}
+                                        <div className="visit-meta">
+                                            <div className="date-time" style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '4px' }}>
+                                                {new Date(visit.last_activity).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                                {' - '}
+                                                {new Date(visit.last_activity).toLocaleTimeString()}
                                             </div>
 
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '1rem' }}>
+                                                {getFlag(visit.ip)}
+                                                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                                    {locations[visit.ip] ? locations[visit.ip].city : maskIP(visit.ip)}
+                                                </span>
+                                            </div>
+
+                                            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                                    {/* Identity Icon */}
+                                                    {(() => {
+                                                        const identity = getVisitorIdentity(visit);
+                                                        if (identity) return <span title={identity.label}>{identity.icon}</span>;
+                                                        return null;
+                                                    })()}
+
+                                                    {visit.device_info?.is_mobile ? <Smartphone size={14} /> : <Monitor size={14} />}
+                                                    {visit.device_info?.os}
+                                                    {visit.device_info?.browser && ` / ${visit.device_info.browser}`}
+                                                </div>
+
+                                            </div>
+
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                                                {(() => {
+                                                    const identity = getVisitorIdentity(visit);
+                                                    if (identity) {
+                                                        return (
+                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                <strong style={{ color: identity.type === 'AI' ? '#10b981' : '#60a5fa' }}>{identity.type === 'AI' ? 'AI Agent' : 'Social'}</strong>
+                                                                <span>{identity.label}</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (visit.referrer) {
+                                                        return (
+                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                <strong style={{ color: '#10b981' }}>Referrer</strong>
+                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }} title={visit.referrer}>
+                                                                    {new URL(visit.referrer).hostname}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return <span style={{ color: '#94a3b8' }}>Direct Entry</span>;
+                                                })()}
+                                            </div>
+
+                                            <div style={{ marginTop: '1rem' }}>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedVisitorId(getVisitorID(visit)); }}
+                                                    className="btn-text"
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--primary)', fontSize: '0.8rem', padding: 0 }}
+                                                >
+                                                    <Activity size={12} /> View Visitor Profile
+                                                </button>
+                                            </div>
                                         </div>
 
-                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-                                            {(() => {
-                                                const identity = getVisitorIdentity(visit);
-                                                if (identity) {
-                                                    return (
-                                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                            <strong style={{ color: identity.type === 'AI' ? '#10b981' : '#60a5fa' }}>{identity.type === 'AI' ? 'AI Agent' : 'Social'}</strong>
-                                                            <span>{identity.label}</span>
-                                                        </div>
-                                                    );
-                                                }
-                                                if (visit.referrer) {
-                                                    return (
-                                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                            <strong style={{ color: '#10b981' }}>Referrer</strong>
-                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }} title={visit.referrer}>
-                                                                {new URL(visit.referrer).hostname}
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                }
-                                                return <span style={{ color: '#94a3b8' }}>Direct Entry</span>;
-                                            })()}
-                                        </div>
+                                        {/* Right Column: Actions List */}
+                                        <div className="visit-content">
+                                            <div className="visit-content-header">
+                                                {actions.length} Actions - {Math.floor(durationSeconds / 60)} min {durationSeconds % 60}s
+                                            </div>
 
-                                        <div style={{ marginTop: '1rem' }}>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setSelectedVisitorId(getVisitorID(visit)); }}
-                                                className="btn-text"
-                                                style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--primary)', fontSize: '0.8rem', padding: 0 }}
-                                            >
-                                                <Activity size={12} /> View Visitor Profile
-                                            </button>
+                                            <VisitorActionsList actions={actions} />
                                         </div>
                                     </div>
-
-                                    {/* Right Column: Actions List */}
-                                    <div className="visit-content">
-                                        <div className="visit-content-header">
-                                            {actions.length} Actions - {Math.floor(durationSeconds / 60)} min {durationSeconds % 60}s
-                                        </div>
-
-                                        <VisitorActionsList actions={actions} />
-                                    </div>
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <DebugView settings={settings} />
-                        </div>
-                    )}
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        itemsPerPage={itemsPerPage}
-                        onPageChange={setCurrentPage}
-                        onItemsPerPageChange={setItemsPerPage}
-                        totalItems={totalItems}
-                    />
-                </div>
-            )
+                                );
+                            })
+                        ) : (
+                            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <DebugView settings={settings} />
+                            </div>
+                        )}
+                        <Pagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            itemsPerPage={itemsPerPage}
+                            onPageChange={setCurrentPage}
+                            onItemsPerPageChange={setItemsPerPage}
+                            totalItems={totalItems}
+                        />
+                    </div>
+                )
             }
 
             {/* Inline Styles for Tooltip Hover */}

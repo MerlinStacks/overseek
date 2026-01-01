@@ -13,7 +13,7 @@ const AdminToolsPage = () => {
     const handleClearCache = async () => {
         setLoading(true);
         try {
-            await axios.post('/admin/cache/clear');
+            await axios.post('/api/admin/cache/clear');
             toast.success('Redis Cache successfully cleared');
         } catch (e) {
             toast.error('Failed to clear cache');
@@ -28,7 +28,7 @@ const AdminToolsPage = () => {
         setPingResult(null);
         try {
             const target = settings.storeUrl || 'https://google.com';
-            const res = await axios.post('/admin/ping', { url: target });
+            const res = await axios.post('/api/admin/ping', { url: target });
             setPingResult({ success: true, ...res.data });
             toast.success(`Ping successful: ${res.data.latency}ms`);
         } catch (e) {

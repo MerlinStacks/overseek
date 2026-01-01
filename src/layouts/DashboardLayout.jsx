@@ -121,7 +121,7 @@ const Notifications = () => {
                             alerts.map(alert => (
                                 <div
                                     key={alert.id}
-                                    onClick={() => { setIsOpen(false); window.location.href = alert.link; }}
+                                    onClick={() => { setIsOpen(false); navigate(alert.link); }}
                                     style={{
                                         padding: '12px 16px',
                                         borderBottom: '1px solid rgba(255,255,255,0.03)',

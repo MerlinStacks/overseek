@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSync } from '../context/SyncContext';
-import { Loader2, XCircle, CheckCircle, PauseCircle, PlayCircle } from 'lucide-react';
+import { Loader2, XCircle, PauseCircle, PlayCircle } from 'lucide-react';
 
 const SyncOverlay = () => {
     const { status, progress, task, cancelSync, pauseSync, resumeSync } = useSync();

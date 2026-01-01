@@ -3,10 +3,11 @@ import { useAccount } from '../../context/AccountContext';
 import { Plus, Globe, Server, User, Database, MoreVertical, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../../layouts/AdminLayout.css';
+import { toast } from 'sonner';
 import { db } from '../../db/db';
 
 const AdminAccountsPage = () => {
-    const { accounts, activeAccount, switchAccount, createAccount } = useAccount();
+    const { accounts, activeAccount, switchAccount, createAccount, refreshAccounts } = useAccount();
     const [isCreating, setIsCreating] = useState(false);
     const [newAccountName, setNewAccountName] = useState('');
     const [newAccountDomain, setNewAccountDomain] = useState('');
@@ -40,9 +41,9 @@ const AdminAccountsPage = () => {
                     adRevenueTracking: e.target.adRevenueTracking.checked
                 }
             });
-            alert('Features updated');
+            toast.success('Features updated');
             setConfigAccount(null);
-            window.location.reload(); // Simple reload to reflect changes in context
+            await refreshAccounts();
         } catch (error) {
             console.error(error);
             alert('Failed to update features');
@@ -172,7 +173,7 @@ const AdminAccountsPage = () => {
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
-                {accounts.map(account => {
+                {Array.isArray(accounts) && accounts.map(account => {
                     const isActive = activeAccount?.id === account.id;
                     return (
                         <div

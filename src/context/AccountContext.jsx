@@ -16,36 +16,26 @@ export const AccountProvider = ({ children }) => {
     const [activeAccount, setActiveAccount] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const loadAccounts = async () => {
-            try {
-                const all = await db.accounts.toArray();
-                setAccounts(all);
+    const refreshAccounts = async () => {
+        setLoading(true);
+        try {
+            const all = await db.accounts.toArray();
+            setAccounts(Array.isArray(all) ? all : []);
 
-                // Auto-select logic
-                const storedId = parseInt(localStorage.getItem('activeAccountId'), 10);
-
-                let selected = null;
-                if (storedId && all.find(a => a.id === storedId)) {
-                    selected = all.find(a => a.id === storedId);
-                } else if (all.length > 0) {
-                    // Default to first available
-                    selected = all[0];
-                    localStorage.setItem('activeAccountId', selected.id);
-                } else {
-                    // No accounts exist (should be handled by migration, but just in case)
-                    // We might need to prompt creation or waiting for migration to finish
-                }
-
-                setActiveAccount(selected);
-            } catch (err) {
-                console.error("Failed to load accounts", err);
-            } finally {
-                setLoading(false);
+            // Re-sync active account if it was updated
+            if (activeAccount) {
+                const updated = all.find(a => a.id === activeAccount.id);
+                if (updated) setActiveAccount(updated);
             }
-        };
+        } catch (err) {
+            console.error("Failed to refresh accounts", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-        loadAccounts();
+    useEffect(() => {
+        refreshAccounts();
     }, []);
 
     const switchAccount = (accountId) => {
@@ -53,12 +43,8 @@ export const AccountProvider = ({ children }) => {
         if (acc) {
             setActiveAccount(acc);
             localStorage.setItem('activeAccountId', acc.id);
-            // Reload the page to ensure all contexts and sensitive states are reset cleanly
-            // Or we can rely on React state propagation. 
-            // Given the complexity of SyncContext and SettingsContext, a reload might be safer 
-            // but effectively "locks" the reset. 
-            // For a smooth SPA, we should rely on state. 
-            // Let's rely on state. SettingsContext will listen to activeAccount.
+            // State update triggers re-renders, no reload needed relative to routing.
+            // If specific components need to reset, they should listen to activeAccount changes.
         }
     };
 
@@ -69,9 +55,8 @@ export const AccountProvider = ({ children }) => {
                 domain,
                 created_at: new Date().toISOString()
             });
-            const newAcc = await db.accounts.get(id);
-            setAccounts(prev => [...prev, newAcc]);
-            // Switch to it immediately? Maybe.
+            await refreshAccounts(); // Re-fetch to get complete object
+            const newAcc = await db.accounts.get(id); // Double check or just use refresh results
             return newAcc;
         } catch (e) {
             console.error("Failed to create account", e);
@@ -80,7 +65,7 @@ export const AccountProvider = ({ children }) => {
     };
 
     return (
-        <AccountContext.Provider value={{ accounts, activeAccount, switchAccount, createAccount, loading }}>
+        <AccountContext.Provider value={{ accounts, activeAccount, switchAccount, createAccount, refreshAccounts, loading }}>
             {children}
         </AccountContext.Provider>
     );

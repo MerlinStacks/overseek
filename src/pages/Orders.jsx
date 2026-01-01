@@ -86,11 +86,11 @@ const Orders = () => {
             .reverse() // Assuming id or natural sort is roughly chronological, or better use [account_id+date_created] if possible but here we use simple index for speed? 
             // Actually 'account_id' is just an index. result is sorted by PK [account_id+id].
             // So reverse() gives recent IDs.
-            .limit(2000)
+            .limit(500)
             .toArray();
 
-        if (recentOrders.length === 2000) {
-            toast.info("Search limited to most recent 2,000 orders for performance.");
+        if (recentOrders.length === 500) {
+            toast.info("Search limited to most recent 500 orders for performance.");
         }
         return recentOrders;
     }, [activeAccount?.id, isFastMode]) || [];

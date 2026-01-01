@@ -375,6 +375,6 @@ export const geocodeAddress = async (address) => {
 };
 
 export const restartServer = async () => {
-    const response = await axios.post('/admin/restart');
+    const response = await axios.post('/api/admin/restart');
     return response.data;
 };

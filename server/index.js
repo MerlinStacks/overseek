@@ -21,6 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(helmet());
+app.set('trust proxy', 1); // Trust Nginx Proxy Headers (X-Forwarded-For)
 app.use(compression());
 app.use(morgan('tiny'));
 app.use(cors());
@@ -31,7 +32,7 @@ app.use(express.json());
 initDB();
 
 // Routes
-app.use('/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/db', dbRoutes);
 app.use('/api/proxy', proxyRoutes);
