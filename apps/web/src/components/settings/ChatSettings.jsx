@@ -27,7 +27,7 @@ const ChatSettings = () => {
     const [previewMode, setPreviewMode] = useState('online'); // 'online' | 'offline'
 
     useEffect(() => {
-        if (!settings.storeUrl) return;
+        if (!settings.storeUrl || !settings.consumerKey) return;
         const load = async () => {
             try {
                 const data = await fetchChatSettings(settings);

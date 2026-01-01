@@ -18,7 +18,7 @@ const SMTPSettings = ({ settings }) => {
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        if (!settings.storeUrl) return;
+        if (!settings.storeUrl || !settings.consumerKey) return;
         const load = async () => {
             setLoading(true);
             try {

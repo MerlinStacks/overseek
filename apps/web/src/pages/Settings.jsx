@@ -32,7 +32,7 @@ const Settings = () => {
         { id: 'email', label: 'Email Services', icon: Mail, desc: 'SMTP configuration' },
         { id: 'ai', label: 'Intelligence', icon: Cpu, desc: 'AI assistant models' },
         { id: 'chat', label: 'Live Chat', icon: MessageCircle, desc: 'Widget & Business Hours' },
-        { id: 'chat', label: 'Live Chat', icon: MessageCircle, desc: 'Widget & Business Hours' },
+
         { id: 'production', label: 'Production', icon: Server, desc: 'Kanban Stages' },
         { id: 'backup', label: 'Backup & Restore', icon: Database, desc: 'Export/Import dashboard data' },
     ];

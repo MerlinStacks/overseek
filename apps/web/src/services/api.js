@@ -43,7 +43,18 @@ let _cachedClient = null;
 let _cachedConfigHash = null;
 
 const createClient = (settings, type = 'wc') => {
-    if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
+    if (!settings.storeUrl || !settings.consumerKey) {
+        // Return a dummy client that checks simple availability calls
+        // This prevents crash if a component calls it before settings are ready
+        const dummyPromise = Promise.resolve({ data: [] });
+        return {
+            get: () => dummyPromise,
+            post: () => dummyPromise,
+            put: () => dummyPromise,
+            delete: () => dummyPromise,
+            defaults: { headers: {} }
+        };
+    }
 
     const { storeUrl, consumerKey, consumerSecret, authMethod } = settings;
     const configHash = `${storeUrl}|${consumerKey}|${authMethod}|${type}`;
@@ -225,7 +236,10 @@ export const fetchTaxRates = async (settings, params = {}) => {
 
 // Helper for Smart Failover (Modern -> Legacy -> Modern+QS -> Legacy+QS)
 const executeHelperRequest = async (settings, method, pathSuffix, data = null, returnFullResponse = false) => {
-    if (!settings.storeUrl || !settings.consumerKey) throw new Error("API not configured");
+    if (!settings.storeUrl || !settings.consumerKey) {
+        if (returnFullResponse) return { data: [], headers: {} }; // Return safer empty struct
+        return [];
+    }
 
     // We recreate client here manually because we iterate auth strategies
     // But honestly, the Proxy should handle this too? 
