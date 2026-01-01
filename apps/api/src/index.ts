@@ -37,6 +37,8 @@ import { marketingRoutes } from './routes/marketing.js';
 fastify.register(marketingRoutes, { prefix: '/api/marketing' });
 fastify.register(adminRoutes, { prefix: '/api/admin' });
 fastify.register(proxyRoutes, { prefix: '/api/proxy' });
+import { dbRoutes } from './routes/db.js';
+fastify.register(dbRoutes, { prefix: '/api/db' });
 
 
 fastify.get('/health', async (request, reply) => {

@@ -1,14 +1,28 @@
 import { FastifyInstance } from 'fastify';
 import axios from 'axios';
 import https from 'https';
+import { requireAuth } from '../middleware/auth.js';
+import { db } from '../db/index.js';
+import { stores } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 export async function proxyRoutes(fastify: FastifyInstance) {
-    fastify.all('/*', async (req: any, reply) => {
-        const storeUrl = req.headers['x-store-url'];
+    fastify.addHook('preHandler', requireAuth);
 
-        if (!storeUrl) {
-            return reply.status(400).send({ error: 'Missing x-store-url header' });
+    fastify.all('/*', async (req: any, reply) => {
+        // Securely fetch store URL from authenticated user's context
+        const storeId = req.user.defaultStoreId;
+        if (!storeId) {
+            return reply.status(400).send({ error: 'User has no active store' });
         }
+
+        const store = await db.select({ url: stores.url }).from(stores).where(eq(stores.id, storeId)).limit(1);
+
+        if (!store.length || !store[0].url) {
+            return reply.status(404).send({ error: 'Store URL not configured' });
+        }
+
+        const storeUrl = store[0].url;
 
         // Strip /api/proxy prefix to get the path
         const path = req.url.replace('/api/proxy', '');

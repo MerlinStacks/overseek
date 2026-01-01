@@ -7,9 +7,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
     fastify.addHook('preHandler', requireAuth);
 
     fastify.post('/start', async (req: any, reply) => {
-        const { storeUrl, consumerKey, consumerSecret, authMethod, accountId, options } = req.body;
+        const { storeUrl, consumerKey, consumerSecret, authMethod, options } = req.body;
 
-        // Validation could be added here (Zod)
+        // Enforce Account Context
+        const accountId = req.user.defaultStoreId;
+        if (!accountId) {
+            return reply.status(400).send({ error: "User has no active store context" });
+        }
 
         // Async Start
         startSync({ storeUrl, consumerKey, consumerSecret, authMethod, accountId, options });

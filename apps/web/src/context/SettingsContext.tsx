@@ -156,10 +156,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
         }
         if (newSettings.storeUrl) {
-            if (!newSettings.storeUrl.startsWith('http')) {
-                toast.error("Store URL must start with http:// or https://");
-                return;
+            let url = newSettings.storeUrl.trim();
+            // Auto-fix missing protocol
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = `https://${url}`;
             }
+            newSettings.storeUrl = url;
         }
 
         // Optimistic Update
