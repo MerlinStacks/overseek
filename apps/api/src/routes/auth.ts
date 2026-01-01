@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
-import { db } from '../db';
-import { users } from '../db/schema';
+import { db } from '../db/index.js';
+import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { verifyPassword } from '../auth/utils';
-import { createSession, destroySession } from '../auth/session';
+import { verifyPassword } from '../auth/utils.js';
+import { createSession, destroySession } from '../auth/session.js';
 
 export async function authRoutes(fastify: FastifyInstance) {
     fastify.post('/login', async (req: any, reply) => {

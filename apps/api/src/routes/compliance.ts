@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { requireAuth } from '../middleware/auth';
-import { db } from '../db';
-import { users, sessions, analytics_events, userRoles } from '../db/schema';
+import { requireAuth } from '../middleware/auth.js';
+import { db } from '../db/index.js';
+import { users, sessions, analytics_events, userRoles } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
 export async function complianceRoutes(fastify: FastifyInstance) {

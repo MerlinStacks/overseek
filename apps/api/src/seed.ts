@@ -1,7 +1,7 @@
 
-import { db } from './db';
-import { users, stores, roles, userRoles } from './db/schema';
-import { hashPassword } from './auth/utils';
+import { db } from './db/index.js';
+import { users, stores, roles, userRoles } from './db/schema.js';
+import { hashPassword } from './auth/utils.js';
 import { eq } from 'drizzle-orm';
 
 async function seed() {

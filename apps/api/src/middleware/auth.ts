@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { getSessionUser } from '../auth/session';
+import { getSessionUser } from '../auth/session.js';
 
 export const requireAuth = async (req: any, reply: FastifyReply) => {
     const sessionId = req.cookies.session_id;

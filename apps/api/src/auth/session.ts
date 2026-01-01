@@ -1,6 +1,6 @@
-import { db } from '../db';
-import { sessions, users } from '../db/schema';
-import { generateSessionId } from './utils';
+import { db } from '../db/index.js';
+import { sessions, users } from '../db/schema.js';
+import { generateSessionId } from './utils.js';
 import { eq, gt } from 'drizzle-orm';
 import { FastifyRequest, FastifyReply } from 'fastify';
 

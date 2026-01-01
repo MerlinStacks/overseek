@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "description": "Backend API for OverSeek",
     "main": "index.js",
+    "type": "module",
     "scripts": {
         "start": "node dist/index.js",
         "dev": "tsx watch src/index.ts",

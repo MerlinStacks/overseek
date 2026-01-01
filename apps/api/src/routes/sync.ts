@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { startSync, getStatus } from '../sync';
-import { checkLiveOrders } from '../sync/live';
-import { requireAuth } from '../middleware/auth';
+import { startSync, getStatus } from '../sync/index.js';
+import { checkLiveOrders } from '../sync/live.js';
+import { requireAuth } from '../middleware/auth.js';
 
 export async function syncRoutes(fastify: FastifyInstance) {
     fastify.addHook('preHandler', requireAuth);

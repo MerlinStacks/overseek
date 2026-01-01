@@ -19,21 +19,21 @@ fastify.register(cookie, {
 });
 
 // Routes
-import { authRoutes } from './routes/auth';
-import { syncRoutes } from './routes/sync';
-import { settingsRoutes } from './routes/settings';
-import { analyticsRoutes } from './routes/analytics';
-import { adminRoutes } from './routes/admin'; // Legacy/General Admin
-import { proxyRoutes } from './routes/proxy';
+import { authRoutes } from './routes/auth.js';
+import { syncRoutes } from './routes/sync.js';
+import { settingsRoutes } from './routes/settings.js';
+import { analyticsRoutes } from './routes/analytics.js';
+import { adminRoutes } from './routes/admin.js'; // Legacy/General Admin
+import { proxyRoutes } from './routes/proxy.js';
 
 // Register Routes
 fastify.register(authRoutes, { prefix: '/api/auth' });
 fastify.register(syncRoutes, { prefix: '/api/sync' });
 fastify.register(settingsRoutes, { prefix: '/api/settings' });
 fastify.register(analyticsRoutes, { prefix: '/api/analytics' });
-import { complianceRoutes } from './routes/compliance';
+import { complianceRoutes } from './routes/compliance.js';
 fastify.register(complianceRoutes, { prefix: '/api/compliance' });
-import { marketingRoutes } from './routes/marketing';
+import { marketingRoutes } from './routes/marketing.js';
 fastify.register(marketingRoutes, { prefix: '/api/marketing' });
 fastify.register(adminRoutes, { prefix: '/api/admin' });
 fastify.register(proxyRoutes, { prefix: '/api/proxy' });

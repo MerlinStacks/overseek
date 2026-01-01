@@ -1,6 +1,6 @@
 import { sql, inArray } from 'drizzle-orm';
-import { db } from '../db';
-import { syncState, products, orders, reviews, customers, coupons } from '../db/schema';
+import { db } from '../db/index.js';
+import { syncState, products, orders, reviews, customers, coupons } from '../db/schema.js';
 import { AxiosInstance } from 'axios';
 
 // Map string table names to Drizzle definitions

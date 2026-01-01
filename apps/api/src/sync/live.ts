@@ -1,7 +1,7 @@
 
-import { createClient, AuthMethod } from './client';
-import { db } from '../db';
-import { storeCredentials, stores } from '../db/schema';
+import { createClient, AuthMethod } from './client.js';
+import { db } from '../db/index.js';
+import { storeCredentials, stores } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
 interface LiveOrderOptions {

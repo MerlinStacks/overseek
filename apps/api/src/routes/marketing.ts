@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { requireAuth } from '../middleware/auth';
-import { db } from '../db';
-import { ad_integrations, ad_campaigns } from '../db/schema';
+import { requireAuth } from '../middleware/auth.js';
+import { db } from '../db/index.js';
+import { ad_integrations, ad_campaigns } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export async function marketingRoutes(fastify: FastifyInstance) {

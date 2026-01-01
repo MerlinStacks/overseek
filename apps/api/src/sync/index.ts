@@ -1,6 +1,6 @@
-import { detectAuth, AuthMethod } from './client';
-import { syncEntity, updateSyncState, getSyncState, EntityType } from './engine';
-import { db } from '../db';
+import { detectAuth, AuthMethod } from './client.js';
+import { syncEntity, updateSyncState, getSyncState, EntityType } from './engine.js';
+import { db } from '../db/index.js';
 
 export interface SyncOptions {
     forceFull?: boolean;

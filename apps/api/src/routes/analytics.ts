@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { db } from '../db';
-import { analytics_events } from '../db/schema';
-import { redact } from '../analytics/redactor';
+import { db } from '../db/index.js';
+import { analytics_events } from '../db/schema.js';
+import { redact } from '../analytics/redactor.js';
 
 export async function analyticsRoutes(fastify: FastifyInstance) {
 

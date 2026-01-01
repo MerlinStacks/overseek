@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { db } from '../db';
+import { db } from '../db/index.js';
 import { sql } from 'drizzle-orm';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth.js';
 
 export async function adminRoutes(fastify: FastifyInstance) {
     fastify.addHook('preHandler', requireAuth);
