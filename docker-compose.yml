@@ -34,7 +34,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: "wget --no-verbose --tries=1 --spider http://127.0.0.1:4000/health || exit 1"
+      test: [ "CMD", "node", "dist/healthcheck.js" ]
       interval: 30s
       timeout: 10s
       retries: 5

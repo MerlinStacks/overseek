@@ -17,8 +17,8 @@ RUN npm prune --production
 FROM node:22-alpine
 WORKDIR /app
 
-# Install system dependencies (wget/curl for healthcheck)
-RUN apk add --no-cache wget curl
+# System dependencies not strictly needed since we use Node.js healthcheck
+# RUN apk add --no-cache wget curl
 
 # Copy production dependencies
 COPY --from=builder /app/node_modules ./node_modules
