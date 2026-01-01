@@ -6,6 +6,7 @@ interface User {
     email: string;
     fullName: string;
     storeId: number;
+    isSuperAdmin: boolean;
 }
 
 interface AuthContextType {
@@ -23,7 +24,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const checkAuth = async () => {
         try {
-            const res = await axios.get('/api/auth/me');
+            const res = await axios.get('/api/auth/me', { withCredentials: true });
             setUser(res.data);
         } catch (e) {
             setUser(null);

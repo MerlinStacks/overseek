@@ -5,6 +5,21 @@ const fastify = Fastify({
     logger: true
 });
 
+fastify.setErrorHandler((error, request, reply) => {
+    request.log.error(error);
+    const statusCode = error.statusCode || 500;
+
+    // Hide internal stack traces in production
+    const isProd = process.env.NODE_ENV === 'production';
+
+    reply.status(statusCode).send({
+        error: error.name || 'Internal Server Error',
+        message: error.message || 'An unexpected error occurred',
+        // statusCode,
+        ...(isProd ? {} : { stack: error.stack })
+    });
+});
+
 fastify.register(cors, {
     origin: '*' // Configure safely later
 });

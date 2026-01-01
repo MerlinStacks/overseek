@@ -24,6 +24,7 @@ services:
       - DATABASE_URL=postgres://user:${POSTGRES_PASSWORD:-password}@db:5432/overseek
       - PORT=4000
       - REDIS_URL=${REDIS_URL}
+      - COOKIE_SECRET=${COOKIE_SECRET:-super-secret-key-change-me-in-prod-please}
     ports:
       - "4000:4000"
     depends_on:

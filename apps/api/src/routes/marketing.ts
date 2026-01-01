@@ -5,6 +5,47 @@ import { ad_integrations, ad_campaigns } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export async function marketingRoutes(fastify: FastifyInstance) {
+    // Webhook for Ad Spend (Simulated for now)
+    // Defined BEFORE auth hook to remain public
+    fastify.post('/webhook/ads', async (req: any, reply) => {
+        // This would verify signature from Meta/Google
+        // For now, accept internal updates
+        const { campaigns } = req.body; // Array of { id, name, spend, roas... }
+
+        // Context Issue: Without Auth, we don't have `req.user.defaultStoreId`.
+        // Real webhooks send IDs we need to match.
+        // For simulation, let's look up store by some ID in payload or trusted source.
+        const { storeId: payloadStoreId } = req.body; // Expect payload to carry context
+
+        if (!campaigns || !Array.isArray(campaigns) || !payloadStoreId) return { success: false };
+
+        for (const camp of campaigns) {
+            const platform = camp.platform || 'meta'; // Default
+
+            await db.insert(ad_campaigns).values({
+                id: camp.id,
+                storeId: payloadStoreId,
+                platform,
+                name: camp.name,
+                status: camp.status || 'active',
+                spend: camp.spend,
+                roas: camp.roas,
+                impressions: camp.impressions,
+                clicks: camp.clicks,
+                syncedAt: new Date()
+            }).onConflictDoUpdate({
+                target: ad_campaigns.id,
+                set: {
+                    spend: camp.spend,
+                    roas: camp.roas,
+                    syncedAt: new Date()
+                }
+            });
+        }
+
+        return { success: true };
+    });
+
     fastify.addHook('preHandler', requireAuth);
 
     // GET /api/marketing/integrations
@@ -55,39 +96,5 @@ export async function marketingRoutes(fastify: FastifyInstance) {
         return { success: true };
     });
 
-    // Webhook for Ad Spend (Simulated for now)
-    fastify.post('/webhook/ads', async (req: any, reply) => {
-        // This would verify signature from Meta/Google
-        // For now, accept internal updates
-        const { campaigns } = req.body; // Array of { id, name, spend, roas... }
-        const storeId = req.user.defaultStoreId;
 
-        if (!campaigns || !Array.isArray(campaigns)) return { success: false };
-
-        for (const camp of campaigns) {
-            const platform = camp.platform || 'meta'; // Default
-
-            await db.insert(ad_campaigns).values({
-                id: camp.id,
-                storeId,
-                platform,
-                name: camp.name,
-                status: camp.status || 'active',
-                spend: camp.spend,
-                roas: camp.roas,
-                impressions: camp.impressions,
-                clicks: camp.clicks,
-                syncedAt: new Date()
-            }).onConflictDoUpdate({
-                target: ad_campaigns.id,
-                set: {
-                    spend: camp.spend,
-                    roas: camp.roas,
-                    syncedAt: new Date()
-                }
-            });
-        }
-
-        return { success: true };
-    });
 }
