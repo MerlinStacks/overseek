@@ -45,9 +45,26 @@ fastify.get('/health', async (request, reply) => {
 
 import { initSocket } from './socket.js';
 
+import { exec } from 'child_process';
+import util from 'util';
+
+const execAsync = util.promisify(exec);
+
 const start = async () => {
     try {
+        // Run database migrations on startup
+        console.log('Starting migration check...');
+        try {
+            const { stdout, stderr } = await execAsync('npm run db:push');
+            console.log('Migration output:', stdout);
+            if (stderr) console.log('Migration info:', stderr);
+        } catch (error: any) {
+            console.error('Migration failed:', error.message);
+            // We continue regardless, as it might just be up to date or a connection blip
+        }
+
         const port = parseInt(process.env.PORT || '4000');
+
         // socket.io attachment
         await fastify.ready();
         initSocket(fastify.server);
