@@ -6,7 +6,7 @@ import { Toaster, toast } from 'sonner';
 import { Scan, Package, Check, AlertTriangle, Printer, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
-import useScanDetection from 'use-scan-detection'; // Just kidding, implementing raw logic
+
 
 const ProductionScanner = () => {
     const { activeAccount } = useAccount();

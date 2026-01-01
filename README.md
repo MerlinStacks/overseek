@@ -1,90 +1,99 @@
-# OverSeek - Modern WooCommerce Intelligence Dashboard
+# ⚡ OverSeek
 
-![OverSeek Banner](https://via.placeholder.com/1200x400?text=OverSeek+Dashboard+Preview)
-
-**OverSeek** is a high-performance, real-time analytics and management dashboard for WooCommerce. Built with a "Local-First" architecture, it provides instant insights, real-time presence collaboration, and advanced reporting without slowing down your live store.
+> **The Local-First Intelligence Engine for WooCommerce.**
+> 
+> *Instant analytics, real-time collaboration, and warehouse logistics—without slowing down your store.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker Image Size](https://img.shields.io/docker/image-size/merlinstacks/overseek-dashboard/latest)](https://hub.docker.com/)
-[![React](https://img.shields.io/badge/react-%2320232a.svg?style=flat&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![React](https://img.shields.io/badge/react-19.0-blue.svg)](https://react.dev/)
+[![Fastify](https://img.shields.io/badge/fastify-5.0-black.svg)](https://fastify.dev/)
+[![TurboRepo](https://img.shields.io/badge/turborepo-enabled-red.svg)](https://turbo.build/)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
 
 ---
 
-## 🚀 Key Features
+## 🚀 Why OverSeek?
 
--   **⚡ Real-Time Analytics:** Live stream of sales, visitors, and cart activity via WebSockets.
--   **👥 Team Presence:** See who else is viewing a product or order in real-time to prevent collisions.
--   **📊 Advanced Reporting:** Custom report builder with drag-and-drop metrics and visual graphs.
--   **🔌 Service Integrations:** Connect external AI models (OpenRouter) and lifestyle apps (Fitbit, Waze) for contextual insights.
--   **🛡️ Enterprise Security:** Robust role-based access, audit logging, and secure Nginx proxying.
--   **🐳 Docker Ready:** One-click deployment to Portainer or any Docker environment.
+OverSeek is a modern, decoupled dashboard that runs separately from your WordPress site. By syncing data to a local browser database (**IndexedDB**), it offers:
 
-## 🛠️ Tech Stack
+-   **Zero-Latency Navigation:** Browse thousands of orders and products instantly. No loading spinners.
+-   **Real-Time Collaboration:** See who is viewing an order *right now* to prevent shipping collisions.
+-   **Air-Gapped Security:** Your API keys stay in your browser. We never see your data.
+-   **Warehouse Grade:** Includes a dedicated high-contrast Barcode Scanner mode for logistics teams.
 
--   **Frontend:** React 19, Vite, Recharts, Lucide Icons, Glassmorphism UI.
--   **Backend:** Node.js, Express, Socket.io.
--   **Database:** PostgreSQL (Data), Redis (Caching/PubSub).
--   **Infrastructure:** Docker Compose, Nginx Reverse Proxy.
+## ✨ Key Features
 
-## 📦 Installation
+### 📊 Real-Time Analytics
+Live steam of sales, visitor traffic, and cart abandonment. Powered by WebSockets and Redis.
 
-### Option A: Quick Start (Portainer / Docker)
+### 🏭 Warehouse Logistics (New!)
+-   **Barcode Scanner Mode:** A dedicated, keyboard-driven UI for HID scanners.
+-   **Custom Pipelines:** Define your own Kanban stages (e.g., "Laser Engraving", "Quality Check").
 
-1.  Clone this repository.
-2.  Deploy the stack using `docker-compose.yml`.
-3.  Access the dashboard at `http://your-server:5173`.
+### 🤖 AI-Powered Insights
+Connect your own OpenRouter/Gemini keys to get:
+-   **Inventory Forecasting:** Predict stock runouts before they happen.
+-   **Smart Suggestions:** Ad spend optimization and pricing strategies.
 
-```yaml
-version: '3.8'
-services:
-  app:
-    image: overseek:latest
-    ports:
-      - "5173:80"
-```
+### 🔌 Integrations
+-   **Lifestyle:** Sync Fitbit/Waze data for personal productivity context.
+-   **Communication:** Auto-send Slack/Email digests.
 
-### Option B: Local Development
+## 🛠️ Architecture
 
-1.  **Clone the repo:**
+OverSeek uses a modern Monorepo structure managed by **TurboRepo**:
+
+| Component | Tech Stack | Description |
+| :--- | :--- | :--- |
+| **Frontend** | React 19, Vite 7, Tailwind | The glassmorphism UI. Runs entirely in-browser. |
+| **Backend** | Node.js 22, Fastify 5 | Handles OAuth, Proxying, and Webhooks. |
+| **Database** | PostgreSQL 16 + Redis 7 | Archival storage and Pub/Sub messaging. |
+| **Sync Engine** | Web Workers + Dexie.js | Background synchronization logic. |
+
+👉 **[Read the Full Architecture Documentation](docs/ARCHITECTURE_CURRENT.md)**
+
+## 📦 Getting Started
+
+### Prerequisites
+-   Docker & Docker Compose
+-   Node.js 20+ (for local dev)
+-   pnpm
+
+### Quick Start (Production)
+
+1.  **Clone & Deploy:**
     ```bash
     git clone https://github.com/MerlinStacks/overseek.git
     cd overseek
+    docker-compose up -d --build
     ```
 
-2.  **Start dependencies (DB & Redis):**
-    ```bash
-    docker-compose -f docker-compose.dev.yml up -d db redis
-    ```
+2.  **Access Dashboard:**
+    Open `http://localhost:5173` (or your server IP).
 
-3.  **Install & Run Backend:**
-    ```bash
-    cd server
-    npm install
-    npm run dev
-    ```
+### Development Mode
 
-4.  **Install & Run Frontend:**
-    ```bash
-    # New terminal
-    npm install
-    npm run dev
-    ```
+```bash
+# Install dependencies
+pnpm install
+
+# Start both Frontend and Backend
+pnpm dev
+```
+
+## 📚 Documentation
+
+We have comprehensive documentation available in the `docs/` directory:
+
+-   **[Security Audit](docs/SECURITY_AUDIT.md)** (Passed 2026-01-01)
+-   **[Database Schema](docs/DATABASE_SCHEMA.md)**
+-   **[Deployment Guide](docs/DEPLOYMENT.md)**
+-   **[Feature Specifications](docs/spec/)** (PDFs, AI, Automation)
 
 ## 🤝 Contributing
 
-We love contributions! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
-
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md).
 
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
-## 🔒 Security
-
-For security concerns, please review our [Security Policy](SECURITY.md).
