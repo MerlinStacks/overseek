@@ -22,11 +22,20 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/marketing/automations', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
-            const data = await res.json();
-            setAutomations(data);
-        } catch (err) { console.error(err); }
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) setAutomations(data);
+                else setAutomations([]);
+            } else {
+                console.error("Failed to fetch automations:", res.status);
+                setAutomations([]);
+            }
+        } catch (err) { console.error(err); setAutomations([]); }
         finally { setIsLoading(false); }
     }
 
@@ -43,7 +52,8 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
                 },
                 body: JSON.stringify({ ...newItem, steps: defaultSteps, isActive: false })
             });
@@ -74,13 +84,20 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             // I need to fetch detail first.
 
             const detailRes = await fetch(`/api/marketing/automations/${aut.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
             const detail = await detailRes.json();
 
             await fetch('/api/marketing/automations', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
                 body: JSON.stringify({ ...detail, isActive: !aut.isActive })
             });
 
@@ -93,7 +110,10 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         try {
             await fetch(`/api/marketing/automations/${id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
             fetchData();
         } catch (err) { alert('Failed to delete'); }

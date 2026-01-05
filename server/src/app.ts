@@ -50,8 +50,38 @@ const automationEngine = new AutomationEngine(); // Keep for event listeners
 const app = express();
 
 // Security & Middleware
-app.use(helmet());
-app.use(cors());
+app.set('trust proxy', 1); // Trust Docker/Nginx proxy for Rate Limiting
+
+// Rate Limiting: 100 requests per 15 minutes per IP
+import rateLimit from 'express-rate-limit';
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100, // Limit each IP to 100 requests per windowMs
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    message: { error: 'Too many requests, please try again later.' }
+});
+app.use(limiter);
+
+// Helmet CSP & Security Headers
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"], // Strict script source
+            objectSrc: ["'none'"],
+            upgradeInsecureRequests: [],
+        }
+    }
+}));
+
+// Strict CORS
+app.use(cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Restrict to known client
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic']
+}));
+
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

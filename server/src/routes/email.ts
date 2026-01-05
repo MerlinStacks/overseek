@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { EmailService } from '../services/EmailService';
 import { requireAuth } from '../middleware/auth';
+import { encrypt, decrypt } from '../utils/encryption';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -18,7 +19,14 @@ router.get('/accounts', async (req: Request, res: Response) => {
         const accounts = await prisma.emailAccount.findMany({
             where: { accountId }
         });
-        res.json(accounts);
+
+        // Return masked passwords
+        const masked = accounts.map(a => ({
+            ...a,
+            password: '••••••••'
+        }));
+
+        res.json(masked);
     } catch (error) {
         res.status(500).json({ error: 'Failed to list email accounts' });
     }
@@ -45,13 +53,13 @@ router.post('/accounts', async (req: Request, res: Response) => {
                 host,
                 port: parseInt(port),
                 username,
-                password, // TODO: Encryption
+                password: encrypt(password),
                 type,
                 isSecure: Boolean(isSecure)
             }
         });
 
-        res.json(account);
+        res.json({ ...account, password: '••••••••' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to create email account' });
@@ -65,23 +73,33 @@ router.put('/accounts/:id', async (req: Request, res: Response) => {
         const { id } = req.params;
         const data = req.body;
 
-        // Security check: ensure belongs to user's account
         const existing = await prisma.emailAccount.findFirst({
             where: { id, accountId }
         });
 
         if (!existing) return res.status(404).json({ error: 'Account not found' });
 
+        const updateData: any = {
+            name: data.name,
+            email: data.email,
+            host: data.host,
+            port: data.port ? parseInt(data.port) : undefined,
+            username: data.username,
+            type: data.type,
+            isSecure: Boolean(data.isSecure),
+            updatedAt: new Date()
+        };
+
+        if (data.password && data.password !== '••••••••') {
+            updateData.password = encrypt(data.password);
+        }
+
         const updated = await prisma.emailAccount.update({
             where: { id },
-            data: {
-                ...data,
-                port: data.port ? parseInt(data.port) : undefined,
-                updatedAt: new Date()
-            }
+            data: updateData
         });
 
-        res.json(updated);
+        res.json({ ...updated, password: '••••••••' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to update email account' });
     }
@@ -106,14 +124,32 @@ router.delete('/accounts/:id', async (req: Request, res: Response) => {
 // Test Connection
 router.post('/test', async (req: Request, res: Response) => {
     try {
-        const { host, port, username, password, type, isSecure } = req.body;
+        const { id, host, port, username, password, type, isSecure } = req.body;
+        const accountId = (req as any).user?.accountId || (req as any).accountId;
 
-        // Mock object for validation
+        let passwordToTest = password;
+
+        // If password is masked and we have an ID (verifying existing account), fetch real password
+        if (password === '••••••••' && id && accountId) {
+            const existing = await prisma.emailAccount.findFirst({
+                where: { id, accountId }
+            });
+            if (existing && existing.password) {
+                // Decrypt stored password
+                try {
+                    passwordToTest = decrypt(existing.password);
+                } catch (e) {
+                    console.error('Decryption failed for test', e);
+                    // Fallback to existing logic (will fail auth likely)
+                }
+            }
+        }
+
         const mockAccount: any = {
             host,
             port: parseInt(port),
             username,
-            password,
+            password: passwordToTest,
             type,
             isSecure: Boolean(isSecure)
         };

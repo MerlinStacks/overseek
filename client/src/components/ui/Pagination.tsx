@@ -48,7 +48,7 @@ export function Pagination({
     );
 
     return (
-        <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-50 border-t border-slate-100", className)}>
+        <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 pr-24 bg-slate-50 border-t border-slate-100", className)}>
             {/* Items Per Page Selector */}
             <div className="flex items-center gap-2 text-sm text-slate-600">
                 {allowItemsPerPage && itemsPerPage && onItemsPerPageChange && (

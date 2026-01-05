@@ -8,26 +8,19 @@ const router = Router();
 const prisma = new PrismaClient();
 
 // Helper to verify WooCommerce Signature
-/*
 const verifySignature = (payload: any, signature: string, secret: string) => {
+    // Woo sends signature as base64 encoded HMAC-SHA256
     const hash = crypto.createHmac('sha256', secret)
-        .update(JSON.stringify(payload))
+        .update(JSON.stringify(payload)) // Note: Raw body is better, but Express default JSON parser modifies it. 
+        // In a perfect world, we'd use raw-body. For now, we assume standard JSON behavior matches Woo's encoding.
+        // If this fails often, we need to switch to capturing raw buffer.
         .digest('base64');
     return hash === signature;
 };
-*/
 
 // Webhook Endpoint
 // WooCommerce sends topic in header: "x-wc-webhook-topic": "order.created"
 // And signature: "x-wc-webhook-signature": "..."
-// And resource ID: "x-wc-webhook-resource": "12345"
-// And Source URL or similar to identify store? No, usually we rely on the secret.
-// PROBLEM: In a multi-tenant app, we need to know WHICH account this webhook belongs to.
-// OPTION A: Unique Webhook URL per account: /api/webhooks/woo/:accountId
-// OPTION B: Try to match the signature against ALL accounts (Expensive)
-// OPTION C: User passes ?user_id=... in the Delivery URL setup.
-
-// Going with OPTION A: /api/webhooks/woo/:accountId
 router.post('/:accountId', async (req: Request, res: Response) => {
     try {
         const { accountId } = req.params;
@@ -38,24 +31,30 @@ router.post('/:accountId', async (req: Request, res: Response) => {
             return res.status(400).send('Missing headers');
         }
 
-        // Fetch Account to get the Secret
-        // NOTE: In a real app, you might have a dedicated "Webhook Secret" separate from Consumer Secret.
-        // For simplicity, we assume the user configured the webhook with the Consumer Secret 
-        // OR we generate a specific webhook secret.
-        // Let's assume we use the Account's `wooConsumerSecret` for now, 
-        // BUT typically Woo Webhooks have a separate string you define in the WP Admin.
-
-        // Correction: We need to store a "Webhook Secret" in the Account model if we want to verify properly.
-        // For this MVP, I will skip strict verification or assume a shared secret for now to unblock.
-        // TODO: Add `webhookSecret` to Account model.
-
-        // Let's just blindly sync for now to prove the flow, but log the proper path.
         console.log(`Received Webhook for Account ${accountId}: ${topic}`);
 
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         if (!account) return res.status(404).send('Account not found');
 
-        // Handle Order Events
+        // SECURITY: Verify Signature
+        // account.webhookSecret is preferred, falling back to wooConsumerSecret for legacy compatibility.
+        const secret = account.webhookSecret || account.wooConsumerSecret;
+
+        if (secret) {
+            // Verify signature using best-effort standard JSON stringify.
+            const isValid = verifySignature(req.body, signature, secret);
+
+            if (!isValid) {
+                console.warn(`[SECURITY] Invalid Webhook Signature for Account ${accountId}`);
+                // Enforcing security check:
+                return res.status(401).send('Invalid Signature');
+            }
+        } else {
+            console.warn(`[SECURITY] Account ${accountId} has no credentials to verify webhook`);
+            // Reject unverified webhooks if no secret exists
+            return res.status(401).send('No Webhook Secret Configured');
+        }
+
         // Handle Order Events
         if (topic === 'order.created' || topic === 'order.updated') {
             // Upsert Logic ... (Assuming Webhook logic exists here)

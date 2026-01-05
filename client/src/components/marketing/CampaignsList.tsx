@@ -25,9 +25,16 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/segments', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
-            if (res.ok) setSegments(await res.json());
+            if (res.ok) {
+                setSegments(await res.json());
+            } else {
+                console.error("Failed to fetch segments:", res.status, await res.text());
+            }
         } catch (e) { console.error(e); }
     }
 
@@ -35,12 +42,27 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/marketing/campaigns', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
-            const data = await res.json();
-            setCampaigns(data);
+
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    setCampaigns(data);
+                } else {
+                    console.error("Campaigns data is not an array:", data);
+                    setCampaigns([]);
+                }
+            } else {
+                console.error("Failed to fetch campaigns:", res.status, await res.text());
+                setCampaigns([]);
+            }
         } catch (err) {
             console.error(err);
+            setCampaigns([]);
         } finally {
             setIsLoading(false);
         }
@@ -77,7 +99,10 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         try {
             await fetch(`/api/marketing/campaigns/${id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
             fetchData();
         } catch (err) { alert('Failed to delete'); }

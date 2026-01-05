@@ -1,13 +1,16 @@
-
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/auth';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export interface AuthRequest extends Request {
     user?: {
         id: string;
-        accountId: string;
+        accountId?: string;
+        isSuperAdmin?: boolean;
     };
-    accountId?: string; // Legacy support for some routes that used req.accountId
+    accountId?: string; // Legacy support
 }
 
 export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -25,23 +28,21 @@ export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction)
         const decoded: any = verifyToken(token);
         const accountId = req.headers['x-account-id'] as string;
 
-        if (!accountId) {
-            // For strict endpoints, we might demand this. 
-            // However, to fix the 400 "No account selected" gracefully, we returning 400 is correct if the route NEEDS it.
-            // But let's attach what we have.
-            // If the route strictly needs it, it will check req.user.accountId
-        }
-
         req.user = {
             id: decoded.userId,
             accountId: accountId
         };
 
-        // Backwards compatibility for routes expecting req.accountId directly
+        // Backwards compatibility
         req.accountId = accountId;
 
-        if (!accountId && (req.originalUrl.includes('/customers') || req.originalUrl.includes('/products') || req.originalUrl.includes('/marketing'))) {
-            // Specific enforce for the reported issues
+        // Strict enforcement for specific routes
+        if (!accountId && (
+            req.originalUrl.includes('/customers') ||
+            req.originalUrl.includes('/products') ||
+            req.originalUrl.includes('/marketing') ||
+            req.originalUrl.includes('/orders') // Added orders to strict enforcement
+        )) {
             return res.status(400).json({ error: 'No account selected' });
         }
 
@@ -52,6 +53,25 @@ export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction)
 };
 
 export const requireSuperAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
-    // TODO: Implement actual super admin check
-    next();
+    try {
+        if (!req.user?.id) {
+            return res.status(401).json({ error: 'Authentication required for admin access' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        if (!user || !user.isSuperAdmin) {
+            return res.status(403).json({ error: 'Access denied: Super Admin only' });
+        }
+
+        // Attach isSuperAdmin to the request for downstream use if needed
+        req.user.isSuperAdmin = true;
+
+        next();
+    } catch (error) {
+        console.error('SuperAdmin check failed:', error);
+        res.status(500).json({ error: 'Internal server error during authorization' });
+    }
 };

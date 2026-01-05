@@ -91,8 +91,8 @@ export function SettingsPage() {
                 )}
 
                 {activeTab === 'intelligence' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="p-6 border-b border-gray-200">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div className="p-6 border-b border-gray-200 rounded-t-xl">
                             <h2 className="text-lg font-medium text-gray-900">Intelligence Configuration</h2>
                             <p className="text-sm text-gray-500 mt-1">Manage AI model selection and API keys.</p>
                         </div>

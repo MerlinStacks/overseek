@@ -1,0 +1,15 @@
+Testing with Token: eyJhbGciOiJIUzI1NiIs...
+Sending request to http://localhost:3000/api/accounts
+Status: 401
+Body: {"error":"Invalid token"}
+Testing with Token: eyJhbGciOiJIUzI1NiIs...
+Sending request to http://localhost:3000/api/accounts
+Status: 401
+Body: {"error":"Invalid token"}
+Testing with Token: eyJhbGciOiJIUzI1NiIs...
+Sending request to http://localhost:3000/api/accounts
+Fetch error: fetch failed
+Testing with Token: eyJhbGciOiJIUzI1NiIs...
+Sending request to http://localhost:3000/api/accounts
+Status: 401
+Body: {"error":"User invalid. Please login again."}

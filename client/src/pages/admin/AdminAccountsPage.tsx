@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
 import { useNavigate } from 'react-router-dom';
 import { Shield, LogIn, Check, X, Settings } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -20,10 +21,11 @@ interface AccountFeature {
     isEnabled: boolean;
 }
 
-const KNOWN_FEATURES = ['META_ADS', 'GOOGLE_ADS', 'ADVANCED_REPORTS', 'AI_WRITER'];
+const KNOWN_FEATURES = ['META_ADS', 'GOOGLE_ADS', 'ADVANCED_REPORTS', 'AI_WRITER', 'GOLD_PRICE_CALCULATOR'];
 
 export function AdminAccountsPage() {
     const { token, login } = useAuth();
+    const { currentAccount, refreshAccounts } = useAccount();
     const navigate = useNavigate();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(true);
@@ -117,6 +119,9 @@ export function AdminAccountsPage() {
                     }
                     return { ...acc, features: newFeatures };
                 }));
+                if (currentAccount && currentAccount.id === accountId) {
+                    refreshAccounts();
+                }
             }
         } catch (e) {
             console.error(e);

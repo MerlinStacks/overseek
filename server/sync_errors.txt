@@ -1,4 +1,0 @@
-../node_modules/@elastic/transport/lib/connection/HttpConnection.d.ts(1,8): error TS1192: Module '"C:/Users/ratte/Desktop/OverSeekv2/node_modules/hpagent/index"' has no default export.
-../node_modules/@elastic/transport/lib/connection/HttpConnection.d.ts(2,8): error TS1192: Module '"node:http"' has no default export.
-../node_modules/@elastic/transport/lib/connection/HttpConnection.d.ts(3,8): error TS1192: Module '"node:https"' has no default export.
-src/utils/elastic.ts(2,8): error TS1192: Module '"C:/Users/ratte/Desktop/OverSeekv2/node_modules/dotenv/lib/main"' has no default export.

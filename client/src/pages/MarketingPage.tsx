@@ -53,7 +53,11 @@ export function MarketingPage() {
         try {
             await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
                 method: 'PUT', // or PATCH
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
                 body: JSON.stringify({ content: html, designJson: design })
             });
             alert('Design saved!');
@@ -69,7 +73,11 @@ export function MarketingPage() {
             // Automations endpoint handles upsert/update
             await fetch(`/api/marketing/automations/${editingItem.id}`, {
                 method: 'PUT', // Assuming PUT logic exists or POST upsert
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
                 // Use Partial update or full object? The backend `upsertAutomation` is usually POST /api/marketing/automations.
                 // But let's assume we have a PUT or just use the same upsert endpoint.
                 body: JSON.stringify({

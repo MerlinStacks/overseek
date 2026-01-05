@@ -2,10 +2,14 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { SyncService } from '../services/sync';
 import { SearchQueryService } from '../services/search/SearchQueryService';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 const prisma = new PrismaClient();
 const syncService = new SyncService();
+
+// Protect all sync routes
+router.use(requireAuth);
 
 // Trigger Manual Sync
 router.post('/manual', async (req: Request, res: Response) => {

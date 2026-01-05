@@ -40,6 +40,7 @@ model Account {
   wooUrl            String
   wooConsumerKey    String
   wooConsumerSecret String
+  webhookSecret     String?
 
   // Settings
   currency String @default("USD")
@@ -313,6 +314,8 @@ model WooProduct {
 
   bom BOM?
 
+  usedInBOMItems BOMItem[] @relation("ProductAsBOMComponent")
+
   @@unique([accountId, wooId])
 }
 
@@ -375,15 +378,17 @@ model BOM {
 model BOMItem {
   id             String @id @default(uuid())
   bomId          String
-  supplierItemId String
+  supplierItemId String?
+  childProductId String?
 
   quantity    Decimal @db.Decimal(10, 4) // e.g. 1.5 meters, 0.05 kg
   wasteFactor Decimal @default(0) @db.Decimal(5, 4) // e.g. 0.10 for 10% waste
 
-  bom          BOM          @relation(fields: [bomId], references: [id], onDelete: Cascade)
-  supplierItem SupplierItem @relation(fields: [supplierItemId], references: [id])
+  bom          BOM           @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  supplierItem SupplierItem? @relation(fields: [supplierItemId], references: [id])
+  childProduct WooProduct?   @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
 
-  @@unique([bomId, supplierItemId])
+  // @@unique([bomId, supplierItemId]) // Removed as it conflicts with optional fields
 }
 
 model AdAccount {

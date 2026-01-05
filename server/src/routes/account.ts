@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
+import { IndexingService } from '../services/search/IndexingService';
 import { GoldPriceService } from '../services/GoldPriceService';
 
 const router = Router();
@@ -23,28 +24,44 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Verify user exists (Zombie token check)
     const validUser = await prisma.user.findUnique({ where: { id: userId } });
+
+
     if (!validUser) {
+
       return res.status(401).json({ error: 'User invalid. Please login again.' });
     }
 
-    // Create Account and link to User as OWNER
-    const account = await prisma.account.create({
-      data: {
-        name,
-        domain,
-        wooUrl,
-        wooConsumerKey,
-        wooConsumerSecret, // In production, ENCRYPT THIS!
-        users: {
-          create: {
-            userId,
-            role: 'OWNER'
+
+
+    try {
+
+      // Create Account and link to User as OWNER
+      const account = await prisma.account.create({
+        data: {
+          name,
+          domain,
+          wooUrl,
+          wooConsumerKey,
+          wooConsumerSecret, // In production, ENCRYPT THIS!
+          users: {
+            create: {
+              userId,
+              role: 'OWNER'
+            }
           }
         }
-      }
-    });
+      });
 
-    res.json(account);
+
+
+      res.json(account);
+    } catch (e: any) {
+      if (e.code === 'P2003') {
+        console.warn(`[CreateAccount] Race condition detected: User ${userId} not found during link.`);
+        return res.status(401).json({ error: 'User invalid. Please login again.' });
+      }
+      throw e;
+    }
   } catch (error) {
     console.error('Create Account error:', JSON.stringify(error, Object.getOwnPropertyNames(error as any), 2));
     res.status(500).json({ error: 'Internal server error', details: (error as any).message });
@@ -224,10 +241,48 @@ router.put('/:accountId', async (req: Request, res: Response) => {
       return res.json(fresh);
     }
 
+
     res.json(updated);
   } catch (error) {
     console.error("Update account error", error);
     res.status(500).json({ error: "Failed to update account" });
+  }
+});
+
+// DELETE Account (Owner or Super Admin)
+router.delete('/:accountId', async (req: Request, res: Response) => {
+  try {
+    const { accountId } = req.params;
+    const userId = (req as any).user.id;
+
+    // Check if Super Admin
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const isSuperAdmin = user?.isSuperAdmin === true;
+
+    if (!isSuperAdmin) {
+      // Check if Owner
+      const membership = await prisma.accountUser.findUnique({
+        where: { userId_accountId: { userId, accountId } }
+      });
+
+      if (!membership || membership.role !== 'OWNER') {
+        return res.status(403).json({ error: 'Forbidden. Only Owners or Super Admins can delete accounts.' });
+      }
+    }
+
+    // Delete from Elasticsearch
+    await IndexingService.deleteAccountData(accountId);
+
+    // Delete from Database
+    await prisma.account.delete({
+      where: { id: accountId }
+    });
+
+    res.json({ success: true, message: 'Account deleted successfully' });
+
+  } catch (error) {
+    console.error('Delete Account Error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 

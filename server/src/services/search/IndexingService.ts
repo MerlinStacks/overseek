@@ -275,4 +275,54 @@ export class IndexingService {
             refresh: true
         });
     }
+
+    static async deleteAccountData(accountId: string) {
+        Logger.info(`Deleting Elasticsearch data for account ${accountId}...`);
+        const indices = ['customers', 'products', 'orders', 'reviews', 'ad_spend'];
+
+        for (const index of indices) {
+            try {
+                const exists = await esClient.indices.exists({ index });
+                if (exists) {
+                    await esClient.deleteByQuery({
+                        index,
+                        body: {
+                            query: {
+                                term: { accountId: accountId }
+                            }
+                        },
+                        refresh: true
+                    });
+                }
+            } catch (error: any) {
+                Logger.error(`Failed to delete data from index ${index} for account ${accountId}`, { error: error.message });
+            }
+        }
+
+        // Failsafe Verification
+        let remainingDocs = 0;
+        for (const index of indices) {
+            try {
+                const exists = await esClient.indices.exists({ index });
+                if (exists) {
+                    const { count } = await esClient.count({
+                        index,
+                        body: {
+                            query: {
+                                term: { accountId: accountId }
+                            }
+                        }
+                    });
+                    if (count > 0) {
+                        remainingDocs += count;
+                        Logger.warn(`Failsafe Warning: ${count} documents remain in ${index} for account ${accountId} after deletion query.`);
+                    }
+                }
+            } catch (e) { /* ignore check error */ }
+        }
+
+        if (remainingDocs === 0) {
+            Logger.info(`Successfully verified deletion of all ES data for account ${accountId}.`);
+        }
+    }
 }

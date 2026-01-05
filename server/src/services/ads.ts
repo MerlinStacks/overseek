@@ -48,12 +48,26 @@ export class AdsService {
             // Meta returns purchase_roas as list of actions.
             // Simplified: Spend
 
+            const spend = parseFloat(insights.spend || '0');
+
+            // Calculate ROAS
+            // Meta returns action_values as [{ action_type: 'purchase', value: '123.45' }, ...]
+            let purchaseValue = 0;
+            if (insights.action_values && Array.isArray(insights.action_values)) {
+                const purchaseAction = insights.action_values.find((a: any) => a.action_type === 'purchase' || a.action_type === 'omni_purchase');
+                if (purchaseAction && purchaseAction.value) {
+                    purchaseValue = parseFloat(purchaseAction.value);
+                }
+            }
+
+            const roas = spend > 0 ? purchaseValue / spend : 0;
+
             return {
                 accountId: adAccountId,
-                spend: parseFloat(insights.spend || '0'),
+                spend,
                 impressions: parseInt(insights.impressions || '0'),
                 clicks: parseInt(insights.clicks || '0'),
-                roas: 0, // TODO: Parse action_values for 'purchase' value / spend
+                roas,
                 currency: adAccount.currency || 'USD',
                 date_start: insights.date_start,
                 date_stop: insights.date_stop

@@ -34,16 +34,19 @@ export class AutomationEngine {
             where: {
                 accountId,
                 triggerType,
-                // status: 'ACTIVE' // Use new status enum
-                isActive: true // Preserving original field for now, or assume migration handled it. Logic: check both if needed or just isActive
+                isActive: true
             }
         });
 
         for (const automation of automations) {
             // Check filters (e.g. min order value) provided in triggerConfig or Trigger Node
-            // TODO: Implement Detailed Filter Logic
+            const passesFilters = this.checkTriggerFilters(automation, data);
 
-            await this.enroll(automation, data);
+            if (passesFilters) {
+                await this.enroll(automation, data);
+            } else {
+                console.log(`[AutomationEngine] Automation ${automation.name} skipped due to filters.`);
+            }
         }
     }
 
@@ -128,10 +131,6 @@ export class AutomationEngine {
 
             if (result.action === 'WAIT') {
                 // Stop processing, we are waiting (Delay)
-                // nextRunAt should have been updated by executeNodeLogic if needed, 
-                // OR we update it here if the logic returns a duration.
-                // Re-fetch enrollment to ensure DB consistent? 
-                // executeNodeLogic handles DB updates for 'WAIT'
                 return;
             }
 
@@ -145,14 +144,6 @@ export class AutomationEngine {
                 }
 
                 // Prepare to move to next node
-                // If Next Node is Delay, we need to handle "Entry" logic?
-                // Actually, my structure is: "Execute Node" includes "Run the action".
-                // Delay Node execution = "Check if we waited enough".
-
-                // ISSUE: If we just move to Delay Node, "Execute" will say "Wait".
-                // But we need to set the `nextRunAt` based on entry time.
-
-                // Let's Peek at next node
                 const nextNode = flow.nodes.find(n => n.id === nextNodeId);
                 let nextRunAt = new Date(); // Default: Run immediately
 
@@ -164,7 +155,7 @@ export class AutomationEngine {
                 }
 
                 // Update DB to move pointer
-                const updated = await prisma.automationEnrollment.update({
+                await prisma.automationEnrollment.update({
                     where: { id: enrollmentId },
                     data: {
                         currentNodeId: nextNodeId,
@@ -191,9 +182,6 @@ export class AutomationEngine {
         }
 
         if (type === 'DELAY') {
-            // If we are executing a DELAY node, check if we have waited enough.
-            // But processEnrollment only calls us if nextRunAt <= Now.
-            // So if we are here, we are done waiting.
             return { action: 'NEXT' };
         }
 
@@ -202,7 +190,7 @@ export class AutomationEngine {
             const actionType = node.data?.actionType || 'SEND_EMAIL';
 
             if (actionType === 'SEND_EMAIL') {
-                const config = node.data; // { templateId: "...", subject: "..." }
+                const config = node.data; // { templateId: "...", subject: "...", body: "..." }
                 console.log(`[AutomationEngine] Sending Email: ${config.templateId} to ${enrollment.email}`);
 
                 try {
@@ -216,13 +204,24 @@ export class AutomationEngine {
                     }
 
                     if (emailAccountId) {
+                        // Render Templates
+                        const context = {
+                            customer: {
+                                email: enrollment.email,
+                                id: enrollment.wooCustomerId
+                            },
+                            ...enrollment.contextData // Flatten context data (e.g. order details)
+                        };
+
+                        const subject = this.renderTemplate(config.subject || 'Automated Email', context);
+                        const body = this.renderTemplate(config.body || config.html || '', context);
+
                         await this.emailService.sendEmail(
                             enrollment.automation.accountId,
                             emailAccountId,
                             enrollment.email,
-                            config.subject || 'Automated Email',
-                            // TODO: Real template rendering
-                            config.body || config.html || `<p>Email Template: ${config.templateId}</p>`
+                            subject,
+                            body || `<p>Email Template: ${config.templateId}</p>`
                         );
                     } else {
                         console.warn(`[AutomationEngine] Cannot send email: No Email Account found for Account ${enrollment.automation.accountId}`);
@@ -257,11 +256,7 @@ export class AutomationEngine {
 
         // Handle Conditional Edges
         if (outcome) {
-            const match = edges.find(e => e.sourceHandle === outcome || e.id === outcome); // handle 'true'/'false' sourceHandle
-            // ReactFlow handles usually are 's-id-a' vs 's-id-b'. 
-            // We need convention. E.g. Condition Node has handles "true" and "false".
-
-            // Simplification: Check if edge sourceHandle matches outcome
+            const match = edges.find(e => e.sourceHandle === outcome || e.id === outcome);
             if (match) return match.target;
         }
 
@@ -274,22 +269,19 @@ export class AutomationEngine {
         const val = parseInt(data.value || data.duration || '0');
         const unit = data.unit || 'minutes';
 
-        const multi = {
+        const multi: any = {
             'minutes': 60000,
             'hours': 3600000,
             'days': 86400000
-        }[unit as string] || 60000;
+        };
 
-        return val * multi;
+        return val * (multi[unit] || 60000);
     }
 
     private async evaluateCondition(data: any, context: any): Promise<boolean> {
-        // Simple logic for prototype
         // data: { field: 'total', operator: 'gt', value: 100 }
         if (!data || !context) return true;
 
-        // Extract field from context (flat or nested?)
-        // e.g. context = Order { total: 150 }
         const fieldVal = context[data.field];
         const targetVal = data.value;
 
@@ -324,5 +316,56 @@ export class AutomationEngine {
         for (const enr of due) {
             await this.processEnrollment(enr.id);
         }
+    }
+
+    /**
+     * Replaces {{variable}} placeholders with values from context
+     */
+    private renderTemplate(template: string, context: any): string {
+        if (!template) return '';
+
+        return template.replace(/\{\{(.*?)\}\}/g, (match, path) => {
+            const keys = path.trim().split('.');
+            let value = context;
+
+            for (const key of keys) {
+                if (value === undefined || value === null) return '';
+                value = value[key];
+            }
+
+            return value !== undefined && value !== null ? String(value) : '';
+        });
+    }
+
+    /**
+     * Checks if data meets the Trigger Config filters (e.g. Min Order Total)
+     */
+    private checkTriggerFilters(automation: MarketingAutomation, data: any): boolean {
+        // Get Trigger Node configuration
+        const flow = automation.flowDefinition as unknown as FlowDefinition;
+        if (!flow || !flow.nodes) return true; // Loose default
+
+        const triggerNode = flow.nodes.find(n => n.type === 'trigger' || n.type === 'TRIGGER');
+        if (!triggerNode || !triggerNode.data) return true;
+
+        const config = triggerNode.data; // { minOrderValue: 50, requiredProducts: [123] }
+
+        // Example: Min Order Value
+        if (config.minOrderValue && data.total) {
+            if (parseFloat(data.total) < parseFloat(config.minOrderValue)) {
+                return false;
+            }
+        }
+
+        // Example: Required Products (if data is Order)
+        if (config.requiredProductIds && Array.isArray(config.requiredProductIds) && config.requiredProductIds.length > 0) {
+            const orderItems = data.line_items || [];
+            const hasProduct = orderItems.some((item: any) =>
+                config.requiredProductIds.includes(String(item.product_id))
+            );
+            if (!hasProduct) return false;
+        }
+
+        return true;
     }
 }

@@ -1,19 +1,27 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireAuth, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const prisma = new PrismaClient();
 
+// Protect all order routes
+router.use(requireAuth);
+
 // Get Order by ID (Internal ID or WooID)
 router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
-    const accountId = req.headers['x-account-id'] as string; // accountId is usually passed via middleware or header
+    // Safe cast because requireAuth middleware guarantees req.user exists, 
+    // and strict enforcement checks for accountId in this route path if configured, 
+    // but explicit check is better for type safety.
+    const authReq = req as AuthRequest;
+    const accountId = authReq.user?.accountId;
 
     if (!accountId) {
         return res.status(400).json({ error: 'accountId header is required' });
     }
 
-    console.log(`[API] Fetching order ${id} for account ${accountId}`);
+    // console.log(`[API] Fetching order ${id} for account ${accountId}`);
 
     try {
         let order;
@@ -25,7 +33,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
         // If not found and ID is numeric, try finding by WooID
         if (!order && !isNaN(Number(id))) {
-            console.log(`[API] ID is numeric, trying lookup by wooId: ${id}`);
+            // console.log(`[API] ID is numeric, trying lookup by wooId: ${id}`);
             order = await prisma.wooOrder.findUnique({
                 where: {
                     accountId_wooId: {
@@ -37,7 +45,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         }
 
         if (!order) {
-            console.warn(`[API] Order ${id} not found in DB`);
+            // console.warn(`[API] Order ${id} not found in DB`);
             return res.status(404).json({ error: 'Order not found' });
         }
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAccount } from '../../context/AccountContext';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
-import { formatCurrency } from '../../utils/format';
+
 
 export function GoldPriceSettings() {
     const { currentAccount, refreshAccounts } = useAccount();

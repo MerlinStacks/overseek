@@ -94,11 +94,13 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                             <XAxis
                                 dataKey="date"
-                                tickFormatter={(str) => {
+                                // @ts-ignore
+                                tickFormatter={(str: any) => {
                                     // If strict "Day X" string, keep it. Else format date.
-                                    if (str.startsWith('Day')) return str;
-                                    const d = new Date(str);
-                                    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+                                    const s = String(str);
+                                    if (s.startsWith('Day')) return s;
+                                    const d = new Date(s);
+                                    return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
                                 }}
                                 fontSize={10}
                                 tickLine={false}
@@ -112,12 +114,16 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                                 tickFormatter={(value) => `$${value}`}
                             />
                             <Tooltip
-                                labelFormatter={(label) => {
-                                    if (label.startsWith && label.startsWith('Day')) return label;
-                                    return new Date(label).toLocaleDateString();
+                                // @ts-ignore
+                                labelFormatter={(label: any) => {
+                                    const str = String(label);
+                                    if (str.startsWith('Day')) return str;
+                                    const d = new Date(str);
+                                    return isNaN(d.getTime()) ? str : d.toLocaleDateString();
                                 }}
+                                // @ts-ignore
                                 formatter={(value: any, name: string) => [
-                                    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value),
+                                    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value) || 0),
                                     name === 'sales' ? 'Current Period' : 'Comparison'
                                 ]}
                             />

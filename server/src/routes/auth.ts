@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { hashPassword, comparePassword, generateToken, verifyToken } from '../utils/auth';
+import { hashPassword, comparePassword, generateToken } from '../utils/auth';
+import { requireAuth, AuthRequest } from '../middleware/auth';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -63,7 +64,15 @@ router.post('/register', async (req: Request, res: Response) => {
 });
 
 // LOGIN
-router.post('/login', async (req: Request, res: Response) => {
+// Strict Rate Limit for Login: 5 attempts per hour
+import rateLimit from 'express-rate-limit';
+const loginLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5, // Limit each IP to 5 login requests per hour
+    message: { error: 'Too many login attempts, please try again after an hour.' }
+});
+
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     try {
         const { email, password } = req.body;
 
@@ -85,16 +94,14 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 });
 
-// ME (Protected - rudimentary middleware for now)
-router.get('/me', async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-
-    const token = authHeader.split(' ')[1];
+// ME (Protected)
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
     try {
-        const decoded: any = verifyToken(token);
+        const authReq = req as AuthRequest;
+        const userId = authReq.user!.id;
+
         const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
+            where: { id: userId },
             include: { accounts: true }
         });
 
@@ -104,22 +111,19 @@ router.get('/me', async (req: Request, res: Response) => {
         const { passwordHash, ...safeUser } = user;
         res.json(safeUser);
     } catch (error) {
-        res.status(401).json({ error: 'Invalid token' });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 // UPDATE PROFILE
-router.put('/me', async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-
-    const token = authHeader.split(' ')[1];
+router.put('/me', requireAuth, async (req: Request, res: Response) => {
     try {
-        const decoded: any = verifyToken(token);
+        const authReq = req as AuthRequest;
+        const userId = authReq.user!.id;
         const { fullName, shiftStart, shiftEnd } = req.body;
 
         const updatedUser = await prisma.user.update({
-            where: { id: decoded.userId },
+            where: { id: userId },
             data: {
                 fullName,
                 shiftStart,
@@ -136,13 +140,10 @@ router.put('/me', async (req: Request, res: Response) => {
 });
 
 // UPLOAD AVATAR
-router.post('/upload-avatar', upload.single('avatar'), async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-
-    const token = authHeader.split(' ')[1];
+router.post('/upload-avatar', requireAuth, upload.single('avatar'), async (req: Request, res: Response) => {
     try {
-        const decoded: any = verifyToken(token);
+        const authReq = req as AuthRequest;
+        const userId = authReq.user!.id;
 
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
@@ -151,7 +152,7 @@ router.post('/upload-avatar', upload.single('avatar'), async (req: Request, res:
         const avatarUrl = `/uploads/${req.file.filename}`;
 
         const updatedUser = await prisma.user.update({
-            where: { id: decoded.userId },
+            where: { id: userId },
             data: { avatarUrl }
         });
 

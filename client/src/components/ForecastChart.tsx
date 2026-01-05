@@ -117,8 +117,10 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                                 <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={(val) => val.slice(5)} />
-                        <YAxis tick={{ fontSize: 12 }} tickFormatter={(val) => `$${val}`} />
+                        {/* @ts-ignore */}
+                        <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={(val: any) => String(val).length > 5 ? String(val).slice(5) : String(val)} />
+                        {/* @ts-ignore */}
+                        <YAxis tick={{ fontSize: 12 }} tickFormatter={(val: any) => `$${val}`} />
                         <Tooltip />
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
 

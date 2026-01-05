@@ -6,8 +6,10 @@ import { CustomerAnalytics } from '../services/analytics/customer';
 import { AdsService } from '../services/ads';
 import { requireAuth } from '../middleware/auth';
 import { esClient } from '../utils/elastic';
+import { PrismaClient } from '@prisma/client';
 
 const router = Router();
+const prisma = new PrismaClient();
 
 router.use(requireAuth);
 
@@ -19,7 +21,11 @@ router.get('/sales', async (req: Request, res: Response) => {
         const { startDate, endDate } = req.query;
 
         const total = await SalesAnalytics.getTotalSales(accountId, startDate as string, endDate as string);
-        res.json({ total, currency: 'USD' }); // TODO: Fetch currency from account
+
+        const account = await prisma.account.findUnique({ where: { id: accountId } });
+        const currency = account?.currency || 'USD';
+
+        res.json({ total, currency });
     } catch (err: any) {
         console.error(err);
         res.status(500).json({ error: err.message });

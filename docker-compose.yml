@@ -5,10 +5,11 @@ services:
     container_name: overseekv2-postgres-1
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Allow override, default to password
       POSTGRES_DB: overseek
-    ports:
-      - "5432:5432"
+    # Ports removed to prevent external access
+    # ports:
+    #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -20,8 +21,9 @@ services:
       - discovery.type=single-node
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - xpack.security.enabled=false
-    ports:
-      - "9200:9200"
+    # Ports removed to prevent external access
+    # ports:
+    #   - "9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
 
@@ -29,8 +31,9 @@ services:
   redis:
     image: redis:alpine
     container_name: overseekv2-redis-1
-    ports:
-      - "6379:6379"
+    # Ports removed to prevent external access
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redis_data:/data
 
