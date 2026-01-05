@@ -12,7 +12,7 @@ async function main() {
     }
 
     console.log(`Triggering Product Sync for account: ${account.id}`);
-    await syncService.syncProducts(account.id, false);
+    await syncService.runSync(account.id, { types: ['products'], incremental: false });
     console.log('Sync complete!');
 }
 

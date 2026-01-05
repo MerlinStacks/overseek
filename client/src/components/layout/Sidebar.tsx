@@ -15,16 +15,19 @@ import {
     MessageSquare,
 
     Star,
-    ShieldAlert
+    ShieldAlert,
+    LineChart
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
+import { SidebarSyncStatus } from './SidebarSyncStatus';
 
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: LineChart, label: 'Analytics', path: '/analytics' },
     { icon: ShoppingCart, label: 'Orders', path: '/orders' },
     { icon: Package, label: 'Inventory', path: '/inventory' },
     { icon: Users, label: 'Customers', path: '/customers' },
@@ -49,7 +52,7 @@ export function Sidebar() {
     return (
         <aside
             className={cn(
-                "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex flex-col z-20",
+                "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex flex-col z-50",
                 collapsed ? "w-20" : "w-64"
             )}
         >
@@ -127,13 +130,16 @@ export function Sidebar() {
 
             <SyncProgressOverlay collapsed={collapsed} />
 
-            <div className="p-4 border-t border-gray-100">
-                <button
-                    onClick={() => setCollapsed(!collapsed)}
-                    className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                    {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
-                </button>
+            <div className="mt-auto">
+                <SidebarSyncStatus collapsed={collapsed} />
+                <div className="p-4 border-t border-gray-100">
+                    <button
+                        onClick={() => setCollapsed(!collapsed)}
+                        className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                        {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
+                    </button>
+                </div>
             </div>
         </aside>
     );

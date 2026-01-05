@@ -79,7 +79,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 ) : data.length === 0 ? (
                     <div className="absolute inset-0 flex justify-center items-center text-gray-400 text-sm">No data available</div>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
@@ -94,7 +94,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                             <XAxis
                                 dataKey="date"
-                                tickFormatter={(value: string | number) => {
+                                tickFormatter={(value: any) => {
                                     // If strict "Day X" string, keep it. Else format date.
                                     const s = String(value);
                                     if (s.startsWith('Day')) return s;
@@ -110,7 +110,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                                 fontSize={10}
                                 tickLine={false}
                                 axisLine={false}
-                                tickFormatter={(value: number) => `$${value}`}
+                                tickFormatter={(value: any) => `$${value}`}
                             />
                             <Tooltip
                                 labelFormatter={(label: string | number) => {
@@ -119,7 +119,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                                     const d = new Date(str);
                                     return isNaN(d.getTime()) ? str : d.toLocaleDateString();
                                 }}
-                                formatter={(value: number | string | Array<number | string> | undefined, name: string | number) => [
+                                formatter={(value: any, name: any) => [
                                     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value) || 0),
                                     name === 'sales' ? 'Current Period' : 'Comparison'
                                 ]}

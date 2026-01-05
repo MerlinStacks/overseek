@@ -6,6 +6,10 @@ import { LiveAnalyticsWidget } from './LiveAnalyticsWidget';
 import { TopProductsWidget } from './TopProductsWidget';
 import { CustomerGrowthWidget } from './CustomerGrowthWidget';
 import { SalesChartWidget } from './SalesChartWidget';
+import { InventoryRiskWidget } from './InventoryRiskWidget';
+import LiveCartsWidget from './LiveCartsWidget';
+import VisitorLogWidget from './VisitorLogWidget';
+import EcommerceLogWidget from './EcommerceLogWidget';
 
 export interface WidgetProps {
     settings?: any;
@@ -21,7 +25,11 @@ export const WidgetRegistry: Record<string, { component: React.FC<WidgetProps>, 
     'live-analytics': { component: LiveAnalyticsWidget, label: 'Live Analytics', defaultW: 4, defaultH: 3 },
     'top-products': { component: TopProductsWidget, label: 'Top Products', defaultW: 4, defaultH: 6 },
     'customer-growth': { component: CustomerGrowthWidget, label: 'Customer Growth', defaultW: 6, defaultH: 6 },
-    'sales-chart': { component: SalesChartWidget, label: 'Sales Trend', defaultW: 6, defaultH: 6 }
+    'sales-chart': { component: SalesChartWidget, label: 'Sales Trend', defaultW: 6, defaultH: 6 },
+    'inventory-risk': { component: InventoryRiskWidget, label: 'Inventory Risk', defaultW: 4, defaultH: 4 },
+    'live-carts': { component: LiveCartsWidget, label: 'Live Carts', defaultW: 4, defaultH: 4 },
+    'visitor-log': { component: VisitorLogWidget, label: 'Visitor Log', defaultW: 6, defaultH: 6 },
+    'ecommerce-log': { component: EcommerceLogWidget, label: 'Ecommerce Stream', defaultW: 6, defaultH: 6 }
 };
 
 export function renderWidget(key: string, props: WidgetProps): ReactNode {

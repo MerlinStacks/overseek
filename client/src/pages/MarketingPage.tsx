@@ -25,6 +25,7 @@ export function MarketingPage() {
     // Editor State
     const [editorMode, setEditorMode] = useState<EditorMode>(null);
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
+    const [editingAutomationData, setEditingAutomationData] = useState<any>(null); // To store full automation data
 
     const tabs = [
         { id: 'campaigns', label: 'Campaigns', icon: Mail },
@@ -37,14 +38,33 @@ export function MarketingPage() {
         setEditorMode('email');
     };
 
-    const handleEditAutomation = (id: string, name: string) => {
+    const handleEditAutomation = async (id: string, name: string) => {
         setEditingItem({ id, name });
-        setEditorMode('automation');
+        // Fetch details
+        try {
+            const res = await fetch(`/api/marketing/automations/${id}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setEditingAutomationData(data);
+                setEditorMode('automation');
+            } else {
+                alert('Failed to load automation details');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Failed to load automation details');
+        }
     };
 
     const handleCloseEditor = () => {
         setEditorMode(null);
         setEditingItem(null);
+        setEditingAutomationData(null);
         // Ideally refetch lists? Lists fetch on mount so we are good if we unmount them.
     };
 
@@ -132,7 +152,7 @@ export function MarketingPage() {
                     </div>
                     <div className="flex-1 overflow-hidden">
                         <FlowBuilder
-                            // Load flow logic?
+                            initialFlow={editingAutomationData?.flowDefinition}
                             onSave={handleSaveFlow}
                             onCancel={handleCloseEditor}
                         />

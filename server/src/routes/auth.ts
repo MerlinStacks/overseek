@@ -65,7 +65,8 @@ router.post('/register', async (req: Request, res: Response) => {
 
 // LOGIN
 // Strict Rate Limit for Login: 5 attempts per hour
-import rateLimit from 'express-rate-limit';
+// @ts-ignore
+const rateLimit = require('express-rate-limit');
 const loginLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 5, // Limit each IP to 5 login requests per hour

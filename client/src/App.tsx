@@ -27,7 +27,10 @@ import { ReviewsPage } from './pages/ReviewsPage';
 import { HelpCenterHome } from './pages/HelpCenter/HelpCenterHome';
 import { HelpArticle } from './pages/HelpCenter/HelpArticle';
 import { LiveAnalyticsPage } from './pages/LiveAnalyticsPage';
+import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import { ProductEditPage } from './pages/ProductEditPage';
+import { PurchaseOrderEditPage } from './pages/PurchaseOrderEditPage';
+import { InvoiceDesigner } from './pages/InvoiceDesigner';
 
 import { UserProfilePage } from './pages/UserProfilePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -82,12 +85,15 @@ function App() {
                                         <Route path="/orders/:id" element={<AccountGuard><OrderDetailPage /></AccountGuard>} />
                                         <Route path="/inventory" element={<AccountGuard><InventoryPage /></AccountGuard>} />
                                         <Route path="/inventory/product/:id" element={<AccountGuard><ProductEditPage /></AccountGuard>} />
+                                        <Route path="/inventory/purchase-orders/new" element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
+                                        <Route path="/inventory/purchase-orders/:id" element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
                                         <Route path="/customers" element={<AccountGuard><CustomersPage /></AccountGuard>} />
                                         <Route path="/customers/segments" element={<AccountGuard><SegmentsPage /></AccountGuard>} />
                                         <Route path="/customers/:id" element={<AccountGuard><CustomerDetailsPage /></AccountGuard>} />
                                         <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
                                         <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
                                         <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />
+                                        <Route path="/analytics" element={<AccountGuard><AnalyticsDashboard /></AccountGuard>} />
                                         <Route path="/reviews" element={<AccountGuard><ReviewsPage /></AccountGuard>} />
                                         <Route path="/help" element={<AccountGuard><HelpCenterHome /></AccountGuard>} />
                                         <Route path="/help/article/:slug" element={<AccountGuard><HelpArticle /></AccountGuard>} />
@@ -97,6 +103,9 @@ function App() {
                                         <Route path="/wizard" element={<AccountGuard><SetupWizard /></AccountGuard>} />
                                         <Route path="/settings" element={<AccountGuard><SettingsPage /></AccountGuard>} />
                                         <Route path="/profile" element={<AccountGuard><UserProfilePage /></AccountGuard>} />
+
+                                        <Route path="/invoices/design" element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />
+                                        <Route path="/invoices/design/:id" element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />
                                     </Route>
                                 </Route>
 

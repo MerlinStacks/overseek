@@ -1,8 +1,7 @@
+
 import { useState, useEffect } from 'react';
-// import ReactQuill from 'react-quill';
-// import 'react-quill/dist/quill.snow.css';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
@@ -14,6 +13,13 @@ import { VariationsPanel } from '../components/products/VariationsPanel';
 import { PricingPanel } from '../components/products/PricingPanel';
 import { BOMPanel } from '../components/products/BOMPanel';
 import { GoldPricePanel } from '../components/products/GoldPricePanel';
+import { Tabs } from '../components/ui/Tabs';
+import { ImageGallery } from '../components/products/ImageGallery';
+import { HistoryTimeline } from '../components/shared/HistoryTimeline';
+
+// Services
+import { ProductService } from '../services/ProductService';
+import { InventoryService } from '../services/InventoryService';
 
 interface ProductData {
     id: string;
@@ -22,7 +28,7 @@ interface ProductData {
     sku: string;
     permalink: string;
     description: string;
-    shortDescription: string;
+    short_description: string;
     price: string;
     regularPrice: string;
     salePrice: string;
@@ -44,6 +50,11 @@ interface ProductData {
     merchantCenterScore?: number;
     merchantCenterIssues?: any;
 
+    // COGS & Supplier
+    cogs?: string; // Decimal as string for input
+    supplierId?: string;
+    images?: any[];
+
     // Gold Price
     isGoldPriceApplied?: boolean;
 
@@ -60,14 +71,24 @@ interface ProductVariant {
     attributes: any[];
 }
 
+import { MerchantCenterScoreBadge } from '../components/Seo/MerchantCenterScoreBadge';
+
+import { PresenceAvatars } from '../components/common/PresenceAvatars';
+import { useCollaboration } from '../hooks/useCollaboration';
+import { calculateSeoScore } from '../utils/seoScoring';
+
 export function ProductEditPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
+    // Presence
+    const { activeUsers } = useCollaboration(id || '');
+
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [product, setProduct] = useState<ProductData | null>(null);
 
     // Form State
@@ -77,14 +98,36 @@ export function ProductEditPage() {
         price: '',
         salePrice: '',
         stockStatus: 'instock',
-        binLocation: '',
         description: '',
+        short_description: '',
         focusKeyword: '',
-        isGoldPriceApplied: false
+        isGoldPriceApplied: false,
+        weight: '',
+        length: '',
+        width: '',
+        height: '',
+        cogs: '',
+        supplierId: '',
+        images: [] as any[]
     });
 
     const [variants, setVariants] = useState<ProductVariant[]>([]);
+    const [suppliers, setSuppliers] = useState<any[]>([]);
     const [isLoadingVariants, setIsLoadingVariants] = useState(false);
+
+    // Derived SEO Search - Real-time!
+    const seoResult = calculateSeoScore({
+        name: formData.name,
+        description: (formData.description || '') + (formData.short_description || ''),
+        permalink: product?.permalink || '', // Permalink usually doesn't change live unless we have a slug editor, but using product's for now
+        images: formData.images,
+        price: formData.price
+    }, formData.focusKeyword);
+
+    useEffect(() => {
+        if (!currentAccount) return;
+        fetchSuppliers();
+    }, [currentAccount, token]);
 
     useEffect(() => {
         if (!currentAccount || !id) return;
@@ -92,61 +135,57 @@ export function ProductEditPage() {
     }, [currentAccount, id, token]);
 
     const fetchProduct = async () => {
+        if (!currentAccount || !token || !id) return;
         setIsLoading(true);
         try {
-            // Check if id is wooId or uuid. The route is /inventory/product/:id
-            // Assuming we passed UUID or WooID. The API currently supports WooID via /api/products/:id (which expects number)
-            // If the inventory page passes UUID, we might need a different endpoint or logic.
-            // Let's assume for now we are passing WooID as that matches the API /api/products/:id
-
-            const res = await fetch(`/api/products/${id}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
-                }
+            const data = await ProductService.getProduct(id, token, currentAccount.id);
+            console.log('Product Data Loaded:', data);
+            setProduct(data);
+            setFormData({
+                name: data.name || '',
+                sku: data.sku || '',
+                price: data.price ? data.price.toString() : '',
+                salePrice: data.salePrice ? data.salePrice.toString() : '',
+                stockStatus: data.stockStatus || 'instock',
+                binLocation: data.binLocation || '',
+                description: data.description || '',
+                short_description: data.short_description || '',
+                focusKeyword: (data.seoData?.focusKeyword) ? data.seoData.focusKeyword : (data.name || ''),
+                isGoldPriceApplied: data.isGoldPriceApplied || false,
+                weight: data.weight ? data.weight.toString() : '',
+                length: data.dimensions?.length?.toString() || '',
+                width: data.dimensions?.width?.toString() || '',
+                height: data.dimensions?.height?.toString() || '',
+                cogs: data.cogs ? data.cogs.toString() : '',
+                supplierId: data.supplierId || '',
+                images: data.images || []
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                console.log('Product Data Loaded:', data); // Debug
-                setProduct(data);
-                setFormData({
-                    name: data.name || '',
-                    sku: data.sku || '',
-                    price: data.price ? data.price.toString() : '',
-                    salePrice: data.salePrice ? data.salePrice.toString() : '',
-                    stockStatus: data.stockStatus || 'instock',
-                    binLocation: data.binLocation || '',
-                    description: data.description || data.short_description || '', // Try both
-                    focusKeyword: (data.seoData?.focusKeyword) ? data.seoData.focusKeyword : (data.name || ''), // Explicit check
-                    isGoldPriceApplied: data.isGoldPriceApplied || false
-                });
-
-                console.log('[DEBUG] Product Type:', data.type, 'Variations:', data.variations);
-
-                // Load variants if variable
-                if (data.type === 'variable' && data.variations?.length) {
-                    fetchVariants(data.variations);
-                }
-            } else {
-                throw new Error('Failed to load product');
+            // Load variants if variable
+            if (data.type === 'variable' && data.variations?.length) {
+                fetchVariants(data.variations);
             }
         } catch (error) {
-            console.error(error);
-            // alert('Error loading product'); 
+            console.error('Failed to load product', error);
         } finally {
             setIsLoading(false);
         }
     };
 
+    const fetchSuppliers = async () => {
+        if (!currentAccount || !token) return;
+        try {
+            const data = await InventoryService.getSuppliers(token, currentAccount.id);
+            setSuppliers(data);
+        } catch (e) {
+            console.error('Failed to fetch suppliers', e);
+        }
+    };
+
     const fetchVariants = async (variantIds: number[]) => {
         setIsLoadingVariants(true);
-        // Mocking variant fetch for now, as we might need a dedicated endpoint or bulk fetch
-        // In a real scenario, we'd hit /api/products/variants?ids=... or similar
-        // For now, let's assume we can't easily fetch them without an endpoint update.
-        // We'll show a placeholder list based on IDs.
         try {
-            // Placeholder logic
+            // Placeholder logic - kept as is for now as it doesn't do a real fetch
             const mockVariants = variantIds.map(id => ({
                 id,
                 sku: `VAR-${id}`, // Placeholder
@@ -160,31 +199,28 @@ export function ProductEditPage() {
     };
 
     const handleSave = async () => {
-        if (!currentAccount || !id) return;
+        if (!currentAccount || !id || !token) return;
         setIsSaving(true);
         try {
-            const res = await fetch(`/api/products/${id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                },
-                body: JSON.stringify({
-                    name: formData.name, // Note: Updates to name might need to sync back to Woo
-                    binLocation: formData.binLocation,
-                    stockStatus: formData.stockStatus,
-                    isGoldPriceApplied: formData.isGoldPriceApplied
-                    // Add other fields when backend supports them
-                })
-            });
+            await ProductService.updateProduct(id, {
+                name: formData.name,
+                sku: formData.sku,
+                binLocation: formData.binLocation,
+                stockStatus: formData.stockStatus,
+                isGoldPriceApplied: formData.isGoldPriceApplied,
+                weight: formData.weight,
+                length: formData.length,
+                width: formData.width,
+                height: formData.height,
+                price: formData.price,
+                salePrice: formData.salePrice,
+                description: formData.description,
+                cogs: formData.cogs,
+                supplierId: formData.supplierId,
+                images: formData.images,
+            }, token, currentAccount.id);
 
-            if (res.ok) {
-                // Success feedback?
-                fetchProduct(); // Reload
-            } else {
-                throw new Error('Failed to save');
-            }
+            fetchProduct(); // Reload
         } catch (error) {
             console.error(error);
             alert('Failed to save changes');
@@ -193,9 +229,25 @@ export function ProductEditPage() {
         }
     };
 
+    const handleSync = async () => {
+        if (!currentAccount || !id || !token) return;
+        setIsSyncing(true);
+        try {
+            const updated = await ProductService.syncProduct(id, token, currentAccount.id);
+            console.log('Product Synced:', updated);
+            await fetchProduct();
+            alert('Product synced successfully from WooCommerce.');
+        } catch (error: any) {
+            console.error('Sync failed:', error);
+            alert(`Sync failed: ${error.message}`);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-screen">
+            <div className="flex items-center justify-center h-screen bg-gray-50/50">
                 <Loader2 className="animate-spin text-blue-600" size={32} />
             </div>
         );
@@ -212,148 +264,218 @@ export function ProductEditPage() {
         );
     }
 
-    return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    const tabs = [
+        {
+            id: 'details',
+            label: 'General Details',
+            icon: <FileText size={16} />,
+            content: (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="lg:col-span-2 space-y-6">
+                        <GeneralInfoPanel
+                            formData={formData}
+                            onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
+                            product={product}
+                            suppliers={suppliers}
+                        />
+                    </div>
 
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate('/inventory')}
-                        className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-                        <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
-                            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">ID: {product.wooId}</span>
-                            {product.sku && <span>SKU: {product.sku}</span>}
-                            <span>•</span>
-                            <a
-                                href={product.permalink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
-                            >
-                                View on Store <ExternalLink size={12} />
-                            </a>
+
+                    <div className="space-y-6">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-4">
+                            {product.mainImage ? (
+                                <img src={product.mainImage} alt="" className="w-full h-auto rounded-lg border border-gray-100 shadow-sm" />
+                            ) : (
+                                <div className="w-full h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
+                                    <Box size={48} />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6">
+                            <ImageGallery
+                                images={formData.images || []}
+                                onChange={(imgs) => setFormData(prev => ({ ...prev, images: imgs }))}
+                            />
                         </div>
                     </div>
                 </div>
-
-                <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                        <RefreshCw size={18} /> Sync from Woo
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-50 transition-colors"
-                    >
-                        {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                        Save Changes
-                    </button>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-                {/* Left Column: Editable Fields */}
-                <div className="lg:col-span-2 space-y-6">
-
-                    <GeneralInfoPanel
+            )
+        },
+        {
+            id: 'pricing',
+            label: 'Pricing & Values',
+            icon: <DollarSign size={16} />,
+            content: (
+                <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <PricingPanel
                         formData={formData}
                         onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
-                        product={product}
                     />
-
+                    <GoldPricePanel
+                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied }}
+                        onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
+                    />
+                </div>
+            )
+        },
+        {
+            id: 'logistics',
+            label: 'Inventory & Shipping',
+            icon: <Package size={16} />,
+            content: (
+                <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <LogisticsPanel
                         formData={formData}
+                        weightUnit={currentAccount?.weightUnit}
+                        dimensionUnit={currentAccount?.dimensionUnit}
                         onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
                     />
-
+                    {/* BOM for Simple Products */}
+                    {product.type !== 'variable' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+                            <BOMPanel productId={product.id} variants={[]} fixedVariationId={0} />
+                        </div>
+                    )}
+                </div>
+            )
+        },
+        {
+            id: 'variants',
+            label: 'Variations',
+            icon: <Layers size={16} />,
+            content: (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <VariationsPanel
                         product={product}
                         variants={variants}
                         onManage={() => window.open(`${currentAccount?.wooUrl}/wp-admin/post.php?post=${product.wooId}&action=edit`, '_blank')}
                     />
-
-                    <PricingPanel formData={formData} />
-
-                    <GoldPricePanel
-                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied }}
-                        onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
-                    />
-
-                    <BOMPanel productId={product.id} />
-
                 </div>
-
-                {/* Right Column: Intelligence & Summaries */}
-                <div className="space-y-6">
-
-                    {/* Media */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="p-4">
-                            {product.mainImage ? (
-                                <img src={product.mainImage} alt="" className="w-full h-auto rounded-lg border border-gray-100" />
-                            ) : (
-                                <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
-                                    <Box size={48} />
+            )
+        },
+        {
+            id: 'seo',
+            label: 'SEO & Discovery',
+            icon: <Search size={16} />,
+            content: (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="space-y-6">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">SEO Health</h3>
+                                <div className="flex gap-2">
+                                    <SeoScoreBadge score={seoResult.score} size="md" />
                                 </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* SEO Intelligence */}
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">SEO Intelligence</h3>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Read-Only</span>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <span className="text-sm font-medium text-gray-600">Overall Score</span>
-                                <SeoScoreBadge score={product.seoScore || 0} size="md" />
                             </div>
                             <SeoAnalysisPanel
-                                score={product.seoScore || 0}
-                                tests={product.seoData?.analysis || []}
+                                score={seoResult.score}
+                                tests={seoResult.tests}
                                 focusKeyword={formData.focusKeyword}
                             />
-                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Focus Keyword</label>
+                            <div className="mt-6 pt-6 border-t border-gray-100/50">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Focus Keyword</label>
                                 <input
                                     type="text"
                                     value={formData.focusKeyword}
                                     onChange={(e) => setFormData({ ...formData, focusKeyword: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full px-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                                 />
-                                <p className="text-xs text-gray-400 mt-1">
-                                    Primary keyword this product targets. Automatically filled from product name if empty.
-                                </p>
                             </div>
                         </div>
                     </div>
-
-                    {/* Merchant Center */}
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Google Merchant Center</h3>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <div className="space-y-6">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Merchant Center Status</h3>
                             <MerchantCenterPanel
                                 score={product.merchantCenterScore || 0}
                                 issues={product.merchantCenterIssues || []}
                             />
                         </div>
                     </div>
-
                 </div>
+            )
+        },
+        {
+            id: 'history',
+            label: 'History',
+            icon: <Clock size={16} />,
+            content: (
+                <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <HistoryTimeline resource="PRODUCT" resourceId={product.wooId.toString()} />
+                </div>
+            )
+        }
+    ];
+
+    return (
+        <div className="min-h-screen bg-gray-50/50 pb-20">
+            {/* Header Sticky Bar */}
+            <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm transition-all">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={() => navigate('/inventory')}
+                                className="p-2 hover:bg-gray-100/80 rounded-full text-gray-500 transition-colors"
+                            >
+                                <ArrowLeft size={20} />
+                            </button>
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                    {product.name}
+                                    <span className={`text-xs px-2 py-0.5 rounded-full border ${product.stockStatus === 'instock' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                        {product.stockStatus === 'instock' ? 'In Stock' : 'Out of Stock'}
+                                    </span>
+                                </h1>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <SeoScoreBadge score={seoResult.score} size="sm" />
+                                    <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" />
+                                </div>
+                                <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
+                                    <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded text-xs text-gray-600">ID: {product.wooId}</span>
+                                    {product.sku && <span className="flex items-center gap-1"><Tag size={12} /> {product.sku}</span>}
+                                    <span>•</span>
+                                    <a
+                                        href={product.permalink}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                        View on Store <ExternalLink size={12} />
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <PresenceAvatars users={activeUsers} currentUserId={currentAccount?.id} />
+                            <div className="h-8 w-px bg-gray-300 mx-2 hidden sm:block"></div>
+                            <button
+                                onClick={handleSync}
+                                disabled={isSyncing || isLoading}
+                                className="flex items-center gap-2 px-4 py-2 bg-white/50 border border-gray-300/80 text-gray-700 font-medium rounded-lg hover:bg-white transition-colors backdrop-blur-sm disabled:opacity-50"
+                            >
+                                {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                                <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={isSaving}
+                                className="flex items-center gap-2 px-6 py-2 bg-blue-600/90 text-white font-medium rounded-lg hover:bg-blue-600 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all backdrop-blur-sm"
+                            >
+                                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <Tabs tabs={tabs} />
             </div>
         </div>
     );
 }
+

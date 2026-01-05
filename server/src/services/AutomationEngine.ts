@@ -1,6 +1,7 @@
 
 import { PrismaClient, AutomationEnrollment, MarketingAutomation } from '@prisma/client';
 import { EmailService } from './EmailService';
+import { InvoiceService } from './InvoiceService';
 
 const prisma = new PrismaClient();
 
@@ -24,6 +25,7 @@ interface FlowDefinition {
 
 export class AutomationEngine {
     private emailService = new EmailService();
+    private invoiceService = new InvoiceService();
 
     // Called when an event happens (e.g. Order Created)
     async processTrigger(accountId: string, triggerType: string, data: any) {
@@ -181,6 +183,9 @@ export class AutomationEngine {
             return { action: 'NEXT' };
         }
 
+        // Special handling for Abandoned Cart context?
+        // Usually handled in processTrigger filters.
+
         if (type === 'DELAY') {
             return { action: 'NEXT' };
         }
@@ -221,13 +226,56 @@ export class AutomationEngine {
                             emailAccountId,
                             enrollment.email,
                             subject,
-                            body || `<p>Email Template: ${config.templateId}</p>`
+                            body || `<p>Email Template: ${config.templateId}</p>`,
+                            enrollment.contextData?.attachments
                         );
                     } else {
                         console.warn(`[AutomationEngine] Cannot send email: No Email Account found for Account ${enrollment.automation.accountId}`);
                     }
                 } catch (err) {
                     console.error(`[AutomationEngine] Failed to send email`, err);
+                }
+            }
+
+            if (actionType === 'GENERATE_INVOICE') {
+                const config = node.data; // { templateId: "..." }
+                console.log(`[AutomationEngine] Generating Invoice: Template ${config.templateId} for ${enrollment.email}`);
+
+                try {
+                    // Assuming we have an Order ID in context
+                    const orderId = enrollment.contextData?.id || enrollment.contextData?.orderId || enrollment.contextData?.wooId;
+
+                    if (!orderId) {
+                        console.warn(`[AutomationEngine] Cannot generate invoice: No Order ID in context`);
+                    } else {
+                        const pdfUrl = await this.invoiceService.generateInvoicePdf(
+                            enrollment.automation.accountId,
+                            String(orderId),
+                            config.templateId
+                        );
+
+                        // Store in context for subsequent steps (like Email)
+                        // Update Enrollment Context in DB
+                        const newContext = {
+                            ...enrollment.contextData,
+                            invoicePdfUrl: pdfUrl,
+                            attachments: [
+                                ...(enrollment.contextData?.attachments || []),
+                                { filename: 'Invoice.pdf', path: pdfUrl }
+                            ]
+                        };
+
+                        await prisma.automationEnrollment.update({
+                            where: { id: enrollment.id },
+                            data: { contextData: newContext }
+                        });
+
+                        // Update local object for this run
+                        enrollment.contextData = newContext;
+                    }
+
+                } catch (err) {
+                    console.error(`[AutomationEngine] Failed to generate invoice`, err);
                 }
             }
 

@@ -11,6 +11,7 @@ export const QUEUES = {
     PRODUCTS: 'sync-products',
     REVIEWS: 'sync-reviews',
     CUSTOMERS: 'sync-customers',
+    REPORTS: 'report-generation',
 };
 
 // Global Store for Queues to adapter

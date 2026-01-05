@@ -36,7 +36,7 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
                 ) : data.length === 0 ? (
                     <div className="absolute inset-0 flex justify-center items-center text-gray-400 text-sm">No data available</div>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <AreaChart data={data}>
                             <defs>
                                 <linearGradient id="colorCustomers" x1="0" y1="0" x2="0" y2="1">
@@ -46,7 +46,7 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
                             </defs>
                             <XAxis
                                 dataKey="date"
-                                tickFormatter={(value: string | number) => {
+                                tickFormatter={(value: any) => {
                                     const d = new Date(String(value));
                                     return isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('en-US', { month: 'short' });
                                 }}
@@ -56,11 +56,11 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
                             />
                             <YAxis hide />
                             <Tooltip
-                                labelFormatter={(label: string | number) => {
+                                labelFormatter={(label: any) => {
                                     const d = new Date(String(label));
                                     return isNaN(d.getTime()) ? String(label) : d.toLocaleDateString();
                                 }}
-                                formatter={(value: number | string | Array<number | string> | undefined) => [value, 'New Customers']}
+                                formatter={(value: any) => [value, 'New Customers']}
                             />
                             <Area
                                 type="monotone"

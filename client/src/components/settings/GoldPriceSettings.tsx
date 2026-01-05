@@ -83,7 +83,9 @@ export function GoldPriceSettings() {
                     <div className="flex-1">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Current Gold Price (per gram)</label>
                         <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-xs">
+                                {currentAccount?.goldPriceCurrency || currentAccount?.currency || 'USD'}
+                            </span>
                             <input
                                 type="number"
                                 step="0.01"

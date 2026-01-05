@@ -8,9 +8,10 @@ import { AppearanceSettings } from '../components/settings/AppearanceSettings';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { EmailSettings } from '../components/settings/EmailSettings';
 import { GoldPriceSettings } from '../components/settings/GoldPriceSettings';
-import { LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw, Mail } from 'lucide-react';
+import { InventoryAlertsSettings } from '../components/settings/InventoryAlertsSettings';
+import { LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw, Mail, Package } from 'lucide-react';
 
-type TabId = 'general' | 'appearance' | 'chat' | 'intelligence' | 'analytics' | 'sync' | 'email';
+type TabId = 'general' | 'appearance' | 'chat' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory';
 
 export function SettingsPage() {
     const { currentAccount } = useAccount();
@@ -24,6 +25,7 @@ export function SettingsPage() {
         { id: 'chat', label: 'Chat', icon: MessageSquare },
         { id: 'intelligence', label: 'Intelligence', icon: Bot },
         { id: 'analytics', label: 'Analytics', icon: Activity },
+        { id: 'inventory', label: 'Inventory', icon: Package },
 
         { id: 'sync', label: 'Sync Status', icon: RefreshCw },
         { id: 'email', label: 'Email', icon: Mail },
@@ -110,6 +112,18 @@ export function SettingsPage() {
                         </div>
                         <div className="p-6">
                             <TrackingScriptHelper />
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'inventory' && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="p-6 border-b border-gray-200">
+                            <h2 className="text-lg font-medium text-gray-900">Inventory Management</h2>
+                            <p className="text-sm text-gray-500 mt-1">Configure stock alerts per account.</p>
+                        </div>
+                        <div className="p-6">
+                            <InventoryAlertsSettings />
                         </div>
                     </div>
                 )}

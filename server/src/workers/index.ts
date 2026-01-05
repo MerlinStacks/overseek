@@ -5,7 +5,7 @@ import { ProductSync } from '../services/sync/ProductSync';
 import { CustomerSync } from '../services/sync/CustomerSync';
 import { ReviewSync } from '../services/sync/ReviewSync';
 
-export function startWorkers() {
+export async function startWorkers() {
     Logger.info('Starting Workers...');
 
     // Order Worker
@@ -30,6 +30,13 @@ export function startWorkers() {
     QueueFactory.createWorker(QUEUES.REVIEWS, async (job) => {
         const syncer = new ReviewSync();
         await syncer.perform(job.data, job);
+    });
+
+    // Report Worker
+    await import('../services/analytics/ReportWorker').then(({ ReportWorker }) => {
+        QueueFactory.createWorker(QUEUES.REPORTS, async (job) => {
+            await ReportWorker.process(job);
+        });
     });
 
     // Graceful Shutdown

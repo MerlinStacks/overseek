@@ -5,6 +5,7 @@ import { server } from './app';
 import { SchedulerService } from './services/SchedulerService';
 import { startWorkers } from './workers';
 import { QueueFactory } from './services/queue/QueueFactory';
+import { IndexingService } from './services/search/IndexingService';
 
 const port = process.env.PORT || 3000;
 
@@ -19,13 +20,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Start Internal Workers (if running in same process)
-try {
-  startWorkers();
+startWorkers().then(() => {
   console.log('[Startup] Workers initialized (Force Update)');
-} catch (error) {
+}).catch((error) => {
   console.error('[Startup] Failed to start workers:', error);
-  // Continue - workers will be retried by BullMQ
-}
+});
 
 // QueueFactory already inited in app.ts, but safe to access queues here if needed.
 
@@ -33,6 +32,11 @@ try {
 SchedulerService.start().catch((error: any) => {
   console.error('[Startup] Failed to start scheduler:', error);
   // Continue - scheduler is not critical for initial startup
+});
+
+// Initialize Elastic Indices
+IndexingService.initializeIndices().catch((error) => {
+  console.error('[Startup] Failed to initialize Elasticsearch indices:', error);
 });
 
 server.listen(port, () => {

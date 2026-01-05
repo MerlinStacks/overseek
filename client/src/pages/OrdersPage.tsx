@@ -5,6 +5,7 @@ import { formatDate } from '../utils/format';
 import { Loader2, RefreshCw, Search } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderPreviewModal } from '../components/orders/OrderPreviewModal';
+import { printPicklist } from '../utils/printPicklist';
 
 interface Order {
     id: number;
@@ -28,6 +29,11 @@ export function OrdersPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Picklist State
+    const [picklistStatus, setPicklistStatus] = useState('processing');
+    const [isGeneratingPicklist, setIsGeneratingPicklist] = useState(false);
+
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
@@ -96,6 +102,35 @@ export function OrdersPage() {
         }
     }
 
+    async function handleGeneratePicklist() {
+        if (!currentAccount || !token) return;
+        setIsGeneratingPicklist(true);
+        try {
+            const params = new URLSearchParams({ status: picklistStatus, limit: '100' });
+            const res = await fetch(`/api/inventory/picklist?${params}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.length === 0) {
+                    alert('No items found for the selected status.');
+                } else {
+                    printPicklist(data);
+                }
+            } else {
+                alert('Failed to generate picklist');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Error generating picklist');
+        } finally {
+            setIsGeneratingPicklist(false);
+        }
+    }
+
     return (
         <div className="space-y-6">
             <OrderPreviewModal
@@ -110,7 +145,27 @@ export function OrdersPage() {
                     <span className="text-sm text-gray-500">Store: {currentAccount?.name}</span>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 items-center">
+                    {/* Picklist Toolbar */}
+                    <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-200 mr-4">
+                        <select
+                            value={picklistStatus}
+                            onChange={(e) => setPicklistStatus(e.target.value)}
+                            className="bg-transparent text-sm border-none focus:ring-0 text-gray-700 font-medium py-1"
+                        >
+                            <option value="processing">Processing</option>
+                            <option value="pending">Pending</option>
+                            <option value="on-hold">On Hold</option>
+                        </select>
+                        <button
+                            onClick={handleGeneratePicklist}
+                            disabled={isGeneratingPicklist}
+                            className="bg-yellow-400 text-yellow-900 border border-yellow-500 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-500 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isGeneratingPicklist ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                            Generate Picklist
+                        </button>
+                    </div>
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input

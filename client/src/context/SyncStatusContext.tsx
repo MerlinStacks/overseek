@@ -9,10 +9,21 @@ export interface SyncJob {
     data: any;
 }
 
+export interface SyncLog {
+    id: string;
+    entityType: string;
+    status: 'SUCCESS' | 'FAILED' | 'IN_PROGRESS';
+    itemsProcessed: number;
+    errorMessage?: string;
+    startedAt: string;
+    completedAt?: string;
+}
+
 interface SyncStatusContextType {
     isSyncing: boolean;
     activeJobs: SyncJob[];
     syncState: SyncState[];
+    logs: SyncLog[];
     controlSync: (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => Promise<void>;
     runSync: (types?: string[], incremental?: boolean) => Promise<void>;
 }
@@ -33,6 +44,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     const { currentAccount } = useAccount();
     const [activeJobs, setActiveJobs] = useState<SyncJob[]>([]);
     const [syncState, setSyncState] = useState<SyncState[]>([]);
+    const [logs, setLogs] = useState<SyncLog[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
 
     const fetchStatus = async () => {
@@ -58,8 +70,9 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (stateRes.ok) {
-                const { state } = await stateRes.json();
-                setSyncState(state);
+                const data = await stateRes.json();
+                setSyncState(data.state || []);
+                setLogs(data.logs || []);
             }
 
 
@@ -132,7 +145,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <SyncStatusContext.Provider value={{ isSyncing, activeJobs, syncState, controlSync, runSync }}>
+        <SyncStatusContext.Provider value={{ isSyncing, activeJobs, syncState, logs, controlSync, runSync }}>
             {children}
         </SyncStatusContext.Provider>
     );
@@ -145,3 +158,4 @@ export function useSyncStatus() {
     }
     return context;
 }
+

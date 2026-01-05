@@ -5,6 +5,8 @@ import { useAccount } from '../context/AccountContext';
 import { formatDate } from '../utils/format';
 import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
+import { HistoryTimeline } from '../components/shared/HistoryTimeline';
+import { Clock } from 'lucide-react';
 
 export function OrderDetailPage() {
     const { id } = useParams();
@@ -234,6 +236,15 @@ export function OrderDetailPage() {
                     </div>
                 </div>
 
+            </div>
+
+            {/* History Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Clock size={18} className="text-gray-400" />
+                    <h2 className="text-lg font-medium text-gray-900">Order History</h2>
+                </div>
+                <HistoryTimeline resource="ORDER" resourceId={order.id || order.wooId} />
             </div>
 
             {/* Image Preview Modal */}

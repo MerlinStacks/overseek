@@ -88,12 +88,28 @@ export class TrackingService {
                 sessionPayload.cartValue = data.payload.total;
                 sessionPayload.cartItems = data.payload.items || [];
                 sessionPayload.currency = data.payload.currency || 'USD';
+                // Reset abandoned status if they interact with cart
+                sessionPayload.abandonedNotificationSentAt = null;
             }
         }
 
-        // If checkout, we might link to a customer?
+        // If checkout start, link email
         if (data.type === 'checkout_start' && data.payload?.email) {
             sessionPayload.email = data.payload.email;
+        }
+
+        // If checkout success, clear cart or mark as converted
+        if (data.type === 'checkout_success') {
+            sessionPayload.cartValue = 0;
+            sessionPayload.cartItems = [];
+            sessionPayload.abandonedNotificationSentAt = null;
+            // Potential improvement: Mark session as 'converted' if we had a field
+        }
+
+        // Handle Search (Just ensure payload has term)
+        if (data.type === 'search') {
+            // validating payload.term exists?
+            // checking if we want to update session 'lastSearchTerm'?
         }
 
 

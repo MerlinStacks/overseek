@@ -23,5 +23,13 @@ export default defineConfig({
                 changeOrigin: true
             }
         }
+    },
+    optimizeDeps: {
+        include: ['react-grid-layout']
+    },
+    build: {
+        commonjsOptions: {
+            include: [/react-grid-layout/]
+        }
     }
 })

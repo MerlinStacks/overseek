@@ -354,6 +354,7 @@ export class SalesAnalytics {
         endDate: string
     }) {
         try {
+            console.log('Analytics: Generating Custom Report with Config:', JSON.stringify(config));
             // Base Query
             const must: any[] = [{ term: { accountId } }];
 
@@ -442,9 +443,19 @@ export class SalesAnalytics {
                     // Inside nested line_items, total is usually per line or requires calculation. 
                     // Assuming 'line_items.total' exists and is correct.
                     targetAggs.sales = { sum: { field: 'line_items.total' } };
-                    targetAggs.quantity = { sum: { field: 'line_items.quantity' } };
                 } else {
                     targetAggs.sales = { sum: { field: 'total' } };
+                }
+            }
+
+            if (config.metrics.includes('quantity')) {
+                if (config.dimension === 'product' || config.dimension === 'category') {
+                    targetAggs.quantity = { sum: { field: 'line_items.quantity' } };
+                } else {
+                    targetAggs.quantity_nested = {
+                        nested: { path: 'line_items' },
+                        aggs: { quantity: { sum: { field: 'line_items.quantity' } } }
+                    };
                 }
             }
 
@@ -507,10 +518,12 @@ export class SalesAnalytics {
                 return processBuckets(buckets);
             } else {
                 const buckets = (response.aggregations as any)?.group_by_dimension?.buckets || [];
+                console.log('Analytics: Default Buckets found:', buckets.length, 'Sample:', buckets[0]);
                 return buckets.map((b: any) => ({
                     dimension: b.key_as_string || b.key, // key_as_string for dates
                     sales: b.sales?.value || 0,
                     orders: b.orders?.value || 0,
+                    quantity: b.quantity_nested?.quantity?.value || 0,
                     aov: (b.orders?.value || 0) > 0 ? (b.sales?.value || 0) / b.orders.value : 0
                 }));
             }

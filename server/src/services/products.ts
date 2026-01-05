@@ -19,19 +19,38 @@ export class ProductsService {
             type: raw?.type || 'simple',
             variations: raw?.variations || [],
             description: raw?.description || '',
-            short_description: raw?.short_description || ''
+            short_description: raw?.short_description || '',
+            // Fallback for when images column is empty (legacy sync)
+            images: (Array.isArray(product.images) && product.images.length > 0) ? product.images : (raw?.images || [])
         };
     }
 
-    static async updateProduct(accountId: string, wooId: number, data: { binLocation?: string; name?: string; stockStatus?: string; isGoldPriceApplied?: boolean }) {
+    static async updateProduct(accountId: string, wooId: number, data: any) {
         return prisma.wooProduct.update({
             where: { accountId_wooId: { accountId, wooId } },
             data: {
                 binLocation: data.binLocation,
                 name: data.name,
                 stockStatus: data.stockStatus,
+                sku: data.sku,
+                price: data.price ? parseFloat(data.price) : undefined,
+                weight: data.weight ? parseFloat(data.weight) : undefined,
+                length: data.length ? parseFloat(data.length) : undefined,
+                width: data.width ? parseFloat(data.width) : undefined,
+                height: data.height ? parseFloat(data.height) : undefined,
                 // @ts-ignore - TS2353: Persistent Docker build error masking this field
-                isGoldPriceApplied: data.isGoldPriceApplied
+                isGoldPriceApplied: data.isGoldPriceApplied,
+                cogs: data.cogs ? parseFloat(data.cogs) : undefined, // NEW
+                supplierId: data.supplierId || null,                 // NEW
+                images: data.images || undefined,                    // NEW
+                // Merging into rawData for fields not yet in top-level schema
+                rawData: {
+                    update: {
+                        sale_price: data.salePrice,
+                        description: data.description,
+                        short_description: data.short_description
+                    }
+                }
             }
         });
     }

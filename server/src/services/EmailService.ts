@@ -24,7 +24,7 @@ export class EmailService {
         });
     }
 
-    async sendEmail(accountId: string, emailAccountId: string, to: string, subject: string, html: string) {
+    async sendEmail(accountId: string, emailAccountId: string, to: string, subject: string, html: string, attachments?: any[]) {
         const emailAccount = await prisma.emailAccount.findFirst({
             where: { id: emailAccountId, accountId }
         });
@@ -38,6 +38,7 @@ export class EmailService {
             to,
             subject,
             html,
+            attachments
         });
 
         console.log(`[EmailService] Sent email: ${info.messageId}`);

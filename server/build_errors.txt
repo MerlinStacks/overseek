@@ -1,0 +1,32 @@
+
+> overseek-server@1.0.0 build
+> tsc
+
+src/services/GoldPriceService.ts(39,11): error TS1005: 'try' expected.
+src/services/GoldPriceService.ts(45,9): error TS1068: Unexpected token. A constructor, method, accessor, or property was expected.
+src/services/GoldPriceService.ts(67,5): error TS1128: Declaration or statement expected.
+src/services/GoldPriceService.ts(72,5): error TS1128: Declaration or statement expected.
+src/services/GoldPriceService.ts(72,12): error TS1434: Unexpected keyword or identifier.
+src/services/GoldPriceService.ts(72,46): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(72,69): error TS1109: Expression expected.
+src/services/GoldPriceService.ts(72,78): error TS1005: ';' expected.
+src/services/GoldPriceService.ts(72,94): error TS1109: Expression expected.
+src/services/GoldPriceService.ts(73,9): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(73,28): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(75,14): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(75,27): error TS1005: ';' expected.
+src/services/GoldPriceService.ts(89,5): error TS1128: Declaration or statement expected.
+src/services/GoldPriceService.ts(89,12): error TS1434: Unexpected keyword or identifier.
+src/services/GoldPriceService.ts(89,46): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(89,69): error TS1109: Expression expected.
+src/services/GoldPriceService.ts(89,78): error TS1005: ';' expected.
+src/services/GoldPriceService.ts(89,94): error TS1109: Expression expected.
+src/services/GoldPriceService.ts(90,9): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(90,28): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(91,9): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(91,44): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(93,14): error TS1005: ',' expected.
+src/services/GoldPriceService.ts(93,27): error TS1005: ';' expected.
+src/services/GoldPriceService.ts(119,5): error TS1128: Declaration or statement expected.
+src/services/GoldPriceService.ts(120,1): error TS1128: Declaration or statement expected.
+src/services/GoldPriceService.ts(122,1): error TS1160: Unterminated template literal.

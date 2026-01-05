@@ -1,5 +1,6 @@
 import { Search, Bell, HelpCircle, User, LogOut, Shield } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import _ from 'lodash';
@@ -77,7 +78,7 @@ export function Header() {
     };
 
     return (
-        <header className="h-16 bg-white border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-10">
+        <header className="h-16 bg-white border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center gap-8 w-1/3">
                 {/* Secondary Navigation (optional based on image) */}
                 <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-500">
@@ -204,9 +205,9 @@ export function Header() {
                         </div>
                     )}
 
-                    <button className="text-gray-400 hover:text-gray-600">
+                    <Link to="/help" className="text-gray-400 hover:text-gray-600">
                         <HelpCircle size={20} />
-                    </button>
+                    </Link>
 
 
                     {/* User Dropdown */}

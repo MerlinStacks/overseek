@@ -58,6 +58,9 @@ export class IndexingService {
 
         // 2. Products
         await this.createIndexIfNotExists('products', {
+            settings: {
+                max_result_window: 50000
+            },
             properties: {
                 accountId: { type: 'keyword' },
                 id: { type: 'integer' },
@@ -75,6 +78,9 @@ export class IndexingService {
 
         // 3. Orders
         await this.createIndexIfNotExists('orders', {
+            settings: {
+                max_result_window: 50000
+            },
             properties: {
                 accountId: { type: 'keyword' },
                 id: { type: 'integer' },
@@ -83,12 +89,16 @@ export class IndexingService {
                 currency: { type: 'keyword' },
                 date_created: { type: 'date' },
                 billing: { properties: { first_name: { type: 'text' }, last_name: { type: 'text' }, email: { type: 'keyword' } } },
-                line_items: { type: 'nested', properties: { name: { type: 'text' }, quantity: { type: 'integer' } } }
+                line_items: { type: 'nested', properties: { name: { type: 'text', fields: { keyword: { type: 'keyword' } } }, quantity: { type: 'integer' } } }
+
             }
         });
 
         // 4. Ad Spend
         await this.createIndexIfNotExists('ad_spend', {
+            settings: {
+                max_result_window: 50000
+            },
             properties: {
                 accountId: { type: 'keyword' },
                 spend: { type: 'float' },
@@ -103,6 +113,9 @@ export class IndexingService {
 
         // 5. Reviews
         await this.createIndexIfNotExists('reviews', {
+            settings: {
+                max_result_window: 50000
+            },
             properties: {
                 accountId: { type: 'keyword' },
                 id: { type: 'integer' },
@@ -200,7 +213,8 @@ export class IndexingService {
                 line_items: {
                     type: 'nested',
                     properties: {
-                        name: { type: 'text' },
+                        name: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+
                         quantity: { type: 'integer' },
                         meta_data: {
                             type: 'nested',

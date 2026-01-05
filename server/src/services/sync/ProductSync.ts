@@ -40,7 +40,8 @@ export class ProductSync extends BaseSync {
                         weight: p.weight ? parseFloat(p.weight) : null,
                         length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
                         width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
-                        height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null
+                        height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
+                        images: p.images || []
                     },
                     create: {
                         accountId,
@@ -56,6 +57,7 @@ export class ProductSync extends BaseSync {
                         length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
                         width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
                         height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
+                        images: p.images || [],
                         rawData: p as any
                     }
                 });

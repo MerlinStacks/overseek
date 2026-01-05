@@ -29,6 +29,7 @@ model User {
   accounts              AccountUser[]
   dashboards            DashboardLayout[]
   assignedConversations Conversation[]
+  auditLogs             AuditLog[]
 }
 
 model Account {
@@ -43,8 +44,10 @@ model Account {
   webhookSecret     String?
 
   // Settings
-  currency String @default("USD")
-  timezone String @default("UTC")
+  currency      String @default("USD")
+  timezone      String @default("UTC")
+  weightUnit    String @default("kg")
+  dimensionUnit String @default("cm")
 
   // Gold Price Settings
   goldPrice         Decimal? @default(0) @db.Decimal(10, 2)
@@ -84,6 +87,16 @@ model Account {
   emailTemplates       EmailTemplate[]
   AnalyticsSession     AnalyticsSession[]
   segments             CustomerSegment[]
+
+  reportTemplates ReportTemplate[]
+  reportSchedules ReportSchedule[]
+  invoiceTemplates InvoiceTemplate[]
+
+  purchaseOrders PurchaseOrder[]
+
+  // Advanced Operations
+  auditLogs         AuditLog[]
+  inventorySettings InventorySettings?
 }
 
 model Notification {
@@ -287,6 +300,7 @@ model WooProduct {
 
   permalink String?
   mainImage String? // URL
+  images    Json?   @default("[]") // Array of { id, src, alt }
 
   // Gold Price / Dimensions
   isGoldPriceApplied Boolean  @default(false)
@@ -294,6 +308,11 @@ model WooProduct {
   length             Decimal? @db.Decimal(10, 2)
   width              Decimal? @db.Decimal(10, 2)
   height             Decimal? @db.Decimal(10, 2)
+
+  // COGS & Supplier
+  cogs       Decimal?  @db.Decimal(10, 2)
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
   // SEO & Scoring
   seoScore Int?  @default(0) // 0-100
@@ -311,9 +330,10 @@ model WooProduct {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bom BOM?
+  boms BOM[]
 
-  usedInBOMItems BOMItem[] @relation("ProductAsBOMComponent")
+  usedInBOMItems     BOMItem[]           @relation("ProductAsBOMComponent")
+  purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([accountId, wooId])
 }
@@ -335,12 +355,15 @@ model Supplier {
   paymentTerms    String? // e.g. "Net 30", "Prepaid"
   leadTimeDefault Int? // Default lead time in days (Avg or Max)
 
-  items SupplierItem[]
+  items    SupplierItem[]
+  products WooProduct[]
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
 
   @@index([accountId])
 }
@@ -355,16 +378,18 @@ model SupplierItem {
   leadTime Int? // Specific lead time (overrides supplier default)
   moq      Int     @default(1) // Minimum Order Quantity
 
-  supplier Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  bomItems BOMItem[]
+  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  bomItems           BOMItem[]
+  purchaseOrderItems PurchaseOrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model BOM {
-  id        String @id @default(uuid())
-  productId String @unique // Link to WooProduct (local ID)
+  id          String @id @default(uuid())
+  productId   String
+  variationId Int    @default(0) // 0 = Parent/Main Product, >0 = Variant ID
 
   items BOMItem[]
 
@@ -372,6 +397,8 @@ model BOM {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([productId, variationId])
 }
 
 model BOMItem {
@@ -388,6 +415,54 @@ model BOMItem {
   childProduct WooProduct?   @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
 
   // @@unique([bomId, supplierItemId]) // Removed as it conflicts with optional fields
+}
+
+model PurchaseOrder {
+  id         String @id @default(uuid())
+  accountId  String
+  supplierId String
+
+  orderNumber String? // Optional human readable ID like PO-1001
+  status      String  @default("DRAFT") // DRAFT, ORDERED, RECEIVED, CANCELLED
+
+  orderDate    DateTime?
+  expectedDate DateTime?
+
+  totalAmount Decimal? @db.Decimal(10, 2)
+  notes       String?  @db.Text
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  items PurchaseOrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+}
+
+model PurchaseOrderItem {
+  id              String @id @default(uuid())
+  purchaseOrderId String
+
+  productId      String? // Link to internal product
+  supplierItemId String? // Link to supplier item catalog
+
+  // Snapshot of data at time of order
+  name String
+  sku  String?
+
+  quantity  Int
+  unitCost  Decimal @db.Decimal(10, 2)
+  totalCost Decimal @db.Decimal(10, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       WooProduct?   @relation(fields: [productId], references: [id])
+  supplierItem  SupplierItem? @relation(fields: [supplierItemId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AdAccount {
@@ -725,6 +800,9 @@ model AnalyticsSession {
   wooCustomerId Int?
   email         String?
 
+  // Abandoned Cart Recovery
+  abandonedNotificationSentAt DateTime?
+
   account Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   events  AnalyticsEvent[]
 
@@ -793,5 +871,102 @@ model CustomerSegment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([accountId, name])
+}
+
+// --------------------------------------
+// Analytics & Reporting
+// --------------------------------------
+
+model ReportTemplate {
+  id        String   @id @default(uuid())
+  accountId String
+  name      String
+  config    Json // Stores metrics, dimension, etc.
+  type      String   @default("CUSTOM") // "CUSTOM" or "SYSTEM"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  schedules ReportSchedule[]
+
+  @@index([accountId])
+}
+
+model ReportSchedule {
+  id               String @id @default(uuid())
+  reportTemplateId String
+  accountId        String
+
+  frequency  String // "WEEKLY", "MONTHLY"
+  dayOfWeek  Int? // 1 (Mon) - 7 (Sun) for WEEKLY
+  dayOfMonth Int? // 1-28 for MONTHLY
+
+  time String @default("09:00") // Time to send
+
+  emailRecipients String[] // Array of emails
+  isActive        Boolean  @default(true)
+
+  lastRunAt DateTime?
+  nextRunAt DateTime?
+
+  template ReportTemplate @relation(fields: [reportTemplateId], references: [id], onDelete: Cascade)
+  account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+// --------------------------------------
+// Advanced Operations
+// --------------------------------------
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  accountId  String
+  userId     String? // Nullable if automated system action
+  action     String // "UPDATE", "CREATE", "DELETE"
+  resource   String // "PRODUCT", "ORDER", "SETTINGS"
+  resourceId String // e.g. Product ID
+  details    Json // { field: "price", from: 10, to: 20 }
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, resource, resourceId])
+  @@index([accountId, createdAt])
+}
+
+model InventorySettings {
+  id        String @id @default(uuid())
+  accountId String @unique
+
+  lowStockThresholdDays Int      @default(14)
+  alertEmails           String[] // Array of emails to notify
+  isEnabled             Boolean  @default(false)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InvoiceTemplate {
+  id        String   @id @default(uuid())
+  accountId String
+  name      String
+  
+  // JSON Layout for the visual designer
+  layout    Json
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
   @@unique([accountId, name])
 }

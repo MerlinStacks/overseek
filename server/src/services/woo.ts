@@ -11,12 +11,21 @@ interface WooCredentials {
     consumerSecret: string;
 }
 
+interface WooCredentials {
+    url: string;
+    consumerKey: string;
+    consumerSecret: string;
+    accountId?: string; // Added for Audit Logging context
+}
+
 export class WooService {
     private api: WooCommerceRestApi;
     private maxRetries = 3;
     private isDemo = false;
+    private accountId?: string;
 
     constructor(creds: WooCredentials) {
+        this.accountId = creds.accountId;
         // Extract hostname for SNI
         const url = new URL(creds.url);
 
@@ -55,7 +64,8 @@ export class WooService {
         return new WooService({
             url: account.wooUrl,
             consumerKey: account.wooConsumerKey,
-            consumerSecret: account.wooConsumerSecret
+            consumerSecret: account.wooConsumerSecret,
+            accountId: account.id
         });
     }
 
@@ -117,12 +127,47 @@ export class WooService {
         return response.data;
     }
 
-    async updateProduct(id: number, data: any) {
+    async updateProduct(id: number, data: any, userId?: string) {
         if (this.isDemo) {
             console.log(`[Demo] Updated Product ${id}:`, data);
             return { ...MOCK_PRODUCTS.find(p => p.id === id), ...data };
         }
         const response = await this.api.put(`products/${id}`, data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(
+                this.accountId,
+                userId || null,
+                'UPDATE',
+                'PRODUCT',
+                id.toString(),
+                data
+            );
+        }
+
+        return response.data;
+    }
+
+    async updateOrder(id: number, data: any, userId?: string) {
+        if (this.isDemo) {
+            console.log(`[Demo] Updated Order ${id}:`, data);
+            return { ...MOCK_ORDERS.find(o => o.id === id), ...data };
+        }
+        const response = await this.api.put(`orders/${id}`, data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(
+                this.accountId,
+                userId || null,
+                'UPDATE',
+                'ORDER',
+                id.toString(),
+                data
+            );
+        }
+
         return response.data;
     }
 

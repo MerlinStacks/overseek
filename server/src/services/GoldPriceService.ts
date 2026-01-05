@@ -18,10 +18,10 @@ export class GoldPriceService {
     static async fetchLivePrice(currency = 'USD'): Promise<number | null> {
         if (!API_TOKEN) {
             // Fallback to public endpoint
+            Logger.info('GoldPriceService: No API Token, using public endpoint');
             try {
-                Logger.info('GoldPriceService: No API Token, using public endpoint');
-                // This endpoint returns Ounce price in USD
-                const response = await axios.get('https://data-asg.goldprice.org/dbXRates/USD', {
+                // This endpoint returns Ounce price in configured currency (default USD)
+                const response = await axios.get(`https://data-asg.goldprice.org/dbXRates/${currency}`, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                     }
@@ -29,6 +29,7 @@ export class GoldPriceService {
 
                 if (response.data && response.data.items && response.data.items.length > 0) {
                     const item = response.data.items[0];
+                    // The API returns keys like xauPrice (which is in the requested currency)
                     if (item.xauPrice) {
                         const pricePerOunce = item.xauPrice;
                         const pricePerGram = pricePerOunce / 31.1034768;
@@ -42,6 +43,7 @@ export class GoldPriceService {
             }
         }
 
+        // Use Authorized API
         try {
             const symbol = `XAU`;
             const response = await axios.get(`${GOLD_API_URL}/${symbol}/${currency}`, {
@@ -71,6 +73,7 @@ export class GoldPriceService {
      */
     static async updateAccountPrice(accountId: string, manualPrice?: number): Promise<void> {
         let price = manualPrice;
+        let accountCurrency: string | undefined;
 
         if (price === undefined) {
             // Fetch from API
@@ -80,6 +83,7 @@ export class GoldPriceService {
             });
 
             if (account) {
+                accountCurrency = account.currency;
                 const livePrice = await this.fetchLivePrice(account.currency);
                 if (livePrice !== null) {
                     price = livePrice;
@@ -93,7 +97,7 @@ export class GoldPriceService {
                 data: {
                     // @ts-ignore - TS2353: Persistent Docker build error masking this field
                     goldPrice: price,
-                    goldPriceCurrency: 'USD' // Ideally usually matches account.currency
+                    goldPriceCurrency: accountCurrency || 'USD' // Ideally usually matches account.currency
                 }
             });
         }

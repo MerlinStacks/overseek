@@ -1,71 +1,44 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Calendar, DollarSign, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Loader2, GitBranch } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
+interface BOMItem {
+    id?: string; // Optional for new items
+    childProductId?: string; // If it's a product link
+    supplierItemId?: string; // If it's a raw material
+    displayName: string;
+    quantity: number;
+    wasteFactor: number;
+    cost: number;
+}
+
 interface BOMPanelProps {
     productId: string; // Internal UUID
+    variants?: any[]; // Passed from parent
+    fixedVariationId?: number; // If set, locks to this ID
 }
 
-interface BOMItem {
-    supplierItemId?: string;
-    childProductId?: string;
-    quantity: number | string;
-    wasteFactor: number | string;
-    supplierItem?: {
-        name: string;
-        cost: number;
-        leadTime: number;
-    };
-    childProduct?: {
-        name: string;
-        price: number;
-        sku: string;
-    };
-    // Display helpers
-    displayName?: string;
-    cost?: number;
-}
-
-export function BOMPanel({ productId }: BOMPanelProps) {
+export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPanelProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [bomItems, setBomItems] = useState<BOMItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [availableItems, setAvailableItems] = useState<any[]>([]); // All SupplierItems for dropdown
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+
+    // 0 = Main Product, otherwise Variant ID
+    // If fixedVariationId is defined, use it, else default to 0
+    const [selectedScope, setSelectedScope] = useState<number>(fixedVariationId !== undefined ? fixedVariationId : 0);
 
     useEffect(() => {
         if (!currentAccount || !productId) return;
+        fetchBOM();
+    }, [productId, currentAccount, token, selectedScope]);
 
-        // Fetch Existing BOM
-        fetch(`/api/inventory/products/${productId}/bom`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-        }).then(async res => {
-            const bomData = await res.json();
-            const loadedItems = bomData.items?.map((i: any) => ({
-                id: i.id,
-                supplierItemId: i.supplierItemId,
-                childProductId: i.childProductId,
-                quantity: i.quantity,
-                wasteFactor: i.wasteFactor,
-                // Populate display data
-                displayName: i.childProduct?.name || i.supplierItem?.name || 'Unknown Item',
-                cost: i.childProduct?.price || i.supplierItem?.cost || 0
-            })) || [];
-            setBomItems(loadedItems);
-            setLoading(false);
-        }).catch(err => {
-            console.error(err);
-            setLoading(false);
-        });
-    }, [productId, currentAccount, token]);
-
-    // Product Search
-    const [searchTerm, setSearchTerm] = useState('');
-    const [searchResults, setSearchResults] = useState<any[]>([]);
-    const [searching, setSearching] = useState(false);
-
+    // Search for products
     useEffect(() => {
         if (!searchTerm || searchTerm.length < 2) {
             setSearchResults([]);
@@ -73,104 +46,151 @@ export function BOMPanel({ productId }: BOMPanelProps) {
         }
 
         const delayDebounceFn = setTimeout(async () => {
-            setSearching(true);
             try {
-                const res = await fetch(`/api/woo/products?search=${searchTerm}`, {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
+                const res = await fetch(`/api/products?q=${encodeURIComponent(searchTerm)}&limit=5`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount?.id || ''
+                    }
                 });
-                const data = await res.json();
-                setSearchResults(data.data || []);
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setSearching(false);
+                if (res.ok) {
+                    const data = await res.json();
+                    setSearchResults(data.items || []);
+                }
+            } catch (err) {
+                console.error("Failed to search products", err);
             }
-        }, 500);
+        }, 300);
 
         return () => clearTimeout(delayDebounceFn);
     }, [searchTerm, token, currentAccount]);
 
-    const handleAddProduct = (product: any) => {
-        // Check if already in BOM
-        if (bomItems.some(i => i.childProductId === product.id)) { // Woo use ID for childProductId? Check Schema. Schema uses UUID relation. 
-            // Wait, logic check: WooProduct.id is UUID? 
-            // WooService returns Woo API objects (integer IDs usually, but our service mock uses them).
-            // Sync creates local WooProduct with UUID.
-            // Our Schema BOM link uses UUID.
-            // We need to link to the LOCAL WooProduct UUID.
-            // *CRITICAL*: The /api/woo/products returns Woo Data directly from Woo API if proxied?
-            // WooService uses `woocommerce-rest-api`. It returns data from WooCommerce. These have Integer IDs.
-            // But we need the LOCAL UUID to link in Prisma.
-            // Problem: We might not have synced this product yet or we need to find it by WooID.
 
-            // Solution: We should search our LOCAL synced products for reliable UUID linking.
-            // OR we use the `wooId` to find/connect.
-            // The `InventoryService` logic assumed we have local products.
+    const fetchBOM = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/inventory/products/${productId}/bom?variationId=${selectedScope}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                }
+            });
 
-            // Current Plan Adjustment:
-            // I should search LOCAL products (`/api/products`) not `/api/woo/products` (Proxy).
-            // `/api/products` usually returns local DB products which have UUIDs.
-            // Let's check `server/src/routes/products.ts`.
-
-            alert('Please implement Local Product Search check first!');
-            return;
+            if (res.ok) {
+                const data = await res.json();
+                // Map backend response to UI BOMItems
+                if (data && data.items) {
+                    const mapped = data.items.map((item: any) => ({
+                        id: item.id,
+                        childProductId: item.childProductId,
+                        supplierItemId: item.supplierItemId,
+                        displayName: item.childProduct ? item.childProduct.name : (item.supplierItem?.name || 'Unknown'),
+                        quantity: Number(item.quantity),
+                        wasteFactor: Number(item.wasteFactor),
+                        cost: item.childProduct ? (Number(item.childProduct.cogs) || 0) : (Number(item.supplierItem?.cost) || 0)
+                    }));
+                    setBomItems(mapped);
+                } else {
+                    setBomItems([]);
+                }
+            } else {
+                setBomItems([]);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
         }
-
-        setBomItems([...bomItems, {
-            childProductId: product.id, // Ensure this is UUID
-            quantity: 1,
-            wasteFactor: 0,
-            displayName: product.name,
-            cost: product.price || 0
-        }]);
-        setSearchTerm('');
-        setSearchResults([]);
     };
 
     const handleSave = async () => {
-        if (!currentAccount || !productId) return;
         setSaving(true);
         try {
-            const itemsToSave = bomItems.map(item => ({
-                childProductId: item.childProductId,
-                supplierItemId: item.supplierItemId, // Keep if legacy exists
-                quantity: Number(item.quantity) || 0,
-                wasteFactor: Number(item.wasteFactor) || 0
-            }));
+            const payload = {
+                variationId: selectedScope,
+                items: bomItems.map(item => ({
+                    childProductId: item.childProductId,
+                    supplierItemId: item.supplierItemId,
+                    quantity: item.quantity,
+                    wasteFactor: item.wasteFactor
+                }))
+            };
 
-            await fetch(`/api/inventory/products/${productId}/bom`, {
+            const res = await fetch(`/api/inventory/products/${productId}/bom`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
+                    'x-account-id': currentAccount?.id || ''
                 },
-                body: JSON.stringify({ items: itemsToSave })
+                body: JSON.stringify(payload)
             });
-            // trigger refetch?
-        } catch (error) {
-            console.error(error);
-            alert('Failed to save');
+
+            if (res.ok) {
+                // Success feedback?
+                fetchBOM(); // Refresh
+            } else {
+                alert('Failed to save BOM configuration.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error saving BOM.');
         } finally {
             setSaving(false);
         }
     };
 
-    // Calculations
-    const totalCost = bomItems.reduce((acc, item) => {
-        const qty = Number(item.quantity) || 0;
-        const waste = Number(item.wasteFactor) || 0;
-        const baseCost = (qty * (Number(item.cost) || 0)); // Using cost/price
-        const wasteCost = baseCost * waste;
-        return acc + baseCost + wasteCost;
+    const handleAddProduct = (product: any) => {
+        // Check if already exists
+        if (bomItems.some(i => i.childProductId === product.id)) {
+            alert('This product is already in the BOM.');
+            return;
+        }
+
+        const newItem: BOMItem = {
+            childProductId: product.id,
+            displayName: product.name,
+            quantity: 1,
+            wasteFactor: 0,
+            cost: Number(product.cogs) || 0 // Assuming COGS is available, otherwise 0
+        };
+
+        setBomItems([...bomItems, newItem]);
+        setSearchTerm('');
+        setSearchResults([]);
+    };
+
+    const totalCost = bomItems.reduce((sum, item) => {
+        const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
+        return sum + itemCost;
     }, 0);
 
-    if (loading) return <div className="p-6 text-center"><Loader2 className="animate-spin inline" /></div>;
-
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                <h3 className="font-semibold text-gray-900">Bill of Materials (BOM)</h3>
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <h3 className="font-semibold text-gray-900">BOM Configuration</h3>
+
+                    {/* Scope Selector - Only show if NO fixedVariationId */}
+                    {fixedVariationId === undefined && (
+                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 text-sm">
+                            <GitBranch size={16} className="text-gray-400" />
+                            <select
+                                value={selectedScope}
+                                onChange={(e) => setSelectedScope(Number(e.target.value))}
+                                className="bg-transparent border-none outline-none text-gray-700 font-medium cursor-pointer min-w-[150px]"
+                            >
+                                <option value={0}>Main Product</option>
+                                {variants.map(v => (
+                                    <option key={v.id} value={v.id}>
+                                        Variant #{v.id} {v.sku ? `(${v.sku})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
                 <button
                     onClick={handleSave}
                     disabled={saving}
@@ -182,101 +202,118 @@ export function BOMPanel({ productId }: BOMPanelProps) {
 
             <div className="p-6 space-y-6">
                 {/* Cost Summary */}
-                <div className="p-4 bg-green-50 rounded-xl border border-green-100 mb-6">
+                <div className="p-4 bg-green-50/50 rounded-xl border border-green-100 mb-6">
                     <div className="flex items-center gap-2 text-green-700 mb-1">
                         <DollarSign size={18} />
-                        <span className="font-semibold text-sm uppercase">Composite Cost</span>
+                        <span className="font-semibold text-sm uppercase">Composite Cost ({selectedScope === 0 ? 'Main' : `Variant #${selectedScope}`})</span>
                     </div>
                     <div className="text-2xl font-bold text-gray-900">${totalCost.toFixed(2)}</div>
                 </div>
 
-                {/* Search Add */}
-                <div className="relative">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Plus size={16} className="text-gray-400" />
-                        <label className="text-sm font-medium text-gray-700">Add Product Component</label>
+                {loading ? (
+                    <div className="p-12 text-center text-gray-400">
+                        <Loader2 className="animate-spin inline mr-2" /> Loading BOM...
                     </div>
-                    <input
-                        type="text"
-                        placeholder="Search for a product..."
-                        className="w-full border p-2 rounded-lg"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                    {/* Search Results Dropdown */}
-                    {searchResults.length > 0 && (
-                        <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
-                            {searchResults.map(p => (
-                                <button
-                                    key={p.id}
-                                    className="w-full text-left p-2 hover:bg-gray-50 text-sm flex justify-between"
-                                    onClick={() => handleAddProduct(p)}
-                                >
-                                    <span>{p.name}</span>
-                                    <span className="text-gray-500">${p.price}</span>
-                                </button>
-                            ))}
+                ) : (
+                    <>
+                        {/* Search Add */}
+                        <div className="relative">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Plus size={16} className="text-gray-400" />
+                                <label className="text-sm font-medium text-gray-700">Add Product Component</label>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search for a product..."
+                                className="w-full border p-2 rounded-lg"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            {/* Search Results Dropdown */}
+                            {searchResults.length > 0 && (
+                                <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
+                                    {searchResults.map(p => (
+                                        <button
+                                            key={p.id}
+                                            className="w-full text-left p-2 hover:bg-gray-50 text-sm flex justify-between"
+                                            onClick={() => handleAddProduct(p)}
+                                        >
+                                            <span>{p.name}</span>
+                                            <span className="text-gray-500">${p.price}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
 
-                {/* List */}
-                <table className="w-full">
-                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                        <tr>
-                            <th className="p-3 text-left">Component</th>
-                            <th className="p-3 w-24">Qty</th>
-                            <th className="p-3 w-24">Waste %</th>
-                            <th className="p-3 text-right">Cost</th>
-                            <th className="p-3 w-10"></th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {bomItems.map((item, idx) => (
-                            <tr key={idx}>
-                                <td className="p-3">
-                                    <div className="font-medium text-sm">{item.displayName}</div>
-                                </td>
-                                <td className="p-3">
-                                    <input
-                                        type="number" min="0" step="any"
-                                        value={item.quantity}
-                                        onChange={e => {
-                                            const newItems = [...bomItems];
-                                            newItems[idx].quantity = e.target.value;
-                                            setBomItems(newItems);
-                                        }}
-                                        className="w-full border rounded p-1 text-center text-sm"
-                                    />
-                                </td>
-                                <td className="p-3">
-                                    <input
-                                        type="number" min="0" step="0.01"
-                                        value={item.wasteFactor}
-                                        onChange={e => {
-                                            const newItems = [...bomItems];
-                                            newItems[idx].wasteFactor = e.target.value;
-                                            setBomItems(newItems);
-                                        }}
-                                        className="w-full border rounded p-1 text-center text-sm"
-                                    />
-                                </td>
-                                <td className="p-3 text-right text-sm">
-                                    ${(Number(item.quantity) * Number(item.cost) * (1 + Number(item.wasteFactor))).toFixed(2)}
-                                </td>
-                                <td className="p-3">
-                                    <button
-                                        onClick={() => setBomItems(bomItems.filter((_, i) => i !== idx))}
-                                        className="text-gray-400 hover:text-red-500"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        {/* List */}
+                        <table className="w-full">
+                            <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase">
+                                <tr>
+                                    <th className="p-3 text-left">Component</th>
+                                    <th className="p-3 w-24">Qty</th>
+                                    <th className="p-3 w-24">Waste %</th>
+                                    <th className="p-3 text-right">Cost</th>
+                                    <th className="p-3 w-10"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {bomItems.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="p-6 text-center text-sm text-gray-400">
+                                            No BOM items configured for this {selectedScope === 0 ? 'product' : 'variant'}.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    bomItems.map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td className="p-3">
+                                                <div className="font-medium text-sm">{item.displayName}</div>
+                                            </td>
+                                            <td className="p-3">
+                                                <input
+                                                    type="number" min="0" step="any"
+                                                    value={item.quantity}
+                                                    onChange={e => {
+                                                        const newItems = [...bomItems];
+                                                        newItems[idx].quantity = Number(e.target.value);
+                                                        setBomItems(newItems);
+                                                    }}
+                                                    className="w-full border rounded p-1 text-center text-sm"
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input
+                                                    type="number" min="0" step="0.01"
+                                                    value={item.wasteFactor}
+                                                    onChange={e => {
+                                                        const newItems = [...bomItems];
+                                                        newItems[idx].wasteFactor = Number(e.target.value);
+                                                        setBomItems(newItems);
+                                                    }}
+                                                    className="w-full border rounded p-1 text-center text-sm"
+                                                />
+                                            </td>
+                                            <td className="p-3 text-right text-sm">
+                                                ${(Number(item.quantity) * Number(item.cost) * (1 + Number(item.wasteFactor))).toFixed(2)}
+                                            </td>
+                                            <td className="p-3">
+                                                <button
+                                                    onClick={() => setBomItems(bomItems.filter((_, i) => i !== idx))}
+                                                    className="text-gray-400 hover:text-red-500"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </>
+                )}
             </div>
         </div>
     );
 }
+

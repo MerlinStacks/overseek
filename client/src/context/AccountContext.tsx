@@ -5,6 +5,7 @@ export interface Account {
     id: string;
     name: string;
     domain: string | null;
+    currency: string;
     wooUrl: string;
     wooConsumerKey?: string;
     openRouterApiKey?: string;
@@ -17,6 +18,8 @@ export interface Account {
     goldPrice?: number;
     goldPriceCurrency?: string;
     features?: { featureKey: string; isEnabled: boolean }[];
+    weightUnit?: string;
+    dimensionUnit?: string;
 }
 
 interface AccountContextType {

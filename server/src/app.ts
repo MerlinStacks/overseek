@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
+// Force Restart Trigger
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
@@ -27,7 +28,9 @@ import markersRoutes from './routes/marketing'; // corrected below
 import marketingRoutes from './routes/marketing';
 import emailRoutes from './routes/email';
 import ordersRoutes from './routes/orders'; // Mount Orders API
+
 import segmentsRoutes from './routes/segments';
+import { auditsRouter } from './routes/audits';
 
 import { esClient } from './utils/elastic';
 
@@ -57,10 +60,19 @@ const app = express();
 app.set('trust proxy', 1); // Trust Docker/Nginx proxy for Rate Limiting
 
 // Rate Limiting: 100 requests per 15 minutes per IP
-import rateLimit from 'express-rate-limit';
+// Strict CORS
+app.use(cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Restrict to known client
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic']
+}));
+
+// Rate Limiting: 2000 requests per 15 minutes per IP (Accommodate 2s polling)
+// @ts-ignore
+const rateLimit = require('express-rate-limit');
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 2000, // Increased from 100 to support polling
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message: { error: 'Too many requests, please try again later.' }
@@ -79,12 +91,7 @@ app.use(helmet({
     }
 }));
 
-// Strict CORS
-app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Restrict to known client
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic']
-}));
+
 
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -136,6 +143,7 @@ app.use('/api/marketing', marketingRoutes); // Mount Marketing API
 app.use('/api/email', emailRoutes);
 app.use('/api/segments', segmentsRoutes);
 app.use('/api/orders', ordersRoutes); // Mount Orders API
+app.use('/api/audits', auditsRouter);
 
 // Mount Chat Routes
 app.use('/api/chat', createChatRouter(chatService));
@@ -202,8 +210,67 @@ io.on('connection', (socket) => {
         socket.leave(`conversation:${convId}`);
     });
 
-    socket.on('disconnect', () => {
+    // Collaboration Events
+    socket.on('join:document', async ({ docId, user }) => {
+        // console.log(`Socket ${socket.id} joining doc ${docId}`);
+        socket.join(`document:${docId}`);
+
+        // Add to Redis Presence
+        const userInfo = {
+            userId: user.id || 'anon',
+            name: user.name || 'Anonymous',
+            avatarUrl: user.avatarUrl,
+            color: user.color, // Expect client to generate/assign color
+            connectedAt: Date.now()
+        };
+
+        const { CollaborationService } = require('./services/CollaborationService');
+        await CollaborationService.joinDocument(docId, socket.id, userInfo);
+
+        // Broadcast updated presence to room
+        const presenceList = await CollaborationService.getPresence(docId);
+        io.to(`document:${docId}`).emit('presence:sync', presenceList);
+    });
+
+    socket.on('leave:document', async ({ docId }) => {
+        // console.log(`Socket ${socket.id} leaving doc ${docId}`);
+        socket.leave(`document:${docId}`);
+
+        const { CollaborationService } = require('./services/CollaborationService');
+        await CollaborationService.leaveDocument(docId, socket.id);
+
+        const presenceList = await CollaborationService.getPresence(docId);
+        io.to(`document:${docId}`).emit('presence:sync', presenceList);
+    });
+
+    socket.on('disconnect', async () => {
         // console.log('Client disconnected:', socket.id);
+
+        // Cleanup Presence
+        // We need to know which docs they were in. 
+        // Socket.io automatically leaves rooms, but we need to update Redis.
+        // It's hard to get rooms AFTER disconnect (they are gone).
+        // Best approach: Store `socketId -> [docIds]` in Redis or rely on client `leave:document` before unload (unreliable).
+        // Or: Use `disconnecting` event where rooms are still available.
+    });
+
+    socket.on('disconnecting', async () => {
+        const rooms = Array.from(socket.rooms); // Set of rooms
+        // Filter for document rooms, e.g. "document:product:123"
+        const docRooms = rooms.filter(r => r.startsWith('document:'));
+
+        const { CollaborationService } = require('./services/CollaborationService');
+        for (const room of docRooms) {
+            const docId = room.replace('document:', '');
+            await CollaborationService.leaveDocument(docId, socket.id);
+            // We can't emit to the room easily if we are disconnecting, ensuring remaining clients get update?
+            // Yes, we can still emit to the room (or use broadcast from this socket)
+            // But we can't await the fetch inside the loop easily without delaying disconnect.
+            // Better to just fire and forget the update or let the next heartbeat fix it?
+            // Let's try to notify.
+            const presenceList = await CollaborationService.getPresence(docId);
+            io.to(room).emit('presence:sync', presenceList);
+        }
     });
 });
 
