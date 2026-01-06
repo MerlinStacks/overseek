@@ -43,14 +43,26 @@ router.get('/products', async (req: Request, res: Response) => {
 router.post('/configure', async (req: Request, res: Response) => {
     try {
         const accountId = (req as any).accountId;
-        const { origin } = req.body; // Client sends its current origin
+        const { origin, wooUrl, wooConsumerKey, wooConsumerSecret } = req.body; // Client sends its current origin + credentials
 
         if (!accountId) return res.status(400).json({ error: 'No account selected' });
         // Clean origin to remove trailing slash
         const cleanOrigin = origin ? origin.replace(/\/$/, '') : '';
         if (!cleanOrigin) return res.status(400).json({ error: 'Origin URL is required' });
 
-        const woo = await WooService.forAccount(accountId);
+        let woo;
+        if (wooUrl && wooConsumerKey && wooConsumerSecret) {
+            // Use provided credentials (fresh from form)
+            woo = new WooService({
+                url: wooUrl,
+                consumerKey: wooConsumerKey,
+                consumerSecret: wooConsumerSecret,
+                accountId: accountId
+            });
+        } else {
+            // Fallback to saved credentials
+            woo = await WooService.forAccount(accountId);
+        }
 
         // Push configuration to the plugin
         // We send the origin as the API URL, and the account ID

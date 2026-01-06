@@ -102,7 +102,10 @@ export function GeneralSettings() {
                     'x-account-id': currentAccount.id
                 },
                 body: JSON.stringify({
-                    origin: window.location.origin
+                    origin: window.location.origin,
+                    wooUrl: formData.wooUrl,
+                    wooConsumerKey: formData.wooConsumerKey,
+                    wooConsumerSecret: formData.wooConsumerSecret
                 })
             });
 
