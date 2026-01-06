@@ -1,0 +1,3 @@
+src/middleware/validate.ts(2,10): error TS2724: '"zod"' has no exported member named 'AnyZodObject'. Did you mean 'ZodObject'?
+src/middleware/validate.ts(16,32): error TS2339: Property 'errors' does not exist on type 'ZodError<unknown>'.
+src/middleware/validate.ts(16,44): error TS7006: Parameter 'e' implicitly has an 'any' type.

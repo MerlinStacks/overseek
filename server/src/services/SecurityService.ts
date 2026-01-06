@@ -1,6 +1,6 @@
 import { PrismaClient, User } from '@prisma/client';
 import { authenticator } from 'otplib';
-import qrcode from 'qrcode';
+import * as qrcode from 'qrcode';
 import { generateToken } from '../utils/auth';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';

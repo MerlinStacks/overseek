@@ -101,6 +101,15 @@ router.get('/tracking.js', (req, res) => {
     if (typeof jQuery !== 'undefined') {
         jQuery(document.body).on('added_to_cart', function(e, fragments, cart_hash, button) {
             let total = 0;
+            // Capture Product ID and Quantity
+            let productId = null;
+            let quantity = 1;
+
+            if (button && button.length) {
+                productId = button.data('product_id');
+                quantity = button.data('quantity') || 1;
+            }
+
             try {
                 // Attempt 1: Parse from fragments if available
                 if (fragments && fragments['div.widget_shopping_cart_content']) {
@@ -111,9 +120,6 @@ router.get('/tracking.js', (req, res) => {
                                      div.querySelector('.total .amount');
                     if (amountEl) {
                          const text = amountEl.textContent || '';
-                         // Remove currency symbols and non-numeric chars (keep dot/comma)
-                         // Simple parse: remove non-digits/dots. Handle 1,000.00 vs 1.000,00?
-                         // For now, assume standard dot decimal or simple cleanup.
                          const clean = text.replace(/[^0-9.]/g, '');
                          total = parseFloat(clean) || 0;
                     }
@@ -122,12 +128,11 @@ router.get('/tracking.js', (req, res) => {
                 console.error('OverSeek: Error parsing cart', err);
             }
              
-            sendEvent('add_to_cart', { total: total });
+            sendEvent('add_to_cart', { total: total, productId: productId, quantity: quantity });
         });
 
         jQuery(document.body).on('removed_from_cart', function(e, fragments, cart_hash, button) {
-            // Similar logic for removal, if fragments are passed (often they are in newer WC)
-            // If not, we might need to wait a tick and scrape the DOM.
+            // Similar logic for removal
             setTimeout(() => {
                 let total = 0;
                 const amountEl = document.querySelector('.woocommerce-mini-cart__total .amount') || 

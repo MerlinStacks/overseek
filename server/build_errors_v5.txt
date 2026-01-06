@@ -1,0 +1,14 @@
+
+> overseek-server@1.0.0 build
+> tsc
+
+src/middleware/validate.ts(2,10): error TS2724: '"zod"' has no exported member named 'AnyZodObject'. Did you mean 'ZodObject'?
+src/middleware/validate.ts(16,32): error TS2339: Property 'errors' does not exist on type 'ZodError<unknown>'.
+src/middleware/validate.ts(16,44): error TS7006: Parameter 'e' implicitly has an 'any' type.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\ratte\OneDrive\Desktop\Overseekv2\server
+npm error workspace overseek-server@1.0.0
+npm error location C:\Users\ratte\OneDrive\Desktop\Overseekv2\server
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsc
