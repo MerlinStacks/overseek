@@ -28,5 +28,5 @@ EXPOSE 3000
 
 # Start command
 COPY start.sh .
-RUN chmod +x start.sh
+RUN apk add --no-cache dos2unix && dos2unix start.sh && chmod +x start.sh
 CMD ["./start.sh"]

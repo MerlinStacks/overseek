@@ -3,6 +3,10 @@ set -e
 
 echo "[Startup] Starting deployment script..."
 
+# Ensure Prisma Client is up to date
+echo "[Startup] Generating Prisma Client..."
+npx prisma generate
+
 # Retry loop for database migrations
 # This handles the case where Postgres is not yet ready to accept connections
 echo "[Startup] Running database migrations..."
