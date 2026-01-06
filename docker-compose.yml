@@ -62,7 +62,6 @@ services:
       context: ./client
       dockerfile: Dockerfile
     pull_policy: build
-    pull_policy: build
     ports:
       - "5173:5173"
     environment:
