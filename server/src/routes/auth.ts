@@ -93,7 +93,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
 
         res.json({ token, user: { id: user.id, email: user.email, fullName: user.fullName, isSuperAdmin: user.isSuperAdmin } });
     } catch (error) {
-        console.error('Register error:', error);
+        Logger.error('Register error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });

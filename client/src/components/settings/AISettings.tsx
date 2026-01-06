@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
-import { Save, Loader2, Bot, Key, Search, ChevronDown, Check } from 'lucide-react';
+import { Save, Loader2, Bot, Key, Search, ChevronDown, Check, Sparkles } from 'lucide-react';
+
+// Available embedding models from OpenRouter
+const EMBEDDING_MODELS = [
+    { id: 'openai/text-embedding-3-small', name: 'OpenAI Text Embedding 3 Small', desc: 'Fast, cost-effective' },
+    { id: 'openai/text-embedding-3-large', name: 'OpenAI Text Embedding 3 Large', desc: 'Higher quality' },
+    { id: 'openai/text-embedding-ada-002', name: 'OpenAI Ada 002', desc: 'Legacy, widely used' },
+    { id: 'voyage/voyage-large-2', name: 'Voyage Large 2', desc: 'High quality alternative' },
+    { id: 'cohere/embed-english-v3.0', name: 'Cohere Embed English v3', desc: 'English optimized' },
+];
 
 export function AISettings() {
     const { currentAccount, refreshAccounts } = useAccount();
@@ -9,12 +18,15 @@ export function AISettings() {
 
     const [apiKey, setApiKey] = useState('');
     const [selectedModel, setSelectedModel] = useState('mistralai/mistral-7b-instruct');
+    const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('openai/text-embedding-3-small');
     const [models, setModels] = useState<any[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [isEmbeddingOpen, setIsEmbeddingOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const embeddingDropdownRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -28,6 +40,9 @@ export function AISettings() {
                         : (models.find(m => m.id === selectedModel)?.name || selectedModel);
                     setSearchQuery(name);
                 }
+            }
+            if (embeddingDropdownRef.current && !embeddingDropdownRef.current.contains(event.target as Node)) {
+                setIsEmbeddingOpen(false);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
@@ -55,6 +70,9 @@ export function AISettings() {
             setApiKey(currentAccount.openRouterApiKey || '');
             if (currentAccount.aiModel) {
                 setSelectedModel(currentAccount.aiModel);
+            }
+            if (currentAccount.embeddingModel) {
+                setSelectedEmbeddingModel(currentAccount.embeddingModel);
             }
         }
     }, [currentAccount]);
@@ -103,7 +121,8 @@ export function AISettings() {
                 },
                 body: JSON.stringify({
                     openRouterApiKey: apiKey,
-                    aiModel: selectedModel
+                    aiModel: selectedModel,
+                    embeddingModel: selectedEmbeddingModel
                 })
             });
 
@@ -118,6 +137,11 @@ export function AISettings() {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const getEmbeddingModelName = () => {
+        const model = EMBEDDING_MODELS.find(m => m.id === selectedEmbeddingModel);
+        return model?.name || selectedEmbeddingModel;
     };
 
     return (
@@ -141,7 +165,7 @@ export function AISettings() {
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                        <Bot size={16} /> AI Model
+                        <Bot size={16} /> AI Chat Model
                     </label>
                     <div className="relative" ref={dropdownRef}>
                         <div className="relative">
@@ -215,6 +239,50 @@ export function AISettings() {
                         )}
                     </div>
                 </div>
+
+                {/* Embedding Model Selector */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                        <Sparkles size={16} /> Embedding Model
+                        <span className="text-xs font-normal text-gray-400">(for semantic search)</span>
+                    </label>
+                    <div className="relative" ref={embeddingDropdownRef}>
+                        <button
+                            type="button"
+                            onClick={() => setIsEmbeddingOpen(!isEmbeddingOpen)}
+                            className={`w-full px-4 py-2 border rounded-lg text-left flex items-center justify-between transition-colors ${isEmbeddingOpen ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300'}`}
+                        >
+                            <span>{getEmbeddingModelName()}</span>
+                            <ChevronDown size={16} className={`text-gray-400 transition-transform ${isEmbeddingOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isEmbeddingOpen && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                                <div className="p-1">
+                                    {EMBEDDING_MODELS.map(model => (
+                                        <div
+                                            key={model.id}
+                                            onClick={() => {
+                                                setSelectedEmbeddingModel(model.id);
+                                                setIsEmbeddingOpen(false);
+                                            }}
+                                            className={`px-3 py-2 text-sm rounded-md cursor-pointer flex items-center justify-between ${selectedEmbeddingModel === model.id ? 'bg-purple-50 text-purple-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{model.name}</span>
+                                                <span className="text-xs opacity-60">{model.desc}</span>
+                                            </div>
+                                            {selectedEmbeddingModel === model.id && <Check size={14} />}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Used for semantic product search and finding similar items
+                    </p>
+                </div>
             </div>
 
             <div className="flex justify-end pt-4">
@@ -230,3 +298,4 @@ export function AISettings() {
         </div>
     );
 }
+

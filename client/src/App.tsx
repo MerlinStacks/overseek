@@ -32,6 +32,13 @@ import { ProductEditPage } from './pages/ProductEditPage';
 import { PurchaseOrderEditPage } from './pages/PurchaseOrderEditPage';
 import { InvoiceDesigner } from './pages/InvoiceDesigner';
 
+// Analytics Sub-Pages
+import { AnalyticsOverviewPage } from './pages/analytics/AnalyticsOverviewPage';
+import { RevenuePage } from './pages/analytics/RevenuePage';
+import { AttributionPage } from './pages/analytics/AttributionPage';
+import { CohortsPage } from './pages/analytics/CohortsPage';
+import { CustomersPage as AnalyticsCustomersPage } from './pages/analytics/CustomersPage';
+
 import { UserProfilePage } from './pages/UserProfilePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminAccountsPage } from './pages/admin/AdminAccountsPage';
@@ -93,7 +100,11 @@ function App() {
                                         <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
                                         <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
                                         <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />
-                                        <Route path="/analytics" element={<AccountGuard><AnalyticsDashboard /></AccountGuard>} />
+                                        <Route path="/analytics" element={<AccountGuard><AnalyticsOverviewPage /></AccountGuard>} />
+                                        <Route path="/analytics/revenue" element={<AccountGuard><RevenuePage /></AccountGuard>} />
+                                        <Route path="/analytics/attribution" element={<AccountGuard><AttributionPage /></AccountGuard>} />
+                                        <Route path="/analytics/cohorts" element={<AccountGuard><CohortsPage /></AccountGuard>} />
+                                        <Route path="/analytics/customers" element={<AccountGuard><AnalyticsCustomersPage /></AccountGuard>} />
                                         <Route path="/reviews" element={<AccountGuard><ReviewsPage /></AccountGuard>} />
                                         <Route path="/help" element={<AccountGuard><HelpCenterHome /></AccountGuard>} />
                                         <Route path="/help/article/:slug" element={<AccountGuard><HelpArticle /></AccountGuard>} />

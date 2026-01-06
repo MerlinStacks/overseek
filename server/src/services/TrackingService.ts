@@ -842,7 +842,9 @@ export class TrackingService {
         const customerOrders = new Map<string, number>();
 
         for (const event of purchaseEvents) {
-            const customerId = event.session.customerId || event.session.email || 'anonymous';
+            // @ts-ignore - Prisma include type inference not working correctly
+            const session = event.session as { customerId: string | null; email: string | null };
+            const customerId = session.customerId || session.email || 'anonymous';
             const total = (event.payload as any)?.total || 0;
 
             customerRevenue.set(customerId, (customerRevenue.get(customerId) || 0) + total);

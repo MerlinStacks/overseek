@@ -32,6 +32,7 @@ import invoicesRoutes from './routes/invoices';
 
 import segmentsRoutes from './routes/segments';
 import { auditsRouter } from './routes/audits';
+import sessionsRoutes from './routes/sessions';
 
 import { esClient } from './utils/elastic';
 
@@ -169,6 +170,7 @@ app.use('/api/email', emailRoutes);
 app.use('/api/segments', segmentsRoutes);
 app.use('/api/orders', ordersRoutes); // Mount Orders API
 app.use('/api/audits', auditsRouter);
+app.use('/api/sessions', sessionsRoutes);
 
 // Mount Chat Routes
 app.use('/api/chat', createChatRouter(chatService));

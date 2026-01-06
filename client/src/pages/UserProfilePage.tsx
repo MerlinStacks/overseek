@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { User, Mail, Shield, Building, LogOut, Camera, Clock, Save, X } from 'lucide-react';
+import SessionManager from '../components/settings/SessionManager';
 
 export function UserProfilePage() {
     const { user, logout, updateUser, token } = useAuth();
@@ -278,6 +279,11 @@ export function UserProfilePage() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Active Sessions */}
+            <div className="mt-8">
+                <SessionManager />
             </div>
         </div >
     );

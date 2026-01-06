@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useAccounts } from '../../contexts/AccountContext';
-import { api } from '../../utils/api';
+import { useAccount } from '../../context/AccountContext';
+import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { Globe, Monitor, Smartphone, Tablet, Clock } from 'lucide-react';
 
 interface StatsData {
@@ -12,7 +13,8 @@ interface StatsData {
 }
 
 export const AnalyticsStatsWidget: React.FC = () => {
-    const { currentAccount, token } = useAccounts();
+    const { currentAccount } = useAccount();
+    const { token } = useAuth();
     const [stats, setStats] = useState<StatsData | null>(null);
     const [loading, setLoading] = useState(true);
 

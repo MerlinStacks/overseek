@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
 import { requireAuth } from '../middleware/auth';
 import { prisma } from '../utils/prisma';

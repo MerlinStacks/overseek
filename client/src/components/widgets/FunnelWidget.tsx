@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useAccounts } from '../../contexts/AccountContext';
-import { api } from '../../utils/api';
+import { useAccount } from '../../context/AccountContext';
+import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { TrendingDown } from 'lucide-react';
 
 interface FunnelData {
@@ -8,7 +9,8 @@ interface FunnelData {
 }
 
 export const FunnelWidget: React.FC = () => {
-    const { currentAccount, token } = useAccounts();
+    const { currentAccount } = useAccount();
+    const { token } = useAuth();
     const [funnel, setFunnel] = useState<FunnelData | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -61,9 +63,9 @@ export const FunnelWidget: React.FC = () => {
                         <div className="w-full bg-gray-100 rounded-full h-6">
                             <div
                                 className={`h-6 rounded-full transition-all duration-500 ${i === 0 ? 'bg-blue-500' :
-                                        i === 1 ? 'bg-yellow-500' :
-                                            i === 2 ? 'bg-orange-500' :
-                                                'bg-green-500'
+                                    i === 1 ? 'bg-yellow-500' :
+                                        i === 2 ? 'bg-orange-500' :
+                                            'bg-green-500'
                                     }`}
                                 style={{ width: `${Math.max(widthPercent, 2)}%` }}
                             />

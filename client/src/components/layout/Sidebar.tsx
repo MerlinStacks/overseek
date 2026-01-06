@@ -20,7 +20,10 @@ import {
     Star,
     ShieldAlert,
     LineChart,
-    FileText
+    FileText,
+    DollarSign,
+    GitBranch,
+    Repeat
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -46,7 +49,11 @@ const navItems = [
         label: 'Analytics',
         icon: PieChart,
         children: [
-            { icon: LineChart, label: 'Analytics', path: '/analytics' },
+            { icon: LineChart, label: 'Overview', path: '/analytics' },
+            { icon: DollarSign, label: 'Revenue', path: '/analytics/revenue' },
+            { icon: GitBranch, label: 'Attribution', path: '/analytics/attribution' },
+            { icon: TrendingUp, label: 'Cohorts', path: '/analytics/cohorts' },
+            { icon: Repeat, label: 'Customers', path: '/analytics/customers' },
             { icon: BarChart3, label: 'Reports', path: '/reports' },
         ]
     },

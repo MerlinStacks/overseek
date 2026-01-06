@@ -320,3 +320,52 @@ The `events.ts` module defines a lightweight, in-process event bus using Node.js
 *   **Typed Events**: `EVENTS.ORDER.SYNCED`, `EVENTS.ORDER.CREATED`, `EVENTS.ORDER.COMPLETED`, `EVENTS.REVIEW.LEFT`, `EVENTS.EMAIL.RECEIVED`.
 *   **Error Handling**: The bus has a global `error` listener that logs failures via `Logger.error`.
 *   **Debug Logging**: Every `emit()` call is logged at the `debug` level, enabling full traceability of inter-service communication.
+
+### 6.21 Type Safety System
+The codebase implements a consistent type safety pattern for authenticated Express routes.
+
+*   **AuthenticatedRequest Interface**: Defined in `types/express.ts`, this interface extends Express `Request` with typed properties:
+    *   `accountId?: string` - The tenant account ID
+    *   `user?: AuthenticatedUser` - The authenticated user object with `id`, `email`, `fullName`, `accountId`, and `isSuperAdmin`
+*   **Usage Pattern**: Route handlers use `AuthenticatedRequest` instead of casting with `(req as any)`:
+    ```typescript
+    // Before (anti-pattern)
+    router.get('/', async (req: Request, res: Response) => {
+        const accountId = (req as any).accountId;
+    });
+    
+    // After (type-safe)
+    router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+        const accountId = req.accountId;
+    });
+    ```
+*   **Coverage**: 19+ route files now import and use `AuthenticatedRequest` for type-safe request handling.
+
+### 6.22 Security Features
+*   **Refresh Token Rotation**: The `RefreshToken` model supports secure session management with:
+    *   Token-based authentication with automatic expiry
+    *   IP address and User Agent tracking for session auditing
+    *   Revocation timestamps for invalidation
+*   **Two-Factor Authentication**: Schema-ready 2FA support with:
+    *   `twoFactorSecret` - TOTP secret storage
+    *   `isTwoFactorEnabled` - Per-user toggle
+    *   `twoFactorBackupCodes` - JSON array of one-time recovery codes
+*   **Login Rate Limiting**: Strict protection using `express-rate-limit`:
+    *   **Limit**: 5 login attempts per IP per hour
+    *   **Response**: Returns structured JSON error after limit exceeded
+
+### 6.23 Docker Deployment Architecture
+Overseek is designed to run in a containerized environment with the following considerations:
+
+*   **Prisma in Containers**: The `prisma generate` command runs during the Docker build process, generating TypeScript types fresh for each container. This means:
+    *   Local development may show stale types if `prisma generate` hasn't been run locally
+    *   Production containers always have correct types matching the schema
+    *   `@ts-ignore` comments for Prisma fields don't affect production builds
+*   **Container Composition**: Standard Docker Compose setup with:
+    *   `server` - Node.js Express API
+    *   `client` - React SPA (served via nginx or integrated)
+    *   `postgres` - PostgreSQL 16 with pgvector
+    *   `redis` - Redis 7 with AOF persistence
+    *   `elasticsearch` - Elasticsearch 7.17
+*   **Data Persistence**: All stateful containers mount volumes to preserve data across restarts. User data is never wiped during container rebuilds.
+*   **Environment Variables**: Secrets are injected via environment variables, never baked into images.

@@ -79,6 +79,7 @@ model Account {
   // AI Settings
   openRouterApiKey String?
   aiModel          String? @default("mistralai/mistral-7b-instruct")
+  embeddingModel   String? @default("openai/text-embedding-3-small")
 
   // Whitelabel / Appearance
   appearance Json? @default("{}")

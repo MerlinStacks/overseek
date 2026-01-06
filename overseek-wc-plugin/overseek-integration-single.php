@@ -297,10 +297,12 @@ function overseek_update_settings_callback($request)
  */
 class OverSeek_Server_Tracking
 {
-
 	private $api_url;
 	private $account_id;
 
+	/**
+	 * Initialize hooks.
+	 */
 	public function __construct()
 	{
 		$this->api_url = untrailingslashit(get_option('overseek_api_url', 'https://api.overseek.com'));
@@ -310,20 +312,52 @@ class OverSeek_Server_Tracking
 			return;
 		}
 
+		// Pageview - fires on every page load
 		add_action('template_redirect', array($this, 'track_pageview'));
+
+		// Add to cart
 		add_action('woocommerce_add_to_cart', array($this, 'track_add_to_cart'), 10, 6);
+
+		// Remove from cart
 		add_action('woocommerce_remove_cart_item', array($this, 'track_remove_from_cart'), 10, 2);
+
+		// Checkout start
 		add_action('woocommerce_checkout_process', array($this, 'track_checkout_start'));
+
+		// Purchase completed
 		add_action('woocommerce_thankyou', array($this, 'track_purchase'), 10, 1);
+
+		// Session Stitching: Link visitor to customer on login
+		add_action('wp_login', array($this, 'track_identify'), 10, 2);
+		add_action('woocommerce_created_customer', array($this, 'track_new_customer'), 10, 3);
+
+		// Product View - detailed product tracking
+		add_action('woocommerce_after_single_product', array($this, 'track_product_view'));
+
+		// Review Tracking
+		add_action('comment_post', array($this, 'track_review'), 10, 3);
 	}
 
+	/**
+	 * Get or create visitor ID from cookie.
+	 */
 	private function get_visitor_id()
 	{
 		$cookie_name = '_os_vid';
 		if (isset($_COOKIE[$cookie_name])) {
 			return sanitize_text_field($_COOKIE[$cookie_name]);
 		}
-		$visitor_id = sprintf(
+		$visitor_id = $this->generate_uuid();
+		setcookie($cookie_name, $visitor_id, time() + (365 * 24 * 60 * 60), '/', '', is_ssl(), false);
+		return $visitor_id;
+	}
+
+	/**
+	 * Generate a UUID v4.
+	 */
+	private function generate_uuid()
+	{
+		return sprintf(
 			'%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
 			mt_rand(0, 0xffff),
 			mt_rand(0, 0xffff),
@@ -334,10 +368,11 @@ class OverSeek_Server_Tracking
 			mt_rand(0, 0xffff),
 			mt_rand(0, 0xffff)
 		);
-		setcookie($cookie_name, $visitor_id, time() + (365 * 24 * 60 * 60), '/', '', is_ssl(), false);
-		return $visitor_id;
 	}
 
+	/**
+	 * Send tracking event to Overseek API (non-blocking).
+	 */
 	private function send_event($type, $payload = array())
 	{
 		$data = array(
@@ -350,6 +385,8 @@ class OverSeek_Server_Tracking
 			'payload' => $payload,
 			'serverSide' => true,
 		);
+
+		// Add UTM parameters
 		if (isset($_GET['utm_source']))
 			$data['utmSource'] = sanitize_text_field($_GET['utm_source']);
 		if (isset($_GET['utm_medium']))
@@ -370,14 +407,30 @@ class OverSeek_Server_Tracking
 		if (is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
 			return;
 		}
+
 		$payload = array('page_type' => $this->get_page_type());
+
 		if (is_product()) {
 			global $product;
 			if ($product) {
 				$payload['productId'] = $product->get_id();
 				$payload['productName'] = $product->get_name();
+				$payload['productPrice'] = floatval($product->get_price());
 			}
 		}
+
+		if (is_product_category()) {
+			$term = get_queried_object();
+			if ($term) {
+				$payload['categoryId'] = $term->term_id;
+				$payload['categoryName'] = $term->name;
+			}
+		}
+
+		if (is_search()) {
+			$payload['searchQuery'] = get_search_query();
+		}
+
 		$this->send_event('pageview', $payload);
 	}
 
@@ -393,6 +446,10 @@ class OverSeek_Server_Tracking
 			return 'cart';
 		if (is_checkout())
 			return 'checkout';
+		if (is_account_page())
+			return 'account';
+		if (is_search())
+			return 'search';
 		if (is_shop())
 			return 'shop';
 		return 'other';
@@ -403,21 +460,29 @@ class OverSeek_Server_Tracking
 		$product = wc_get_product($product_id);
 		$payload = array(
 			'productId' => $product_id,
+			'variationId' => $variation_id,
 			'quantity' => $quantity,
 			'name' => $product ? $product->get_name() : '',
 			'price' => $product ? floatval($product->get_price()) : 0,
 		);
 		if (WC()->cart) {
 			$payload['total'] = floatval(WC()->cart->get_cart_contents_total());
+			$payload['itemCount'] = WC()->cart->get_cart_contents_count();
 		}
 		$this->send_event('add_to_cart', $payload);
 	}
 
 	public function track_remove_from_cart($cart_item_key, $cart)
 	{
+		$removed_item = $cart->removed_cart_contents[$cart_item_key] ?? null;
 		$payload = array();
+		if ($removed_item) {
+			$payload['productId'] = $removed_item['product_id'];
+			$payload['quantity'] = $removed_item['quantity'];
+		}
 		if (WC()->cart) {
 			$payload['total'] = floatval(WC()->cart->get_cart_contents_total());
+			$payload['itemCount'] = WC()->cart->get_cart_contents_count();
 		}
 		$this->send_event('remove_from_cart', $payload);
 	}
@@ -428,6 +493,7 @@ class OverSeek_Server_Tracking
 		$payload = array('email' => $email);
 		if (WC()->cart) {
 			$payload['total'] = floatval(WC()->cart->get_cart_contents_total());
+			$payload['itemCount'] = WC()->cart->get_cart_contents_count();
 		}
 		$this->send_event('checkout_start', $payload);
 	}
@@ -445,6 +511,7 @@ class OverSeek_Server_Tracking
 			$product = $item->get_product();
 			$items[] = array(
 				'id' => $product ? $product->get_id() : 0,
+				'sku' => $product ? $product->get_sku() : '',
 				'name' => $item->get_name(),
 				'quantity' => $item->get_quantity(),
 				'price' => floatval($item->get_total()),
@@ -454,13 +521,129 @@ class OverSeek_Server_Tracking
 		$payload = array(
 			'orderId' => $order_id,
 			'total' => floatval($order->get_total()),
+			'subtotal' => floatval($order->get_subtotal()),
+			'tax' => floatval($order->get_total_tax()),
+			'shipping' => floatval($order->get_shipping_total()),
+			'currency' => $order->get_currency(),
 			'items' => $items,
+			'itemCount' => count($items),
 			'email' => $order->get_billing_email(),
+			'customerId' => $order->get_customer_id(),
+			'paymentMethod' => $order->get_payment_method(),
+			'couponCodes' => $order->get_coupon_codes(),
 		);
 
 		$this->send_event('purchase', $payload);
 		$order->update_meta_data('_overseek_tracked', true);
 		$order->save();
+	}
+
+	/**
+	 * Session Stitching: Track user login.
+	 */
+	public function track_identify($user_login, $user)
+	{
+		$payload = array(
+			'customerId' => $user->ID,
+			'email' => $user->user_email,
+			'firstName' => get_user_meta($user->ID, 'first_name', true),
+			'lastName' => get_user_meta($user->ID, 'last_name', true),
+		);
+		$this->send_event('identify', $payload);
+	}
+
+	/**
+	 * Track new customer registration.
+	 */
+	public function track_new_customer($customer_id, $new_customer_data, $password_generated)
+	{
+		$user = get_user_by('id', $customer_id);
+		if (!$user)
+			return;
+
+		$payload = array(
+			'customerId' => $customer_id,
+			'email' => $user->user_email,
+			'firstName' => get_user_meta($customer_id, 'first_name', true),
+			'lastName' => get_user_meta($customer_id, 'last_name', true),
+			'isNewCustomer' => true,
+		);
+		$this->send_event('identify', $payload);
+	}
+
+	/**
+	 * Track detailed product view.
+	 */
+	public function track_product_view()
+	{
+		global $product;
+		if (!$product)
+			return;
+
+		$categories = array();
+		$terms = get_the_terms($product->get_id(), 'product_cat');
+		if ($terms && !is_wp_error($terms)) {
+			foreach ($terms as $term) {
+				$categories[] = $term->name;
+			}
+		}
+
+		$payload = array(
+			'productId' => $product->get_id(),
+			'productName' => $product->get_name(),
+			'sku' => $product->get_sku(),
+			'price' => floatval($product->get_price()),
+			'regularPrice' => floatval($product->get_regular_price()),
+			'salePrice' => $product->get_sale_price() ? floatval($product->get_sale_price()) : null,
+			'inStock' => $product->is_in_stock(),
+			'categories' => $categories,
+			'productType' => $product->get_type(),
+		);
+		$this->send_event('product_view', $payload);
+	}
+
+	/**
+	 * Track A/B test experiment assignment.
+	 */
+	public static function track_experiment($experiment_id, $variation_id)
+	{
+		$instance = new self();
+		$payload = array(
+			'experimentId' => $experiment_id,
+			'variationId' => $variation_id,
+		);
+		$instance->send_event('experiment', $payload);
+	}
+
+	/**
+	 * Track product review submission.
+	 */
+	public function track_review($comment_id, $comment_approved, $commentdata)
+	{
+		if ($comment_approved !== 1 && $comment_approved !== '1')
+			return;
+
+		$comment = get_comment($comment_id);
+		if (!$comment)
+			return;
+
+		$post = get_post($comment->comment_post_ID);
+		if (!$post || $post->post_type !== 'product')
+			return;
+
+		$product = wc_get_product($comment->comment_post_ID);
+		$rating = get_comment_meta($comment_id, 'rating', true);
+
+		$payload = array(
+			'reviewId' => $comment_id,
+			'productId' => $comment->comment_post_ID,
+			'productName' => $product ? $product->get_name() : $post->post_title,
+			'rating' => $rating ? intval($rating) : null,
+			'reviewContent' => wp_trim_words($comment->comment_content, 50),
+			'reviewerEmail' => $comment->comment_author_email,
+			'reviewerName' => $comment->comment_author,
+		);
+		$this->send_event('review', $payload);
 	}
 }
 
