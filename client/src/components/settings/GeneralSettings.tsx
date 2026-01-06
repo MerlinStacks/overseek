@@ -33,8 +33,31 @@ export function GeneralSettings() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    const validateForm = () => {
+        if (!formData.name.trim()) {
+            alert("Store Name is required");
+            return false;
+        }
+        if (formData.wooUrl && !isValidUrl(formData.wooUrl)) {
+            alert("Please enter a valid Store URL (must start with http:// or https://)");
+            return false;
+        }
+        return true;
+    };
+
+    const isValidUrl = (string: string) => {
+        try {
+            new URL(string);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+
     const handleSave = async () => {
         if (!currentAccount || !token) return;
+        if (!validateForm()) return;
+
         setIsSaving(true);
         try {
             const res = await fetch(`/api/accounts/${currentAccount.id}`, {
@@ -52,14 +75,23 @@ export function GeneralSettings() {
             alert('Settings saved successfully');
         } catch (error) {
             console.error(error);
-            alert('Failed to save settings');
+            alert('Failed to save settings: ' + (error instanceof Error ? error.message : 'Unknown error'));
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleConfigurePlugin = async () => {
-        if (!currentAccount || !token) return;
+        if (!currentAccount || !token) {
+            alert("No active account selected. Please select an account first.");
+            return;
+        }
+
+        if (!formData.wooUrl || !formData.wooConsumerKey) {
+            alert("Please save your WooCommerce URL and Consumer Key before configuring the plugin.");
+            return;
+        }
+
         setIsConfiguring(true);
         try {
             const res = await fetch('/api/woo/configure', {
@@ -80,7 +112,7 @@ export function GeneralSettings() {
             alert('Plugin configured successfully! The settings have been pushed to your WooCommerce site.');
         } catch (error: any) {
             console.error(error);
-            alert(error.message || 'Failed to configure plugin');
+            alert(error.message || 'Failed to configure plugin. Please check your credentials and try again.');
         } finally {
             setIsConfiguring(false);
         }
