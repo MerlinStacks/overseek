@@ -76,12 +76,11 @@ setInterval(() => {
 router.get('/tracking.js', (req, res) => {
     const script = `
 (function() {
-    const API_URL = '${process.env.API_URL || "https://api.overseek.com"}/api/tracking/events'; // Adjust based on env
-    // Actually, since we are serving it, we can just use the origin relative to where it was loaded, 
-    // IF the script is loaded from the same domain. But it's on a woocommerce site.
-    // So we need the absolute URL of THIS server.
-    // We can infer it from the request if not set.
-    const ENDPOINT = window.location.protocol + '//' + '${req.get('host')}' + '/api/tracking/events';
+    // Dynamic Endpoint Generation
+    // We derive the API URL from the script tag itself to ensure we always hit the correct backend, 
+    // regardless of the hosting store's protocol (HTTP/HTTPS).
+    const scriptBase = new URL(document.currentScript.src);
+    const ENDPOINT = scriptBase.origin + '/api/tracking/events';
 
     // Helper: Generate UUID
     function generateUUID() {

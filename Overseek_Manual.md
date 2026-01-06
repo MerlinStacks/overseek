@@ -14,9 +14,9 @@ It consolidates the functionality of platforms like **Metorik** (Analytics), **F
 
 ### The "Iron Core" Philosophy
 1.  **Sovereignty First**: You own your database. There are no third-party data silos. You decide when to prune your data, not a SaaS billing cycle.
-2.  **Instant Speed**: We use a **Tiered Storage** architecture.
-    *   **Hot Tier (Dexie.js)**: Local browser storage (IndexedDB) mirrors your recent active data (up to 5,000 records). This allows for instant searching, filtering, and sorting without hitting the server.
-    *   **Cold Tier (Postgres)**: The remote server holds the infinite historical record, accessed via efficient pagination when you scroll past the "Hot" limit.
+2.  **Instant Speed**: We use a **Server-First** architecture.
+    *   **Hot Tier (Planned)**: Future implementation will use local browser storage (IndexedDB via Dexie.js) to mirror recent active data for instant searching without hitting the server.
+    *   **Cold Tier (Postgres)**: The remote server holds all data, accessed via efficient pagination.
 3.  **Unified Intelligence**: A single mesh where customer support acts on inventory patterns, and marketing listens to logistics data.
     *   *Example*: If a user complains about a delay in Chat, the agent can instantly see the "Backordered" status from the Inventory module without switching tabs.
 
@@ -27,10 +27,10 @@ It consolidates the functionality of platforms like **Metorik** (Analytics), **F
 Overseek is built as a modern full-stack monorepo designed for performance, scale, and ease of deployment.
 
 ### 2.1 The Tech Stack
-*   **Frontend (The Head)**: Built with **React 19**, **Vite**, and **TypeScript**.
+*   **Frontend (The Head)**: Built with **React 18**, **Vite**, and **TypeScript**.
     *   **Architecture**: "Thin Client" model (`AnalyticsService.ts`). The client handles UI state and visualization, but heavy number-crunching is offloaded to the API.
     *   **State Management**: **React Context** (`AuthContext`, `SocketContext`) manages global user sessions and real-time streams.
-*   **Backend (The Spine)**: **Fastify** (Node.js) provides a high-throughput API layer, chosen for its low overhead compared to Express.
+*   **Backend (The Spine)**: **Express** (Node.js) provides the API layer, with middleware for security (Helmet, CORS) and request parsing.
 *   **Database (The Memory)**: **PostgreSQL 16**.
     *   **pgvector**: Enabled for future AI/Vector search capabilities.
     *   **Schema**: managed via Prisma ORM (`schema.prisma`), serving as the single source of truth for all data models.
