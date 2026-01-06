@@ -55,6 +55,7 @@ Heavy lifting is offloaded to **BullMQ** workers to keep the API responsive (ver
     *   **Note**: CSP is dynamically adjusted to allow the injection of the Chat Widget script.
 *   **Encryption**: Sensitive credentials (e.g., SMTP passwords, Meta Ads tokens) are encrypted at rest using **AES-256** (`encryption.ts`).
 *   **Cache Control**: All API responses enforce `no-store` headers to ensure data viewed in the dashboard is always real-time.
+*   **Global Error Handler**: A centralized error handler catches unhandled exceptions and logs them via `Logger` with full stack traces, preventing server crashes.
 
 ---
 
@@ -172,7 +173,10 @@ To ensure complete transparency, this section distinguishes between what is curr
 *   **Integration**: Full WooCommerce sync + Live Analytics.
 
 ### 🚧 Roadmap (Vision)
-*   **The Janitor**: *Planned*. An automated background service to prune old logs and analytics data based on retention policies.
+*   **The Janitor**: ✅ *Implemented*. Automated background service that prunes old data daily:
+    *   Analytics sessions older than 90 days
+    *   Audit logs older than 365 days
+    *   Read notifications older than 30 days
 *   **Stack Purge**: *Planned*. A "Factory Reset" button to wipe all data and start fresh without command-line intervention.
 *   **Neural AI**: *Planned*. Replacing the current heuristic logic (`SalesTools.ts`) with actual LLM-based predictive modeling for inventory forecasting.
 
@@ -192,27 +196,27 @@ To ensure both **instant UI feedback** and **reliable background processing**, O
     *   **Server (`SeoScoringService.ts`)**: Runs systematically during bulk imports or nightly audits to catch regressions.
 *   **Invoice Generation**:
     *   **Client (`InvoiceGenerator.ts`)**: Uses `jspdf` to render PDF previews in the browser using a **12-Column Grid System**. It performs `{{handlebars}}` variable replacement locally.
-    *   **Server**: Uses a matching logic to generate attachments for automated emails.
+    *   **Server (`InvoiceService.ts`)**: Generates styled HTML invoices with billing details, line items, and totals. Files are saved to `/uploads/invoices/` and can be printed to PDF by the browser or attached to automated emails.
 
 ### 6.2 Administrative Access Points
-*   **Bull Board UI**: The background worker dashboard is securely proxied via `vite.config.ts`.
+*   **Bull Board UI**: The background worker dashboard is **protected** with `requireAuth` and `requireSuperAdmin` middleware.
     *   **URL**: `/admin/queues`
+    *   **Security**: Only authenticated Super Admin users can access the queue dashboard.
 ### 6.3 Advanced Developer Tools
 *   **Debug Endpoints**: Located in `server/src/routes/debug.ts`, these allow for raw Elasticsearch queries (e.g., `GET /api/debug/count`) to verify index integrity without using the UI.
 *   **Ad Token Masking**: The `AdsService` middleware (`ads.ts`) automatically masks access tokens (returning only the first 10 chars) before sending data to the frontend, preventing credential leakage in browser network logs.
-### 6.7 Ecosystem Integrations & Utilities
+### 6.4 Ecosystem Integrations & Utilities
 *   **WordPress Plugin Internals**: The `overseek-integration-single.php` plugin includes a hidden REST endpoint (`POST /wp-json/overseek/v1/settings`). This allows the Overseek Dashboard to purely **Auto-Configure** the plugin if it has valid WooCommerce API keys, bypassing the need for the user to manually paste the JSON config blob in some scenarios.
 *   **Diagnostic Forensics**: The `deep-diagnostic.ts` script allows you to bypass the Prisma ORM entirely. It executes raw SQL (`SELECT tablename FROM pg_catalog.pg_tables`) to provide a "True Count" of every row in the database, which is critical for verifying if Prisma is "hallucinating" or if migrations failed silently.
-### 6.8 Intelligence & State Management
+### 6.5 Intelligence & State Management
 *   **Recursive AI Loop**: The `AIService` implements a **multi-turn agentic loop** (max 5 turns) that forces the LLM to use the `AIToolsService` to fetch real database stats before answering. It includes a fallback mechanism that defaults to `mistral-7b-instruct` if the configured OpenRouter key fails.
 *   **Context Persistence Strategy**: The `AccountContext` provider implements a "Sticky Session" logic on the client. It prioritizes the active memory state, falls back to `localStorage` (for page reloads), and finally defaults to the first available account, ensuring multi-store merchants never "get lost" between navigations.
-### 6.9 Hidden Data Capabilities
+### 6.6 Hidden Data Capabilities
 *   **Embedded Help Center CMS**: The database schema includes `HelpCollection` and `HelpArticle` tables, indicating that Overseek contains a fully-functional, self-hosted specific Content Management System for internal documentation, decoupled from WordPress.
-*   **Workforce Management**: The `User` table contains `shiftStart` and `shiftEnd` fields, enabling basic roster management and "Active Shift" visibility for support agents.
 *   **Audit Trail API**: A dedicated `audits.ts` route exposes the `AuditLog` table, ensuring that every sensitive action (Price Change, Stock Adjustment) is legally retrievable via API for compliance purposes.
 *   **Public Chat API**: The `chat-public.ts` route is isolated from the main `chat.ts` logic. It is specifically hardened (rate-limited, no auth required) to handle high-volume traffic from the widget without exposing the agent-facing API surface.
 *   **Worker Concurrency**: The `QueueFactory` is hardcoded to a **concurrency limit of 5**. This means a single specific queue (e.g., `sync-orders`) can process maximum 5 jobs in parallel per container. This prevents the API from being overwhelmed during massive initial syncs.
-### 6.6 User Interface & Reporting Specification
+### 6.7 User Interface & Reporting Specification
 *   **Report Types**: The `ReportsPage` exposes four specific views:
     *   **Overview**: Standard KPI cards (Rev, AOV).
     *   **Forecasting**: A linear regression chart for future sales.
@@ -225,7 +229,7 @@ To ensure both **instant UI feedback** and **reliable background processing**, O
 
 ### 6.10 System Internals & Recovery
 *   **Destructive Rebuild Protocol**: The `reindex-orders.ts` script allows for a "Scorched Earth" disaster recovery. It physically deletes the Elasticsearch index and rebuilds it from the raw JSON stored in PostgreSQL (`wooOrder.rawData`), ensuring true data symmetry even if the search index is corrupted.
-*   **Superuser Bootstrap**: A hardcoded `create-admin.ts` script exists to force-create the `admin@overseek.com` credentials (bcrypt hash) if the admin is locked out.
+*   **Superuser Bootstrap**: The `create-admin.ts` script creates admin credentials securely. Uses `ADMIN_PASSWORD` environment variable or generates a cryptographically random 32-character password if not set. Supports `ADMIN_EMAIL` override.
 *   **Cryptographic Standard**: Data at rest (tokens, secrets) is encrypted using **AES-256-GCM**. The system uses a SHA-256 hash of the `ENCRYPTION_KEY` to derive a stable 32-byte key, and stores data in a `iv:authTag:encryptedData` format to prevent tampering.
 *   **Chaos Engineering**: The server includes `repro.ts` and `invoke_error.ts`, designed to simulate high-concurrency race conditions (e.g., token attacks, non-existent user creation) against the production database to verify transactional integrity.
 
@@ -251,7 +255,12 @@ To ensure both **instant UI feedback** and **reliable background processing**, O
 *   **Error Normalization**: The `ApiError` class wraps all non-2xx responses, allowing components to catch and display user-friendly messages.
 
 ### 6.15 Logging & Observability
-*   **PII Guard**: The `requestLogger.ts` middleware explicitly comments out body logging (`// body: req.body`) to prevent accidental PII (Personally Identifiable Information) from being written to logs.
+*   **Structured Logging**: All core services use the `Logger` utility (Winston) instead of `console.log`, enabling:
+    *   JSON-formatted logs in production
+    *   Colorized console output in development
+    *   Automatic file rotation to `logs/error.log` and `logs/all.log`
+*   **PII Guard**: The `requestLogger.ts` middleware explicitly comments out body logging (`// body: req.body`) to prevent accidental PII from being written to logs.
+*   **Context Enrichment**: Log entries include `accountId`, `jobId`, and other metadata for traceability.
 
 ### 6.16 Scheduler Service (Cron Engine)
 The `SchedulerService.ts` is the heartbeat of all background operations. It uses a combination of BullMQ repeatable jobs and Node.js `setInterval` tickers.
@@ -263,6 +272,7 @@ The `SchedulerService.ts` is the heartbeat of all background operations. It uses
 *   **Abandoned Cart Check**: A `setInterval` every 15 minutes that finds sessions where:
     *   `cartValue > 0`
     *   `lastActiveAt` is between 1 and 24 hours ago.
+*   **The Janitor**: A daily automated cleanup that runs on startup and every 24 hours, pruning old analytics sessions, audit logs, and read notifications.
     *   `email` is captured (not null).
     *   `abandonedNotificationSentAt` is null.
     It then triggers the `ABANDONED_CART` automation for each matching session.

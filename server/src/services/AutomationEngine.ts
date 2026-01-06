@@ -1,9 +1,9 @@
 
-import { PrismaClient, AutomationEnrollment, MarketingAutomation } from '@prisma/client';
+import { AutomationEnrollment, MarketingAutomation } from '@prisma/client';
 import { EmailService } from './EmailService';
 import { InvoiceService } from './InvoiceService';
-
-const prisma = new PrismaClient();
+import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
 
 interface FlowNode {
     id: string;
@@ -29,7 +29,7 @@ export class AutomationEngine {
 
     // Called when an event happens (e.g. Order Created)
     async processTrigger(accountId: string, triggerType: string, data: any) {
-        console.log(`[AutomationEngine] Processing Trigger: ${triggerType} for Account ${accountId}`);
+        Logger.info(`Processing Trigger: ${triggerType}`, { accountId, triggerType });
 
         // Find active automations for this trigger
         const automations = await prisma.marketingAutomation.findMany({
@@ -47,13 +47,13 @@ export class AutomationEngine {
             if (passesFilters) {
                 await this.enroll(automation, data);
             } else {
-                console.log(`[AutomationEngine] Automation ${automation.name} skipped due to filters.`);
+                Logger.debug(`Automation ${automation.name} skipped due to filters.`);
             }
         }
     }
 
     async enroll(automation: MarketingAutomation, data: any) {
-        console.log(`[AutomationEngine] Enrolling ${data.email || 'customer'} in ${automation.name}`);
+        Logger.info(`Enrolling ${data.email || 'customer'} in ${automation.name}`);
 
         let targetEmail = data.email;
         let wooCustomerId = data.wooCustomerId;
@@ -126,7 +126,7 @@ export class AutomationEngine {
                 return;
             }
 
-            console.log(`[AutomationEngine] Processing Node ${node.id} (${node.type})`);
+            Logger.debug(`Processing Node ${node.id} (${node.type})`);
 
             // Execute Logic based on Type
             const result = await this.executeNodeLogic(node, enrollment);
@@ -153,7 +153,7 @@ export class AutomationEngine {
                     // Calculate Delay
                     const durationMs = this.calculateDelayDuration(nextNode.data);
                     nextRunAt = new Date(Date.now() + durationMs);
-                    console.log(`[AutomationEngine] Next is Delay. Scheduling for ${nextRunAt.toISOString()}`);
+                    Logger.debug(`Next is Delay. Scheduling for ${nextRunAt.toISOString()}`);
                 }
 
                 // Update DB to move pointer
@@ -196,7 +196,7 @@ export class AutomationEngine {
 
             if (actionType === 'SEND_EMAIL') {
                 const config = node.data; // { templateId: "...", subject: "...", body: "..." }
-                console.log(`[AutomationEngine] Sending Email: ${config.templateId} to ${enrollment.email}`);
+                Logger.info(`Sending Email: ${config.templateId} to ${enrollment.email}`);
 
                 try {
                     // Resolve Email Account (prefer config, fallback to first available)
@@ -230,23 +230,23 @@ export class AutomationEngine {
                             enrollment.contextData?.attachments
                         );
                     } else {
-                        console.warn(`[AutomationEngine] Cannot send email: No Email Account found for Account ${enrollment.automation.accountId}`);
+                        Logger.warn(`Cannot send email: No Email Account found`, { accountId: enrollment.automation.accountId });
                     }
                 } catch (err) {
-                    console.error(`[AutomationEngine] Failed to send email`, err);
+                    Logger.error(`Failed to send email`, { error: err });
                 }
             }
 
             if (actionType === 'GENERATE_INVOICE') {
                 const config = node.data; // { templateId: "..." }
-                console.log(`[AutomationEngine] Generating Invoice: Template ${config.templateId} for ${enrollment.email}`);
+                Logger.info(`Generating Invoice: Template ${config.templateId} for ${enrollment.email}`);
 
                 try {
                     // Assuming we have an Order ID in context
                     const orderId = enrollment.contextData?.id || enrollment.contextData?.orderId || enrollment.contextData?.wooId;
 
                     if (!orderId) {
-                        console.warn(`[AutomationEngine] Cannot generate invoice: No Order ID in context`);
+                        Logger.warn(`Cannot generate invoice: No Order ID in context`);
                     } else {
                         const pdfUrl = await this.invoiceService.generateInvoicePdf(
                             enrollment.automation.accountId,
@@ -343,7 +343,7 @@ export class AutomationEngine {
     }
 
     private async completeEnrollment(id: string) {
-        console.log(`[AutomationEngine] Enrollment ${id} Completed.`);
+        Logger.info(`Enrollment ${id} Completed.`);
         await prisma.automationEnrollment.update({
             where: { id },
             data: { status: 'COMPLETED', nextRunAt: null, currentNodeId: null }

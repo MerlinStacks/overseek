@@ -1,8 +1,6 @@
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
-
-const prisma = new PrismaClient();
 
 
 export class ReviewService {

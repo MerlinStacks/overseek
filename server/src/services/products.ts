@@ -1,7 +1,6 @@
 import { esClient } from '../utils/elastic';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 export class ProductsService {
     static async getProductByWooId(accountId: string, wooId: number) {
@@ -13,7 +12,7 @@ export class ProductsService {
 
         // Extract metadata from rawData if available
         const raw = product.rawData as any;
-        console.log('[DEBUG] rawData keys:', Object.keys(raw || {})); // Debug extraction
+        Logger.debug('rawData keys', { keys: Object.keys(raw || {}) });
         return {
             ...product,
             type: raw?.type || 'simple',
@@ -102,7 +101,7 @@ export class ProductsService {
                 totalPages: Math.ceil(total / limit)
             };
         } catch (error) {
-            console.error('Elasticsearch Product Search Error:', error);
+            Logger.error('Elasticsearch Product Search Error', { error });
             // Return empty result on error (or if index doesn't exist yet)
             return { products: [], total: 0, page, totalPages: 0 };
         }

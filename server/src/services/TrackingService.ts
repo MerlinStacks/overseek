@@ -1,6 +1,7 @@
 
 import { prisma } from '../utils/prisma';
 import geoip from 'geoip-lite';
+import UAParser from 'ua-parser-js';
 
 interface TrackingEventPayload {
     accountId: string;
@@ -25,12 +26,14 @@ export class TrackingService {
         // 1. Resolve GeoIP if IP is provided
         let country = null;
         let city = null;
+        let region = null;
 
         if (data.ipAddress) {
             const geo = geoip.lookup(data.ipAddress);
             if (geo) {
                 country = geo.country;
                 city = geo.city;
+                region = geo.region;
             }
         }
 
@@ -55,30 +58,30 @@ export class TrackingService {
         if (data.utmMedium) sessionPayload.utmMedium = data.utmMedium;
         if (data.utmCampaign) sessionPayload.utmCampaign = data.utmCampaign;
 
-        // Parse User Agent for Device/OS/Browser if we want to be fancy.
-        // For now, we rely on the client sending explicit fields or just storing the UA string.
-        // The schema has deviceType, browser, os.
-        // Let's do some basic UA parsing if we have the string.
+        // Parse User Agent with ua-parser-js for accurate detection
         if (data.userAgent) {
-            const ua = data.userAgent.toLowerCase();
-            if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
+            const parser = new UAParser(data.userAgent);
+            const result = parser.getResult();
+
+            // Device type
+            const deviceType = result.device.type;
+            if (deviceType === 'mobile') {
                 sessionPayload.deviceType = 'mobile';
-            } else if (ua.includes('tablet') || ua.includes('ipad')) {
+            } else if (deviceType === 'tablet') {
                 sessionPayload.deviceType = 'tablet';
             } else {
                 sessionPayload.deviceType = 'desktop';
             }
 
-            if (ua.includes('chrome')) sessionPayload.browser = 'Chrome';
-            else if (ua.includes('firefox')) sessionPayload.browser = 'Firefox';
-            else if (ua.includes('safari')) sessionPayload.browser = 'Safari';
-            else if (ua.includes('edge')) sessionPayload.browser = 'Edge';
+            // Browser
+            if (result.browser.name) {
+                sessionPayload.browser = result.browser.name;
+            }
 
-            if (ua.includes('windows')) sessionPayload.os = 'Windows';
-            else if (ua.includes('mac os')) sessionPayload.os = 'macOS';
-            else if (ua.includes('linux')) sessionPayload.os = 'Linux';
-            else if (ua.includes('android')) sessionPayload.os = 'Android';
-            else if (ua.includes('ios') || ua.includes('iphone')) sessionPayload.os = 'iOS';
+            // OS
+            if (result.os.name) {
+                sessionPayload.os = result.os.name;
+            }
         }
 
         // Handle Cart updates
@@ -118,6 +121,31 @@ export class TrackingService {
             // checking if we want to update session 'lastSearchTerm'?
         }
 
+        // Session Stitching: Link visitor to customer on login
+        if (data.type === 'identify' && data.payload?.customerId) {
+            sessionPayload.customerId = String(data.payload.customerId);
+            if (data.payload.email) {
+                sessionPayload.email = data.payload.email;
+            }
+            if (data.payload.firstName) {
+                sessionPayload.firstName = data.payload.firstName;
+            }
+            if (data.payload.lastName) {
+                sessionPayload.lastName = data.payload.lastName;
+            }
+        }
+
+        // Product View: Store detailed product data
+        if (data.type === 'product_view' && data.payload?.productId) {
+            // This is logged as an event with rich product data
+            // The payload should include: productId, productName, price, sku, category
+        }
+
+        // A/B Test: Store experiment variation
+        if (data.type === 'experiment' && data.payload?.experimentId) {
+            // Log experiment assignment for later analysis
+            // payload: { experimentId, variationId }
+        }
 
         // Upsert
         const session = await prisma.analyticsSession.upsert({

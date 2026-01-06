@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { WooService } from './woo';
 import { EventBus, EVENTS } from './events';
 import { Logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 export class InventoryService {
     static async setupListeners() {

@@ -1,7 +1,7 @@
 
-import { PrismaClient, MarketingCampaign, MarketingAutomation, EmailTemplate } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { MarketingCampaign, MarketingAutomation, EmailTemplate } from '@prisma/client';
+import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
 
 import { SegmentService } from './SegmentService';
 
@@ -33,7 +33,7 @@ export class MarketingService {
         // Sanitize segmentId: if it's an empty string, set to null/undefined
         const segmentId = data.segmentId && data.segmentId.trim() !== '' ? data.segmentId : undefined;
 
-        console.log(`[Marketing] Creating campaign for account ${accountId}. Segment: ${segmentId || 'ALL'}`);
+        Logger.info(`Creating campaign`, { accountId, segmentId: segmentId || 'ALL' });
 
         return prisma.marketingCampaign.create({
             data: {
@@ -66,7 +66,7 @@ export class MarketingService {
     }
 
     async sendTestEmail(campaignId: string, email: string) {
-        console.log(`Sending test email for campaign ${campaignId} to ${email}`);
+        Logger.info(`Sending test email`, { campaignId, email });
         // Basic test send
         // In real app, render template/campaign content
         return { success: true };
@@ -91,7 +91,7 @@ export class MarketingService {
             recipients = customers;
         }
 
-        console.log(`[Marketing] Sending Campaign ${campaignId} to ${recipients.length} recipients (Segment: ${campaign.segmentId || 'ALL'})`);
+        Logger.info(`Sending Campaign`, { campaignId, recipientCount: recipients.length, segmentId: campaign.segmentId || 'ALL' });
 
         // Update status
         await prisma.marketingCampaign.update({

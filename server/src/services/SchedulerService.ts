@@ -1,10 +1,10 @@
 import { QueueFactory, QUEUES } from './queue/QueueFactory';
 import { Logger } from '../utils/logger';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 
 import { AutomationEngine } from './AutomationEngine';
-
-const prisma = new PrismaClient();
+import { JanitorService } from './JanitorService';
 const automationEngine = new AutomationEngine();
 
 export class SchedulerService {
@@ -64,6 +64,12 @@ export class SchedulerService {
         setInterval(() => {
             SchedulerService.checkAbandonedCarts().catch(e => Logger.error('Abandoned Cart Check Error', { error: e }));
         }, 15 * 60 * 1000);
+
+        // The Janitor - Daily Cleanup (Run once per day at startup + 24h interval)
+        JanitorService.runCleanup().catch(e => Logger.error('Janitor Error', { error: e }));
+        setInterval(() => {
+            JanitorService.runCleanup().catch(e => Logger.error('Janitor Error', { error: e }));
+        }, 24 * 60 * 60 * 1000);
 
     }
 

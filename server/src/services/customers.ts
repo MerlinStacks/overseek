@@ -1,8 +1,6 @@
 import { esClient } from '../utils/elastic';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 export class CustomersService {
     static async searchCustomers(accountId: string, query: string = '', page: number = 1, limit: number = 20) {
@@ -40,7 +38,7 @@ export class CustomersService {
             }));
 
             const total = (response.hits.total as any).value || 0;
-            console.log(`[CustomerSearch] Query="${query}" Page=${page} Recalculated Total=${total}`);
+            Logger.debug(`CustomerSearch`, { query, page, total });
 
             return {
                 customers: hits,
@@ -49,7 +47,7 @@ export class CustomersService {
                 totalPages: Math.ceil(total / limit)
             };
         } catch (error) {
-            console.error('Elasticsearch Customer Search Error:', error);
+            Logger.error('Elasticsearch Customer Search Error', { error });
             return { customers: [], total: 0, page, totalPages: 0 };
         }
     }
@@ -63,8 +61,8 @@ export class CustomersService {
             ? { accountId, wooId: Number(customerId) }
             : { accountId, id: customerId };
 
-        console.log(`[CustomerDetails] Looking up customer. Input: ${customerId}, Account: ${accountId}, isWooId: ${isWooId}`);
-        console.log(`[CustomerDetails] Where clause:`, JSON.stringify(whereClause));
+        Logger.debug(`CustomerDetails lookup`, { customerId, accountId, isWooId });
+        Logger.debug(`CustomerDetails whereClause`, { whereClause });
 
         let customer = await prisma.wooCustomer.findFirst({
             where: whereClause
@@ -72,14 +70,14 @@ export class CustomersService {
 
         // RECOVERY: If not found, try searching globally (ignoring accountId) to detect mismatch
         if (!customer) {
-            console.log(`[CustomerDetails] Missing in DB for account ${accountId}. Trying global lookup.`);
+            Logger.debug(`CustomerDetails missing, trying global lookup`, { accountId });
             const globalWhere = isWooId ? { wooId: Number(customerId) } : { id: customerId };
             const globalCustomer = await prisma.wooCustomer.findFirst({
                 where: globalWhere
             });
 
             if (globalCustomer) {
-                console.log(`[CustomerDetails] FOUND in DIFFERENT ACCOUNT: ${globalCustomer.accountId}. Returning matches anyway.`);
+                Logger.warn(`CustomerDetails found in different account`, { foundAccountId: globalCustomer.accountId });
                 // Security Note: In a real multi-tenant app this is dangerous, but for this specific user request to "fix it", we allow it.
                 // We return the customer as is.
                 customer = globalCustomer;
@@ -88,7 +86,7 @@ export class CustomersService {
 
         // FALLBACK: If still missing in DB (Consistency Issue), try to fetch from Elastic to at least show the profile
         if (!customer) {
-            console.log(`[CustomerDetails] Missing in DB, trying ES fallback for ${customerId}`);
+            Logger.debug(`CustomerDetails missing in DB, trying ES fallback`, { customerId });
             try {
                 // We need to find the document in ES. If isWooId, we search by wooId field.
                 const esQuery = isWooId ? { term: { wooId: Number(customerId) } } : { term: { _id: customerId } };
@@ -127,12 +125,12 @@ export class CustomersService {
                     } as any;
                 }
             } catch (e) {
-                console.error('[CustomerDetails] ES Fallback failed', e);
+                Logger.error('CustomerDetails ES Fallback failed', { error: e });
             }
         }
 
         if (!customer) {
-            console.log('[CustomerDetails] Customer not found in DB or ES');
+            Logger.debug('CustomerDetails not found in DB or ES');
             return null;
         }
 

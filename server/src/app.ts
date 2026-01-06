@@ -71,6 +71,11 @@ app.use('/api/tracking', cors({
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type']
 }));
+app.use('/api/t', cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type']
+}));
 
 // Strict CORS for dashboard/authenticated routes
 app.use(cors({
@@ -157,6 +162,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/help', helpRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/t', trackingRoutes); // Short alias for ad blocker bypass
 app.use('/api/marketing', marketingRoutes); // Mount Marketing API
 app.use('/api/invoices', invoicesRoutes); // Mount Invoices API
 app.use('/api/email', emailRoutes);

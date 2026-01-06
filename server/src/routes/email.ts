@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 import { EmailService } from '../services/EmailService';
 import { requireAuth } from '../middleware/auth';
 import { encrypt, decrypt } from '../utils/encryption';
 
 const router = Router();
-const prisma = new PrismaClient();
 const emailService = new EmailService();
 
 router.use(requireAuth);
@@ -61,7 +61,7 @@ router.post('/accounts', async (req: Request, res: Response) => {
 
         res.json({ ...account, password: '••••••••' });
     } catch (error) {
-        console.error(error);
+        Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to create email account' });
     }
 });
@@ -139,7 +139,7 @@ router.post('/test', async (req: Request, res: Response) => {
                 try {
                     passwordToTest = decrypt(existing.password);
                 } catch (e) {
-                    console.error('Decryption failed for test', e);
+                    Logger.error('Decryption failed for test', { error: e });
                     // Fallback to existing logic (will fail auth likely)
                 }
             }

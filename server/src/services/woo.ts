@@ -1,9 +1,7 @@
 import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
 import https from 'https';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 import { MOCK_PRODUCTS, MOCK_ORDERS, MOCK_CUSTOMERS, MOCK_REVIEWS } from './mockWooData';
-
-const prisma = new PrismaClient();
 
 interface WooCredentials {
     url: string;

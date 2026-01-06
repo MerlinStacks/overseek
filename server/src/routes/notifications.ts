@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 import { requireAuth } from '../middleware/auth';
 
@@ -30,7 +29,7 @@ router.get('/', async (req: Request, res: Response) => {
 
         res.json({ notifications, unreadCount });
     } catch (error) {
-        console.error('Fetch notifications error:', error);
+        Logger.error('Fetch notifications error', { error });
         res.status(500).json({ error: 'Failed to fetch notifications' });
     }
 });

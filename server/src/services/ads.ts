@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 // Metric Interface
 export interface AdMetric {
@@ -37,7 +36,7 @@ export class AdsService {
             const data = await response.json();
 
             if (data.error) {
-                console.error('Meta API Error:', data.error);
+                Logger.error('Meta API Error', { error: data.error });
                 throw new Error(data.error.message);
             }
 
@@ -74,7 +73,7 @@ export class AdsService {
             };
 
         } catch (error) {
-            console.error('Failed to fetch Meta Insights', error);
+            Logger.error('Failed to fetch Meta Insights', { error });
             throw error;
         }
     }

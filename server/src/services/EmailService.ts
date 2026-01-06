@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 import * as imaps from 'imap-simple';
 import { prisma } from '../utils/prisma';
 import { EventBus, EVENTS } from './events';
+import { Logger } from '../utils/logger';
 
 
 export class EmailService {
@@ -41,7 +42,7 @@ export class EmailService {
             attachments
         });
 
-        console.log(`[EmailService] Sent email: ${info.messageId}`);
+        Logger.info(`Sent email`, { messageId: info.messageId, to });
         return info;
     }
 
@@ -52,7 +53,7 @@ export class EmailService {
                 await transporter.verify();
                 return true;
             } catch (error) {
-                console.error("[EmailService] SMTP Verify Error:", error);
+                Logger.error('SMTP Verify Error', { error });
                 throw error;
             }
         } else if (account.type === 'IMAP') {
@@ -71,7 +72,7 @@ export class EmailService {
                 await connection.end();
                 return true;
             } catch (error) {
-                console.error("[EmailService] IMAP Verify Error:", error);
+                Logger.error('IMAP Verify Error', { error });
                 throw error;
             }
         }
@@ -138,7 +139,7 @@ export class EmailService {
                 const bodyPart = message.parts.find(p => p.which === 'TEXT');
                 const body = bodyPart ? bodyPart.body : '[Content cannot be displayed]';
 
-                console.log(`[EmailService] Received email from ${fromEmail}: ${subject}`);
+                Logger.info(`Received email`, { fromEmail, subject });
 
                 EventBus.emit(EVENTS.EMAIL.RECEIVED, {
                     emailAccountId,
@@ -152,7 +153,7 @@ export class EmailService {
 
             connection.end();
         } catch (error) {
-            console.error(`[EmailService] Error checking emails for ${account.email}:`, error);
+            Logger.error(`Error checking emails`, { email: account.email, error });
         }
     }
 }

@@ -1,6 +1,7 @@
 
 import { prisma } from '../utils/prisma';
 import { Server, Socket } from 'socket.io';
+import { Logger } from '../utils/logger';
 
 export class ChatService {
     private io: Server;
@@ -192,7 +193,7 @@ export class ChatService {
         });
 
         if (!emailVars) {
-            console.error(`[ChatService] Email Account ${emailAccountId} not found.`);
+            Logger.error(`Email Account not found`, { emailAccountId });
             return;
         }
 
@@ -247,7 +248,7 @@ export class ChatService {
             false
         );
 
-        console.log(`[ChatService] Imported email from ${fromEmail} to Conversation ${conversation.id}`);
+        Logger.info(`Imported email to Conversation`, { fromEmail, conversationId: conversation.id });
     }
 }
 

@@ -1,7 +1,6 @@
 
-import { PrismaClient, CustomerSegment, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { CustomerSegment, Prisma } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 
 interface SegmentRule {
     field: string;

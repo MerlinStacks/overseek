@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 import { requireAuth } from '../middleware/auth';
 import { PurchaseOrderService } from '../services/PurchaseOrderService';
 import { PicklistService } from '../services/PicklistService';
 
 const router = Router();
-const prisma = new PrismaClient();
 const poService = new PurchaseOrderService();
 const picklistService = new PicklistService();
 
@@ -60,7 +60,7 @@ router.get('/health', async (req: Request, res: Response) => {
         const risks = await InventoryService.checkInventoryHealth(accountId);
         res.json(risks);
     } catch (error) {
-        console.error(error);
+        Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to check inventory health' });
     }
 });
@@ -156,7 +156,7 @@ router.get('/products/:productId/bom', async (req: Request, res: Response) => {
         });
         res.json(bom || { items: [] });
     } catch (error) {
-        console.error(error);
+        Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to fetch BOM' });
     }
 });
@@ -203,7 +203,7 @@ router.post('/products/:productId/bom', async (req: Request, res: Response) => {
 
         res.json(updated);
     } catch (error) {
-        console.error(error);
+        Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to save BOM' });
     }
 });
@@ -244,7 +244,7 @@ router.post('/purchase-orders', async (req: Request, res: Response) => {
         const po = await poService.createPurchaseOrder(accountId, req.body);
         res.json(po);
     } catch (error) {
-        console.error(error);
+        Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to create PO' });
     }
 });
@@ -275,7 +275,7 @@ router.get('/picklist', async (req: Request, res: Response) => {
         });
         res.json(picklist);
     } catch (error) {
-        console.error(error);
+        Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to generate picklist' });
     }
 });

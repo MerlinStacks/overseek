@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Protect all order routes
 router.use(requireAuth);
@@ -64,7 +64,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         });
 
     } catch (error) {
-        console.error('Failed to fetch order:', error);
+        Logger.error('Failed to fetch order', { error });
         res.status(500).json({ error: 'Failed to fetch order details' });
     }
 });

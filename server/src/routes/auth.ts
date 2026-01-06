@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import multer from 'multer';
@@ -9,9 +8,10 @@ import fs from 'fs';
 import { z } from 'zod';
 import { validate } from '../middleware/validate';
 import { SecurityService } from '../services/SecurityService';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Schemas
 const registerSchema = z.object({
@@ -269,13 +269,13 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
                 html: `<p>You requested a password reset. Click <a href="${resetLink}">here</a> to reset your password.</p>`
             });
         } else {
-            console.log(`[DEV] Password Reset Link for ${email}: ${resetLink}`);
+            Logger.debug(`Password Reset Link generated`, { email, resetLink });
         }
 
         res.json({ message: 'If an account exists, a reset link has been sent.' });
 
     } catch (error) {
-        console.error('Forgot password error:', error);
+        Logger.error('Forgot password error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });

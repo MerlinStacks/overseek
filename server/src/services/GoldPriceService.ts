@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import { Logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 // GoldAPI.io configuration
 // In a real scenario, we might want this in the DB per account if they bring their own key,

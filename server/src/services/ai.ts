@@ -1,6 +1,7 @@
 import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { AIToolsService } from './ai_tools';
+import { Logger } from '../utils/logger';
 
 interface AIResponse {
     reply: string;
@@ -88,7 +89,7 @@ export class AIService {
 
                 if (!response.ok) {
                     const err = await response.text();
-                    console.error("OpenRouter Error:", err);
+                    Logger.error('OpenRouter Error', { error: err });
                     return { reply: "I encountered an error connecting to the AI provider." };
                 }
 
@@ -100,7 +101,7 @@ export class AIService {
 
                 // Check for Tool Calls
                 if (msg.tool_calls && msg.tool_calls.length > 0) {
-                    console.log("AI requested tool execution:", msg.tool_calls.length);
+                    Logger.debug('AI requested tool execution', { count: msg.tool_calls.length });
 
                     for (const toolCall of msg.tool_calls) {
                         const fnName = toolCall.function.name;

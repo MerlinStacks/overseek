@@ -3,6 +3,7 @@ import express from 'express';
 import { TrackingService } from '../services/TrackingService';
 import { prisma } from '../utils/prisma';
 import { verifyToken } from '../utils/auth';
+import { Logger } from '../utils/logger';
 
 import { requireAuth } from '../middleware/auth';
 
@@ -75,7 +76,7 @@ setInterval(() => {
  */
 router.get('/tracking.js', (req, res) => {
     const accountId = req.query.id;
-    console.log(`[Tracking] Script requested for account=${accountId}, referer=${req.headers.referer || 'none'}`);
+    Logger.debug(`Tracking script requested`, { accountId, referer: req.headers.referer || 'none' });
 
     const script = `
 (function() {
@@ -268,7 +269,7 @@ router.post('/events', async (req, res) => {
         const origin = req.headers.origin || req.headers.referer || 'unknown';
 
         // Debug: Log incoming event
-        console.log(`[Tracking] Event received: type=${type}, account=${accountId}, origin=${origin}`);
+        Logger.debug(`Tracking event received`, { type, accountId, origin });
 
         let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         if (Array.isArray(ip)) ip = ip[0];
@@ -294,8 +295,124 @@ router.post('/events', async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
-        console.error('Tracking Error:', error);
+        Logger.error('Tracking Error', { error });
         res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Short alias for /events - avoids "tracking" keyword for ad blocker bypass
+// POST /api/tracking/e (or mount as /api/t/e in app.ts)
+router.post('/e', async (req, res) => {
+    try {
+        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign } = req.body;
+
+        if (!accountId || !visitorId || !type) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const valid = await isValidAccount(accountId);
+        if (!valid) {
+            return res.status(400).json({ error: 'Invalid account' });
+        }
+
+        if (isRateLimited(accountId)) {
+            return res.status(429).json({ error: 'Rate limit exceeded' });
+        }
+
+        const origin = req.headers.origin || req.headers.referer || 'unknown';
+        Logger.debug(`Tracking event received`, { type, accountId, origin });
+
+        let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        if (Array.isArray(ip)) ip = ip[0];
+
+        const userAgent = req.headers['user-agent'];
+
+        await TrackingService.processEvent({
+            accountId,
+            visitorId,
+            type,
+            url,
+            payload,
+            pageTitle,
+            ipAddress: ip as string,
+            userAgent,
+            referrer,
+            utmSource,
+            utmMedium,
+            utmCampaign
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        Logger.error('Tracking Error', { error });
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// =============================================================================
+// Image Pixel Fallback - For when JS fails or is blocked
+// GET /api/t/p.gif?a=accountId&v=visitorId&t=type&u=url
+// =============================================================================
+const TRANSPARENT_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+router.get('/p.gif', async (req, res) => {
+    try {
+        const { a: accountId, v: visitorId, t: type, u: url, p: payloadStr } = req.query;
+
+        if (!accountId || !visitorId || !type) {
+            res.setHeader('Content-Type', 'image/gif');
+            res.setHeader('Cache-Control', 'no-store');
+            return res.send(TRANSPARENT_GIF);
+        }
+
+        // Validate account
+        const valid = await isValidAccount(accountId as string);
+        if (!valid) {
+            res.setHeader('Content-Type', 'image/gif');
+            res.setHeader('Cache-Control', 'no-store');
+            return res.send(TRANSPARENT_GIF);
+        }
+
+        // Rate limit check
+        if (isRateLimited(accountId as string)) {
+            res.setHeader('Content-Type', 'image/gif');
+            res.setHeader('Cache-Control', 'no-store');
+            return res.send(TRANSPARENT_GIF);
+        }
+
+        let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        if (Array.isArray(ip)) ip = ip[0];
+
+        let payload = {};
+        if (payloadStr) {
+            try {
+                payload = JSON.parse(decodeURIComponent(payloadStr as string));
+            } catch (e) { }
+        }
+
+        Logger.debug(`Tracking pixel event`, { type, accountId });
+
+        await TrackingService.processEvent({
+            accountId: accountId as string,
+            visitorId: visitorId as string,
+            type: type as string,
+            url: url as string || '',
+            payload,
+            pageTitle: '',
+            ipAddress: ip as string,
+            userAgent: req.headers['user-agent'],
+            referrer: req.headers.referer || '',
+        });
+
+        // Return transparent 1x1 GIF
+        res.setHeader('Content-Type', 'image/gif');
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(TRANSPARENT_GIF);
+    } catch (error) {
+        console.error('Pixel Tracking Error:', error);
+        res.setHeader('Content-Type', 'image/gif');
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(TRANSPARENT_GIF);
     }
 });
 

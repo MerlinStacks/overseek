@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 import { SyncService } from '../services/sync';
 import { SearchQueryService } from '../services/search/SearchQueryService';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 const syncService = new SyncService();
 
 // Protect all sync routes
@@ -24,7 +24,7 @@ router.post('/manual', async (req: Request, res: Response) => {
         types: types || ['orders', 'products', 'customers', 'reviews'],
         incremental: incremental !== false // Default to true if not specified? Or false? Let's default to true for safety
     }).catch(err => {
-        console.error('Background sync failed:', err);
+        Logger.error('Background sync failed', { error: err });
     });
 
     res.json({ message: 'Sync started', status: 'IN_PROGRESS' });
@@ -58,7 +58,7 @@ router.get('/active', async (req: Request, res: Response) => {
 
         res.json(activeJobs);
     } catch (error) {
-        console.error('Failed to fetch active jobs:', error);
+        Logger.error('Failed to fetch active jobs', { error });
         res.status(500).json({ error: 'Failed to fetch active jobs' });
     }
 });
@@ -154,7 +154,7 @@ router.post('/control', async (req: Request, res: Response) => {
         }
 
     } catch (error: any) {
-        console.error('Control action failed:', error);
+        Logger.error('Control action failed', { error });
         res.status(500).json({ error: 'Control action failed: ' + error.message });
     }
 });
@@ -174,7 +174,7 @@ router.get('/orders/search', async (req: Request, res: Response) => {
         const results = await SearchQueryService.searchOrders(accountId, q as string, page, limit);
         res.json(results);
     } catch (error) {
-        console.error('Search failed:', error);
+        Logger.error('Search failed', { error });
         res.status(500).json({ error: 'Search failed' });
     }
 });

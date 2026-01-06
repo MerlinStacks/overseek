@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // PUBLIC READ ROUTES
 
@@ -22,7 +22,7 @@ router.get('/collections', async (req: Request, res: Response) => {
         });
         res.json(collections);
     } catch (error) {
-        console.error('Get Help Collections error:', error);
+        Logger.error('Get Help Collections error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -54,7 +54,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
         res.json(articles);
     } catch (error) {
-        console.error('Search Help error:', error);
+        Logger.error('Search Help error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -82,11 +82,11 @@ router.get('/articles/:slug', async (req: Request, res: Response) => {
         prisma.helpArticle.update({
             where: { id: article.id },
             data: { viewCount: { increment: 1 } }
-        }).catch(err => console.error('Failed to update view count', err));
+        }).catch(err => Logger.error('Failed to update view count', { error: err }));
 
         res.json(article);
     } catch (error) {
-        console.error('Get Article error:', error);
+        Logger.error('Get Article error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -102,7 +102,7 @@ router.post('/collections', requireAuth, requireSuperAdmin, async (req: Request,
         });
         res.json(collection);
     } catch (e) {
-        console.error("Create collection error", e);
+        Logger.error('Create collection error', { error: e });
         res.status(500).json({ error: 'Failed to create collection' });
     }
 });
@@ -139,7 +139,7 @@ router.post('/articles', requireAuth, requireSuperAdmin, async (req: Request, re
         });
         res.json(article);
     } catch (e) {
-        console.error("Create article error", e);
+        Logger.error('Create article error', { error: e });
         res.status(500).json({ error: 'Failed to create article' });
     }
 });

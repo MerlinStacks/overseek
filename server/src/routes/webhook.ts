@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 import { SyncService } from '../services/sync';
 import { IndexingService } from '../services/search/IndexingService';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Helper to verify WooCommerce Signature
 const verifySignature = (payload: any, signature: string, secret: string) => {
@@ -31,7 +31,7 @@ router.post('/:accountId', async (req: Request, res: Response) => {
             return res.status(400).send('Missing headers');
         }
 
-        console.log(`Received Webhook for Account ${accountId}: ${topic}`);
+        Logger.info(`Received Webhook`, { accountId, topic });
 
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         if (!account) return res.status(404).send('Account not found');
@@ -45,12 +45,12 @@ router.post('/:accountId', async (req: Request, res: Response) => {
             const isValid = verifySignature(req.body, signature, secret);
 
             if (!isValid) {
-                console.warn(`[SECURITY] Invalid Webhook Signature for Account ${accountId}`);
+                Logger.warn(`Invalid Webhook Signature`, { accountId });
                 // Enforcing security check:
                 return res.status(401).send('Invalid Signature');
             }
         } else {
-            console.warn(`[SECURITY] Account ${accountId} has no credentials to verify webhook`);
+            Logger.warn(`No credentials to verify webhook`, { accountId });
             // Reject unverified webhooks if no secret exists
             return res.status(401).send('No Webhook Secret Configured');
         }
@@ -73,24 +73,24 @@ router.post('/:accountId', async (req: Request, res: Response) => {
                     }
                 });
             }
-            console.log(`Indexed Order ${req.body.id} for Account ${accountId}`);
+            Logger.info(`Indexed Order`, { orderId: req.body.id, accountId });
         }
 
         // Handle Product Events
         if (topic === 'product.created' || topic === 'product.updated') {
             await IndexingService.indexProduct(accountId, req.body);
-            console.log(`Indexed Product ${req.body.id} for Account ${accountId}`);
+            Logger.info(`Indexed Product`, { productId: req.body.id, accountId });
         }
 
         // Handle Customer Events
         if (topic === 'customer.created' || topic === 'customer.updated') {
             await IndexingService.indexCustomer(accountId, req.body);
-            console.log(`Indexed Customer ${req.body.id} for Account ${accountId}`);
+            Logger.info(`Indexed Customer`, { customerId: req.body.id, accountId });
         }
 
         res.status(200).send('Webhook received');
     } catch (error) {
-        console.error('Webhook Error:', error);
+        Logger.error('Webhook Error', { error });
         res.status(500).send('Server Error');
     }
 });

@@ -32,29 +32,17 @@ class OverSeek_Frontend
 
 	/**
 	 * Print scripts to the head if enabled.
+	 * NOTE: Analytics tracking is now 100% server-side - no JavaScript needed.
 	 */
 	public function print_scripts()
 	{
-		$tracking_enabled = get_option('overseek_enable_tracking');
 		$chat_enabled = get_option('overseek_enable_chat');
 		$api_url = get_option('overseek_api_url', 'https://api.overseek.com');
 		$account_id = get_option('overseek_account_id');
 
-		// Remove trailing slash from API URL if present
 		$api_url = untrailingslashit($api_url);
 
-		if ($tracking_enabled && !empty($account_id)) {
-			echo "<!-- OverSeek Analytics Tracking -->\n";
-			echo "<script>\n";
-			echo "(function(w,d,s,id){\n";
-			echo "  w.OverSeek=w.OverSeek||function(){(w.OverSeek.q=w.OverSeek.q||[]).push(arguments)};\n";
-			echo "  var f=d.getElementsByTagName(s)[0],j=d.createElement(s);\n";
-			echo "  j.async=true;j.src='" . esc_url($api_url) . "/api/tracking/tracking.js?id='+id;\n";
-			echo "  f.parentNode.insertBefore(j,f);\n";
-			echo "})(window,document,'script','" . esc_js($account_id) . "');\n";
-			echo "</script>\n";
-			echo "<!-- End OverSeek Analytics -->\n";
-		}
+		// Analytics is 100% server-side now - see OverSeek_Server_Tracking class
 
 		if ($chat_enabled && !empty($account_id)) {
 			echo "<!-- OverSeek Live Chat Widget Start -->\n";
@@ -299,3 +287,185 @@ function overseek_update_settings_callback($request)
 
 	return new WP_REST_Response(array('success' => true, 'message' => 'Settings updated successfully'), 200);
 }
+
+/**
+ * Class OverSeek_Server_Tracking
+ *
+ * Handles 100% server-side tracking via WooCommerce/WordPress hooks.
+ * This is UNBLOCKABLE by ad blockers since it runs entirely on the server.
+ * NO JAVASCRIPT REQUIRED.
+ */
+class OverSeek_Server_Tracking
+{
+
+	private $api_url;
+	private $account_id;
+
+	public function __construct()
+	{
+		$this->api_url = untrailingslashit(get_option('overseek_api_url', 'https://api.overseek.com'));
+		$this->account_id = get_option('overseek_account_id');
+
+		if (empty($this->account_id)) {
+			return;
+		}
+
+		add_action('template_redirect', array($this, 'track_pageview'));
+		add_action('woocommerce_add_to_cart', array($this, 'track_add_to_cart'), 10, 6);
+		add_action('woocommerce_remove_cart_item', array($this, 'track_remove_from_cart'), 10, 2);
+		add_action('woocommerce_checkout_process', array($this, 'track_checkout_start'));
+		add_action('woocommerce_thankyou', array($this, 'track_purchase'), 10, 1);
+	}
+
+	private function get_visitor_id()
+	{
+		$cookie_name = '_os_vid';
+		if (isset($_COOKIE[$cookie_name])) {
+			return sanitize_text_field($_COOKIE[$cookie_name]);
+		}
+		$visitor_id = sprintf(
+			'%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0x0fff) | 0x4000,
+			mt_rand(0, 0x3fff) | 0x8000,
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff)
+		);
+		setcookie($cookie_name, $visitor_id, time() + (365 * 24 * 60 * 60), '/', '', is_ssl(), false);
+		return $visitor_id;
+	}
+
+	private function send_event($type, $payload = array())
+	{
+		$data = array(
+			'accountId' => $this->account_id,
+			'visitorId' => $this->get_visitor_id(),
+			'type' => $type,
+			'url' => home_url(add_query_arg(array())),
+			'pageTitle' => wp_get_document_title(),
+			'referrer' => isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : '',
+			'payload' => $payload,
+			'serverSide' => true,
+		);
+		if (isset($_GET['utm_source']))
+			$data['utmSource'] = sanitize_text_field($_GET['utm_source']);
+		if (isset($_GET['utm_medium']))
+			$data['utmMedium'] = sanitize_text_field($_GET['utm_medium']);
+		if (isset($_GET['utm_campaign']))
+			$data['utmCampaign'] = sanitize_text_field($_GET['utm_campaign']);
+
+		wp_remote_post($this->api_url . '/api/t/e', array(
+			'timeout' => 0.01,
+			'blocking' => false,
+			'headers' => array('Content-Type' => 'application/json'),
+			'body' => wp_json_encode($data),
+		));
+	}
+
+	public function track_pageview()
+	{
+		if (is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
+			return;
+		}
+		$payload = array('page_type' => $this->get_page_type());
+		if (is_product()) {
+			global $product;
+			if ($product) {
+				$payload['productId'] = $product->get_id();
+				$payload['productName'] = $product->get_name();
+			}
+		}
+		$this->send_event('pageview', $payload);
+	}
+
+	private function get_page_type()
+	{
+		if (is_front_page())
+			return 'home';
+		if (is_product())
+			return 'product';
+		if (is_product_category())
+			return 'category';
+		if (is_cart())
+			return 'cart';
+		if (is_checkout())
+			return 'checkout';
+		if (is_shop())
+			return 'shop';
+		return 'other';
+	}
+
+	public function track_add_to_cart($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data)
+	{
+		$product = wc_get_product($product_id);
+		$payload = array(
+			'productId' => $product_id,
+			'quantity' => $quantity,
+			'name' => $product ? $product->get_name() : '',
+			'price' => $product ? floatval($product->get_price()) : 0,
+		);
+		if (WC()->cart) {
+			$payload['total'] = floatval(WC()->cart->get_cart_contents_total());
+		}
+		$this->send_event('add_to_cart', $payload);
+	}
+
+	public function track_remove_from_cart($cart_item_key, $cart)
+	{
+		$payload = array();
+		if (WC()->cart) {
+			$payload['total'] = floatval(WC()->cart->get_cart_contents_total());
+		}
+		$this->send_event('remove_from_cart', $payload);
+	}
+
+	public function track_checkout_start()
+	{
+		$email = isset($_POST['billing_email']) ? sanitize_email($_POST['billing_email']) : '';
+		$payload = array('email' => $email);
+		if (WC()->cart) {
+			$payload['total'] = floatval(WC()->cart->get_cart_contents_total());
+		}
+		$this->send_event('checkout_start', $payload);
+	}
+
+	public function track_purchase($order_id)
+	{
+		if (!$order_id)
+			return;
+		$order = wc_get_order($order_id);
+		if (!$order || $order->get_meta('_overseek_tracked'))
+			return;
+
+		$items = array();
+		foreach ($order->get_items() as $item) {
+			$product = $item->get_product();
+			$items[] = array(
+				'id' => $product ? $product->get_id() : 0,
+				'name' => $item->get_name(),
+				'quantity' => $item->get_quantity(),
+				'price' => floatval($item->get_total()),
+			);
+		}
+
+		$payload = array(
+			'orderId' => $order_id,
+			'total' => floatval($order->get_total()),
+			'items' => $items,
+			'email' => $order->get_billing_email(),
+		);
+
+		$this->send_event('purchase', $payload);
+		$order->update_meta_data('_overseek_tracked', true);
+		$order->save();
+	}
+}
+
+// Initialize Server-Side Tracking
+if (get_option('overseek_enable_tracking')) {
+	new OverSeek_Server_Tracking();
+}
+
