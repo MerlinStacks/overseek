@@ -15,7 +15,7 @@ It consolidates the functionality of platforms like **Metorik** (Analytics), **F
 ### The "Iron Core" Philosophy
 1.  **Sovereignty First**: You own your database. There are no third-party data silos. You decide when to prune your data, not a SaaS billing cycle.
 2.  **Instant Speed**: We use a **Server-First** architecture.
-    *   **Hot Tier (Planned)**: Future implementation will use local browser storage (IndexedDB via Dexie.js) to mirror recent active data for instant searching without hitting the server.
+    *   **Hot Tier**: Client-side IndexedDB cache (via Dexie.js) mirrors recent data for instant offline-capable searching. See Section 6.24.
     *   **Cold Tier (Postgres)**: The remote server holds all data, accessed via efficient pagination.
 3.  **Unified Intelligence**: A single mesh where customer support acts on inventory patterns, and marketing listens to logistics data.
     *   *Example*: If a user complains about a delay in Chat, the agent can instantly see the "Backordered" status from the Inventory module without switching tabs.
@@ -32,7 +32,7 @@ Overseek is built as a modern full-stack monorepo designed for performance, scal
     *   **State Management**: **React Context** (`AuthContext`, `SocketContext`) manages global user sessions and real-time streams.
 *   **Backend (The Spine)**: **Express** (Node.js) provides the API layer, with middleware for security (Helmet, CORS) and request parsing.
 *   **Database (The Memory)**: **PostgreSQL 16**.
-    *   **pgvector**: Enabled for future AI/Vector search capabilities.
+    *   **pgvector**: Enabled for semantic AI search. See Section 6.26.
     *   **Schema**: managed via Prisma ORM (`schema.prisma`), serving as the single source of truth for all data models.
 *   **Search Engine (The Eyes)**: **Elasticsearch 7.17**.
     *   **OmniSearch**: Powers the global command palette (`Cmd+K`). It indexes Orders, Customers, and Products for sub-second text search, distinct from the transactional SQL database.
@@ -171,6 +171,9 @@ To ensure complete transparency, this section distinguishes between what is curr
 *   **Chat**: Dynamic server-side widget generation.
 *   **Automation**: Server-side execution engine with cycle guards.
 *   **Integration**: Full WooCommerce sync + Live Analytics.
+*   **Hot Tier**: Client-side IndexedDB caching via Dexie.js (Section 6.24).
+*   **Semantic Search**: pgvector embeddings with OpenRouter (Section 6.26).
+*   **Session Management**: View and revoke active sessions (Section 6.25).
 
 ### 🚧 Roadmap (Vision)
 *   **The Janitor**: ✅ *Implemented*. Automated background service that prunes old data daily:
@@ -279,11 +282,12 @@ The `SchedulerService.ts` is the heartbeat of all background operations. It uses
 *   **Report Scheduler**: A `setInterval` every 15 minutes that queries `ReportSchedule` for due jobs and dispatches them to `QUEUES.REPORTS`.
 *   **Abandoned Cart Check**: A `setInterval` every 15 minutes that finds sessions where:
     *   `cartValue > 0`
-    *   `lastActiveAt` is between 1 and 24 hours ago.
-*   **The Janitor**: A daily automated cleanup that runs on startup and every 24 hours, pruning old analytics sessions, audit logs, and read notifications.
-    *   `email` is captured (not null).
-    *   `abandonedNotificationSentAt` is null.
+    *   `lastActiveAt` is between 1 and 24 hours ago
+    *   `email` is captured (not null)
+    *   `abandonedNotificationSentAt` is null
+    
     It then triggers the `ABANDONED_CART` automation for each matching session.
+*   **The Janitor**: A daily automated cleanup that runs on startup and every 24 hours, pruning old analytics sessions, audit logs, and read notifications.
 
 ### 6.16 Purchase Order Service (B2B Procurement)
 *   **Inbound Inventory Calculation**: The `getInboundInventory()` method aggregates all `PurchaseOrderItem` quantities where the parent PO status is `ORDERED`. This is used to display **"Shadow Stock"** (stock on the way) in the Inventory UI.
@@ -369,3 +373,284 @@ Overseek is designed to run in a containerized environment with the following co
     *   `elasticsearch` - Elasticsearch 7.17
 *   **Data Persistence**: All stateful containers mount volumes to preserve data across restarts. User data is never wiped during container rebuilds.
 *   **Environment Variables**: Secrets are injected via environment variables, never baked into images.
+
+### 6.24 Hot Tier (Client-Side Caching)
+The frontend implements a **Dexie.js** IndexedDB database for instant offline-capable search.
+
+*   **Database Location**: `client/src/services/db.ts`
+*   **Tables**: `orders`, `products`, `customers`, `meta`
+*   **Retention**:
+    *   Orders: 1000 items, 24-hour max age
+    *   Products: 5000 items, 7-day max age
+    *   Customers: 1000 items, 24-hour max age
+*   **Hooks** (`client/src/hooks/useHotCache.ts`):
+    *   `useHotProducts()` - Cache-first product fetching
+    *   `useHotOrders()` - Cache-first order fetching
+    *   `useHotCustomers()` - Cache-first customer fetching
+*   **Behavior**: Data is loaded from IndexedDB first, then refreshed from server if stale (>5 min). Auto-prunes old entries on sync.
+
+### 6.25 Session Management
+Users can view and revoke active sessions from their profile page.
+
+*   **API**: `/api/sessions` route (`server/src/routes/sessions.ts`)
+    *   `GET /` - List all active refresh tokens for current user
+    *   `DELETE /:id` - Revoke specific session
+    *   `DELETE /` - Revoke all sessions
+*   **UI**: `SessionManager.tsx` component integrated into `UserProfilePage.tsx`
+*   **Features**:
+    *   Displays IP address, User Agent, created/expiry dates
+    *   "Revoke" button per session
+    *   "Revoke All Sessions" button for security incidents
+
+### 6.26 Semantic Search (pgvector)
+Product search using vector embeddings for meaning-based matching.
+
+*   **Service**: `EmbeddingService.ts`
+*   **API Endpoints**:
+    *   `GET /api/search/semantic?q=...` - Semantic product search
+    *   `GET /api/search/similar/:productId` - Find similar products
+    *   `POST /api/search/embeddings/generate` - Batch generate embeddings
+*   **Database**: Uses PostgreSQL `pgvector` extension for cosine similarity queries
+*   **Embedding Generation**: Uses **OpenRouter API** (not direct OpenAI) for flexibility
+*   **Product Text**: Combines name, SKU, description, categories, and tags for embedding
+
+### 6.27 Embedding Model Settings
+AI settings now include a dedicated embedding model selector.
+
+*   **Schema Field**: `Account.embeddingModel` (default: `openai/text-embedding-3-small`)
+*   **Available Models**:
+    *   OpenAI Text Embedding 3 Small (fast, cost-effective)
+    *   OpenAI Text Embedding 3 Large (higher quality)
+    *   OpenAI Ada 002 (legacy)
+    *   Voyage Large 2 (high quality alternative)
+    *   Cohere Embed English v3 (English optimized)
+*   **UI**: Settings > Intelligence tab, below AI Chat Model selector
+*   **Usage**: All embedding operations (product indexing, semantic search) use the configured model
+
+---
+
+## 7. API Reference
+
+All endpoints require `Authorization: Bearer <token>` header unless marked as **Public**.
+Multi-tenant endpoints require `X-Account-ID` header.
+
+### 7.1 Authentication (`/api/auth`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/register` | Create new user account | Public |
+| POST | `/login` | Authenticate and receive JWT | Public (Rate Limited: 5/hr) |
+| GET | `/me` | Get current user profile | Required |
+| PUT | `/me` | Update user profile | Required |
+| POST | `/upload-avatar` | Upload profile picture | Required |
+
+### 7.2 Accounts (`/api/accounts`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List all accounts user has access to |
+| POST | `/` | Create new account/store |
+| GET | `/:id` | Get account details |
+| PUT | `/:id` | Update account settings |
+
+### 7.3 Sessions (`/api/sessions`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List active sessions for current user |
+| DELETE | `/:id` | Revoke specific session |
+| DELETE | `/` | Revoke all sessions |
+
+### 7.4 Orders (`/api/orders`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/:id` | Get order details by ID |
+
+### 7.5 Products (`/api/products`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List all products (paginated) |
+| GET | `/:id` | Get product details |
+| PATCH | `/:id` | Update product fields |
+| POST | `/:id/sync` | Force sync product from WooCommerce |
+
+### 7.6 Customers (`/api/customers`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List all customers (paginated) |
+| GET | `/:id` | Get customer profile with order history |
+
+### 7.7 Search (`/api/search`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/global?q=` | OmniSearch across orders, products, customers |
+| GET | `/semantic?q=` | Semantic AI search (pgvector) |
+| GET | `/similar/:productId` | Find similar products by embedding |
+| POST | `/embeddings/generate` | Batch generate product embeddings |
+
+### 7.8 Analytics & Tracking (`/api/tracking`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/tracking.js` | Dynamic tracking script | Public |
+| POST | `/events` | Receive tracking events | Public |
+| POST | `/e` | Short alias for events | Public |
+| GET | `/p.gif` | Pixel tracking endpoint | Public |
+| GET | `/live` | Get live visitor sessions | Required |
+| GET | `/carts` | Get active cart sessions | Required |
+| GET | `/session/:id` | Get specific session details | Required |
+| GET | `/stats` | Get analytics summary | Required |
+| GET | `/funnel` | Get conversion funnel data | Required |
+| GET | `/attribution` | Get attribution report | Required |
+| GET | `/abandonment` | Get cart abandonment data | Required |
+| GET | `/cohorts` | Get cohort analysis | Required |
+| GET | `/ltv` | Get lifetime value data | Required |
+| GET | `/export` | Export analytics data | Required |
+
+### 7.9 Segments (`/api/segments`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List all segments |
+| POST | `/` | Create new segment |
+| GET | `/:id` | Get segment details |
+| PUT | `/:id` | Update segment rules |
+| DELETE | `/:id` | Delete segment |
+| GET | `/:id/preview` | Preview matching customers |
+
+### 7.10 Inventory (`/api/inventory`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Get inventory overview |
+| GET | `/low-stock` | Get low stock alerts |
+| GET | `/audit` | Get audit mode data |
+| POST | `/audit/:id/verify` | Mark item as verified |
+
+### 7.11 Reviews (`/api/reviews`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List all reviews |
+| POST | `/:id/reply` | Reply to a review |
+
+### 7.12 Notifications (`/api/notifications`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List notifications |
+| PUT | `/:id/read` | Mark as read |
+| PUT | `/read-all` | Mark all as read |
+
+### 7.13 AI (`/api/ai`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/models` | List available OpenRouter models |
+| POST | `/chat` | Send message to AI assistant |
+
+### 7.14 Marketing (`/api/marketing`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/flows` | List automation flows |
+| POST | `/flows` | Create automation flow |
+| GET | `/flows/:id` | Get flow details |
+| PUT | `/flows/:id` | Update flow |
+| DELETE | `/flows/:id` | Delete flow |
+| POST | `/flows/:id/trigger` | Manually trigger flow |
+
+### 7.15 Sync Engine (`/api/sync`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/manual` | Trigger manual sync |
+| GET | `/active` | Get active sync jobs |
+| POST | `/control` | Pause/resume sync |
+| GET | `/status` | Get sync status |
+| GET | `/orders/search` | Search synced orders |
+
+### 7.16 Email (`/api/email`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/accounts` | List email accounts |
+| POST | `/accounts` | Add email account (IMAP/SMTP) |
+| PUT | `/accounts/:id` | Update email account |
+| DELETE | `/accounts/:id` | Remove email account |
+| POST | `/send` | Send email |
+
+### 7.17 Webhooks (`/api/webhooks`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/:accountId` | Receive WooCommerce webhooks | HMAC Verified |
+
+### 7.18 Admin (`/api/admin`)
+
+Requires `isSuperAdmin: true`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/users` | List all users |
+| GET | `/accounts` | List all accounts |
+| GET | `/logs` | View system logs |
+| POST | `/logs/clear` | Clear log files |
+| GET | `/health` | System health check |
+
+### 7.19 WooCommerce Proxy (`/api/woo`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/orders` | Fetch orders from WooCommerce |
+| GET | `/products` | Fetch products from WooCommerce |
+| POST | `/configure` | Update WooCommerce connection |
+
+### 7.20 Chat Widget (`/api/chat`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/widget.js` | Dynamic chat widget script | Public |
+| GET | `/conversations` | List conversations | Required |
+| POST | `/conversations` | Create conversation | Required |
+| POST | `/conversations/:id/messages` | Send message | Required |
+| POST | `/public/message` | Customer sends message | Public (Rate Limited) |
+
+### 7.21 Help Center (`/api/help`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/collections` | List help collections |
+| GET | `/articles` | List help articles |
+| GET | `/articles/:slug` | Get article by slug |
+| POST | `/articles` | Create article |
+| PUT | `/articles/:id` | Update article |
+
+### 7.22 Invoices (`/api/invoices`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/templates` | List invoice templates |
+| POST | `/templates` | Create template |
+| PUT | `/templates/:id` | Update template |
+| POST | `/generate` | Generate invoice PDF |
+
+### 7.23 Audits (`/api/audits`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | List audit log entries |
+| GET | `/:entityType/:entityId` | Get audit trail for entity |
+
+### 7.24 Ads (`/api/ads`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/accounts` | List connected ad accounts |
+| POST | `/accounts` | Connect ad account |
+| DELETE | `/accounts/:id` | Disconnect ad account |
+| GET | `/performance` | Get ad performance metrics |

@@ -10,6 +10,7 @@ export interface Account {
     wooConsumerKey?: string;
     openRouterApiKey?: string;
     aiModel?: string;
+    embeddingModel?: string;
     appearance?: {
         logoUrl?: string;
         primaryColor?: string;

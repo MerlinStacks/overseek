@@ -10,12 +10,12 @@ const router = Router();
 router.use(requireAuth, requireSuperAdmin);
 
 // Verify Admin Status
-router.get('/verify', (req: Request, res: Response) => {
+router.get('/verify', (req: AuthenticatedRequest, res: Response) => {
     res.json({ isAdmin: true });
 });
 
 // System Stats
-router.get('/stats', async (req: Request, res: Response) => {
+router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const [
             totalAccounts,
@@ -46,7 +46,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 });
 
 // List Accounts
-router.get('/accounts', async (req: Request, res: Response) => {
+router.get('/accounts', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accounts = await prisma.account.findMany({
             include: {
@@ -62,7 +62,7 @@ router.get('/accounts', async (req: Request, res: Response) => {
 });
 
 // Toggle Feature Flag
-router.post('/accounts/:accountId/toggle-feature', async (req: Request, res: Response) => {
+router.post('/accounts/:accountId/toggle-feature', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { accountId } = req.params;
         const { featureKey, isEnabled } = req.body;
@@ -80,7 +80,7 @@ router.post('/accounts/:accountId/toggle-feature', async (req: Request, res: Res
 });
 
 // System Logs
-router.get('/logs', async (req: Request, res: Response) => {
+router.get('/logs', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
@@ -104,7 +104,7 @@ router.get('/logs', async (req: Request, res: Response) => {
 });
 
 // Impersonate User
-router.post('/impersonate', async (req: Request, res: Response) => {
+router.post('/impersonate', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { targetUserId } = req.body;
 
@@ -120,7 +120,7 @@ router.post('/impersonate', async (req: Request, res: Response) => {
 });
 
 // Broadcast Notification
-router.post('/broadcast', async (req: Request, res: Response) => {
+router.post('/broadcast', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { title, message, type, link } = req.body;
 

@@ -590,10 +590,12 @@ export class TrackingService {
             const total = (event.payload as any)?.total || 0;
             totalRevenue += total;
 
-            const firstTouch = event.session.firstTouchSource || 'direct';
-            const lastTouch = event.session.lastTouchSource || 'direct';
-            const country = event.session.country || 'Unknown';
-            const device = event.session.deviceType || 'unknown';
+            // @ts-ignore - Prisma include type inference not working correctly with select
+            const session = event.session as { firstTouchSource: string | null; lastTouchSource: string | null; country: string | null; deviceType: string | null };
+            const firstTouch = session?.firstTouchSource || 'direct';
+            const lastTouch = session?.lastTouchSource || 'direct';
+            const country = session?.country || 'Unknown';
+            const device = session?.deviceType || 'unknown';
 
             revenueByFirstTouch.set(firstTouch, (revenueByFirstTouch.get(firstTouch) || 0) + total);
             revenueByLastTouch.set(lastTouch, (revenueByLastTouch.get(lastTouch) || 0) + total);
@@ -833,7 +835,7 @@ export class TrackingService {
             },
             include: {
                 session: {
-                    select: { customerId: true, email: true }
+                    select: { wooCustomerId: true, email: true }
                 }
             }
         });
@@ -843,8 +845,8 @@ export class TrackingService {
 
         for (const event of purchaseEvents) {
             // @ts-ignore - Prisma include type inference not working correctly
-            const session = event.session as { customerId: string | null; email: string | null };
-            const customerId = session.customerId || session.email || 'anonymous';
+            const session = event.session as { wooCustomerId: number | null; email: string | null };
+            const customerId = (session.wooCustomerId?.toString()) || session.email || 'anonymous';
             const total = (event.payload as any)?.total || 0;
 
             customerRevenue.set(customerId, (customerRevenue.get(customerId) || 0) + total);

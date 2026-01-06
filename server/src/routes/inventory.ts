@@ -15,7 +15,7 @@ router.use(requireAuth);
 // --- Settings & Alerts ---
 
 // GET /settings
-router.get('/settings', async (req: Request, res: Response) => {
+router.get('/settings', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     try {
         const settings = await prisma.inventorySettings.findUnique({
@@ -28,7 +28,7 @@ router.get('/settings', async (req: Request, res: Response) => {
 });
 
 // POST /settings
-router.post('/settings', async (req: Request, res: Response) => {
+router.post('/settings', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     const { isEnabled, lowStockThresholdDays, alertEmails } = req.body;
     try {
@@ -55,7 +55,7 @@ router.post('/settings', async (req: Request, res: Response) => {
 // GET /health
 import { InventoryService } from '../services/InventoryService';
 
-router.get('/health', async (req: Request, res: Response) => {
+router.get('/health', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     try {
         const risks = await InventoryService.checkInventoryHealth(accountId);
@@ -70,7 +70,7 @@ router.get('/health', async (req: Request, res: Response) => {
 // --- Suppliers ---
 
 // GET /suppliers
-router.get('/suppliers', async (req: Request, res: Response) => {
+router.get('/suppliers', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     if (!accountId) return res.status(400).json({ error: 'No account' });
 
@@ -87,7 +87,7 @@ router.get('/suppliers', async (req: Request, res: Response) => {
 });
 
 // POST /suppliers
-router.post('/suppliers', async (req: Request, res: Response) => {
+router.post('/suppliers', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     if (!accountId) return res.status(400).json({ error: 'No account' });
 
@@ -114,7 +114,7 @@ router.post('/suppliers', async (req: Request, res: Response) => {
 });
 
 // POST /suppliers/:id/items
-router.post('/suppliers/:id/items', async (req: Request, res: Response) => {
+router.post('/suppliers/:id/items', async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     try {
         const { name, sku, cost, leadTime, moq } = req.body;
@@ -137,7 +137,7 @@ router.post('/suppliers/:id/items', async (req: Request, res: Response) => {
 // --- BOM ---
 
 // GET /products/:productId/bom
-router.get('/products/:productId/bom', async (req: Request, res: Response) => {
+router.get('/products/:productId/bom', async (req: AuthenticatedRequest, res: Response) => {
     const { productId } = req.params;
     const variationId = parseInt(req.query.variationId as string) || 0;
 
@@ -163,7 +163,7 @@ router.get('/products/:productId/bom', async (req: Request, res: Response) => {
 });
 
 // POST /products/:productId/bom
-router.post('/products/:productId/bom', async (req: Request, res: Response) => {
+router.post('/products/:productId/bom', async (req: AuthenticatedRequest, res: Response) => {
     const { productId } = req.params;
     const { items, variationId = 0 } = req.body; // variationId from body, default 0
 
@@ -214,7 +214,7 @@ router.post('/products/:productId/bom', async (req: Request, res: Response) => {
 // --- Purchase Orders ---
 
 // GET /purchase-orders
-router.get('/purchase-orders', async (req: Request, res: Response) => {
+router.get('/purchase-orders', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     const { status } = req.query;
     try {
@@ -226,7 +226,7 @@ router.get('/purchase-orders', async (req: Request, res: Response) => {
 });
 
 // GET /purchase-orders/:id
-router.get('/purchase-orders/:id', async (req: Request, res: Response) => {
+router.get('/purchase-orders/:id', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     const { id } = req.params;
     try {
@@ -239,7 +239,7 @@ router.get('/purchase-orders/:id', async (req: Request, res: Response) => {
 });
 
 // POST /purchase-orders
-router.post('/purchase-orders', async (req: Request, res: Response) => {
+router.post('/purchase-orders', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     try {
         const po = await poService.createPurchaseOrder(accountId, req.body);
@@ -251,7 +251,7 @@ router.post('/purchase-orders', async (req: Request, res: Response) => {
 });
 
 // PUT /purchase-orders/:id
-router.put('/purchase-orders/:id', async (req: Request, res: Response) => {
+router.put('/purchase-orders/:id', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     const { id } = req.params;
     try {
@@ -266,7 +266,7 @@ router.put('/purchase-orders/:id', async (req: Request, res: Response) => {
 // --- Picklist ---
 
 // GET /picklist
-router.get('/picklist', async (req: Request, res: Response) => {
+router.get('/picklist', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     const { status, limit } = req.query;
     try {

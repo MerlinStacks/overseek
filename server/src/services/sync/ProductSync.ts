@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { IndexingService } from '../search/IndexingService';
 import { SeoScoringService } from '../SeoScoringService';
 import { MerchantCenterService } from '../MerchantCenterService';
+import { EmbeddingService } from '../EmbeddingService';
 import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 
@@ -90,6 +91,10 @@ export class ProductSync extends BaseSync {
                             merchantCenterIssues: mcResult.issues as any
                         }
                     });
+
+                    // Generate embedding for semantic search (async, non-blocking)
+                    EmbeddingService.updateProductEmbedding(upsertedProduct.id, accountId)
+                        .catch((err: any) => Logger.debug('Embedding generation skipped', { productId: upsertedProduct.id, reason: err.message }));
                 }
 
                 // Index

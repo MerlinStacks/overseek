@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/express';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
@@ -21,7 +22,7 @@ const verifySignature = (payload: any, signature: string, secret: string) => {
 // Webhook Endpoint
 // WooCommerce sends topic in header: "x-wc-webhook-topic": "order.created"
 // And signature: "x-wc-webhook-signature": "..."
-router.post('/:accountId', async (req: Request, res: Response) => {
+router.post('/:accountId', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { accountId } = req.params;
         const signature = req.headers['x-wc-webhook-signature'] as string;

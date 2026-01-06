@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAccount } from '../context/AccountContext';
+import { useAuth } from '../context/AuthContext';
 import {
     hotTierDB,
     CachedOrder,
@@ -29,6 +30,7 @@ const DEFAULT_STALE_TIME = 5 * 60 * 1000; // 5 minutes
  */
 export function useHotProducts(options: UseHotCacheOptions = {}) {
     const { currentAccount } = useAccount();
+    const { token } = useAuth();
     const [products, setProducts] = useState<CachedProduct[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -37,11 +39,11 @@ export function useHotProducts(options: UseHotCacheOptions = {}) {
     const { forceRefresh = false, staleTime = DEFAULT_STALE_TIME } = options;
 
     const syncProducts = useCallback(async () => {
-        if (!accountId) return;
+        if (!accountId || !token) return;
 
         setSyncing(true);
         try {
-            const serverProducts = await api.get('/products');
+            const serverProducts = await api.get<any[]>('/api/products', token, accountId);
             const now = Date.now();
 
             // Transform and store
@@ -66,7 +68,7 @@ export function useHotProducts(options: UseHotCacheOptions = {}) {
         } finally {
             setSyncing(false);
         }
-    }, [accountId]);
+    }, [accountId, token]);
 
     useEffect(() => {
         if (!accountId) {
@@ -110,6 +112,7 @@ export function useHotProducts(options: UseHotCacheOptions = {}) {
  */
 export function useHotOrders(options: UseHotCacheOptions = {}) {
     const { currentAccount } = useAccount();
+    const { token } = useAuth();
     const [orders, setOrders] = useState<CachedOrder[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -118,11 +121,11 @@ export function useHotOrders(options: UseHotCacheOptions = {}) {
     const { forceRefresh = false, staleTime = DEFAULT_STALE_TIME } = options;
 
     const syncOrders = useCallback(async () => {
-        if (!accountId) return;
+        if (!accountId || !token) return;
 
         setSyncing(true);
         try {
-            const serverOrders = await api.get('/orders', { params: { limit: 1000 } });
+            const serverOrders = await api.get<any[]>('/api/sync/orders/search?limit=1000', token, accountId);
             const now = Date.now();
 
             const cached: CachedOrder[] = serverOrders.map((o: any) => ({
@@ -143,7 +146,7 @@ export function useHotOrders(options: UseHotCacheOptions = {}) {
         } finally {
             setSyncing(false);
         }
-    }, [accountId]);
+    }, [accountId, token]);
 
     useEffect(() => {
         if (!accountId) {
@@ -185,6 +188,7 @@ export function useHotOrders(options: UseHotCacheOptions = {}) {
  */
 export function useHotCustomers(options: UseHotCacheOptions = {}) {
     const { currentAccount } = useAccount();
+    const { token } = useAuth();
     const [customers, setCustomers] = useState<CachedCustomer[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -193,11 +197,11 @@ export function useHotCustomers(options: UseHotCacheOptions = {}) {
     const { forceRefresh = false, staleTime = DEFAULT_STALE_TIME } = options;
 
     const syncCustomers = useCallback(async () => {
-        if (!accountId) return;
+        if (!accountId || !token) return;
 
         setSyncing(true);
         try {
-            const serverCustomers = await api.get('/customers');
+            const serverCustomers = await api.get<any[]>('/api/customers', token, accountId);
             const now = Date.now();
 
             const cached: CachedCustomer[] = serverCustomers.map((c: any) => ({
@@ -220,7 +224,7 @@ export function useHotCustomers(options: UseHotCacheOptions = {}) {
         } finally {
             setSyncing(false);
         }
-    }, [accountId]);
+    }, [accountId, token]);
 
     useEffect(() => {
         if (!accountId) {

@@ -13,7 +13,7 @@ const syncService = new SyncService();
 router.use(requireAuth);
 
 // Trigger Manual Sync
-router.post('/manual', async (req: Request, res: Response) => {
+router.post('/manual', async (req: AuthenticatedRequest, res: Response) => {
     const { accountId, types, incremental } = req.body;
 
     if (!accountId) {
@@ -31,7 +31,7 @@ router.post('/manual', async (req: Request, res: Response) => {
     res.json({ message: 'Sync started', status: 'IN_PROGRESS' });
 });
 
-router.get('/active', async (req: Request, res: Response) => {
+router.get('/active', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { accountId } = req.query;
         if (!accountId) return res.status(400).json({ error: 'accountId is required' });
@@ -64,7 +64,7 @@ router.get('/active', async (req: Request, res: Response) => {
     }
 });
 
-router.post('/control', async (req: Request, res: Response) => {
+router.post('/control', async (req: AuthenticatedRequest, res: Response) => {
     const { accountId, action, queueName, jobId } = req.body;
     // Actions: pause, resume, cancel
 
@@ -161,7 +161,7 @@ router.post('/control', async (req: Request, res: Response) => {
 });
 
 // Search Orders
-router.get('/orders/search', async (req: Request, res: Response) => {
+router.get('/orders/search', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = req.headers['x-account-id'] as string || req.query.accountId as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -181,7 +181,7 @@ router.get('/orders/search', async (req: Request, res: Response) => {
 });
 
 // Get Sync Status (Logs)
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', async (req: AuthenticatedRequest, res: Response) => {
     const { accountId } = req.query;
     if (!accountId) return res.status(400).json({ error: 'accountId is required' });
 

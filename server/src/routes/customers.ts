@@ -6,7 +6,7 @@ import { Logger } from '../utils/logger';
 
 const router = Router();
 
-router.get('/', requireAuth, async (req: Request, res: Response) => {
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         // Middleware guarantees accountId or returns 400
@@ -23,7 +23,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     }
 });
 
-router.get('/:id', requireAuth, async (req: Request, res: Response) => {
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         Logger.debug(`GET /customers/${req.params.id}`, { accountId: (req as any).accountId });
         const accountId = (req as any).accountId;

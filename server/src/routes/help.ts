@@ -9,7 +9,7 @@ const router = Router();
 // PUBLIC READ ROUTES
 
 // Get all collections with articles
-router.get('/collections', async (req: Request, res: Response) => {
+router.get('/collections', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const collections = await prisma.helpCollection.findMany({
             include: {
@@ -29,7 +29,7 @@ router.get('/collections', async (req: Request, res: Response) => {
 });
 
 // Search Articles
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/search', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { q } = req.query;
         if (!q || typeof q !== 'string') return res.json([]);
@@ -61,7 +61,7 @@ router.get('/search', async (req: Request, res: Response) => {
 });
 
 // Get single article
-router.get('/articles/:slug', async (req: Request, res: Response) => {
+router.get('/articles/:slug', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { slug } = req.params;
         const article = await prisma.helpArticle.findUnique({
@@ -95,7 +95,7 @@ router.get('/articles/:slug', async (req: Request, res: Response) => {
 
 // ADMIN WRITE ROUTES
 
-router.post('/collections', requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post('/collections', requireAuth, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { title, slug, description, icon, order } = req.body;
         const collection = await prisma.helpCollection.create({
@@ -108,7 +108,7 @@ router.post('/collections', requireAuth, requireSuperAdmin, async (req: Request,
     }
 });
 
-router.put('/collections/:id', requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.put('/collections/:id', requireAuth, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { title, slug, description, icon, order } = req.body;
@@ -122,7 +122,7 @@ router.put('/collections/:id', requireAuth, requireSuperAdmin, async (req: Reque
     }
 });
 
-router.delete('/collections/:id', requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.delete('/collections/:id', requireAuth, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { id } = req.params;
         await prisma.helpCollection.delete({ where: { id } });
@@ -132,7 +132,7 @@ router.delete('/collections/:id', requireAuth, requireSuperAdmin, async (req: Re
     }
 });
 
-router.post('/articles', requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post('/articles', requireAuth, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { collectionId, title, slug, content, excerpt, isPublished, order } = req.body;
         const article = await prisma.helpArticle.create({
@@ -145,7 +145,7 @@ router.post('/articles', requireAuth, requireSuperAdmin, async (req: Request, re
     }
 });
 
-router.put('/articles/:id', requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.put('/articles/:id', requireAuth, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { collectionId, title, slug, content, excerpt, isPublished, order } = req.body;
@@ -159,7 +159,7 @@ router.put('/articles/:id', requireAuth, requireSuperAdmin, async (req: Request,
     }
 });
 
-router.delete('/articles/:id', requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.delete('/articles/:id', requireAuth, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { id } = req.params;
         await prisma.helpArticle.delete({ where: { id } });

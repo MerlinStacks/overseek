@@ -824,6 +824,13 @@ model AnalyticsSession {
   wooCustomerId Int?
   email         String?
 
+  // Attribution Tracking
+  firstTouchSource String?
+  firstTouchAt     DateTime?
+  lastTouchSource  String?
+  lastTouchAt      DateTime?
+  totalVisits      Int @default(1)
+
   // Abandoned Cart Recovery
   abandonedNotificationSentAt DateTime?
 

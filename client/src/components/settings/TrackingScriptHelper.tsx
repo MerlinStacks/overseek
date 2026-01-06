@@ -21,7 +21,7 @@ export function TrackingScriptHelper() {
             const result = await api.get<{ connected: boolean; lastSignal: string | null }>(
                 '/api/tracking/status',
                 token || undefined,
-                currentAccount.id
+                currentAccount?.id || ''
             );
 
             if (result.connected) {
@@ -48,7 +48,7 @@ export function TrackingScriptHelper() {
 
     const connectionConfig = JSON.stringify({
         apiUrl: apiUrl,
-        accountId: currentAccount.id
+        accountId: currentAccount?.id || ''
     }, null, 2);
 
     const handleCopyConfig = () => {

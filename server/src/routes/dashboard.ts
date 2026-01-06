@@ -8,7 +8,7 @@ const router = Router();
 router.use(requireAuth);
 
 // GET Layout
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     if (!accountId) return res.status(400).json({ error: 'No account' });
 
@@ -46,7 +46,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // SAVE Layout (Widgets Update)
 // Expects: { widgets: [{ id?, widgetKey, position, settings }] }
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     if (!accountId) return res.status(400).json({ error: 'No account' });
 

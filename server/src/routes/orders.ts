@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -10,7 +10,7 @@ const router = Router();
 router.use(requireAuth);
 
 // Get Order by ID (Internal ID or WooID)
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     // Safe cast because requireAuth middleware guarantees req.user exists, 
     // and strict enforcement checks for accountId in this route path if configured, 

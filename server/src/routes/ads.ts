@@ -8,7 +8,7 @@ const router = Router();
 router.use(requireAuth);
 
 // LIST connected ad accounts
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     if (!accountId) return res.status(400).json({ error: 'No account selected' });
 
@@ -23,7 +23,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // CONNECT a new ad account
-router.post('/connect', async (req: Request, res: Response) => {
+router.post('/connect', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = (req as any).accountId;
     if (!accountId) return res.status(400).json({ error: 'No account selected' });
 
@@ -38,7 +38,7 @@ router.post('/connect', async (req: Request, res: Response) => {
 });
 
 // GET INSIGHTS for a specific AdAccount
-router.get('/:adAccountId/insights', async (req: Request, res: Response) => {
+router.get('/:adAccountId/insights', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { adAccountId } = req.params;
         const insights = await AdsService.getMetaInsights(adAccountId);

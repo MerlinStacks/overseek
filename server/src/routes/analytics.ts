@@ -15,7 +15,7 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.get('/visitors/log', async (req: Request, res: Response) => {
+router.get('/visitors/log', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const page = parseInt(req.query.page as string) || 1;
@@ -25,7 +25,7 @@ router.get('/visitors/log', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/ecommerce/log', async (req: Request, res: Response) => {
+router.get('/ecommerce/log', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const page = parseInt(req.query.page as string) || 1;
@@ -35,7 +35,7 @@ router.get('/ecommerce/log', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/visitors/:id', async (req: Request, res: Response) => {
+router.get('/visitors/:id', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const data = await AnalyticsService.getVisitorProfile(req.params.id, accountId);
@@ -44,7 +44,7 @@ router.get('/visitors/:id', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/channels', async (req: Request, res: Response) => {
+router.get('/channels', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const data = await AnalyticsService.getChannelBreakdown(accountId);
@@ -52,7 +52,7 @@ router.get('/channels', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/search-terms', async (req: Request, res: Response) => {
+router.get('/search-terms', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const data = await AnalyticsService.getSearchTerms(accountId);
@@ -60,7 +60,7 @@ router.get('/search-terms', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/sales', async (req: Request, res: Response) => {
+router.get('/sales', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         if (!accountId) return res.status(400).json({ error: 'No account' });
@@ -79,7 +79,7 @@ router.get('/sales', async (req: Request, res: Response) => {
     }
 });
 
-router.get('/recent-orders', async (req: Request, res: Response) => {
+router.get('/recent-orders', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         if (!accountId) return res.status(400).json({ error: 'No account' });
@@ -93,7 +93,7 @@ router.get('/recent-orders', async (req: Request, res: Response) => {
 });
 
 // Aggregate Ad Spend across ALL connected accounts
-router.get('/ads-summary', async (req: Request, res: Response) => {
+router.get('/ads-summary', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         if (!accountId) return res.status(400).json({ error: 'No account' });
@@ -137,7 +137,7 @@ router.get('/ads-summary', async (req: Request, res: Response) => {
 
 // --- New Reports Endpoints ---
 
-router.get('/sales-chart', async (req: Request, res: Response) => {
+router.get('/sales-chart', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate, interval } = req.query;
@@ -146,7 +146,7 @@ router.get('/sales-chart', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/top-products', async (req: Request, res: Response) => {
+router.get('/top-products', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -155,7 +155,7 @@ router.get('/top-products', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/customer-growth', async (req: Request, res: Response) => {
+router.get('/customer-growth', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -166,7 +166,7 @@ router.get('/customer-growth', async (req: Request, res: Response) => {
 
 
 
-router.get('/forecast', async (req: Request, res: Response) => {
+router.get('/forecast', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const days = parseInt(req.query.days as string) || 30;
@@ -175,7 +175,7 @@ router.get('/forecast', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.post('/custom-report', async (req: Request, res: Response) => {
+router.post('/custom-report', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         // config expected: { metrics: [], dimension: '', startDate: '', endDate: '' }
@@ -185,7 +185,7 @@ router.post('/custom-report', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/acquisition/channels', async (req: Request, res: Response) => {
+router.get('/acquisition/channels', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -194,7 +194,7 @@ router.get('/acquisition/channels', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/acquisition/campaigns', async (req: Request, res: Response) => {
+router.get('/acquisition/campaigns', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -203,7 +203,7 @@ router.get('/acquisition/campaigns', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/behaviour/pages', async (req: Request, res: Response) => {
+router.get('/behaviour/pages', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -212,7 +212,7 @@ router.get('/behaviour/pages', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/behaviour/search', async (req: Request, res: Response) => {
+router.get('/behaviour/search', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -221,7 +221,7 @@ router.get('/behaviour/search', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/behaviour/entry', async (req: Request, res: Response) => {
+router.get('/behaviour/entry', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -230,7 +230,7 @@ router.get('/behaviour/entry', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-router.get('/behaviour/exit', async (req: Request, res: Response) => {
+router.get('/behaviour/exit', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { startDate, endDate } = req.query;
@@ -242,7 +242,7 @@ router.get('/behaviour/exit', async (req: Request, res: Response) => {
 
 // --- Template & Schedule Endpoints ---
 
-router.get('/templates', async (req: Request, res: Response) => {
+router.get('/templates', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
 
@@ -284,7 +284,7 @@ router.get('/templates', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/templates', async (req: Request, res: Response) => {
+router.post('/templates', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { name, config } = req.body;
@@ -301,7 +301,7 @@ router.post('/templates', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/templates/:id', async (req: Request, res: Response) => {
+router.delete('/templates/:id', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         await prisma.reportTemplate.delete({
@@ -312,7 +312,7 @@ router.delete('/templates/:id', async (req: Request, res: Response) => {
 });
 
 // Schedules
-router.get('/schedules', async (req: Request, res: Response) => {
+router.get('/schedules', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const schedules = await prisma.reportSchedule.findMany({
@@ -323,7 +323,7 @@ router.get('/schedules', async (req: Request, res: Response) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/schedules', async (req: Request, res: Response) => {
+router.post('/schedules', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const { templateId, frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive } = req.body;
@@ -374,7 +374,7 @@ router.post('/schedules', async (req: Request, res: Response) => {
 
 // --- Dedicated Reports ---
 
-router.get('/stock-velocity', async (req: Request, res: Response) => {
+router.get('/stock-velocity', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
 

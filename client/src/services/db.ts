@@ -143,9 +143,9 @@ export async function searchProductsLocal(accountId: string, query: string): Pro
 
     return hotTierDB.products
         .where('accountId').equals(accountId)
-        .filter(p =>
+        .filter((p: CachedProduct) =>
             p.name.toLowerCase().includes(lowerQuery) ||
-            (p.sku && p.sku.toLowerCase().includes(lowerQuery))
+            Boolean(p.sku && p.sku.toLowerCase().includes(lowerQuery))
         )
         .limit(50)
         .toArray();
@@ -159,9 +159,9 @@ export async function searchCustomersLocal(accountId: string, query: string): Pr
 
     return hotTierDB.customers
         .where('accountId').equals(accountId)
-        .filter(c =>
+        .filter((c: CachedCustomer) =>
             c.name.toLowerCase().includes(lowerQuery) ||
-            (c.email && c.email.toLowerCase().includes(lowerQuery))
+            Boolean(c.email && c.email.toLowerCase().includes(lowerQuery))
         )
         .limit(50)
         .toArray();

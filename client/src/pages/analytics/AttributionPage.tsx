@@ -4,6 +4,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
 import { GitBranch, ArrowRight } from 'lucide-react';
 
 interface AttributionData {

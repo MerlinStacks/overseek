@@ -11,7 +11,7 @@ import { IndexingService } from '../services/search/IndexingService';
 
 const router = Router();
 
-router.get('/', requireAuth, async (req: Request, res: Response) => {
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         // Middleware guarantees accountId or returns 400
@@ -29,7 +29,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 });
 
 // GET /:id (Get single product by WooID)
-router.get('/:id', requireAuth, async (req: Request, res: Response) => {
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
 
@@ -47,7 +47,7 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
 });
 
 // POST /:id/sync (Force Sync from Woo)
-router.post('/:id/sync', requireAuth, async (req: Request, res: Response) => {
+router.post('/:id/sync', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const wooId = parseInt(req.params.id);
@@ -138,7 +138,7 @@ router.post('/:id/sync', requireAuth, async (req: Request, res: Response) => {
 });
 
 // PATCH /:id (Update product details)
-router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
 

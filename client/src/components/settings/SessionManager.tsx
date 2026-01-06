@@ -19,7 +19,7 @@ export const SessionManager: React.FC = () => {
     const fetchSessions = async () => {
         try {
             setLoading(true);
-            const data = await api.get('/sessions');
+            const data = await api.get<Session[]>('/api/sessions');
             setSessions(data);
         } catch (error) {
             console.error('Failed to fetch sessions:', error);

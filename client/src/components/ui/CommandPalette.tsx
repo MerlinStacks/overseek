@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
-import { Search, Package, FileText, Settings, LayoutDashboard, Truck, Users, BarChart2 } from 'lucide-react';
+import { Search, Package, FileText, Settings, LayoutDashboard, Truck, Users, BarChart2, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
@@ -10,14 +10,17 @@ interface SearchResult {
     id: string | number;
     title: string;
     subtitle?: string;
-    type: 'product' | 'order';
+    type: 'product' | 'order' | 'semantic';
+    similarity?: number;
 }
 
 export function CommandPalette() {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
+    const [semanticResults, setSemanticResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
+    const [semanticMode, setSemanticMode] = useState(false);
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -37,6 +40,7 @@ export function CommandPalette() {
     useEffect(() => {
         if (!query || !token || !currentAccount) {
             setResults([]);
+            setSemanticResults([]);
             return;
         }
 
@@ -47,14 +51,25 @@ export function CommandPalette() {
                 // For now, let's just search products and orders if query length > 2
                 if (query.length < 2) return;
 
-                const [productsRes, ordersRes] = await Promise.allSettled([
+                const searches: Promise<Response>[] = [
                     fetch(`/api/products?q=${encodeURIComponent(query)}&limit=5`, {
                         headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
                     }),
                     fetch(`/api/sync/orders/search?q=${encodeURIComponent(query)}&limit=5`, {
                         headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
                     })
-                ]);
+                ];
+
+                // Add semantic search if mode is enabled and query is descriptive
+                if (semanticMode && query.length >= 3) {
+                    searches.push(
+                        fetch(`/api/search/semantic?q=${encodeURIComponent(query)}&limit=5`, {
+                            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                        })
+                    );
+                }
+
+                const [productsRes, ordersRes, semanticRes] = await Promise.allSettled(searches);
 
                 const newResults: SearchResult[] = [];
 
@@ -65,7 +80,7 @@ export function CommandPalette() {
                             id: p.id,
                             title: p.name,
                             subtitle: p.sku,
-                            type: 'product'
+                            type: 'product' as const
                         })));
                     }
                 }
@@ -77,11 +92,27 @@ export function CommandPalette() {
                         id: o.id,
                         title: `Order #${o.id}`,
                         subtitle: `${o.billing?.first_name} ${o.billing?.last_name} - ${o.status}`,
-                        type: 'order'
+                        type: 'order' as const
                     })));
                 }
 
                 setResults(newResults);
+
+                // Handle semantic results separately
+                if (semanticRes && semanticRes.status === 'fulfilled' && semanticRes.value.ok) {
+                    const data = await semanticRes.value.json();
+                    if (Array.isArray(data)) {
+                        setSemanticResults(data.map((r: any) => ({
+                            id: r.id,
+                            title: r.name,
+                            subtitle: `${Math.round(r.similarity * 100)}% match`,
+                            type: 'semantic' as const,
+                            similarity: r.similarity
+                        })));
+                    }
+                } else {
+                    setSemanticResults([]);
+                }
             } catch (err) {
                 console.error("Search failed", err);
             } finally {
@@ -90,7 +121,7 @@ export function CommandPalette() {
         }, 300);
 
         return () => clearTimeout(timer);
-    }, [query, token, currentAccount]);
+    }, [query, token, currentAccount, semanticMode]);
 
     const runCommand = (command: () => void) => {
         setOpen(false);
@@ -116,10 +147,22 @@ export function CommandPalette() {
                     <Command.Input
                         value={query}
                         onValueChange={setQuery}
-                        placeholder="Type a command or search..."
+                        placeholder={semanticMode ? "Describe what you're looking for..." : "Type a command or search..."}
                         className="flex-1 h-16 bg-transparent outline-none text-lg text-gray-900 placeholder:text-gray-400 font-medium w-full"
                     />
-                    <div className="flex gap-1">
+                    <div className="flex gap-2 items-center">
+                        <button
+                            type="button"
+                            onClick={() => setSemanticMode(!semanticMode)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${semanticMode
+                                ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                                }`}
+                            title="Toggle AI Smart Search"
+                        >
+                            <Sparkles size={12} />
+                            AI
+                        </button>
                         <kbd className="hidden sm:inline-flex h-6 select-none items-center gap-1 rounded border bg-gray-100 px-2 font-mono text-[10px] font-medium text-gray-500 pointer-events-none">
                             <span className="text-xs">
                                 {navigator.platform.indexOf('Mac') > -1 ? '⌘' : 'Ctrl'}
@@ -132,13 +175,13 @@ export function CommandPalette() {
                     {loading && (
                         <div className="py-6 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
                             <div className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-                            Searching...
+                            {semanticMode ? 'AI Searching...' : 'Searching...'}
                         </div>
                     )}
 
-                    {!loading && results.length === 0 && query !== '' && (
+                    {!loading && results.length === 0 && semanticResults.length === 0 && query !== '' && (
                         <Command.Empty className="py-6 text-center text-sm text-gray-500">
-                            No results found.
+                            {semanticMode ? 'No AI matches found. Try a different description.' : 'No results found.'}
                         </Command.Empty>
                     )}
 
@@ -200,6 +243,25 @@ export function CommandPalette() {
                                         <div className="flex flex-col">
                                             <span className="font-medium text-gray-900">{result.title}</span>
                                             {result.subtitle && <span className="text-xs text-gray-500 font-normal">{result.subtitle}</span>}
+                                        </div>
+                                    </CommandItem>
+                                ))}
+                            </div>
+                        </Command.Group>
+                    )}
+
+                    {semanticResults.length > 0 && (
+                        <Command.Group heading="AI Smart Matches" className="text-xs font-semibold text-purple-600 mt-2 px-2">
+                            <div className="space-y-1">
+                                {semanticResults.map((result) => (
+                                    <CommandItem
+                                        key={`semantic-${result.id}`}
+                                        onSelect={() => runCommand(() => navigate(`/inventory/product/${result.id}`))}
+                                    >
+                                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
+                                        <div className="flex flex-col flex-1">
+                                            <span className="font-medium text-gray-900">{result.title}</span>
+                                            <span className="text-xs text-purple-500 font-normal">{result.subtitle}</span>
                                         </div>
                                     </CommandItem>
                                 ))}

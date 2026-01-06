@@ -12,7 +12,7 @@ const emailService = new EmailService();
 router.use(requireAuth);
 
 // List Accounts
-router.get('/accounts', async (req: Request, res: Response) => {
+router.get('/accounts', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).user?.accountId || (req as any).accountId;
         if (!accountId) return res.status(400).json({ error: 'No account selected' });
@@ -34,7 +34,7 @@ router.get('/accounts', async (req: Request, res: Response) => {
 });
 
 // Create Account
-router.post('/accounts', async (req: Request, res: Response) => {
+router.post('/accounts', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).user?.accountId || (req as any).accountId;
         if (!accountId) return res.status(400).json({ error: 'No account selected' });
@@ -68,7 +68,7 @@ router.post('/accounts', async (req: Request, res: Response) => {
 });
 
 // Update Account
-router.put('/accounts/:id', async (req: Request, res: Response) => {
+router.put('/accounts/:id', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).user?.accountId || (req as any).accountId;
         const { id } = req.params;
@@ -107,7 +107,7 @@ router.put('/accounts/:id', async (req: Request, res: Response) => {
 });
 
 // Delete Account
-router.delete('/accounts/:id', async (req: Request, res: Response) => {
+router.delete('/accounts/:id', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).user?.accountId || (req as any).accountId;
         const { id } = req.params;
@@ -123,7 +123,7 @@ router.delete('/accounts/:id', async (req: Request, res: Response) => {
 });
 
 // Test Connection
-router.post('/test', async (req: Request, res: Response) => {
+router.post('/test', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { id, host, port, username, password, type, isSecure } = req.body;
         const accountId = (req as any).user?.accountId || (req as any).accountId;

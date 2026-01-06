@@ -1,0 +1,3496 @@
+﻿node.exe : npm warn 
+config ignoring 
+workspace config at C:
+\Users\ratte\OneDrive\
+Desktop\Overseekv2\cli
+ent/.npmrc
+At line:1 char:1
++ & "C:\Program Files\
+nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo 
+...
++ ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (npm warn c   
+ onfig...2\client/    
+.npmrc:String) []    
+, RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+
+> overseek-client@0.0.0 build
+> tsc && vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5400:30): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5402:35): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5404:29): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5406:15): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5408:34): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5412:28): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5416:25): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5418:44): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5419:30): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5423:28): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5427:25): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5433:30): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5475:39): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5484:16): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5493:16): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5496:16): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5506:16): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5513:24): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5515:11): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5519:31): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5529:33): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5530:39): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5531:27): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5534:25): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5538:24): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5571:27): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5573:16): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5576:22): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5577:16): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5578:43): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5583:27): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5588:27): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5591:16): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5611:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5612:42): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5690:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5724:37): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5724:58): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5724:97): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5724:169): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5724:313): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5724:411): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5726:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5726:53): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5726:92): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5726:175): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5726:272): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5728:49): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5729:47): 
+"Component" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5771:59): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5771:155): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5779:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5790:28): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5810:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5822:33): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5826:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5921:44): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5927:38): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5940:128): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5960:19): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5965:21): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(5970:21): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6005:26): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6008:16): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6018:16): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6053:21): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6068:21): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6072:21): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6085:43): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6086:31): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6109:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6114:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6130:25): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6134:24): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6207:22): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6221:37): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6235:27): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6290:38): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6292:47): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6293:41): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6296:41): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6297:43): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6298:47): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6299:27): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6300:24): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6332:17): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6396:9): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6397:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6402:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6410:17): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6434:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6439:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6451:25): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6468:33): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:53): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:92): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:187): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:275): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:370): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6478:461): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6487:27): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6512:32): "memo" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6528:26): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6537:37): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6541:24): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6546:15): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6551:9): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6552:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6576:36): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6581:27): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6591:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6619:33): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6639:31): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6662:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6662:127): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6675:33): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6676:38): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6677:23): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6690:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6697:27): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6700:46): 
+"Component" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6753:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6756:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6766:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6766:53): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6770:9): "Children" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6771:16): 
+"isValidElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6775:32): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6835:16): 
+"cloneElement" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6840:18): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6854:16): 
+"cloneElement" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6859:18): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6874:16): 
+"cloneElement" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(6879:18): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7739:49): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7751:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7751:55): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7751:105): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7761:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7761:55): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7761:105): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7761:126): 
+"Suspense" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(7761:165): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8401:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8401:152): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8433:129): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8437:40): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8437:103): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8440:45): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8440:108): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8443:55): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8443:118): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(8870:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9021:23): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9029:23): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9036:30): 
+"createContext" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9039:23): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9047:32): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9048:49): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9049:51): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9051:19): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9052:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9069:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9127:26): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9131:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9131:53): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9131:126): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9137:69): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9146:75): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9146:158): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9151:23): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9158:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9162:59): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9163:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9187:33): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9198:35): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9209:25): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9249:27): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9254:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9254:53): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9254:116): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9254:254): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9257:27): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9317:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9317:53): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9330:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9333:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9340:76): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9345:38): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9357:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9384:9): "useEffect" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9387:30): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9450:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9450:55): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9450:94): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9458:30): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9481:74): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9481:95): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9481:169): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9493:53): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9502:35): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9511:51): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9537:46): 
+"Component" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9553:36): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9570:44): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9583:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9583:127): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9592:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9598:27): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9599:27): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9624:32): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9624:93): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9624:144): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9624:212): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9630:28): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9630:89): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9630:140): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9630:280): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9724:27): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9729:38): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9733:25): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9738:16): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9743:10): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9744:33): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9762:27): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9767:38): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9771:25): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9776:16): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9781:10): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9782:33): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9800:38): "useState" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9804:25): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9809:16): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9814:10): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9815:33): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9829:19): 
+"forwardRef" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9845:56): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9872:30): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9885:67): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9885:89): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9885:135): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9889:22): 
+"forwardRef" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9903:30): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9904:42): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9940:35): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9956:19): 
+"forwardRef" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9973:46): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(9996:16): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10001:35): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10020:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10021:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10025:23): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10059:33): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10077:20): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10082:22): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10099:17): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10113:18): 
+"startTransition" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10140:39): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10141:38): "useRef" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10143:29): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10156:32): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10175:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10179:17): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10216:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10217:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10253:28): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10254:22): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10262:27): "useId" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10263:44): 
+"useState" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10268:10): 
+"useEffect" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10272:21): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10280:23): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10290:22): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10294:28): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10295:31): 
+"forwardRef" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10297:39): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10305:38): "useMemo" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10362:29): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10366:10): 
+"useEffect" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10373:12): 
+"useCallback" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10393:12): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10404:12): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10412:12): 
+"useLayoutEffect" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10447:10): 
+"useEffect" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10457:10): 
+"useEffect" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10470:10): 
+"useEffect" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10480:10): 
+"useEffect" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10487:26): 
+"useContext" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10522:33): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:33): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:55): 
+"Fragment" is not 
+exported by "../node_m
+odules/react/index.js"
+, imported by "../node
+_modules/react-router/
+dist/development/chunk
+-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:95): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:191): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:280): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:372): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10564:481): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10574:28): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-JMJ3UQ3L.mjs 
+(10582:49): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-JMJ3UQ3L.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(89:31): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(89:51): "Fragment" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(89:89): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(105:26): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(105:119): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(113:57): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(113:77): "Suspense" 
+is not exported by "..
+/node_modules/react/in
+dex.js", imported by "
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(113:115): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(132:27): "useRef" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(133:37): "useRef" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(165:34): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+../node_modules/react-
+router/dist/developmen
+t/chunk-YNUBSHFH.mjs 
+(165:138): 
+"createElement" is 
+not exported by "../no
+de_modules/react/index
+.js", imported by "../
+node_modules/react-rou
+ter/dist/development/c
+hunk-YNUBSHFH.mjs".
+[32mΓ£ô[39m 2782 modules transformed.
+[31mx[39m Build 
+failed in 2.77s
+[31merror during 
+build:
+[31m../node_modules/r
+eact-router/dist/devel
+opment/chunk-YNUBSHFH.
+mjs (235:9): "parse" 
+is not exported by "..
+/node_modules/react-ro
+uter/node_modules/cook
+ie/dist/index.js", 
+imported by "../node_m
+odules/react-router/di
+st/development/chunk-Y
+NUBSHFH.mjs".[31m
+file: [36mC:/Users/ra
+tte/OneDrive/Desktop/O
+verseekv2/node_modules
+/react-router/dist/dev
+elopment/chunk-YNUBSHF
+H.mjs:235:9[31m
+[33m
+233:       );
+234:     }
+235:     return 
+newRoute;
+              ^
+236:   });
+237: }
+[31m
+    at getRollupError 
+(file:///C:/Users/ratt
+e/OneDrive/Desktop/Ove
+rseekv2/node_modules/r
+ollup/dist/es/shared/p
+arseAst.js:401:41)
+    at error (file:///
+C:/Users/ratte/OneDriv
+e/Desktop/Overseekv2/n
+ode_modules/rollup/dis
+t/es/shared/parseAst.j
+s:397:42)
+    at Module.error (f
+ile:///C:/Users/ratte/
+OneDrive/Desktop/Overs
+eekv2/node_modules/rol
+lup/dist/es/shared/nod
+e-entry.js:17022:16)
+    at 
+Module.traceVariable (
+file:///C:/Users/ratte
+/OneDrive/Desktop/Over
+seekv2/node_modules/ro
+llup/dist/es/shared/no
+de-entry.js:17478:29)
+    at ModuleScope.fin
+dVariable (file:///C:/
+Users/ratte/OneDrive/D
+esktop/Overseekv2/node
+_modules/rollup/dist/e
+s/shared/node-entry.js
+:15141:39)
+    at ReturnValueScop
+e.findVariable (file:/
+//C:/Users/ratte/OneDr
+ive/Desktop/Overseekv2
+/node_modules/rollup/d
+ist/es/shared/node-ent
+ry.js:5688:38)
+    at FunctionBodySco
+pe.findVariable (file:
+///C:/Users/ratte/OneD
+rive/Desktop/Overseekv
+2/node_modules/rollup/
+dist/es/shared/node-en
+try.js:5688:38)
+    at ChildScope.find
+Variable (file:///C:/U
+sers/ratte/OneDrive/De
+sktop/Overseekv2/node_
+modules/rollup/dist/es
+/shared/node-entry.js:
+5688:38)
+    at FunctionScope.f
+indVariable (file:///C
+:/Users/ratte/OneDrive
+/Desktop/Overseekv2/no
+de_modules/rollup/dist
+/es/shared/node-entry.
+js:5688:38)
+    at FunctionBodySco
+pe.findVariable (file:
+///C:/Users/ratte/OneD
+rive/Desktop/Overseekv
+2/node_modules/rollup/
+dist/es/shared/node-en
+try.js:5688:38)[39m
+npm error Lifecycle 
+script `build` failed 
+with error:
+npm error code 1
+npm error path C:\User
+s\ratte\OneDrive\Deskt
+op\Overseekv2\client
+npm error workspace 
+overseek-client@0.0.0
+npm error location C:\
+Users\ratte\OneDrive\D
+esktop\Overseekv2\clie
+nt
+npm error command 
+failed
+npm error command C:\W
+INDOWS\system32\cmd.ex
+e /d /s /c tsc && 
+vite build

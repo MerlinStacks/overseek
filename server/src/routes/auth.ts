@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
 import { requireAuth, AuthRequest } from '../middleware/auth';
+import { AuthenticatedRequest } from '../types/express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -65,7 +66,7 @@ const upload = multer({
 });
 
 // REGISTER
-router.post('/register', validate(registerSchema), async (req: Request, res: Response) => {
+router.post('/register', validate(registerSchema), async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { email, password, fullName } = req.body;
 
@@ -103,10 +104,12 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
 const loginLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 5, // Limit each IP to 5 login requests per hour
-    message: { error: 'Too many login attempts, please try again after an hour.' }
+    handler: (_req, res) => {
+        res.status(429).json({ error: 'Too many login attempts, please try again after an hour.' });
+    }
 });
 
-router.post('/login', loginLimiter, validate(loginSchema), async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, validate(loginSchema), async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { email, password } = req.body;
 
@@ -148,7 +151,7 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req: Request, 
 });
 
 // ME (Protected)
-router.get('/me', requireAuth, async (req: Request, res: Response) => {
+router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const authReq = req as AuthRequest;
         const userId = authReq.user!.id;
@@ -169,7 +172,7 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 // UPDATE PROFILE
-router.put('/me', requireAuth, async (req: Request, res: Response) => {
+router.put('/me', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const authReq = req as AuthRequest;
         const userId = authReq.user!.id;
@@ -193,7 +196,7 @@ router.put('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 // UPLOAD AVATAR
-router.post('/upload-avatar', requireAuth, upload.single('avatar'), async (req: Request, res: Response) => {
+router.post('/upload-avatar', requireAuth, upload.single('avatar'), async (req: AuthenticatedRequest, res: Response) => {
     try {
         const authReq = req as AuthRequest;
         const userId = authReq.user!.id;
@@ -217,7 +220,7 @@ router.post('/upload-avatar', requireAuth, upload.single('avatar'), async (req: 
 });
 
 // FORGOT PASSWORD
-router.post('/forgot-password', async (req: Request, res: Response) => {
+router.post('/forgot-password', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -288,7 +291,7 @@ const resetPasswordSchema = z.object({
     })
 });
 
-router.post('/reset-password', validate(resetPasswordSchema), async (req: Request, res: Response) => {
+router.post('/reset-password', validate(resetPasswordSchema), async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { email, token, newPassword } = req.body;
 
@@ -355,7 +358,7 @@ router.post('/2fa/verify', requireAuth, async (req: AuthRequest, res: Response) 
 });
 
 // REFRESH TOKEN
-router.post('/refresh', async (req: Request, res: Response) => {
+router.post('/refresh', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { refreshToken } = req.body;
         if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });

@@ -10,7 +10,7 @@ const router = Router();
 router.use(requireAuth);
 
 // GET / - List notifications for account
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = req.headers['x-account-id'] as string;
         if (!accountId) return res.status(400).json({ error: 'Account ID required' });
@@ -36,7 +36,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // POST /read-all - Mark all as read
-router.post('/read-all', async (req: Request, res: Response) => {
+router.post('/read-all', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = req.headers['x-account-id'] as string;
         if (!accountId) return res.status(400).json({ error: 'Account ID required' });
@@ -53,7 +53,7 @@ router.post('/read-all', async (req: Request, res: Response) => {
 });
 
 // POST /:id/read - Mark single as read
-router.post('/:id/read', async (req: Request, res: Response) => {
+router.post('/:id/read', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { id } = req.params;
         const accountId = req.headers['x-account-id'] as string;

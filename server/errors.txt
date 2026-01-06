@@ -1,0 +1,1 @@
+﻿src/services/TrackingService.ts(169,17): error TS2353: Object literal may only specify known properties, and 'firstTouchAt' does not exist in type 'AnalyticsSessionSelect<DefaultArgs>'.
