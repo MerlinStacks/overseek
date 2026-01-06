@@ -342,7 +342,8 @@ export function ProductEditPage() {
                 </div>
             )
         },
-        {
+        // Only show Variations tab for variable products with actual variations
+        ...(product.type === 'variable' && product.variations?.length ? [{
             id: 'variants',
             label: 'Variations',
             icon: <Layers size={16} />,
@@ -355,7 +356,7 @@ export function ProductEditPage() {
                     />
                 </div>
             )
-        },
+        }] : []),
         {
             id: 'seo',
             label: 'SEO & Discovery',

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { ArrowLeft, Save, Plus, Trash2, Loader2, Calendar } from 'lucide-react';
+import { CreateSupplierModal } from '../components/inventory/CreateSupplierModal';
 
 interface POItem {
     id?: string;
@@ -38,6 +39,7 @@ export function PurchaseOrderEditPage() {
     const [notes, setNotes] = useState('');
     const [expectedDate, setExpectedDate] = useState('');
     const [items, setItems] = useState<POItem[]>([]);
+    const [showCreateSupplier, setShowCreateSupplier] = useState(false);
 
     const [poNumber, setPoNumber] = useState('');
 
@@ -264,7 +266,13 @@ export function PurchaseOrderEditPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
                             <select
                                 value={supplierId}
-                                onChange={(e) => setSupplierId(e.target.value)}
+                                onChange={(e) => {
+                                    if (e.target.value === '__new__') {
+                                        setShowCreateSupplier(true);
+                                    } else {
+                                        setSupplierId(e.target.value);
+                                    }
+                                }}
                                 disabled={!isNew}
                                 className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
                             >
@@ -272,6 +280,7 @@ export function PurchaseOrderEditPage() {
                                 {suppliers.map(s => (
                                     <option key={s.id} value={s.id}>{s.name} ({s.currency})</option>
                                 ))}
+                                {isNew && <option value="__new__" className="text-blue-600 font-medium">+ New Supplier</option>}
                             </select>
                         </div>
 
@@ -314,6 +323,19 @@ export function PurchaseOrderEditPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Inline Supplier Creation Modal */}
+            <CreateSupplierModal
+                isOpen={showCreateSupplier}
+                onClose={() => setShowCreateSupplier(false)}
+                onSuccess={(newSupplier) => {
+                    // Refresh suppliers list and auto-select the new one
+                    fetchSuppliers().then(() => {
+                        setSupplierId(newSupplier.id);
+                    });
+                    setShowCreateSupplier(false);
+                }}
+            />
         </div>
     );
 }

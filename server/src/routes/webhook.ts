@@ -5,6 +5,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { SyncService } from '../services/sync';
 import { IndexingService } from '../services/search/IndexingService';
+import { io } from '../app';
 
 const router = Router();
 
@@ -72,6 +73,16 @@ router.post('/:accountId', async (req: AuthenticatedRequest, res: Response) => {
                         type: 'SUCCESS',
                         link: '/orders'
                     }
+                });
+
+                // Emit socket event for real-time browser notifications
+                io.to(`account:${accountId}`).emit('order:new', {
+                    orderId: req.body.id,
+                    orderNumber: req.body.number || req.body.id,
+                    total: req.body.total,
+                    customerName: req.body.billing?.first_name
+                        ? `${req.body.billing.first_name} ${req.body.billing.last_name || ''}`.trim()
+                        : 'Guest'
                 });
             }
             Logger.info(`Indexed Order`, { orderId: req.body.id, accountId });

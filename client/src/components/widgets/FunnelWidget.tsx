@@ -8,7 +8,11 @@ interface FunnelData {
     stages: { name: string; count: number }[];
 }
 
-export const FunnelWidget: React.FC = () => {
+interface FunnelWidgetProps {
+    days?: number;
+}
+
+export const FunnelWidget: React.FC<FunnelWidgetProps> = ({ days = 30 }) => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const [funnel, setFunnel] = useState<FunnelData | null>(null);
@@ -18,7 +22,7 @@ export const FunnelWidget: React.FC = () => {
         const fetchFunnel = async () => {
             if (!currentAccount || !token) return;
             try {
-                const data = await api.get<FunnelData>('/api/tracking/funnel', token, currentAccount.id);
+                const data = await api.get<FunnelData>(`/api/tracking/funnel?days=${days}`, token, currentAccount.id);
                 setFunnel(data);
             } catch (error) {
                 console.error('Failed to fetch funnel:', error);
@@ -27,7 +31,7 @@ export const FunnelWidget: React.FC = () => {
             }
         };
         fetchFunnel();
-    }, [currentAccount, token]);
+    }, [currentAccount, token, days]);
 
     if (loading) {
         return <div className="p-4 text-sm text-gray-500">Loading funnel...</div>;

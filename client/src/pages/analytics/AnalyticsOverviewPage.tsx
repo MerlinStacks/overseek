@@ -75,7 +75,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <FunnelWidget />
+                        <FunnelWidget days={days} />
                     </CardContent>
                 </Card>
 
@@ -87,7 +87,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <AnalyticsStatsWidget />
+                        <AnalyticsStatsWidget days={days} />
                     </CardContent>
                 </Card>
             </div>

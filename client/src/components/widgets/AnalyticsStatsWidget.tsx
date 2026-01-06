@@ -12,7 +12,11 @@ interface StatsData {
     avgSessionDuration: number;
 }
 
-export const AnalyticsStatsWidget: React.FC = () => {
+interface AnalyticsStatsWidgetProps {
+    days?: number;
+}
+
+export const AnalyticsStatsWidget: React.FC<AnalyticsStatsWidgetProps> = ({ days = 30 }) => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const [stats, setStats] = useState<StatsData | null>(null);
@@ -22,7 +26,7 @@ export const AnalyticsStatsWidget: React.FC = () => {
         const fetchStats = async () => {
             if (!currentAccount || !token) return;
             try {
-                const data = await api.get<StatsData>('/api/tracking/stats', token, currentAccount.id);
+                const data = await api.get<StatsData>(`/api/tracking/stats?days=${days}`, token, currentAccount.id);
                 setStats(data);
             } catch (error) {
                 console.error('Failed to fetch stats:', error);
@@ -31,7 +35,7 @@ export const AnalyticsStatsWidget: React.FC = () => {
             }
         };
         fetchStats();
-    }, [currentAccount, token]);
+    }, [currentAccount, token, days]);
 
     if (loading) {
         return <div className="p-4 text-sm text-gray-500">Loading stats...</div>;

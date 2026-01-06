@@ -8,6 +8,7 @@ import { renderWidget, WidgetRegistry } from '../components/widgets/WidgetRegist
 import { Loader2, Plus, X } from 'lucide-react';
 import _ from 'lodash';
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
+import { useMobile } from '../hooks/useMobile';
 import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 
 // Custom WidthProvider HOC since the library's export is broken in ESM
@@ -51,6 +52,7 @@ interface WidgetInstance {
 export function DashboardPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const isMobile = useMobile();
     const [widgets, setWidgets] = useState<WidgetInstance[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -239,8 +241,8 @@ export function DashboardPage() {
                 cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                 rowHeight={100}
                 onLayoutChange={(l: any, all: any) => onLayoutChange(l, all)}
-                isDraggable={true}
-                isResizable={true}
+                isDraggable={!isMobile}
+                isResizable={!isMobile}
                 draggableHandle=".drag-handle"
             >
                 {widgets.map(w => (

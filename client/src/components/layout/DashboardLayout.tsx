@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { AIChatWidget } from '../ai/AIChatWidget';
 import { ChatNotifications } from '../chat/ChatNotifications';
+import { OrderNotifications } from '../notifications/OrderNotifications';
 import { CommandPalette } from '../ui/CommandPalette';
 import { ThemeInjector } from './ThemeInjector';
 import { useMobile } from '../../hooks/useMobile';
@@ -20,6 +21,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <ThemeInjector />
             <CommandPalette />
             <ChatNotifications />
+            <OrderNotifications />
 
             {/* Desktop Sidebar - CSS hides on mobile via hidden lg:flex */}
             <Sidebar />

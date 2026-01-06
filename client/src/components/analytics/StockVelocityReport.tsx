@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Loader2, Package, TrendingUp, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Loader2, Package, TrendingUp, AlertCircle, CheckCircle, Clock, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { cn } from '../../utils/cn';
@@ -15,12 +15,68 @@ interface VelocityItem {
     daysRemaining: number;
 }
 
+type SortColumn = 'name' | 'stock' | 'soldLast30d' | 'dailyVelocity' | 'daysRemaining';
+type SortDirection = 'asc' | 'desc';
+
 export function StockVelocityReport() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [isLoading, setIsLoading] = useState(true);
     const [data, setData] = useState<VelocityItem[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [sortColumn, setSortColumn] = useState<SortColumn>('daysRemaining');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+    /**
+     * Toggles sort on a column. If same column, flip direction; otherwise, default to ascending.
+     */
+    const handleSort = (column: SortColumn) => {
+        if (sortColumn === column) {
+            setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortColumn(column);
+            setSortDirection('asc');
+        }
+    };
+
+    const sortedData = useMemo(() => {
+        return [...data].sort((a, b) => {
+            let aVal: string | number = a[sortColumn];
+            let bVal: string | number = b[sortColumn];
+
+            // String comparison for name
+            if (sortColumn === 'name') {
+                aVal = (aVal as string).toLowerCase();
+                bVal = (bVal as string).toLowerCase();
+                if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            }
+
+            // Numeric comparison
+            const diff = (aVal as number) - (bVal as number);
+            return sortDirection === 'asc' ? diff : -diff;
+        });
+    }, [data, sortColumn, sortDirection]);
+
+    const SortableHeader = ({ column, label, align = 'left' }: { column: SortColumn; label: string; align?: 'left' | 'right' }) => (
+        <th
+            onClick={() => handleSort(column)}
+            className={cn(
+                "px-4 py-3 font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors select-none",
+                align === 'right' && 'text-right'
+            )}
+        >
+            <span className="inline-flex items-center gap-1">
+                {label}
+                {sortColumn === column && (
+                    sortDirection === 'asc'
+                        ? <ArrowUp size={14} className="text-blue-600" />
+                        : <ArrowDown size={14} className="text-blue-600" />
+                )}
+            </span>
+        </th>
+    );
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -91,15 +147,15 @@ export function StockVelocityReport() {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th className="px-4 py-3 font-semibold text-gray-700">Product</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-right">Stock</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-right">30d Sales</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-right">Velocity</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-right">Days Left</th>
+                                <SortableHeader column="name" label="Product" />
+                                <SortableHeader column="stock" label="Stock" align="right" />
+                                <SortableHeader column="soldLast30d" label="30d Sales" align="right" />
+                                <SortableHeader column="dailyVelocity" label="Velocity" align="right" />
+                                <SortableHeader column="daysRemaining" label="Days Left" align="right" />
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {data.map((item) => {
+                            {sortedData.map((item) => {
                                 let statusColor = "bg-gray-100 text-gray-600";
                                 let Icon = Clock;
 
