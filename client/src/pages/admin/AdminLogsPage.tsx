@@ -26,7 +26,7 @@ export function AdminLogsPage() {
 
     const fetchLogs = (currentPage: number, currentLimit: number) => {
         setLoading(true);
-        fetch(`http://localhost:3000/api/admin/logs?page=${currentPage}&limit=${currentLimit}`, {
+        fetch(`/api/admin/logs?page=${currentPage}&limit=${currentLimit}`, {
             headers: { Authorization: `Bearer ${token}` }
         })
             .then(res => res.json())

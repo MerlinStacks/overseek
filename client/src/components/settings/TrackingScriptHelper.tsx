@@ -16,7 +16,7 @@ export function TrackingScriptHelper() {
     // We'll use a "loader" pattern where they copy a snippet that loads our tracking.js from the server.
     // OR we provide the full inline script as described in the plan.
 
-    const apiUrl = window.location.origin; // e.g. https://app.overseek.com or http://localhost:3000
+    const apiUrl = window.location.origin; // e.g. https://overseek.plateit.au or http://localhost:5173
 
     const scriptCode = `
 <!-- OverSeek Analytics Tracking -->

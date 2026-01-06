@@ -22,7 +22,7 @@ export function AdminHelpCenterPage() {
     const [loading, setLoading] = useState(true);
 
     const fetchCollections = () => {
-        fetch('http://localhost:3000/api/help/collections')
+        fetch('/api/help/collections')
             .then(res => res.json())
             .then(data => {
                 setCollections(data);

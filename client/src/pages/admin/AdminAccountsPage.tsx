@@ -32,7 +32,7 @@ export function AdminAccountsPage() {
     const [selectedAccount, setSelectedAccount] = useState<Account | null>(null); // For feature modal
 
     const fetchAccounts = () => {
-        fetch('http://localhost:3000/api/admin/accounts', {
+        fetch('/api/admin/accounts', {
             headers: { Authorization: `Bearer ${token}` }
         })
             .then(res => res.json())
@@ -55,7 +55,7 @@ export function AdminAccountsPage() {
         // The /accounts endpoint includes `_count`, but maybe we should include `users` to find the owner?
         // Let's just fetch users for this account quickly
         try {
-            const usersRes = await fetch(`http://localhost:3000/api/accounts/${accountId}/users`, { // This endpoint allows finding users
+            const usersRes = await fetch(`/api/accounts/${accountId}/users`, { // This endpoint allows finding users
                 headers: { Authorization: `Bearer ${token}` }
             });
             const users = await usersRes.json();
@@ -71,7 +71,7 @@ export function AdminAccountsPage() {
 
             if (!confirm(`Impersonate ${targetUser.fullName || targetUser.email}?`)) return;
 
-            const res = await fetch('http://localhost:3000/api/admin/impersonate', {
+            const res = await fetch('/api/admin/impersonate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -95,7 +95,7 @@ export function AdminAccountsPage() {
 
     const toggleFeature = async (accountId: string, featureKey: string, currentValue: boolean) => {
         try {
-            const res = await fetch(`http://localhost:3000/api/admin/accounts/${accountId}/toggle-feature`, {
+            const res = await fetch(`/api/admin/accounts/${accountId}/toggle-feature`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

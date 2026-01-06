@@ -204,8 +204,8 @@ export class WooService {
             consumerKey: this.consumerKey,
             consumerSecret: this.consumerSecret,
             // @ts-ignore
-            version: "overseek/v1", // Target our custom namespace
-            queryStringAuth: true,
+            version: "overseek/v1" as any, // Target our custom namespace
+            queryStringAuth: false, // Try Basic Auth (Header) which is sometimes more reliable for custom endpoints
             axiosConfig: this.axiosConfig
         });
 

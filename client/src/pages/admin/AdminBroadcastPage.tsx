@@ -19,7 +19,7 @@ export function AdminBroadcastPage() {
         setSuccessMsg('');
 
         try {
-            const res = await fetch('http://localhost:3000/api/admin/broadcast', {
+            const res = await fetch('/api/admin/broadcast', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -15,7 +15,7 @@ export function AdminDashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:3000/api/admin/stats', {
+        fetch('/api/admin/stats', {
             headers: { Authorization: `Bearer ${token}` }
         })
             .then(res => res.json())
