@@ -28,16 +28,14 @@ import { SidebarSyncStatus } from './SidebarSyncStatus';
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: LineChart, label: 'Analytics', path: '/analytics' },
+    { icon: BarChart3, label: 'Reports', path: '/reports' },
     { icon: ShoppingCart, label: 'Orders', path: '/orders' },
     { icon: Package, label: 'Inventory', path: '/inventory' },
     { icon: Users, label: 'Customers', path: '/customers' },
     { icon: MessageSquare, label: 'Inbox', path: '/inbox' },
     { icon: Star, label: 'Reviews', path: '/reviews' },
     { icon: Megaphone, label: 'Marketing', path: '/marketing' },
-
-    { icon: BarChart3, label: 'Reports', path: '/reports' },
     { icon: Shield, label: 'Team', path: '/team' },
-    { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
 export function Sidebar() {
@@ -80,13 +78,13 @@ export function Sidebar() {
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1 no-scrollbar">
+            <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 no-scrollbar">
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) => cn(
-                            "flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group relative",
+                            "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
                             isActive
                                 ? "bg-blue-50 text-blue-600 font-medium"
                                 : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
@@ -109,7 +107,7 @@ export function Sidebar() {
                         <NavLink
                             to="/admin"
                             className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group relative",
+                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
                                 isActive
                                     ? "bg-slate-800 text-white font-medium"
                                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -130,16 +128,36 @@ export function Sidebar() {
 
             <SyncProgressOverlay collapsed={collapsed} />
 
-            <div className="mt-auto">
+            <div className="mt-auto px-3 pb-2 z-10">
+                {/* Settings Link (Pinned Bottom) */}
+                <NavLink
+                    to="/settings"
+                    className={({ isActive }) => cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative mb-2",
+                        isActive
+                            ? "bg-blue-50 text-blue-600 font-medium"
+                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                    )}
+                >
+                    <Settings size={22} strokeWidth={1.5} />
+                    {!collapsed && <span>Settings</span>}
+                    {collapsed && (
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                            Settings
+                        </div>
+                    )}
+                </NavLink>
+
                 <SidebarSyncStatus collapsed={collapsed} />
-                <div className="p-4 border-t border-gray-100">
-                    <button
-                        onClick={() => setCollapsed(!collapsed)}
-                        className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
-                    >
-                        {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
-                    </button>
-                </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100">
+                <button
+                    onClick={() => setCollapsed(!collapsed)}
+                    className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                    {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
+                </button>
             </div>
         </aside>
     );

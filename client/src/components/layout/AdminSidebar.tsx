@@ -52,7 +52,7 @@ export function AdminSidebar() {
                         to={item.path}
                         end={item.path === '/admin'} // Exact match for root
                         className={({ isActive }) => cn(
-                            "flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group relative",
+                            "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
                             isActive
                                 ? "bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20"
                                 : "text-slate-400 hover:bg-slate-800 hover:text-white"
@@ -76,7 +76,7 @@ export function AdminSidebar() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className={cn(
-                        "flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group relative text-slate-400 hover:bg-slate-800 hover:text-white"
+                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative text-slate-400 hover:bg-slate-800 hover:text-white"
                     )}
                 >
                     <Server size={22} strokeWidth={1.5} />
