@@ -6,16 +6,19 @@ WORKDIR /app
 # Install system dependencies
 RUN apk add --no-cache openssl
 
-# Copy package files
+# Copy root package files (needed for workspace dependency resolution)
+COPY package.json package-lock.json ./
 
-# Copy package files
-COPY package*.json ./
+# Copy server package files
+COPY server/package.json ./server/
 
-# Install dependencies
-RUN npm install
+# Install all workspace dependencies
+RUN npm install --workspace=server
 
-# Copy source code
-COPY . .
+# Copy server source code
+COPY server/ ./server/
+
+WORKDIR /app/server
 
 # Generate Prisma Client
 RUN npx prisma generate
@@ -27,6 +30,6 @@ RUN npm run build
 EXPOSE 3000
 
 # Start command
-COPY start.sh .
+COPY server/start.sh .
 RUN apk add --no-cache dos2unix && dos2unix start.sh && chmod +x start.sh
 CMD ["./start.sh"]

@@ -17,8 +17,3 @@ Develop a dedicated WordPress/WooCommerce plugin to manage OverSeek frontend int
 - [ ] **Variations Tab**: Hide when product has no variations
 - [ ] **Purchase Orders**: Add inline supplier creation via popup form
 
-- [ ] **Reviews Matching**: Link reviews to corresponding orders
-
-## 📊 Dashboard Widgets
-- [ ] **Recent Orders Widget**: Fix order number display (remove circle, show above name)
-- [ ] **Ecommerce Stream Widget**: Show product details for cart additions

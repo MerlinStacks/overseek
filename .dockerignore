@@ -1,0 +1,34 @@
+# Ignore node_modules (will be installed in container)
+node_modules
+**/node_modules
+
+# Ignore build outputs
+dist
+**/dist
+.next
+
+# Environment files
+.env
+**/.env
+
+# Logs and uploads
+logs
+**/logs
+uploads
+**/uploads
+coverage
+**/coverage
+
+# Git and IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# Documentation
+README.md
+*.md
+!package.json
+
+# Client (not needed for API build - separate build)
+# client/

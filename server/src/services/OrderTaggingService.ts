@@ -28,7 +28,7 @@ export class OrderTaggingService {
         if (!account?.orderTagMappings) return [];
 
         try {
-            const mappings = account.orderTagMappings as TagMapping[];
+            const mappings = account.orderTagMappings as unknown as TagMapping[];
             return Array.isArray(mappings) ? mappings : [];
         } catch {
             return [];

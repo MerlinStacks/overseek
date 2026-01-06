@@ -40,7 +40,8 @@ services:
   # Node API (Express + Prisma)
   api:
     build:
-      context: ./server
+      context: .
+      dockerfile: server/Dockerfile
     pull_policy: build
     container_name: overseekv2-api-1
     ports:
