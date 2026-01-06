@@ -3,6 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { ShoppingCart, CreditCard, LogOut, CheckCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
+
 interface AnalyticsEvent {
     id: string;
     type: string;
@@ -21,12 +24,17 @@ const EcommerceLogWidget: React.FC = () => {
     const [events, setEvents] = useState<AnalyticsEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
+
     const fetchLog = async () => {
+        if (!token || !currentAccount) return;
+
         try {
             const res = await fetch('/api/analytics/ecommerce/log?limit=20', {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                    'x-account-id': localStorage.getItem('accountId') || ''
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
                 }
             });
             if (res.ok) {

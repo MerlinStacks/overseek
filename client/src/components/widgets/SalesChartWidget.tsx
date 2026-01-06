@@ -67,7 +67,8 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
     }, [currentAccount, token, dateRange, comparison]);
 
     return (
-        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+    return (
+        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[300px] ${className}`}>
             <div className="flex justify-between items-center mb-2">
                 <h3 className="font-semibold text-gray-900">Sales Trend</h3>
                 <BarChart3 size={18} className="text-gray-400" />

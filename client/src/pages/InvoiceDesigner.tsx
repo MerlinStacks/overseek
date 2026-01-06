@@ -39,12 +39,25 @@ export function InvoiceDesigner() {
                     setIsLoading(true);
                     const template: any = await api.get(`/api/invoices/templates/${id}`, token, currentAccount.id);
                     if (template) {
+                        console.log('Template loaded:', template);
                         setName(template.name);
+
+                        let layoutData = template.layout;
+                        // Handle potential double-serialization or stringified JSON
+                        if (typeof layoutData === 'string') {
+                            try {
+                                layoutData = JSON.parse(layoutData);
+                            } catch (e) {
+                                console.error('Failed to parse layout string', e);
+                            }
+                        }
+
                         // The payload saved is { name, layout: { grid, items } }
                         // So template.layout should be { grid, items }
-                        if (template.layout) {
-                            setLayout(template.layout.grid || []);
-                            setItems(template.layout.items || []);
+                        if (layoutData) {
+                            console.log('Restoring layout:', layoutData);
+                            setLayout(layoutData.grid || []);
+                            setItems(layoutData.items || []);
                         }
                     }
                 } catch (err) {

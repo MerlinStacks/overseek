@@ -6,11 +6,10 @@ import { CustomerAnalytics } from '../services/analytics/customer';
 import { AdsService } from '../services/ads';
 import { requireAuth } from '../middleware/auth';
 import { esClient } from '../utils/elastic';
-import { PrismaClient } from '@prisma/client';
-import { AnalyticsService } from '../services/AnalyticsService';
+import { prisma } from '../utils/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient(); // Removed local instantiation
 
 router.use(requireAuth);
 
