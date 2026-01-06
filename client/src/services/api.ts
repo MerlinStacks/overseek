@@ -59,4 +59,7 @@ export const api = {
 
     delete: <T>(endpoint: string, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'DELETE', token, accountId }),
+
+    put: <T>(endpoint: string, data: any, token?: string, accountId?: string) =>
+        request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data), token, accountId }),
 };

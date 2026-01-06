@@ -41,7 +41,9 @@ export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction)
             req.originalUrl.includes('/customers') ||
             req.originalUrl.includes('/products') ||
             req.originalUrl.includes('/marketing') ||
-            req.originalUrl.includes('/orders') // Added orders to strict enforcement
+            req.originalUrl.includes('/orders') || // Added orders to strict enforcement
+            req.originalUrl.includes('/analytics') ||
+            req.originalUrl.includes('/woo/configure')
         )) {
             return res.status(400).json({ error: 'No account selected' });
         }

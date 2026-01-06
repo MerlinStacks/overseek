@@ -7,6 +7,7 @@ export class AnalyticsService {
      * Get Visitor Log (Real-time Traffic)
      */
     static async getVisitorLog(accountId: string, page = 1, limit = 50) {
+        if (!accountId) throw new Error("Account ID is required");
         const skip = (page - 1) * limit;
 
         const [data, total] = await Promise.all([

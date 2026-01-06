@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { Save, Layout, Type, Image as ImageIcon, Table, DollarSign, ArrowLeft } from 'lucide-react';
+import { Save, Layout, Type, Image as ImageIcon, Table, DollarSign, ArrowLeft, Loader2 } from 'lucide-react';
+import { api } from '../services/api';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
@@ -28,14 +29,33 @@ export function InvoiceDesigner() {
     const [layout, setLayout] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]); // Store component config (e.g. text content)
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
 
     // Initial Load
     useEffect(() => {
-        if (id && currentAccount) {
-            // Fetch existing
-            // fetch(`/api/invoices/templates/${id}`)...
-        }
-    }, [id, currentAccount]);
+        const fetchTemplate = async () => {
+            if (id && currentAccount) {
+                try {
+                    setIsLoading(true);
+                    const template: any = await api.get(`/api/invoices/templates/${id}`, token, currentAccount.id);
+                    if (template) {
+                        setName(template.name);
+                        // The payload saved is { name, layout: { grid, items } }
+                        // So template.layout should be { grid, items }
+                        if (template.layout) {
+                            setLayout(template.layout.grid || []);
+                            setItems(template.layout.items || []);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to load template", err);
+                } finally {
+                    setIsLoading(false);
+                }
+            }
+        };
+        fetchTemplate();
+    }, [id, currentAccount, token]);
 
     const handleDrop = (layout: any, layoutItem: any, _event: any) => {
         // The item passed here is dummy. We need to identify what was dropped.
@@ -47,8 +67,12 @@ export function InvoiceDesigner() {
     const addItem = (type: string) => {
         // Simple fallback for unique ID if crypto.randomUUID is not available (e.g. non-secure context)
         const generateId = () => {
-            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-                return crypto.randomUUID();
+            try {
+                if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                    return crypto.randomUUID();
+                }
+            } catch (e) {
+                // Ignore
             }
             return Date.now().toString(36) + Math.random().toString(36).substr(2);
         };
@@ -72,23 +96,51 @@ export function InvoiceDesigner() {
     };
 
     const saveTemplate = async () => {
-        // Save logic
-        const payload = {
-            name,
-            layout: {
-                grid: layout,
-                items: items
+        if (!currentAccount) return;
+        setIsLoading(true);
+        try {
+            const payload = {
+                name,
+                layout: {
+                    grid: layout,
+                    items: items
+                }
+            };
+
+            if (id) {
+                await api.put(`/api/invoices/templates/${id}`, payload, token, currentAccount.id);
+            } else {
+                const newTemplate: any = await api.post(`/api/invoices/templates`, payload, token, currentAccount.id);
+                if (newTemplate && newTemplate.id) {
+                    // Update URL without full reload if possible, but navigate works
+                    navigate(`/invoices/templates/${newTemplate.id}`, { replace: true });
+                }
             }
-        };
-        console.log('Saving', payload);
-        // Post to API (to be implemented)
+            // Simple notification - could be replaced with toast
+            console.log('Template saved successfully');
+        } catch (err) {
+            console.error('Failed to save template', err);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const renderItemContent = (itemConfig: any) => {
         switch (itemConfig.type) {
             case 'text':
-                return <div className="p-2 h-full border-2 border-transparent hover:border-blue-200">
-                    <p>{itemConfig.content}</p>
+                return <div className="p-2 h-full overflow-hidden">
+                    <p className="whitespace-pre-wrap">{itemConfig.content || 'Text Block'}</p>
+                </div>;
+            case 'image':
+                return <div className="w-full h-full flex items-center justify-center overflow-hidden bg-gray-50">
+                    {itemConfig.content ? (
+                        <img src={itemConfig.content} alt="Invoice" className="w-full h-full object-contain" />
+                    ) : (
+                        <div className="text-gray-400 flex flex-col items-center">
+                            <ImageIcon size={24} />
+                            <span className="text-xs mt-1">No Image</span>
+                        </div>
+                    )}
                 </div>;
             case 'order_table':
                 return <div className="p-2 h-full bg-gray-50 flex items-center justify-center border-2 border-dashed border-gray-300">
@@ -121,8 +173,9 @@ export function InvoiceDesigner() {
                         />
                     </div>
                 </div>
-                <button onClick={saveTemplate} className="btn-primary flex items-center gap-2">
-                    <Save size={16} /> Save Template
+                <button onClick={saveTemplate} disabled={isLoading} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+                    {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    {isLoading ? 'Saving...' : 'Save Template'}
                 </button>
             </div>
 
@@ -170,8 +223,16 @@ export function InvoiceDesigner() {
                         >
                             {layout.map(l => {
                                 const itemConfig = items.find(i => i.id === l.i);
+                                const isSelected = selectedId === l.i;
                                 return (
-                                    <div key={l.i} className="bg-white border group hover:border-blue-400 relative">
+                                    <div
+                                        key={l.i}
+                                        className={`bg-white border group relative ${isSelected ? 'border-blue-600 ring-1 ring-blue-600 z-10' : 'hover:border-blue-400'}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedId(l.i);
+                                        }}
+                                    >
                                         {/* Drag Handle */}
                                         <div className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 cursor-move bg-gray-100 z-10">
                                             <Layout size={12} />
@@ -184,8 +245,81 @@ export function InvoiceDesigner() {
                     </div>
                 </div>
 
-                {/* Properties Panel (Optional, right side) */}
-                {/* <div className="w-64 bg-white border-l p-4">Properties</div> */}
+                {/* Properties Panel */}
+                {selectedId && (
+                    <div className="w-80 bg-white border-l p-4 overflow-y-auto shadow-xl z-20">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-semibold text-gray-700">Properties</h3>
+                            <button onClick={() => setSelectedId(null)} className="text-gray-400 hover:text-gray-600">
+                                &times;
+                            </button>
+                        </div>
+
+                        {(() => {
+                            const selectedItem = items.find(i => i.id === selectedId);
+                            if (!selectedItem) return null;
+
+                            const updateContent = (newContent: string) => {
+                                setItems(prev => prev.map(i => i.id === selectedId ? { ...i, content: newContent } : i));
+                            };
+
+                            const deleteItem = () => {
+                                setLayout(prev => prev.filter(l => l.i !== selectedId));
+                                setItems(prev => prev.filter(i => i.id !== selectedId));
+                                setSelectedId(null);
+                            };
+
+                            return (
+                                <div className="space-y-4">
+                                    <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">
+                                        Type: {selectedItem.type}
+                                    </div>
+
+                                    {selectedItem.type === 'text' && (
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Content</label>
+                                            <textarea
+                                                className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                rows={4}
+                                                value={selectedItem.content}
+                                                onChange={e => updateContent(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {selectedItem.type === 'image' && (
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Image URL</label>
+                                            <input
+                                                type="text"
+                                                className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                placeholder="https://..."
+                                                value={selectedItem.content}
+                                                onChange={e => updateContent(e.target.value)}
+                                            />
+                                            <p className="text-xs text-gray-400 mt-1">Enter a direct link to an image.</p>
+                                        </div>
+                                    )}
+
+                                    {selectedItem.type === 'order_table' && (
+                                        <div className="p-3 bg-yellow-50 text-yellow-800 text-xs rounded">
+                                            Table columns usually auto-configured.
+                                        </div>
+                                    )}
+
+                                    <div className="pt-4 border-t mt-4">
+                                        <button
+                                            onClick={deleteItem}
+                                            className="w-full py-2 px-4 bg-red-50 text-red-600 rounded hover:bg-red-100 text-sm font-medium transition-colors"
+                                        >
+                                            Delete Item
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
             </div>
         </div>
     );

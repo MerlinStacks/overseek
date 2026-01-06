@@ -52,6 +52,8 @@ export class WooService {
     }
 
     static async forAccount(accountId: string) {
+        if (!accountId) throw new Error("Account ID is required");
+
         const account = await prisma.account.findUnique({
             where: { id: accountId }
         });
