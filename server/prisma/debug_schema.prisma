@@ -1,0 +1,684 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  email                 String            @unique
+  passwordHash          String
+  fullName              String?
+  avatarUrl             String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  isSuperAdmin          Boolean           @default(false)
+  shiftEnd              String?
+  shiftStart            String?
+  accounts              AccountUser[]
+  auditLogs             AuditLog[]
+  assignedConversations Conversation[]
+  dashboards            DashboardLayout[]
+}
+
+model Account {
+  id                   String                @id @default(uuid())
+  name                 String
+  domain               String?
+  wooUrl               String
+  wooConsumerKey       String
+  wooConsumerSecret    String
+  currency             String                @default("USD")
+  timezone             String                @default("UTC")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  aiModel              String?               @default("mistralai/mistral-7b-instruct")
+  openRouterApiKey     String?
+  appearance           Json?                 @default("{}")
+  goldPrice            Decimal?              @default(0) @db.Decimal(10, 2)
+  goldPriceCurrency    String?               @default("USD")
+  webhookSecret        String?
+  dimensionUnit        String                @default("cm")
+  weightUnit           String                @default("kg")
+  features             AccountFeature[]
+  users                AccountUser[]
+  adAccounts           AdAccount[]
+  AnalyticsSession     AnalyticsSession[]
+  auditLogs            AuditLog[]
+  cannedResponses      CannedResponse[]
+  conversations        Conversation[]
+  segments             CustomerSegment[]
+  dashboards           DashboardLayout[]
+  emailAccounts        EmailAccount[]
+  emailTemplates       EmailTemplate[]
+  inventorySettings    InventorySettings?
+  marketingAutomations MarketingAutomation[]
+  marketingCampaigns   MarketingCampaign[]
+  Notification         Notification[]
+  purchaseOrders       PurchaseOrder[]
+  reportSchedules      ReportSchedule[]
+  reportTemplates      ReportTemplate[]
+  Supplier             Supplier[]
+  SyncLog              SyncLog[]
+  SyncState            SyncState[]
+  WooCustomer          WooCustomer[]
+  WooOrder             WooOrder[]
+  WooProduct           WooProduct[]
+  WooReview            WooReview[]
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  accountId String
+  title     String
+  message   String
+  type      String   @default("INFO")
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, isRead])
+}
+
+model AccountUser {
+  id          String   @id @default(uuid())
+  userId      String
+  accountId   String
+  role        Role     @default(STAFF)
+  permissions Json?    @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  account     Account  @relation(fields: [accountId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, accountId])
+}
+
+model AccountFeature {
+  id         String   @id @default(uuid())
+  accountId  String
+  featureKey String
+  isEnabled  Boolean  @default(false)
+  config     Json?    @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  account    Account  @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId, featureKey])
+}
+
+model WidgetDefinition {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  name          String
+  description   String?
+  category      String
+  defaultConfig Json?    @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model DashboardLayout {
+  id        String            @id @default(uuid())
+  userId    String
+  accountId String
+  name      String            @default("Main Dashboard")
+  isDefault Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  account   Account           @relation(fields: [accountId], references: [id])
+  user      User              @relation(fields: [userId], references: [id])
+  widgets   DashboardWidget[]
+}
+
+model DashboardWidget {
+  id          String          @id @default(uuid())
+  dashboardId String
+  widgetKey   String
+  position    Json
+  settings    Json?           @default("{}")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  dashboard   DashboardLayout @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+}
+
+model SyncState {
+  id           String    @id @default(uuid())
+  accountId    String
+  entityType   String
+  lastSyncedAt DateTime?
+  cursor       String?
+  updatedAt    DateTime  @updatedAt
+  account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, entityType])
+}
+
+model SyncLog {
+  id             String    @id @default(uuid())
+  accountId      String
+  entityType     String
+  status         String
+  itemsProcessed Int       @default(0)
+  errorMessage   String?
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  account        Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, startedAt])
+}
+
+model WooOrder {
+  id           String      @id @default(uuid())
+  accountId    String
+  wooId        Int
+  number       String
+  status       String
+  currency     String
+  total        Decimal     @db.Decimal(10, 2)
+  rawData      Json
+  dateCreated  DateTime
+  dateModified DateTime
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  account      Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reviews      WooReview[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, dateCreated])
+}
+
+model WooProduct {
+  id                   String              @id @default(uuid())
+  accountId            String
+  wooId                Int
+  name                 String
+  sku                  String?
+  price                Decimal?            @db.Decimal(10, 2)
+  stockStatus          String?
+  permalink            String?
+  mainImage            String?
+  rawData              Json
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  binLocation          String?
+  merchantCenterIssues Json?               @default("[]")
+  merchantCenterScore  Int?                @default(0)
+  seoData              Json?               @default("{}")
+  seoScore             Int?                @default(0)
+  height               Decimal?            @db.Decimal(10, 2)
+  isGoldPriceApplied   Boolean             @default(false)
+  length               Decimal?            @db.Decimal(10, 2)
+  weight               Decimal?            @db.Decimal(10, 4)
+  width                Decimal?            @db.Decimal(10, 2)
+  cogs                 Decimal?            @db.Decimal(10, 2)
+  images               Json?               @default("[]")
+  supplierId           String?
+  boms                 BOM[]
+  usedInBOMItems       BOMItem[]           @relation("ProductAsBOMComponent")
+  purchaseOrderItems   PurchaseOrderItem[]
+  account              Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  supplier             Supplier?           @relation(fields: [supplierId], references: [id])
+
+  @@unique([accountId, wooId])
+}
+
+model Supplier {
+  id              String          @id @default(uuid())
+  accountId       String
+  name            String
+  contactName     String?
+  email           String?
+  phone           String?
+  currency        String          @default("USD")
+  leadTimeMin     Int?
+  leadTimeMax     Int?
+  paymentTerms    String?
+  leadTimeDefault Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  purchaseOrders  PurchaseOrder[]
+  account         Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  items           SupplierItem[]
+  products        WooProduct[]
+
+  @@index([accountId])
+}
+
+model SupplierItem {
+  id                 String              @id @default(uuid())
+  supplierId         String
+  name               String
+  sku                String?
+  cost               Decimal             @db.Decimal(10, 2)
+  leadTime           Int?
+  moq                Int                 @default(1)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  bomItems           BOMItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+}
+
+model BOM {
+  id          String     @id @default(uuid())
+  productId   String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  variationId Int        @default(0)
+  product     WooProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items       BOMItem[]
+
+  @@unique([productId, variationId])
+}
+
+model BOMItem {
+  id             String        @id @default(uuid())
+  bomId          String
+  supplierItemId String?
+  quantity       Decimal       @db.Decimal(10, 4)
+  wasteFactor    Decimal       @default(0) @db.Decimal(5, 4)
+  childProductId String?
+  bom            BOM           @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  childProduct   WooProduct?   @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
+  supplierItem   SupplierItem? @relation(fields: [supplierItemId], references: [id])
+}
+
+model PurchaseOrder {
+  id           String              @id @default(uuid())
+  accountId    String
+  supplierId   String
+  orderNumber  String?
+  status       String              @default("DRAFT")
+  orderDate    DateTime?
+  expectedDate DateTime?
+  totalAmount  Decimal?            @db.Decimal(10, 2)
+  notes        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  account      Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  items        PurchaseOrderItem[]
+
+  @@index([accountId, status])
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  productId       String?
+  supplierItemId  String?
+  name            String
+  sku             String?
+  quantity        Int
+  unitCost        Decimal       @db.Decimal(10, 2)
+  totalCost       Decimal       @db.Decimal(10, 2)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  product         WooProduct?   @relation(fields: [productId], references: [id])
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  supplierItem    SupplierItem? @relation(fields: [supplierItemId], references: [id])
+}
+
+model AdAccount {
+  id           String   @id @default(uuid())
+  accountId    String
+  platform     String
+  externalId   String?
+  name         String?
+  accessToken  String
+  refreshToken String?
+  currency     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  account      Account  @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+}
+
+model WooCustomer {
+  id            String         @id @default(uuid())
+  accountId     String
+  wooId         Int
+  email         String
+  firstName     String?
+  lastName      String?
+  totalSpent    Decimal        @db.Decimal(10, 2)
+  ordersCount   Int
+  rawData       Json
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reviews       WooReview[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, email])
+}
+
+model WooReview {
+  id            String       @id @default(uuid())
+  accountId     String
+  wooId         Int
+  productId     Int
+  productName   String?
+  reviewer      String
+  rating        Int
+  content       String
+  status        String
+  dateCreated   DateTime
+  rawData       Json
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  reviewerEmail String?
+  wooCustomerId String?
+  wooOrderId    String?
+  account       Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  customer      WooCustomer? @relation(fields: [wooCustomerId], references: [id])
+  order         WooOrder?    @relation(fields: [wooOrderId], references: [id])
+
+  @@unique([accountId, wooId])
+}
+
+model Conversation {
+  id            String         @id @default(uuid())
+  accountId     String
+  wooCustomerId String?
+  status        String         @default("OPEN")
+  priority      String         @default("MEDIUM")
+  assignedTo    String?
+  visitorToken  String?
+  mergedIntoId  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  assignee      User?          @relation(fields: [assignedTo], references: [id])
+  mergedInto    Conversation?  @relation("ConversationMerges", fields: [mergedIntoId], references: [id])
+  mergedFrom    Conversation[] @relation("ConversationMerges")
+  wooCustomer   WooCustomer?   @relation(fields: [wooCustomerId], references: [id])
+  messages      Message[]
+
+  @@index([accountId, status])
+  @@index([visitorToken])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  content        String
+  contentType    String       @default("TEXT")
+  senderType     String
+  senderId       String?
+  isInternal     Boolean      @default(false)
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model CannedResponse {
+  id        String   @id @default(uuid())
+  accountId String
+  shortcut  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, shortcut])
+}
+
+model HelpCollection {
+  id          String        @id @default(uuid())
+  title       String
+  description String?
+  slug        String        @unique
+  icon        String?
+  order       Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  articles    HelpArticle[]
+}
+
+model HelpArticle {
+  id           String         @id @default(uuid())
+  collectionId String
+  title        String
+  slug         String         @unique
+  content      String
+  excerpt      String?
+  isPublished  Boolean        @default(true)
+  viewCount    Int            @default(0)
+  order        Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  collection   HelpCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId])
+}
+
+model EmailTemplate {
+  id         String   @id @default(uuid())
+  accountId  String
+  name       String
+  subject    String?
+  content    String
+  designJson Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, name])
+}
+
+model MarketingCampaign {
+  id              String           @id @default(uuid())
+  accountId       String
+  name            String
+  subject         String
+  content         String
+  status          String           @default("DRAFT")
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  recipientsCount Int              @default(0)
+  sentCount       Int              @default(0)
+  openedCount     Int              @default(0)
+  clickedCount    Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  designJson      Json?
+  segmentId       String?
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  segment         CustomerSegment? @relation(fields: [segmentId], references: [id])
+}
+
+model MarketingAutomation {
+  id             String                 @id @default(uuid())
+  accountId      String
+  name           String
+  isActive       Boolean                @default(false)
+  triggerType    String
+  triggerConfig  Json?                  @default("{}")
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  flowDefinition Json?                  @default("{}")
+  status         String                 @default("PAUSED")
+  enrollments    AutomationEnrollment[]
+  steps          AutomationStep[]
+  account        Account                @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model AutomationStep {
+  id           String              @id @default(uuid())
+  automationId String
+  stepOrder    Int
+  type         String
+  config       Json
+  automation   MarketingAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+}
+
+model AutomationEnrollment {
+  id            String              @id @default(uuid())
+  automationId  String
+  wooCustomerId Int?
+  email         String
+  contextData   Json?
+  status        String              @default("ACTIVE")
+  nextRunAt     DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  currentNodeId String?
+  automation    MarketingAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId, status, nextRunAt])
+}
+
+model AnalyticsSession {
+  id                          String           @id @default(uuid())
+  accountId                   String
+  visitorId                   String
+  ipAddress                   String?
+  userAgent                   String?
+  country                     String?
+  city                        String?
+  deviceType                  String?
+  browser                     String?
+  os                          String?
+  referrer                    String?
+  utmSource                   String?
+  utmMedium                   String?
+  utmCampaign                 String?
+  currentPath                 String?
+  lastActiveAt                DateTime         @default(now())
+  cartValue                   Decimal          @default(0) @db.Decimal(10, 2)
+  cartItems                   Json?            @default("[]")
+  currency                    String           @default("USD")
+  wooCustomerId               Int?
+  email                       String?
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  abandonedNotificationSentAt DateTime?
+  events                      AnalyticsEvent[]
+  account                     Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, visitorId])
+  @@index([accountId, lastActiveAt])
+  @@index([accountId, cartValue])
+}
+
+model AnalyticsEvent {
+  id        String           @id @default(uuid())
+  sessionId String
+  type      String
+  url       String
+  pageTitle String?
+  payload   Json?
+  createdAt DateTime         @default(now())
+  session   AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model EmailAccount {
+  id        String   @id @default(uuid())
+  accountId String
+  name      String
+  email     String
+  host      String
+  port      Int
+  username  String
+  password  String
+  isSecure  Boolean  @default(true)
+  type      String   @default("SMTP")
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+model CustomerSegment {
+  id          String              @id @default(uuid())
+  accountId   String
+  name        String
+  description String?
+  criteria    Json
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  account     Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  campaigns   MarketingCampaign[]
+
+  @@unique([accountId, name])
+}
+
+model ReportTemplate {
+  id        String           @id @default(uuid())
+  accountId String
+  name      String
+  config    Json
+  type      String           @default("CUSTOM")
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  schedules ReportSchedule[]
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+model ReportSchedule {
+  id               String         @id @default(uuid())
+  reportTemplateId String
+  accountId        String
+  frequency        String
+  dayOfWeek        Int?
+  dayOfMonth       Int?
+  time             String         @default("09:00")
+  emailRecipients  String[]
+  isActive         Boolean        @default(true)
+  lastRunAt        DateTime?
+  nextRunAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  account          Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  template         ReportTemplate @relation(fields: [reportTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  accountId  String
+  userId     String?
+  action     String
+  resource   String
+  resourceId String
+  details    Json
+  createdAt  DateTime @default(now())
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([accountId, resource, resourceId])
+  @@index([accountId, createdAt])
+}
+
+model InventorySettings {
+  id                    String   @id @default(uuid())
+  accountId             String   @unique
+  lowStockThresholdDays Int      @default(14)
+  alertEmails           String[]
+  isEnabled             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  account               Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+  VIEWER
+}
