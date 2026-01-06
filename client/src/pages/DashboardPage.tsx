@@ -245,17 +245,19 @@ export function DashboardPage() {
             >
                 {widgets.map(w => (
                     <div key={w.id} className="bg-transparent h-full relative group">
-                        {/* Drag Handle Overlay */}
-                        <div className="drag-handle absolute top-2 right-2 p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 rounded z-10 hover:bg-white text-gray-500">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
+                        {/* Widget Controls - positioned above widget content */}
+                        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }}
+                                className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded hover:bg-red-50 hover:text-red-500 text-gray-400 pointer-events-auto shadow-sm"
+                                title="Remove Widget"
+                            >
+                                <X size={14} />
+                            </button>
+                            <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded text-gray-500 pointer-events-auto shadow-sm hover:bg-white">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
+                            </div>
                         </div>
-                        <button
-                            onClick={() => removeWidget(w.id)}
-                            className="absolute top-2 right-8 p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 rounded z-10 hover:bg-red-50 hover:text-red-500 text-gray-400"
-                            title="Remove Widget"
-                        >
-                            <X size={14} />
-                        </button>
                         {renderWidget(w.widgetKey, {
                             settings: w.settings,
                             className: "h-full",

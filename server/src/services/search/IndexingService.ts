@@ -88,6 +88,7 @@ export class IndexingService {
                 total: { type: 'float' },
                 currency: { type: 'keyword' },
                 date_created: { type: 'date' },
+                tags: { type: 'keyword' },
                 billing: { properties: { first_name: { type: 'text' }, last_name: { type: 'text' }, email: { type: 'keyword' } } },
                 line_items: {
                     type: 'nested',
@@ -211,7 +212,7 @@ export class IndexingService {
         });
     }
 
-    static async indexOrder(accountId: string, order: any) {
+    static async indexOrder(accountId: string, order: any, tags: string[] = []) {
         await this.createIndexIfNotExists('orders', {
             properties: {
                 accountId: { type: 'keyword' },
@@ -220,6 +221,7 @@ export class IndexingService {
                 total: { type: 'float' },
                 currency: { type: 'keyword' },
                 date_created: { type: 'date' },
+                tags: { type: 'keyword' },
                 billing: { properties: { first_name: { type: 'text' }, last_name: { type: 'text' }, email: { type: 'keyword' } } },
                 line_items: {
                     type: 'nested',
@@ -251,6 +253,7 @@ export class IndexingService {
                 total: parseFloat(order.total),
                 currency: order.currency,
                 date_created: order.date_created,
+                tags: tags || [],
                 billing: order.billing,
                 line_items: order.line_items?.map((item: any) => ({
                     name: item.name,

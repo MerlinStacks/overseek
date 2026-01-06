@@ -165,18 +165,45 @@ router.get('/orders/search', async (req: AuthenticatedRequest, res: Response) =>
     const accountId = req.headers['x-account-id'] as string || req.query.accountId as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
-    const { q } = req.query;
+    const { q, tags: tagsParam } = req.query;
+
+    // Parse tags from comma-separated string or array
+    let tags: string[] | undefined;
+    if (tagsParam) {
+        if (Array.isArray(tagsParam)) {
+            tags = tagsParam as string[];
+        } else if (typeof tagsParam === 'string') {
+            tags = tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+        }
+    }
 
     if (!accountId) {
         return res.status(400).json({ error: 'accountId is required' });
     }
 
     try {
-        const results = await SearchQueryService.searchOrders(accountId, q as string, page, limit);
+        const results = await SearchQueryService.searchOrders(accountId, q as string, page, limit, tags);
         res.json(results);
     } catch (error) {
         Logger.error('Search failed', { error });
         res.status(500).json({ error: 'Search failed' });
+    }
+});
+
+// Get unique order tags for an account
+router.get('/orders/tags', async (req: AuthenticatedRequest, res: Response) => {
+    const accountId = req.headers['x-account-id'] as string || req.query.accountId as string;
+
+    if (!accountId) {
+        return res.status(400).json({ error: 'accountId is required' });
+    }
+
+    try {
+        const tags = await SearchQueryService.getOrderTags(accountId);
+        res.json({ tags });
+    } catch (error) {
+        Logger.error('Failed to fetch order tags', { error });
+        res.status(500).json({ error: 'Failed to fetch order tags' });
     }
 });
 

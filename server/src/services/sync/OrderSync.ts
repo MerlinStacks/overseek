@@ -2,6 +2,7 @@ import { BaseSync } from './BaseSync';
 import { WooService } from '../woo';
 import { PrismaClient } from '@prisma/client';
 import { IndexingService } from '../search/IndexingService';
+import { OrderTaggingService } from '../OrderTaggingService';
 import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 
@@ -78,9 +79,10 @@ export class OrderSync extends BaseSync {
                 // Generic Synced Event
                 EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order });
 
-                // Index into Elasticsearch
+                // Index into Elasticsearch (with tags)
                 try {
-                    await IndexingService.indexOrder(accountId, order);
+                    const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order);
+                    await IndexingService.indexOrder(accountId, order, tags);
                 } catch (error: any) {
                     Logger.warn(`Failed to index order ${order.id}`, { accountId, error: error.message });
                 }

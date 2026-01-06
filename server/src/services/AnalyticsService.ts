@@ -5,6 +5,7 @@ export class AnalyticsService {
 
     /**
      * Get Visitor Log (Real-time Traffic)
+     * Includes last 10 events per session for action display
      */
     static async getVisitorLog(accountId: string, page = 1, limit = 50) {
         if (!accountId) throw new Error("Account ID is required");
@@ -19,6 +20,17 @@ export class AnalyticsService {
                 include: {
                     _count: {
                         select: { events: true }
+                    },
+                    events: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 10,
+                        select: {
+                            id: true,
+                            type: true,
+                            url: true,
+                            pageTitle: true,
+                            createdAt: true
+                        }
                     }
                 }
             }),

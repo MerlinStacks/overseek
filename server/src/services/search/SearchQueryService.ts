@@ -82,9 +82,14 @@ export class SearchQueryService {
         }
     }
 
-    static async searchOrders(accountId: string, query?: string, page: number = 1, limit: number = 50) {
+    static async searchOrders(accountId: string, query?: string, page: number = 1, limit: number = 50, tags?: string[]) {
         try {
             const must: any[] = [{ term: { accountId } }];
+
+            // Tag filter
+            if (tags && tags.length > 0) {
+                must.push({ terms: { tags: tags } });
+            }
 
             if (query && query.trim().length > 0) {
                 must.push({
@@ -157,6 +162,32 @@ export class SearchQueryService {
 
         } catch (error) {
             Logger.error('Order Search Error', { error });
+            return [];
+        }
+    }
+
+    /**
+     * Get all unique tags for orders in an account using ES aggregation
+     */
+    static async getOrderTags(accountId: string): Promise<string[]> {
+        try {
+            const result = await esClient.search({
+                index: 'orders',
+                size: 0,
+                body: {
+                    query: { term: { accountId } },
+                    aggs: {
+                        unique_tags: {
+                            terms: { field: 'tags', size: 500 }
+                        }
+                    }
+                }
+            });
+
+            const buckets = (result.aggregations as any)?.unique_tags?.buckets || [];
+            return buckets.map((b: any) => b.key);
+        } catch (error) {
+            Logger.error('Get Order Tags Error', { error });
             return [];
         }
     }
