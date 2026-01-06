@@ -59,8 +59,26 @@ router.post('/configure', async (req: Request, res: Response) => {
 
         res.json({ success: true, plugin_response: result });
     } catch (error: any) {
-        console.error('Woo Configuration Error:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to configure plugin' });
+        const errorDetails = {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            headers: error.response?.headers,
+            config: {
+                url: error.config?.url,
+                method: error.config?.method,
+                baseURL: error.config?.baseURL
+            }
+        };
+        console.error('Woo Configuration Error:', JSON.stringify(errorDetails, null, 2));
+        // Write to a temporary debug file
+        require('fs').writeFileSync('debug_woo_error.json', JSON.stringify(errorDetails, null, 2));
+
+        res.status(500).json({
+            error: 'Failed to configure plugin',
+            details: error.message,
+            woo_response: error.response?.data
+        });
     }
 });
 
