@@ -7,6 +7,14 @@ import { IndexingService } from '../search/IndexingService';
 
 const prisma = new PrismaClient();
 
+// Type for order matching results
+interface OrderMatchResult {
+    orderId: string;
+    orderNumber: string;
+    score: number;
+    daysDiff: number;
+}
+
 export class ReviewSync extends BaseSync {
     protected entityType = 'reviews';
 
@@ -37,38 +45,99 @@ export class ReviewSync extends BaseSync {
                     if (customer) wooCustomerId = customer.id;
                 }
 
-                // 2. Find Order
+                // 2. Find Order - Improved matching algorithm
                 let wooOrderId: string | null = null;
-                if (wooCustomerId && r.product_id) {
-                    const customer = await prisma.wooCustomer.findUnique({ where: { id: wooCustomerId } });
+                const reviewDate = new Date(r.date_created);
+                const lookbackDate = new Date(reviewDate);
+                lookbackDate.setDate(lookbackDate.getDate() - 180); // 180-day lookback window
 
-                    if (customer) {
-                        // Optimisation: Fetch orders around the review date or just recent ones.
-                        // Since we don't have a direct relational link, we search for orders 
-                        // created BEFORE the review date.
-                        const orders = await prisma.wooOrder.findMany({
-                            where: {
-                                accountId,
-                                dateCreated: { lte: new Date(r.date_created) }
-                            },
-                            orderBy: { dateCreated: 'desc' },
-                            take: 50 // Check last 50 orders before review
-                        });
+                // Get potential matching orders based on date range and product
+                // We'll query orders that:
+                // 1. Were created before the review date
+                // 2. Are within the lookback window
+                // Then filter by customer/email and product match
 
-                        // Filter in memory for customer ownership and product presence
-                        const match = orders.find(o => {
-                            const data = o.rawData as any;
-                            // Check if order belongs to customer (by ID or Email)
-                            const isCustomerOrder = (data.customer_id === customer.wooId) || (data.billing?.email === customer.email);
+                const potentialOrders = await prisma.wooOrder.findMany({
+                    where: {
+                        accountId,
+                        dateCreated: {
+                            gte: lookbackDate,
+                            lte: reviewDate
+                        }
+                    },
+                    orderBy: { dateCreated: 'desc' }
+                });
 
-                            if (!isCustomerOrder) return false;
+                // Find the best matching order
+                // Priority: Exact customer match > Email match > Guest email match
+                // Secondary: Closest to review date
 
-                            const items = data.line_items;
-                            return Array.isArray(items) && items.some((i: any) => i.product_id === r.product_id);
-                        });
+                const matches: OrderMatchResult[] = [];
 
-                        if (match) wooOrderId = match.id;
+                for (const order of potentialOrders) {
+                    const data = order.rawData as any;
+                    const lineItems = data.line_items || [];
+
+                    // Check if order contains the reviewed product (or its variation)
+                    const hasProduct = lineItems.some((item: any) => {
+                        // Exact product match
+                        if (item.product_id === r.product_id) return true;
+                        // Variation match - if reviewed product is the parent
+                        if (item.variation_id && item.product_id === r.product_id) return true;
+                        // Variation match - if reviewed product ID matches a variation's parent
+                        // WooCommerce stores parent ID in product_id for variations
+                        return false;
+                    });
+
+                    if (!hasProduct) continue;
+
+                    // Check customer/email match
+                    let matchScore = 0;
+                    const orderEmail = data.billing?.email?.toLowerCase();
+                    const orderCustomerId = data.customer_id;
+
+                    // Priority 1: Exact WooCommerce customer ID match
+                    if (wooCustomerId) {
+                        const customer = await prisma.wooCustomer.findUnique({ where: { id: wooCustomerId } });
+                        if (customer && orderCustomerId === customer.wooId) {
+                            matchScore = 100; // Highest priority
+                        } else if (customer && orderEmail === customer.email?.toLowerCase()) {
+                            matchScore = 90; // Email match via customer record
+                        }
                     }
+
+                    // Priority 2: Direct email match (for guests or unlinked customers)
+                    if (matchScore === 0 && reviewerEmail && orderEmail === reviewerEmail.toLowerCase()) {
+                        matchScore = 80; // Direct email match
+                    }
+
+                    if (matchScore > 0) {
+                        const daysDiff = Math.abs(
+                            (reviewDate.getTime() - new Date(order.dateCreated).getTime()) / (1000 * 60 * 60 * 24)
+                        );
+                        matches.push({
+                            orderId: order.id,
+                            orderNumber: order.number,
+                            score: matchScore,
+                            daysDiff
+                        });
+                    }
+                }
+
+                // Sort by score (highest first), then by date proximity (closest first)
+                matches.sort((a, b) => {
+                    if (b.score !== a.score) return b.score - a.score;
+                    return a.daysDiff - b.daysDiff;
+                });
+
+                if (matches.length > 0) {
+                    wooOrderId = matches[0].orderId;
+                    Logger.debug(`Matched review ${r.id} to order ${matches[0].orderNumber}`, {
+                        accountId,
+                        matchScore: matches[0].score,
+                        daysDiff: matches[0].daysDiff.toFixed(1),
+                        totalMatches: matches.length
+                    });
                 }
 
                 const existingReview = await prisma.wooReview.findUnique({
@@ -107,7 +176,6 @@ export class ReviewSync extends BaseSync {
                 EventBus.emit(EVENTS.REVIEW.SYNCED, { accountId, review: r });
 
                 // Detect "Review Left" for triggers
-                const reviewDate = new Date(r.date_created);
                 const isRecent = (new Date().getTime() - reviewDate.getTime()) < 24 * 60 * 60 * 1000;
 
                 if (isRecent && !existingReview) {

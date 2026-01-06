@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import './SessionManager.css';
 
 interface Session {
@@ -12,14 +13,16 @@ interface Session {
 }
 
 export const SessionManager: React.FC = () => {
+    const { token } = useAuth();
     const [sessions, setSessions] = useState<Session[]>([]);
     const [loading, setLoading] = useState(true);
     const [revoking, setRevoking] = useState<string | null>(null);
 
     const fetchSessions = async () => {
+        if (!token) return; // Don't fetch without auth token
         try {
             setLoading(true);
-            const data = await api.get<Session[]>('/api/sessions');
+            const data = await api.get<Session[]>('/api/sessions', token);
             setSessions(data);
         } catch (error) {
             console.error('Failed to fetch sessions:', error);
@@ -30,14 +33,15 @@ export const SessionManager: React.FC = () => {
 
     useEffect(() => {
         fetchSessions();
-    }, []);
+    }, [token]); // Re-fetch when token becomes available
 
     const revokeSession = async (id: string) => {
+        if (!token) return;
         if (!confirm('Are you sure you want to revoke this session?')) return;
 
         try {
             setRevoking(id);
-            await api.delete(`/sessions/${id}`);
+            await api.delete(`/api/sessions/${id}`, token);
             setSessions(prev => prev.filter(s => s.id !== id));
         } catch (error) {
             console.error('Failed to revoke session:', error);
@@ -47,11 +51,12 @@ export const SessionManager: React.FC = () => {
     };
 
     const revokeAllSessions = async () => {
+        if (!token) return;
         if (!confirm('This will sign you out of all other devices. Continue?')) return;
 
         try {
             setRevoking('all');
-            await api.delete('/sessions');
+            await api.delete('/api/sessions', token);
             await fetchSessions();
         } catch (error) {
             console.error('Failed to revoke sessions:', error);

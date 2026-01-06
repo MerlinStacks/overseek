@@ -98,39 +98,62 @@ router.get('/ads-summary', async (req: AuthenticatedRequest, res: Response) => {
         const accountId = (req as any).accountId;
         if (!accountId) return res.status(400).json({ error: 'No account' });
 
-        const response = await esClient.search({
-            index: 'ad_spend',
-            body: {
-                query: {
-                    term: { accountId: accountId }
-                },
-                aggs: {
-                    daily_spend: {
-                        date_histogram: {
-                            field: 'date',
-                            calendar_interval: 'day'
-                        },
-                        aggs: {
-                            daily_spend: {
-                                sum: { field: 'spend' }
-                            }
-                        }
-                    }
-                },
-                size: 0
+        // Get the account's currency
+        const account = await prisma.account.findUnique({ where: { id: accountId } });
+        const currency = account?.currency || 'USD';
+
+        // Get all connected ad accounts for this store
+        const adAccounts = await AdsService.getAdAccounts(accountId);
+
+        if (!adAccounts.length) {
+            // No ad accounts connected - return empty defaults
+            return res.json({
+                spend: 0,
+                roas: 0,
+                clicks: 0,
+                impressions: 0,
+                currency
+            });
+        }
+
+        // Aggregate metrics from all connected ad accounts
+        let totalSpend = 0;
+        let totalClicks = 0;
+        let totalImpressions = 0;
+        let totalRevenue = 0;
+
+        for (const adAccount of adAccounts) {
+            try {
+                let metrics = null;
+                if (adAccount.platform === 'META') {
+                    metrics = await AdsService.getMetaInsights(adAccount.id);
+                }
+                // Add support for other platforms (GOOGLE, etc.) as needed
+
+                if (metrics) {
+                    totalSpend += metrics.spend;
+                    totalClicks += metrics.clicks;
+                    totalImpressions += metrics.impressions;
+                    totalRevenue += metrics.spend * metrics.roas; // ROAS = Revenue / Spend
+                }
+            } catch (err) {
+                // Log but don't fail the entire request if one ad account fails
+                Logger.warn('Failed to fetch insights for ad account', { adAccountId: adAccount.id, error: err });
             }
-        });
+        }
 
-        const adSpendBuckets = ((response as any).aggregations?.daily_spend as any)?.buckets || [];
-
-        const totalAdSpend = adSpendBuckets.reduce((acc: number, b: any) => acc + (b.daily_spend.value || 0), 0);
+        // Calculate aggregate ROAS
+        const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
 
         res.json({
-            totalAdSpend,
-            breakdown: adSpendBuckets // Optional: send daily breakdown if needed
+            spend: totalSpend,
+            roas,
+            clicks: totalClicks,
+            impressions: totalImpressions,
+            currency
         });
     } catch (error) {
-        Logger.error('Error', { error });
+        Logger.error('Error fetching ad summary', { error });
         res.status(500).json({ error: 'Failed to fetch ad spend' });
     }
 });

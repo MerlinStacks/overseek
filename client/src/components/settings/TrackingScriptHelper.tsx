@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, Info, Monitor, RefreshCw, AlertCircle } from 'lucide-react';
+import { Copy, Check, Info, Monitor, RefreshCw, AlertCircle, Zap } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -12,6 +12,41 @@ export function TrackingScriptHelper() {
     // Status Check State
     const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'connected' | 'inactive' | 'error'>('idle');
     const [lastSignal, setLastSignal] = useState<string | null>(null);
+
+    // Test Event State
+    const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+    const sendTestEvent = async () => {
+        setTestStatus('loading');
+        try {
+            // Generate a test visitor ID
+            const testVisitorId = `test-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+            // Send a test pageview event directly to the tracking endpoint
+            await fetch('/api/tracking/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    accountId: currentAccount?.id,
+                    visitorId: testVisitorId,
+                    type: 'pageview',
+                    url: 'https://test.overseek.internal/diagnostic-check',
+                    pageTitle: 'OverSeek Connection Test',
+                    payload: { source: 'dashboard-diagnostic', timestamp: new Date().toISOString() }
+                })
+            });
+
+            setTestStatus('success');
+
+            // After sending test event, check connection status
+            setTimeout(() => {
+                checkConnection();
+            }, 1000);
+        } catch (error) {
+            console.error('Test Event Failed:', error);
+            setTestStatus('error');
+        }
+    };
 
     const checkConnection = async () => {
         setCheckStatus('loading');
@@ -108,25 +143,56 @@ export function TrackingScriptHelper() {
                     Connection Diagnosis
                 </h3>
 
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-700 font-medium">Verify Installation</p>
                             <p className="text-xs text-gray-500 mt-1">Check if OverSeek is receiving data from your store.</p>
                         </div>
-                        <button
-                            onClick={checkConnection}
-                            disabled={checkStatus === 'loading'}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
-                        >
-                            <RefreshCw size={14} className={checkStatus === 'loading' ? 'animate-spin' : ''} />
-                            Check Status
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={sendTestEvent}
+                                disabled={testStatus === 'loading'}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm"
+                            >
+                                <Zap size={14} className={testStatus === 'loading' ? 'animate-pulse' : ''} />
+                                {testStatus === 'loading' ? 'Sending...' : 'Send Test Event'}
+                            </button>
+                            <button
+                                onClick={checkConnection}
+                                disabled={checkStatus === 'loading'}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
+                            >
+                                <RefreshCw size={14} className={checkStatus === 'loading' ? 'animate-spin' : ''} />
+                                Check Status
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Test Event Feedback */}
+                    {testStatus === 'success' && (
+                        <div className="p-3 rounded-md text-sm border bg-purple-50 border-purple-200 text-purple-800 flex items-start gap-3">
+                            <Zap className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                            <div>
+                                <p className="font-semibold">Test Event Sent!</p>
+                                <p className="mt-1 opacity-90">A test pageview was sent directly to your analytics. Checking connection status...</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {testStatus === 'error' && (
+                        <div className="p-3 rounded-md text-sm border bg-red-50 border-red-200 text-red-800 flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                            <div>
+                                <p className="font-semibold">Test Event Failed</p>
+                                <p className="mt-1 opacity-90">Could not send test event. Check your network connection.</p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Status Feedback */}
                     {checkStatus !== 'idle' && (
-                        <div className={`mt-4 p-3 rounded-md text-sm border flex items-start gap-3 ${checkStatus === 'connected' ? 'bg-green-50 border-green-200 text-green-800' :
+                        <div className={`p-3 rounded-md text-sm border flex items-start gap-3 ${checkStatus === 'connected' ? 'bg-green-50 border-green-200 text-green-800' :
                             checkStatus === 'inactive' ? 'bg-amber-50 border-amber-200 text-amber-800' :
                                 'bg-red-50 border-red-200 text-red-800'
                             }`}>
@@ -143,7 +209,7 @@ export function TrackingScriptHelper() {
                                     {checkStatus === 'connected' ? (
                                         <>We received a signal from your store. Last activity: <span className="font-mono">{new Date(lastSignal!).toLocaleString()}</span></>
                                     ) : checkStatus === 'inactive' ? (
-                                        "We haven't received any events yet. Try visiting your store in a new tab to trigger a pageview."
+                                        <>No events received yet. Click <strong>"Send Test Event"</strong> to verify the connection, or visit your store with the plugin installed.</>
                                     ) : (
                                         "Could not check status. Ensure your internet is connected."
                                     )}
