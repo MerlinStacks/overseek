@@ -115,12 +115,16 @@ export class TrackingService {
             sessionPayload.email = data.payload.email;
         }
 
-        // If checkout success, clear cart or mark as converted
-        if (data.type === 'checkout_success') {
+        // If checkout success or purchase, clear cart and mark as converted
+        if (data.type === 'checkout_success' || data.type === 'purchase') {
             sessionPayload.cartValue = 0;
             sessionPayload.cartItems = [];
             sessionPayload.abandonedNotificationSentAt = null;
-            // Potential improvement: Mark session as 'converted' if we had a field
+        }
+
+        // Capture email from purchase event if not already set on session
+        if (data.type === 'purchase' && data.payload?.email) {
+            sessionPayload.email = data.payload.email;
         }
 
         // Handle Search (Just ensure payload has term)
@@ -172,7 +176,31 @@ export class TrackingService {
         // We can derive it from totalVisits > 0 if needed
 
         // Attribution tracking
-        const currentSource = sessionPayload.trafficSource || TrackingService.parseTrafficSource(data.referrer || '');
+        // Priority: 1) UTM source (most explicit), 2) Referrer-based source, 3) Direct
+        let currentSource = 'direct';
+
+        if (data.utmSource) {
+            // Map common UTM sources to our traffic categories
+            const utmLower = data.utmSource.toLowerCase();
+            if (['google', 'bing', 'yahoo', 'duckduckgo', 'baidu'].includes(utmLower)) {
+                // Check if it's paid (usually has utm_medium=cpc/ppc) or organic
+                currentSource = (data.utmMedium?.toLowerCase() === 'cpc' || data.utmMedium?.toLowerCase() === 'ppc')
+                    ? 'paid' : 'organic';
+            } else if (['facebook', 'instagram', 'twitter', 'linkedin', 'tiktok', 'pinterest', 'youtube', 'reddit'].includes(utmLower)) {
+                currentSource = 'social';
+            } else if (['email', 'newsletter', 'mailchimp', 'klaviyo'].includes(utmLower)) {
+                currentSource = 'email';
+            } else if (['chatgpt', 'openai', 'claude', 'perplexity', 'bard', 'gemini'].includes(utmLower)) {
+                currentSource = 'ai';
+            } else {
+                // Has UTM but unknown source - treat as campaign/referral
+                currentSource = 'campaign';
+            }
+        } else if (data.referrer) {
+            // No UTM, fall back to referrer parsing
+            currentSource = sessionPayload.trafficSource || TrackingService.parseTrafficSource(data.referrer);
+        }
+        // If neither UTM nor referrer, stays 'direct'
 
         // First touch - only set once, never overwrite
         if (!existingSession?.firstTouchSource) {

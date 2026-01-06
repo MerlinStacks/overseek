@@ -23,7 +23,8 @@ import {
     FileText,
     DollarSign,
     GitBranch,
-    Repeat
+    Repeat,
+    X
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -31,6 +32,15 @@ import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
 import { SidebarSyncStatus } from './SidebarSyncStatus';
+
+interface SidebarProps {
+    /** Mobile drawer mode - whether sidebar is open */
+    isOpen?: boolean;
+    /** Callback to close mobile drawer */
+    onClose?: () => void;
+    /** Whether we're in mobile mode (drawer behavior) */
+    isMobile?: boolean;
+}
 
 const navItems = [
     { type: 'link', icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -78,7 +88,7 @@ const navItems = [
     { type: 'link', icon: Shield, label: 'Team', path: '/team' },
 ];
 
-export function Sidebar() {
+export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const { currentAccount } = useAccount();
     const { user } = useAuth();
@@ -97,8 +107,15 @@ export function Sidebar() {
         }
     }, [location.pathname, collapsed]);
 
+    // Close drawer on navigation (mobile only)
+    useEffect(() => {
+        if (isMobile && onClose) {
+            onClose();
+        }
+    }, [location.pathname]);
+
     const toggleGroup = (label: string) => {
-        if (collapsed) {
+        if (collapsed && !isMobile) {
             setCollapsed(false);
             setExpandedGroups([label]);
         } else {
@@ -114,23 +131,19 @@ export function Sidebar() {
     const appName = currentAccount?.appearance?.appName || 'OverSeek';
     const primaryColor = currentAccount?.appearance?.primaryColor || '#2563eb';
 
-    return (
-        <aside
-            className={cn(
-                "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex flex-col z-50",
-                collapsed ? "w-20" : "w-64"
-            )}
-        >
+    // Shared sidebar content - extracted to avoid duplication
+    const sidebarContent = (
+        <>
             <div className="flex-col px-3 pt-4 pb-2">
                 {/* Whitelabel Logo */}
                 {logoUrl && (
-                    <div className={cn("mb-4 flex justify-center", collapsed ? "px-0" : "px-2")}>
+                    <div className={cn("mb-4 flex justify-center", (collapsed && !isMobile) ? "px-0" : "px-2")}>
                         <img src={logoUrl} alt={appName} className="max-h-8 object-contain" />
                     </div>
                 )}
 
                 {/* Account Switcher or Default Logo */}
-                {!collapsed ? (
+                {(!collapsed || isMobile) ? (
                     <AccountSwitcher />
                 ) : (
                     // Only show default 'O' if no logo is provided
@@ -160,8 +173,8 @@ export function Sidebar() {
                                 )}
                             >
                                 <item.icon size={22} strokeWidth={1.5} />
-                                {!collapsed && <span>{item.label}</span>}
-                                {collapsed && (
+                                {(!collapsed || isMobile) && <span>{item.label}</span>}
+                                {collapsed && !isMobile && (
                                     <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                                         {item.label}
                                     </div>
@@ -186,7 +199,7 @@ export function Sidebar() {
                                 )}
                             >
                                 <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-blue-600" : "")} />
-                                {!collapsed && (
+                                {(!collapsed || isMobile) && (
                                     <>
                                         <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
                                         <ChevronDown
@@ -197,7 +210,7 @@ export function Sidebar() {
                                 )}
 
                                 {/* Collapsed Tooltip/Popover preview */}
-                                {collapsed && (
+                                {collapsed && !isMobile && (
                                     <div className="absolute left-full ml-2 top-0 bg-white border border-gray-200 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
                                         <div className="font-semibold text-xs text-gray-400 mb-2 px-2 uppercase">{item.label}</div>
                                         {item.children?.map(child => (
@@ -210,13 +223,14 @@ export function Sidebar() {
                                 )}
                             </button>
 
-                            {/* Expanded Children (Only when not collapsed) */}
-                            {!collapsed && isExpanded && (
+                            {/* Expanded Children (Only when not collapsed or on mobile) */}
+                            {(!collapsed || isMobile) && isExpanded && (
                                 <div className="mt-1 ml-4 border-l-2 border-gray-100 pl-2 space-y-1">
                                     {item.children?.map(child => (
                                         <NavLink
                                             key={child.path}
                                             to={child.path}
+                                            end
                                             className={({ isActive }) => cn(
                                                 "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm",
                                                 isActive
@@ -246,9 +260,9 @@ export function Sidebar() {
                             )}
                         >
                             <ShieldAlert size={22} strokeWidth={1.5} />
-                            {!collapsed && <span>Super Admin</span>}
+                            {(!collapsed || isMobile) && <span>Super Admin</span>}
 
-                            {collapsed && (
+                            {collapsed && !isMobile && (
                                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                                     Super Admin
                                 </div>
@@ -258,7 +272,7 @@ export function Sidebar() {
                 )}
             </div>
 
-            <SyncProgressOverlay collapsed={collapsed} />
+            <SyncProgressOverlay collapsed={collapsed && !isMobile} />
 
             <div className="mt-auto px-3 pb-2 z-10">
                 {/* Settings Link (Pinned Bottom) */}
@@ -272,25 +286,70 @@ export function Sidebar() {
                     )}
                 >
                     <Settings size={22} strokeWidth={1.5} />
-                    {!collapsed && <span>Settings</span>}
-                    {collapsed && (
+                    {(!collapsed || isMobile) && <span>Settings</span>}
+                    {collapsed && !isMobile && (
                         <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                             Settings
                         </div>
                     )}
                 </NavLink>
 
-                <SidebarSyncStatus collapsed={collapsed} />
+                <SidebarSyncStatus collapsed={collapsed && !isMobile} />
             </div>
 
-            <div className="p-4 border-t border-gray-100">
-                <button
-                    onClick={() => setCollapsed(!collapsed)}
-                    className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
+            {/* Collapse button (desktop only) */}
+            {!isMobile && (
+                <div className="p-4 border-t border-gray-100">
+                    <button
+                        onClick={() => setCollapsed(!collapsed)}
+                        className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                        {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
+                    </button>
+                </div>
+            )}
+        </>
+    );
+
+    // Mobile: render as fixed overlay drawer
+    if (isMobile) {
+        return (
+            <>
+                {/* Backdrop */}
+                {isOpen && (
+                    <div
+                        className="fixed inset-0 bg-black/50 z-40"
+                        onClick={onClose}
+                    />
+                )}
+                <aside
+                    className={cn(
+                        "fixed inset-y-0 left-0 bg-white border-r border-gray-200 w-72 flex flex-col z-50 transition-transform duration-300 ease-in-out",
+                        isOpen ? "translate-x-0" : "-translate-x-full"
+                    )}
                 >
-                    {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
-                </button>
-            </div>
+                    {/* Close button for mobile */}
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg z-10"
+                    >
+                        <X size={20} />
+                    </button>
+                    {sidebarContent}
+                </aside>
+            </>
+        );
+    }
+
+    // Desktop: render as sticky sidebar
+    return (
+        <aside
+            className={cn(
+                "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex flex-col z-50 hidden lg:flex",
+                collapsed ? "w-20" : "w-64"
+            )}
+        >
+            {sidebarContent}
         </aside>
     );
 }

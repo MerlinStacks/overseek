@@ -151,15 +151,15 @@ export function OrdersPage() {
                 onClose={() => setSelectedOrderId(null)}
             />
 
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
+                    <h1 className="text-xl md:text-2xl font-bold text-gray-900">Orders</h1>
                     <span className="text-sm text-gray-500">Store: {currentAccount?.name}</span>
                 </div>
 
-                <div className="flex gap-3 items-center">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full lg:w-auto">
                     {/* Picklist Toolbar */}
-                    <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-200 mr-4">
+                    <div className="hidden md:flex items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
                         <select
                             value={picklistStatus}
                             onChange={(e) => setPicklistStatus(e.target.value)}
@@ -175,15 +175,15 @@ export function OrdersPage() {
                             className="bg-yellow-400 text-yellow-900 border border-yellow-500 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-500 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
                         >
                             {isGeneratingPicklist ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                            Generate Picklist
+                            Picklist
                         </button>
                     </div>
-                    <div className="relative">
+                    <div className="relative flex-1 sm:flex-none">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
                             placeholder="Search orders..."
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -192,63 +192,66 @@ export function OrdersPage() {
                     <button
                         onClick={handleSync}
                         disabled={isSyncing}
-                        className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
                     >
                         <RefreshCw size={18} className={isSyncing ? "animate-spin" : ""} />
-                        {isSyncing ? 'Syncing...' : 'Sync Orders'}
+                        <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync Orders'}</span>
+                        <span className="sm:hidden">{isSyncing ? 'Syncing' : 'Sync'}</span>
                     </button>
                 </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
-                            <th className="px-6 py-4">Order</th>
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Customer</th>
-                            <th className="px-6 py-4">Total</th>
-                            <th className="px-6 py-4">Items</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {isLoading ? (
-                            <tr><td colSpan={6} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
-                        ) : orders.length === 0 ? (
-                            <tr><td colSpan={6} className="p-12 text-center text-gray-500">No orders found. Try syncing!</td></tr>
-                        ) : (
-                            orders.map((order) => (
-                                <tr
-                                    key={order.id}
-                                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                                    onClick={() => setSelectedOrderId(order.id)}
-                                >
-                                    <td className="px-6 py-4 font-medium text-blue-600 outline-none">#{order.id}</td>
-                                    <td className="px-6 py-4 text-gray-600 text-sm">{formatDate(order.date_created)}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                        <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
+                                <th className="px-3 md:px-6 py-3 md:py-4">Order</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4">Date</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4">Status</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4">Customer</th>
+                                <th className="px-6 py-4">Total</th>
+                                <th className="px-6 py-4">Items</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {isLoading ? (
+                                <tr><td colSpan={6} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
+                            ) : orders.length === 0 ? (
+                                <tr><td colSpan={6} className="p-12 text-center text-gray-500">No orders found. Try syncing!</td></tr>
+                            ) : (
+                                orders.map((order) => (
+                                    <tr
+                                        key={order.id}
+                                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                                        onClick={() => setSelectedOrderId(order.id)}
+                                    >
+                                        <td className="px-3 md:px-6 py-3 md:py-4 font-medium text-blue-600 outline-none">#{order.id}</td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-gray-600 text-sm">{formatDate(order.date_created)}</td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
                         ${order.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                                                    order.status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
-                                            {order.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-900">
-                                        <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
-                                        <div className="text-gray-500 text-xs">{order.billing.email}</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm font-medium">
-                                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total)}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-500">
-                                        {order.line_items.length} items
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                                                    order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                                                        order.status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                {order.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-900">
+                                            <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
+                                            <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
+                                        </td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm font-medium">
+                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total)}
+                                        </td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-500">
+                                            {order.line_items.length} items
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
                 {!isLoading && orders.length > 0 && (
                     <Pagination
                         currentPage={page}

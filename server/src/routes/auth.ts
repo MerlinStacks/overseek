@@ -92,7 +92,7 @@ router.post('/register', validate(registerSchema), async (req: AuthenticatedRequ
 
         const token = generateToken({ userId: user.id });
 
-        res.json({ token, user: { id: user.id, email: user.email, fullName: user.fullName, isSuperAdmin: user.isSuperAdmin } });
+        res.json({ token, user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin } });
     } catch (error) {
         Logger.error('Register error', { error });
         res.status(500).json({ error: 'Internal server error' });
@@ -142,7 +142,7 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req: Authentic
         res.json({
             token: accessToken,
             refreshToken,
-            user: { id: user.id, email: user.email, fullName: user.fullName, isSuperAdmin: user.isSuperAdmin }
+            user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin }
         });
     } catch (error) {
         console.error('Login error:', error);

@@ -1,4 +1,4 @@
-import { Search, Bell, HelpCircle, User, LogOut, Shield } from 'lucide-react';
+import { Search, Bell, HelpCircle, User, LogOut, Shield, Menu } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -6,7 +6,14 @@ import { useAccount } from '../../context/AccountContext';
 import _ from 'lodash';
 import { SyncStatusBadge } from './SyncStatusBadge';
 
-export function Header() {
+interface HeaderProps {
+    /** Callback when hamburger menu is clicked (mobile only) */
+    onMenuClick?: () => void;
+    /** Whether to show the hamburger menu button */
+    showMenuButton?: boolean;
+}
+
+export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     const { token, user, logout } = useAuth();
     const { currentAccount } = useAccount();
     const [query, setQuery] = useState('');
@@ -78,8 +85,19 @@ export function Header() {
     };
 
     return (
-        <header className="h-16 bg-white border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-40">
-            <div className="flex items-center gap-8 w-1/3">
+        <header className="h-14 md:h-16 bg-white border-b border-gray-200 px-4 md:px-8 flex items-center justify-between sticky top-0 z-40">
+            <div className="flex items-center gap-4 md:gap-8">
+                {/* Hamburger Menu Button (Mobile) */}
+                {showMenuButton && (
+                    <button
+                        onClick={onMenuClick}
+                        className="p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        aria-label="Open menu"
+                    >
+                        <Menu size={24} />
+                    </button>
+                )}
+
                 {/* Secondary Navigation (optional based on image) */}
                 <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-500">
                     <a href="/reports" className="hover:text-gray-900 transition-colors">Reports</a>
@@ -87,7 +105,7 @@ export function Header() {
                 </nav>
             </div>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3 md:gap-6">
                 {/* Search Bar */}
                 <div className="relative hidden md:block w-72">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />

@@ -113,7 +113,7 @@ export function InvoiceDesigner() {
             {/* Header */}
             <div className="bg-white border-b px-6 py-4 flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(-1)} className="text-gray-500 hover:text-gray-700">
+                    <button type="button" onClick={() => navigate(-1)} className="text-gray-500 hover:text-gray-700">
                         <ArrowLeft size={20} />
                     </button>
                     <div>
@@ -125,7 +125,7 @@ export function InvoiceDesigner() {
                         />
                     </div>
                 </div>
-                <button onClick={saveTemplate} disabled={isLoading} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+                <button type="button" onClick={saveTemplate} disabled={isLoading} className="btn-primary flex items-center gap-2 disabled:opacity-50">
                     {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                     {isLoading ? 'Saving...' : 'Save Template'}
                 </button>
