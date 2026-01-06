@@ -45,7 +45,14 @@ export function InvoiceDesigner() {
     };
 
     const addItem = (type: string) => {
-        const newItemId = crypto.randomUUID();
+        // Simple fallback for unique ID if crypto.randomUUID is not available (e.g. non-secure context)
+        const generateId = () => {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        };
+        const newItemId = generateId();
         const newItem = {
             i: newItemId,
             x: 0,

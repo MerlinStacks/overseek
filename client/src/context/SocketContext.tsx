@@ -40,7 +40,9 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         // socket.io client usually needs full URL if not same origin serving.
         // Assuming Vite proxy setting handles /socket.io or we use hardcoded port for now.
         // Let's assume standard behavior:
-        const newSocket = io('http://localhost:3000', {
+        // Connect to relative path so Vite proxy handles it
+        const newSocket = io('/', {
+            path: '/socket.io',
             auth: { token },
             query: { accountId: currentAccount.id }
         });

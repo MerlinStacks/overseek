@@ -67,6 +67,7 @@ async function reindexAll() {
 
     } catch (error: any) {
         console.error('Reindex failed:', error);
+        require('fs').writeFileSync('reindex_error.log', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
         process.exit(1);
     }
 }

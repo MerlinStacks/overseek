@@ -89,8 +89,19 @@ export class IndexingService {
                 currency: { type: 'keyword' },
                 date_created: { type: 'date' },
                 billing: { properties: { first_name: { type: 'text' }, last_name: { type: 'text' }, email: { type: 'keyword' } } },
-                line_items: { type: 'nested', properties: { name: { type: 'text', fields: { keyword: { type: 'keyword' } } }, quantity: { type: 'integer' } } }
-
+                line_items: {
+                    type: 'nested',
+                    properties: {
+                        name: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+                        sku: { type: 'keyword' },
+                        productId: { type: 'integer' },
+                        quantity: { type: 'integer' },
+                        meta_data: {
+                            type: 'nested',
+                            properties: { key: { type: 'keyword' }, value: { type: 'text' } }
+                        }
+                    }
+                },
             }
         });
 
@@ -214,7 +225,8 @@ export class IndexingService {
                     type: 'nested',
                     properties: {
                         name: { type: 'text', fields: { keyword: { type: 'keyword' } } },
-
+                        sku: { type: 'keyword' },
+                        productId: { type: 'integer' },
                         quantity: { type: 'integer' },
                         meta_data: {
                             type: 'nested',
@@ -242,6 +254,8 @@ export class IndexingService {
                 billing: order.billing,
                 line_items: order.line_items?.map((item: any) => ({
                     name: item.name,
+                    sku: item.sku,
+                    productId: item.product_id,
                     quantity: item.quantity,
                     meta_data: item.meta_data?.map((m: any) => ({
                         key: m.key,

@@ -419,8 +419,8 @@ router.get('/stock-velocity', async (req: Request, res: Response) => {
                     products: {
                         nested: { path: 'line_items' },
                         aggs: {
-                            by_sku: {
-                                terms: { field: 'line_items.sku.keyword', size: 1000 }, // Assuming mapped as keyword
+                            by_product: {
+                                terms: { field: 'line_items.productId', size: 10000 },
                                 aggs: {
                                     total_qty: { sum: { field: 'line_items.quantity' } }
                                 }
@@ -431,9 +431,9 @@ router.get('/stock-velocity', async (req: Request, res: Response) => {
             }
         });
 
-        // 3. Map Sales to Map<SKU, QtySold>
-        const salesMap = new Map<string, number>();
-        const buckets = (response.aggregations as any)?.products?.by_sku?.buckets || [];
+        // 3. Map Sales to Map<ProductId, QtySold>
+        const salesMap = new Map<number, number>();
+        const buckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
 
         buckets.forEach((b: any) => {
             if (b.key) {
@@ -444,17 +444,21 @@ router.get('/stock-velocity', async (req: Request, res: Response) => {
         // 4. Calculate Velocity & Days Remaining
         const report = products.map(p => {
             const stock = p.stock_quantity || 0;
-            const sold30d = salesMap.get(p.sku) || 0; // Match by SKU
+            const sold30d = salesMap.get(p.id) || 0; // Match by Product ID
 
             // Daily Rate
             const dailyRate = sold30d / 30;
 
             // Days Remaining
             let daysRemaining = 999; // Default to 'plenty'
-            if (dailyRate > 0) {
+            if (stock === 0) {
+                if (dailyRate > 0) {
+                    daysRemaining = 0; // Urgent: Out of stock but selling!
+                } else {
+                    daysRemaining = 999; // Dead stock: No stock, no sales.
+                }
+            } else if (dailyRate > 0) {
                 daysRemaining = Math.max(0, Math.round(stock / dailyRate));
-            } else if (stock === 0) {
-                daysRemaining = 0;
             }
 
             return {
@@ -470,10 +474,6 @@ router.get('/stock-velocity', async (req: Request, res: Response) => {
         });
 
         // Sort by Days Remaining (Ascending - urgent first)
-        // But put 0 stock/0 sales at the bottom if they are just dead stock? 
-        // User wants to know "Days of stock left". 
-        // Urgent: Low days remaining but High velocity.
-        // Let's sort simply by daysRemaining asc.
         report.sort((a, b) => {
             // If days remaining is 999 (infinity), move to bottom
             if (a.daysRemaining === 999 && b.daysRemaining !== 999) return 1;
