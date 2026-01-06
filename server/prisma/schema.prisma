@@ -84,6 +84,10 @@ model Account {
   // Whitelabel / Appearance
   appearance Json? @default("{}")
 
+  // Order Tag Mappings - defines which product tags create order tags
+  // Format: [{ productTag: "engrave", orderTag: "Engraving", enabled: true }]
+  orderTagMappings Json? @default("[]")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

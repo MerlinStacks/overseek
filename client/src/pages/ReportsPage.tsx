@@ -102,7 +102,7 @@ export function ReportsPage() {
 
             const [salesRes, productsRes, customersRes] = await Promise.all([
                 fetch(`/api/analytics/sales-chart?startDate=${range.startDate}&endDate=${range.endDate}&interval=day`, { headers }),
-                fetch(`/api/analytics/top-products`, { headers }), // Top products might need dates too? Usually yes.
+                fetch(`/api/analytics/top-products?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
                 fetch(`/api/analytics/customer-growth?startDate=${range.startDate}&endDate=${range.endDate}`, { headers })
             ]);
 

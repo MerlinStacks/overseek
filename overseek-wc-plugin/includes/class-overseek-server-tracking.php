@@ -16,6 +16,12 @@ class OverSeek_Server_Tracking
 
     private $api_url;
     private $account_id;
+    
+    /**
+     * Cached visitor ID to avoid repeated cookie operations.
+     * @var string|null
+     */
+    private $visitor_id = null;
 
     /**
      * Initialize hooks.
@@ -28,6 +34,11 @@ class OverSeek_Server_Tracking
         if (empty($this->account_id)) {
             return;
         }
+
+        // CRITICAL: Initialize visitor cookie BEFORE any output is sent.
+        // 'init' hook fires early enough that headers haven't been sent yet.
+        // This ensures the cookie is properly set and persisted across requests.
+        add_action('init', array($this, 'init_visitor_cookie'), 1);
 
         // Pageview - fires on every page load
         add_action('template_redirect', array($this, 'track_pageview'));
@@ -54,25 +65,74 @@ class OverSeek_Server_Tracking
         // Review Tracking - when customers leave product reviews
         add_action('comment_post', array($this, 'track_review'), 10, 3);
     }
+    
+    /**
+     * Initialize the visitor cookie early, before any output is sent.
+     * This MUST run before headers are sent to ensure cookies work.
+     */
+    public function init_visitor_cookie()
+    {
+        // Skip admin, AJAX, cron, and REST API requests
+        if (is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
+            return;
+        }
+        
+        $cookie_name = '_os_vid';
+        
+        // Check if cookie already exists
+        if (isset($_COOKIE[$cookie_name]) && !empty($_COOKIE[$cookie_name])) {
+            $this->visitor_id = sanitize_text_field($_COOKIE[$cookie_name]);
+            return;
+        }
+        
+        // Generate new visitor ID
+        $this->visitor_id = $this->generate_uuid();
+        
+        // Set cookie for 1 year - this works because we're in the 'init' hook
+        // BEFORE any output has been sent
+        setcookie(
+            $cookie_name,
+            $this->visitor_id,
+            time() + (365 * 24 * 60 * 60),
+            '/',
+            '',
+            is_ssl(),
+            false  // httpOnly = false so JS can read it too
+        );
+        
+        // Also set in $_COOKIE superglobal for immediate availability in this request
+        $_COOKIE[$cookie_name] = $this->visitor_id;
+    }
 
     /**
      * Get or create visitor ID from cookie.
+     * Uses cached value if available, falls back to cookie or generates new.
      */
     private function get_visitor_id()
     {
+        // Return cached value if we have it (from init_visitor_cookie)
+        if ($this->visitor_id !== null) {
+            return $this->visitor_id;
+        }
+        
         $cookie_name = '_os_vid';
 
-        if (isset($_COOKIE[$cookie_name])) {
-            return sanitize_text_field($_COOKIE[$cookie_name]);
+        if (isset($_COOKIE[$cookie_name]) && !empty($_COOKIE[$cookie_name])) {
+            $this->visitor_id = sanitize_text_field($_COOKIE[$cookie_name]);
+            return $this->visitor_id;
         }
 
-        // Generate new visitor ID
-        $visitor_id = $this->generate_uuid();
+        // Fallback: Generate new visitor ID (cookie may have failed to set)
+        // This should rarely happen now that we set in init hook
+        $this->visitor_id = $this->generate_uuid();
+        
+        // Attempt to set cookie - may fail if headers already sent
+        if (!headers_sent()) {
+            setcookie($cookie_name, $this->visitor_id, time() + (365 * 24 * 60 * 60), '/', '', is_ssl(), false);
+            $_COOKIE[$cookie_name] = $this->visitor_id;
+        }
 
-        // Set cookie for 1 year
-        setcookie($cookie_name, $visitor_id, time() + (365 * 24 * 60 * 60), '/', '', is_ssl(), false);
-
-        return $visitor_id;
+        return $this->visitor_id;
     }
 
     /**
