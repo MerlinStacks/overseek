@@ -17,6 +17,7 @@ router.get('/:resource/:resourceId', requireAuth, async (req, res) => {
         const logs = await AuditService.getLogsForResource(accountId, resource.toUpperCase(), resourceId);
         res.json(logs);
     } catch (error) {
+        console.error('[Audits] Failed to fetch audit logs:', error);
         res.status(500).json({ error: 'Failed to fetch audit logs' });
     }
 });
