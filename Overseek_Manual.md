@@ -200,6 +200,105 @@ To ensure both **instant UI feedback** and **reliable background processing**, O
 ### 6.3 Advanced Developer Tools
 *   **Debug Endpoints**: Located in `server/src/routes/debug.ts`, these allow for raw Elasticsearch queries (e.g., `GET /api/debug/count`) to verify index integrity without using the UI.
 *   **Ad Token Masking**: The `AdsService` middleware (`ads.ts`) automatically masks access tokens (returning only the first 10 chars) before sending data to the frontend, preventing credential leakage in browser network logs.
-### 6.4 Infrastructure Tuning & Data Safety
+### 6.7 Ecosystem Integrations & Utilities
+*   **WordPress Plugin Internals**: The `overseek-integration-single.php` plugin includes a hidden REST endpoint (`POST /wp-json/overseek/v1/settings`). This allows the Overseek Dashboard to purely **Auto-Configure** the plugin if it has valid WooCommerce API keys, bypassing the need for the user to manually paste the JSON config blob in some scenarios.
+*   **Diagnostic Forensics**: The `deep-diagnostic.ts` script allows you to bypass the Prisma ORM entirely. It executes raw SQL (`SELECT tablename FROM pg_catalog.pg_tables`) to provide a "True Count" of every row in the database, which is critical for verifying if Prisma is "hallucinating" or if migrations failed silently.
+### 6.8 Intelligence & State Management
+*   **Recursive AI Loop**: The `AIService` implements a **multi-turn agentic loop** (max 5 turns) that forces the LLM to use the `AIToolsService` to fetch real database stats before answering. It includes a fallback mechanism that defaults to `mistral-7b-instruct` if the configured OpenRouter key fails.
+*   **Context Persistence Strategy**: The `AccountContext` provider implements a "Sticky Session" logic on the client. It prioritizes the active memory state, falls back to `localStorage` (for page reloads), and finally defaults to the first available account, ensuring multi-store merchants never "get lost" between navigations.
+### 6.9 Hidden Data Capabilities
+*   **Embedded Help Center CMS**: The database schema includes `HelpCollection` and `HelpArticle` tables, indicating that Overseek contains a fully-functional, self-hosted specific Content Management System for internal documentation, decoupled from WordPress.
+*   **Workforce Management**: The `User` table contains `shiftStart` and `shiftEnd` fields, enabling basic roster management and "Active Shift" visibility for support agents.
+*   **Audit Trail API**: A dedicated `audits.ts` route exposes the `AuditLog` table, ensuring that every sensitive action (Price Change, Stock Adjustment) is legally retrievable via API for compliance purposes.
+*   **Public Chat API**: The `chat-public.ts` route is isolated from the main `chat.ts` logic. It is specifically hardened (rate-limited, no auth required) to handle high-volume traffic from the widget without exposing the agent-facing API surface.
 *   **Worker Concurrency**: The `QueueFactory` is hardcoded to a **concurrency limit of 5**. This means a single specific queue (e.g., `sync-orders`) can process maximum 5 jobs in parallel per container. This prevents the API from being overwhelmed during massive initial syncs.
-*   **Elasticsearch Integrity**: The `IndexingService` includes a `deleteAccountData` protocol with a **Failsafe Verification Loop**. After issuing a delete-by-query command, it re-queries the index to ensure the document count is exactly 0. If any "Ghost Documents" remain (common in distributed systems), it logs a warning for manual intervention, ensuring strict data sovereignty compliance.
+### 6.6 User Interface & Reporting Specification
+*   **Report Types**: The `ReportsPage` exposes four specific views:
+    *   **Overview**: Standard KPI cards (Rev, AOV).
+    *   **Forecasting**: A linear regression chart for future sales.
+    *   **Stock Velocity**: Identifies fast/slow moving SKUs.
+    *   **Custom Builder**: A drag-and-drop interface for ad-hoc queries.
+*   **Product Editor Capabilities**:
+    *   **History Timeline**: Every product page has a dedicated audit trail tab showing *who* changed *what* field and *when* (`HistoryTimeline.tsx`).
+    *   **Collision Detection**: The `PresenceAvatars` component shows real-time "heads" of other staff members currently editing the same product to prevent overwrite conflicts.
+    *   **Gold Price Panel**: A specialized widget for jewelry merchants that calculates live margin based on the configured weight and daily spot price.
+
+### 6.10 System Internals & Recovery
+*   **Destructive Rebuild Protocol**: The `reindex-orders.ts` script allows for a "Scorched Earth" disaster recovery. It physically deletes the Elasticsearch index and rebuilds it from the raw JSON stored in PostgreSQL (`wooOrder.rawData`), ensuring true data symmetry even if the search index is corrupted.
+*   **Superuser Bootstrap**: A hardcoded `create-admin.ts` script exists to force-create the `admin@overseek.com` credentials (bcrypt hash) if the admin is locked out.
+*   **Cryptographic Standard**: Data at rest (tokens, secrets) is encrypted using **AES-256-GCM**. The system uses a SHA-256 hash of the `ENCRYPTION_KEY` to derive a stable 32-byte key, and stores data in a `iv:authTag:encryptedData` format to prevent tampering.
+*   **Chaos Engineering**: The server includes `repro.ts` and `invoke_error.ts`, designed to simulate high-concurrency race conditions (e.g., token attacks, non-existent user creation) against the production database to verify transactional integrity.
+
+### 6.11 Warehouse Operations
+*   **Client-Side Picklist**: The `printPicklist.ts` utility generates a pure HTML/CSS print view for warehouse staff. It aggregates items by Bin Location and aggregates quantities across multiple orders, showing a "Total Qty" per bin to optimize walking paths.
+
+### 6.12 Sync Engine Mechanics
+*   **Composite Key Integrity**: The `OrderSync` engine uses a composite key `{ accountId_wooId }` to prevent data collision between multiple stores.
+*   **Review Heuristics**: The `ReviewSync` engine implements a **Probabilistic Linker**. It scans the last 50 orders for a matching product + customer email to "guess" the originating order for a review, as WooCommerce does not provide this link natively.
+*   **Historical Muting**: The engine logic (`OrderSync.ts`) specifically checks if an order is older than 24 hours (`< 24 * 60 * 60 * 1000`) before emitting `ORDER.CREATED` events. This prevents "New Order" automation spam during historical data imports.
+*   **Event Emission**: The system emits granular events:
+    *   `ORDER.CREATED`: New orders < 24h old.
+    *   `order:completed`: Hardcoded event when status flips to 'completed'.
+    *   `ORDER.SYNCED`: Generic event for every touch.
+*   **Validation Layer**: Middleware uses `zod` schemas for strict runtime payload validation (`validate.ts`), returning structured JSON error arrays that the frontend form libraries consume directly (mapped by field name).
+
+### 6.13 Automated Reporting Implementation
+*   **Server-Side Resolution**: The `ReportWorker` resolves dynamic ranges (`today`, `7d`, `ytd`) at runtime.
+*   **SMTP Dependency**: Automated reports **require** a user-configured SMTP account marked as `isDefault`. The system expressly does *not* provide a fallback "System No-Reply" address, meaning reporting will fail silently (log warning only) if the user has not configured their own email gateway.
+
+### 6.14 Client API Layer
+*   **Multi-Tenant Header**: The client `api.ts` injects `X-Account-ID` headers on every request, enabling the backend to scope queries to the correct tenant without relying on session state.
+*   **Error Normalization**: The `ApiError` class wraps all non-2xx responses, allowing components to catch and display user-friendly messages.
+
+### 6.15 Logging & Observability
+*   **PII Guard**: The `requestLogger.ts` middleware explicitly comments out body logging (`// body: req.body`) to prevent accidental PII (Personally Identifiable Information) from being written to logs.
+
+### 6.16 Scheduler Service (Cron Engine)
+The `SchedulerService.ts` is the heartbeat of all background operations. It uses a combination of BullMQ repeatable jobs and Node.js `setInterval` tickers.
+
+*   **Global Sync Orchestrator**: A cron job (`*/15 * * * *`) that finds all accounts and dispatches incremental sync jobs with **Low Priority (1)**. If a manual sync (Priority 10) is already running for an account, this job is skipped, preventing conflicts.
+*   **Inventory Alerts**: A daily cron (`0 8 * * *`) that calls `InventoryService.sendLowStockAlerts()` for every account.
+*   **Email Polling**: A `setInterval` every 2 minutes that queries all `IMAP` email accounts and calls `emailService.checkEmails()`.
+*   **Report Scheduler**: A `setInterval` every 15 minutes that queries `ReportSchedule` for due jobs and dispatches them to `QUEUES.REPORTS`.
+*   **Abandoned Cart Check**: A `setInterval` every 15 minutes that finds sessions where:
+    *   `cartValue > 0`
+    *   `lastActiveAt` is between 1 and 24 hours ago.
+    *   `email` is captured (not null).
+    *   `abandonedNotificationSentAt` is null.
+    It then triggers the `ABANDONED_CART` automation for each matching session.
+
+### 6.17 Purchase Order Service (B2B Procurement)
+*   **Inbound Inventory Calculation**: The `getInboundInventory()` method aggregates all `PurchaseOrderItem` quantities where the parent PO status is `ORDERED`. This is used to display **"Shadow Stock"** (stock on the way) in the Inventory UI.
+*   **Status Workflow**: `DRAFT` → `ORDERED` → `RECEIVED` → `CLOSED`.
+
+### 6.18 Segment Service (Customer Segmentation Engine)
+*   **Rule DSL**: Supports a JSON-based rule definition with `AND`/`OR` grouping.
+*   **Operators**: Numeric (`gt`, `lt`, `gte`, `lte`, `eq`) and String (`contains`, `equals`, `startsWith`).
+*   **Supported Fields**: `totalSpent`, `ordersCount`, `email`, `firstName`, `lastName`.
+*   **Preview Limit**: The `previewCustomers` method returns a maximum of 50 customers to prevent UI overload.
+*   **Dynamic Resolution**: `getCustomerIdsInSegment` resolves the full list at runtime when a campaign is dispatched, ensuring the segment is always up-to-date.
+
+### 6.19 Tracking Script Internals
+The tracking script (`tracking.js`) is dynamically generated by the server and contains client-side analytics logic.
+
+*   **Visitor ID Cookie**: A UUID stored in `_os_vid` with a 365-day expiry.
+*   **Beacon API**: Uses `navigator.sendBeacon()` for reliable event delivery during page unloads, falling back to `fetch()`.
+*   **UTM Capture**: Automatically extracts `utm_source`, `utm_medium`, `utm_campaign` from the URL query parameters.
+*   **Heartbeat**: A 30-second `setInterval` that emits `heartbeat` events to keep the session alive, but **only if `document.visibilityState === 'visible'`** to avoid counting background tabs.
+*   **Email Capture (Abandoned Cart)**: Listens to **both** `blur` and `change` events on `input#billing_email` to capture autofilled values.
+*   **Cart Value Parsing**: Parses the WooCommerce mini-cart HTML fragment (`div.widget_shopping_cart_content`) to extract the cart total via regex (`text.replace(/[^0-9.]/g, '')`).
+
+### 6.20 Webhook Security (Inbound API)
+The `webhook.ts` route handles incoming WooCommerce webhooks with strict security.
+
+*   **HMAC-SHA256 Verification**: Every incoming request is verified against a base64-encoded HMAC-SHA256 signature using the `webhookSecret` (or fallback `wooConsumerSecret`).
+*   **Strict Rejection**: If no secret is configured for an account, the webhook is **rejected with 401**, not silently accepted.
+*   **Notification Generation**: On `order.created`, a `Notification` record is automatically created, powering the in-app notification bell.
+*   **Topics Handled**: `order.created`, `order.updated`, `product.created`, `product.updated`, `customer.created`, `customer.updated`.
+
+### 6.21 Event Bus (Internal Pub/Sub)
+The `events.ts` module defines a lightweight, in-process event bus using Node.js `EventEmitter`.
+
+*   **Typed Events**: `EVENTS.ORDER.SYNCED`, `EVENTS.ORDER.CREATED`, `EVENTS.ORDER.COMPLETED`, `EVENTS.REVIEW.LEFT`, `EVENTS.EMAIL.RECEIVED`.
+*   **Error Handling**: The bus has a global `error` listener that logs failures via `Logger.error`.
+*   **Debug Logging**: Every `emit()` call is logged at the `debug` level, enabling full traceability of inter-service communication.

@@ -142,18 +142,18 @@ class OverSeek_Admin
 				<?php do_settings_sections('overseek_options_group'); ?>
 				<table class="form-table">
 					<tr valign="top">
-						<th scope="row">Connection Status</th>
+						<th scope="row">Configuration Status</th>
 						<td>
 							<?php
 							$api_url = get_option('overseek_api_url');
 							$account_id = get_option('overseek_account_id');
 
 							if ($api_url && $account_id) {
-								echo '<div style="color: green; font-weight: bold; margin-bottom: 5px;">&#10003; Connected</div>';
+								echo '<div style="color: green; font-weight: bold; margin-bottom: 5px;">&#10003; Settings Saved</div>';
 								echo '<div style="font-size: 12px; color: #666;">Account ID: ' . esc_html($account_id) . '</div>';
-								echo '<div style="font-size: 12px; color: #666;">API URL: ' . esc_html($api_url) . '</div>';
+								echo '<div style="font-size: 12px; color: #666;">Use the Overseek Dashboard to verify live connectivity.</div>';
 							} else {
-								echo '<span style="color: red; font-weight: bold;">&#10007; Not Connected</span>';
+								echo '<span style="color: red; font-weight: bold;">&#10007; Not Configured</span>';
 							}
 							?>
 						</td>

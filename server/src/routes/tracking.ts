@@ -8,6 +8,66 @@ import { requireAuth } from '../middleware/auth';
 
 const router = express.Router();
 
+// =============================================================================
+// Security: Account Validation Cache
+// =============================================================================
+const accountCache = new Map<string, number>(); // accountId -> timestamp
+const CACHE_TTL = 60000; // 1 minute
+
+async function isValidAccount(accountId: string): Promise<boolean> {
+    const cached = accountCache.get(accountId);
+    if (cached && Date.now() - cached < CACHE_TTL) {
+        return true;
+    }
+
+    const account = await prisma.account.findUnique({
+        where: { id: accountId },
+        select: { id: true }
+    });
+
+    if (account) {
+        accountCache.set(accountId, Date.now());
+        return true;
+    }
+    return false;
+}
+
+// =============================================================================
+// Security: Per-Account Rate Limiting
+// =============================================================================
+const accountRateLimits = new Map<string, number[]>(); // accountId -> timestamps
+const MAX_EVENTS_PER_MINUTE = 100;
+
+function isRateLimited(accountId: string): boolean {
+    const now = Date.now();
+    const timestamps = accountRateLimits.get(accountId) || [];
+
+    // Filter to last minute only
+    const recent = timestamps.filter(t => now - t < 60000);
+
+    if (recent.length >= MAX_EVENTS_PER_MINUTE) {
+        return true;
+    }
+
+    recent.push(now);
+    accountRateLimits.set(accountId, recent);
+    return false;
+}
+
+// Cleanup stale rate limit entries every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [accountId, timestamps] of accountRateLimits.entries()) {
+        const recent = timestamps.filter(t => now - t < 60000);
+        if (recent.length === 0) {
+            accountRateLimits.delete(accountId);
+        } else {
+            accountRateLimits.set(accountId, recent);
+        }
+    }
+}, 5 * 60 * 1000);
+
+
 
 /**
  * Serve Tracking Script
@@ -191,12 +251,19 @@ router.post('/events', async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // Validate account exists to prevent spam
-        // We could cache this or just trust the DB is fast enough.
-        // For high volume, we'd use Redis or similar.
-        // For now, simple DB check.
-        // Actually, TrackingService attempts to link to Account via FK, so `upsert` will fail if account doesn't exist?
-        // Yes, if we didn't check, but let's check or handle error.
+        // Security: Validate account exists (cached)
+        const valid = await isValidAccount(accountId);
+        if (!valid) {
+            return res.status(400).json({ error: 'Invalid account' });
+        }
+
+        // Security: Rate limit per account
+        if (isRateLimited(accountId)) {
+            return res.status(429).json({ error: 'Rate limit exceeded' });
+        }
+
+        // Log origin for forensics (non-blocking)
+        const origin = req.headers.origin || req.headers.referer || 'unknown';
 
         let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         if (Array.isArray(ip)) ip = ip[0];

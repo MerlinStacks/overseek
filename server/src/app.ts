@@ -64,8 +64,15 @@ const app = express();
 // Security & Middleware
 app.set('trust proxy', 1); // Trust Docker/Nginx proxy for Rate Limiting
 
-// Rate Limiting: 100 requests per 15 minutes per IP
-// Strict CORS
+// Permissive CORS for public tracking endpoints (must come before strict CORS)
+// These endpoints are called from any WooCommerce store domain
+app.use('/api/tracking', cors({
+    origin: '*', // Allow any origin (WooCommerce stores)
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type']
+}));
+
+// Strict CORS for dashboard/authenticated routes
 app.use(cors({
     origin: process.env.CLIENT_URL ? [process.env.CLIENT_URL, 'http://localhost:5173'] : 'http://localhost:5173', // Restrict to known client
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

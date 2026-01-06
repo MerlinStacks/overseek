@@ -86,8 +86,14 @@ export class TrackingService {
             // Expect payload to have cartTotal and items
             if (data.payload && typeof data.payload.total !== 'undefined') {
                 sessionPayload.cartValue = data.payload.total;
-                sessionPayload.cartItems = data.payload.items || [];
                 sessionPayload.currency = data.payload.currency || 'USD';
+
+                // Only update items if the full list is provided. 
+                // Otherwise we risk wiping the list on simple 'add_to_cart' events that only send totals.
+                if (Array.isArray(data.payload.items)) {
+                    sessionPayload.cartItems = data.payload.items;
+                }
+
                 // Reset abandoned status if they interact with cart
                 sessionPayload.abandonedNotificationSentAt = null;
             }
