@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { X, User, MapPin, Clock, Smartphone, Monitor, ShoppingBag, Search } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -56,7 +57,16 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                     // The API returns events nested or we might need separate call.
                     // Implementation plan said: include events: { take: 100 }
                     if (json.session && json.session.events) {
-                        setEvents(json.session.events);
+                        // Deduplicate: hide pageview when product_view exists for same URL
+                        const productViewUrls = new Set<string>();
+                        json.session.events.forEach((ev: any) => {
+                            if (ev.type === 'product_view' && ev.url) productViewUrls.add(ev.url);
+                        });
+                        const deduped = json.session.events.filter((ev: any) => {
+                            if (ev.type === 'pageview' && ev.url && productViewUrls.has(ev.url)) return false;
+                            return true;
+                        });
+                        setEvents(deduped);
                     }
                 }
             } catch (err) {
@@ -70,8 +80,9 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
 
     if (!visitorId) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    // Use portal to render at document root, ensuring proper centering
+    return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
                 {/* Header */}
@@ -89,8 +100,12 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                             </div>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-                        <X className="w-5 h-5 text-gray-500" />
+                    <button
+                        onClick={onClose}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors shadow-sm"
+                        title="Close"
+                    >
+                        <X className="w-6 h-6 text-gray-600" />
                     </button>
                 </div>
 
@@ -190,11 +205,6 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                                                             <span className="font-medium text-indigo-700">
                                                                 Viewed {payload.productName || 'Product'}
                                                             </span>
-                                                            {payload.price && (
-                                                                <span className="ml-2 text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
-                                                                    ${payload.price}
-                                                                </span>
-                                                            )}
                                                             {payload.sku && (
                                                                 <span className="text-xs text-gray-400 ml-2">SKU: {payload.sku}</span>
                                                             )}
@@ -262,7 +272,8 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

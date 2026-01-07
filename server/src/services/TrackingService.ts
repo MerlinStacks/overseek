@@ -34,16 +34,12 @@ export class TrackingService {
         let region = null;
 
         if (data.ipAddress) {
-            console.log(`[GeoIP] Looking up IP: ${data.ipAddress}`);
             const geo = geoip.lookup(data.ipAddress);
-            console.log(`[GeoIP] Result:`, geo ? { country: geo.country, city: geo.city, region: geo.region } : 'null');
             if (geo) {
                 country = geo.country;
                 city = geo.city;
                 region = geo.region;
             }
-        } else {
-            console.log(`[GeoIP] No IP provided in event`);
         }
 
         // 2. Upsert Session
@@ -276,26 +272,12 @@ export class TrackingService {
             take: 100 // Fetch more initially, we'll filter further
         });
 
-        // Debug: Log raw session count
-        console.log(`[LiveVisitors] Raw sessions from DB: ${sessions.length}, 3min ago: ${threeMinsAgo.toISOString()}`);
-
         // Post-filter to catch any bots that slipped through ingestion
         // Also filter out empty userAgent strings
         const filteredSessions = sessions.filter(session => {
             if (!session.userAgent || session.userAgent.trim() === '') return false;
-            const isBot = TrackingService.isBot(session.userAgent);
-            return !isBot;
+            return !TrackingService.isBot(session.userAgent);
         });
-
-        // Debug: Log filtered count
-        console.log(`[LiveVisitors] After bot filter: ${filteredSessions.length}`);
-
-        // Log what was filtered out
-        const botsFiltered = sessions.filter(s => s.userAgent && TrackingService.isBot(s.userAgent));
-        if (botsFiltered.length > 0) {
-            console.log(`[LiveVisitors] Bots filtered out: ${botsFiltered.length}`,
-                botsFiltered.slice(0, 3).map(s => s.userAgent?.substring(0, 50)));
-        }
 
         return filteredSessions.slice(0, 50); // Cap at 50 for live view
     }
