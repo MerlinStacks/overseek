@@ -100,7 +100,7 @@ router.get('/tracking.js', (req, res) => {
  */
 router.post('/events', async (req, res) => {
     try {
-        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, is404 } = req.body;
+        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, is404, clickId, clickPlatform, landingReferrer } = req.body;
 
         if (!accountId || !visitorId || !type) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -143,7 +143,10 @@ router.post('/events', async (req, res) => {
             utmSource,
             utmMedium,
             utmCampaign,
-            is404
+            is404,
+            clickId,
+            clickPlatform,
+            landingReferrer
         });
 
         res.json({ success: true });
@@ -157,7 +160,7 @@ router.post('/events', async (req, res) => {
 // POST /api/tracking/e (or mount as /api/t/e in app.ts)
 router.post('/e', async (req, res) => {
     try {
-        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404 } = req.body;
+        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer } = req.body;
 
         if (!accountId || !visitorId || !type) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -199,7 +202,10 @@ router.post('/e', async (req, res) => {
             utmSource,
             utmMedium,
             utmCampaign,
-            is404
+            is404,
+            clickId,
+            clickPlatform,
+            landingReferrer
         });
 
         res.json({ success: true });

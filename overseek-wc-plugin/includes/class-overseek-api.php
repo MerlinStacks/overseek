@@ -41,9 +41,13 @@ class OverSeek_API {
             update_option( 'overseek_api_url', esc_url_raw( $params['api_url'] ) );
         }
         
-        // Auto-enable tracking/chat if configured remotely
-        update_option( 'overseek_enable_tracking', '1' );
-        update_option( 'overseek_enable_chat', '1' );
+        // Only enable tracking/chat if explicitly requested (security: prevent auto-enable on hijacked sessions)
+        if ( isset( $params['enable_tracking'] ) ) {
+            update_option( 'overseek_enable_tracking', $params['enable_tracking'] ? '1' : '' );
+        }
+        if ( isset( $params['enable_chat'] ) ) {
+            update_option( 'overseek_enable_chat', $params['enable_chat'] ? '1' : '' );
+        }
 
         return new WP_REST_Response( array( 'success' => true, 'message' => 'Settings updated successfully' ), 200 );
     }

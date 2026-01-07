@@ -1,5 +1,6 @@
 import express from 'express';
 import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 const router = express.Router();
 
@@ -349,7 +350,7 @@ router.get('/widget.js', async (req, res) => {
         res.setHeader('Content-Type', 'application/javascript');
         res.send(script);
     } catch (e) {
-        console.error('Widget Error', e);
+        Logger.error('Widget script error', { error: e });
         res.send('');
     }
 });

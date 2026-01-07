@@ -92,13 +92,17 @@ export function DashboardPage() {
         }
     }
 
-    const onLayoutChange = (layout: any, _layouts: any) => {
+    const onLayoutChange = (_layout: any, allLayouts: any) => {
         // Don't persist layout changes on mobile to protect desktop layout
         if (isMobile) return;
 
-        // Update local state positions
+        // Always use the lg layout for persistence (our source of truth)
+        const lgLayout = allLayouts?.lg;
+        if (!lgLayout) return;
+
+        // Update local state positions from lg layout
         const newWidgets = widgets.map(w => {
-            const match = layout.find((l: any) => l.i === w.id);
+            const match = lgLayout.find((l: any) => l.i === w.id);
             if (match) {
                 return {
                     ...w,
@@ -139,7 +143,7 @@ export function DashboardPage() {
         }
     }, 2000);
 
-    // Map to RGL layout format
+    // Map to RGL layout format for lg breakpoint
     const rglLayout = widgets.map(w => ({
         i: w.id,
         x: w.position.x,
@@ -147,6 +151,29 @@ export function DashboardPage() {
         w: w.position.w,
         h: w.position.h
     }));
+
+    /**
+     * Generate layouts for all breakpoints from the lg layout.
+     * This prevents layout reset when window is resized to smaller sizes.
+     * Items are re-flowed to fit the column count of each breakpoint.
+     */
+    const generateResponsiveLayouts = () => {
+        const breakpointCols = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 };
+        const layouts: { [key: string]: typeof rglLayout } = {};
+
+        for (const [bp, cols] of Object.entries(breakpointCols)) {
+            layouts[bp] = rglLayout.map(item => {
+                // Clamp width to max available columns
+                const w = Math.min(item.w, cols);
+                // Clamp x position so item stays within bounds
+                const x = Math.min(item.x, Math.max(0, cols - w));
+                return { ...item, w, x };
+            });
+        }
+        return layouts;
+    };
+
+    const responsiveLayouts = generateResponsiveLayouts();
 
     const addWidget = (key: string) => {
         const entry = WidgetRegistry[key];
@@ -256,7 +283,7 @@ export function DashboardPage() {
 
             <ResponsiveGridLayoutWithWidth
                 className="layout"
-                layouts={{ lg: rglLayout }}
+                layouts={responsiveLayouts}
                 breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                 cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                 rowHeight={100}

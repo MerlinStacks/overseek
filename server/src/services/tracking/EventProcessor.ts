@@ -26,12 +26,25 @@ export interface TrackingEventPayload {
     ipAddress?: string;
     userAgent?: string;
     referrer?: string;
+    referrerDomain?: string;  // Pre-parsed domain from plugin (optimization)
+    referrerType?: string;    // Pre-classified type: 'direct', 'organic', 'social', 'referral', 'internal'
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
 
     // Page metadata
     is404?: boolean;
+
+    // Ad platform click IDs (gclid, fbclid, msclkid, etc.)
+    clickId?: string;      // The raw click ID value
+    clickPlatform?: string; // Platform: 'google', 'facebook', 'microsoft', 'tiktok', 'twitter', 'linkedin', 'pinterest'
+
+    // Landing page referrer (persisted original external referrer)
+    landingReferrer?: string;
+
+    // Session enrichment from logged-in users (for session stitching)
+    customerId?: number;
+    email?: string;
 }
 
 /**
@@ -228,10 +241,20 @@ export async function processEvent(data: TrackingEventPayload) {
     // We can derive it from totalVisits > 0 if needed
 
     // Attribution tracking
-    // Priority: 1) UTM source (most explicit), 2) Referrer-based source, 3) Direct
+    // Priority: 1) Click ID (paid ads), 2) UTM source, 3) Landing referrer, 4) Current referrer, 5) Direct
     let currentSource = 'direct';
+    let campaignInfo = '';
 
-    if (data.utmSource) {
+    // Priority 1: Click ID from ad platforms (gclid, fbclid, msclkid, etc.)
+    if (data.clickId && data.clickPlatform) {
+        currentSource = 'paid';
+        campaignInfo = data.clickPlatform;
+        // Store click platform in session for attribution
+        sessionPayload.utmSource = data.clickPlatform;
+        sessionPayload.utmMedium = 'cpc';
+    }
+    // Priority 2: Explicit UTM parameters
+    else if (data.utmSource) {
         // Map common UTM sources to our traffic categories
         const utmLower = data.utmSource.toLowerCase();
         if (['google', 'bing', 'yahoo', 'duckduckgo', 'baidu'].includes(utmLower)) {
@@ -248,11 +271,46 @@ export async function processEvent(data: TrackingEventPayload) {
             // Has UTM but unknown source - treat as campaign/referral
             currentSource = 'campaign';
         }
-    } else if (data.referrer) {
-        // No UTM, fall back to referrer parsing
-        currentSource = sessionPayload.trafficSource || parseTrafficSource(data.referrer);
     }
-    // If neither UTM nor referrer, stays 'direct'
+    // Priority 3: Landing referrer (persisted original external referrer)
+    else if (data.landingReferrer) {
+        currentSource = parseTrafficSource(data.landingReferrer);
+        // Store landing referrer if not already set
+        if (!sessionPayload.referrer) {
+            sessionPayload.referrer = data.landingReferrer;
+            sessionPayload.trafficSource = currentSource;
+        }
+    }
+    // Priority 4: Current page referrer
+    else if (data.referrer) {
+        // Use pre-computed referrerType from plugin if available (optimization)
+        // Otherwise fall back to parsing on the server (for legacy clients or JS trackers)
+        if (data.referrerType && data.referrerType !== 'internal') {
+            // Map plugin types to our internal types
+            const typeMap: Record<string, string> = {
+                'organic': 'organic',
+                'social': 'social',
+                'referral': 'referral',
+                'direct': 'direct'
+            };
+            currentSource = typeMap[data.referrerType] || parseTrafficSource(data.referrer);
+        } else if (data.referrerType === 'internal') {
+            // Internal referrer = same site navigation, keep existing source or direct
+            currentSource = sessionPayload.trafficSource || 'direct';
+        } else {
+            // No pre-computed type, fall back to server-side parsing
+            currentSource = sessionPayload.trafficSource || parseTrafficSource(data.referrer);
+        }
+    }
+    // If none of the above, stays 'direct'
+
+    // Session enrichment from logged-in users (top-level fields from server-side tracking)
+    if (data.customerId) {
+        sessionPayload.wooCustomerId = data.customerId;
+    }
+    if (data.email && !sessionPayload.email) {
+        sessionPayload.email = data.email;
+    }
 
     // First touch - only set once, never overwrite
     if (!existingSession?.firstTouchSource) {

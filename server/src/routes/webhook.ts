@@ -10,14 +10,26 @@ import { io } from '../app';
 const router = Router();
 
 // Helper to verify WooCommerce Signature
-const verifySignature = (payload: any, signature: string, secret: string) => {
+const verifySignature = (payload: any, signature: string, secret: string): boolean => {
     // Woo sends signature as base64 encoded HMAC-SHA256
     const hash = crypto.createHmac('sha256', secret)
         .update(JSON.stringify(payload)) // Note: Raw body is better, but Express default JSON parser modifies it. 
         // In a perfect world, we'd use raw-body. For now, we assume standard JSON behavior matches Woo's encoding.
         // If this fails often, we need to switch to capturing raw buffer.
         .digest('base64');
-    return hash === signature;
+
+    // Use timing-safe comparison to prevent timing attacks
+    try {
+        const hashBuffer = Buffer.from(hash, 'utf8');
+        const sigBuffer = Buffer.from(signature, 'utf8');
+        // timingSafeEqual requires same length buffers
+        if (hashBuffer.length !== sigBuffer.length) {
+            return false;
+        }
+        return crypto.timingSafeEqual(hashBuffer, sigBuffer);
+    } catch {
+        return false;
+    }
 };
 
 // Webhook Endpoint

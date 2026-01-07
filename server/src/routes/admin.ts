@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../types/express';
 import { prisma } from '../utils/prisma';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth';
 import { generateToken } from '../utils/auth';
+import { Logger } from '../utils/logger';
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
             failedSyncs24h
         });
     } catch (e) {
-        console.error('Admin stats error:', e);
+        Logger.error('Admin stats error', { error: e });
         res.status(500).json({ error: 'Failed to fetch stats' });
     }
 });
@@ -58,7 +59,7 @@ router.get('/accounts', async (req: AuthenticatedRequest, res: Response) => {
         });
         res.json(accounts);
     } catch (e) {
-        console.error('Admin list accounts error:', e);
+        Logger.error('Admin list accounts error', { error: e });
         res.status(500).json({ error: 'Failed to fetch accounts' });
     }
 });
@@ -92,7 +93,7 @@ router.get('/accounts/:accountId', async (req: AuthenticatedRequest, res: Respon
 
         res.json(account);
     } catch (e) {
-        console.error('Failed to fetch account:', e);
+        Logger.error('Failed to fetch account', { error: e });
         res.status(500).json({ error: 'Failed to fetch account' });
     }
 });
@@ -132,7 +133,7 @@ router.delete('/accounts/:accountId', async (req: AuthenticatedRequest, res: Res
 
         res.json({ success: true, message: `Account "${account.name}" has been deleted.` });
     } catch (e: any) {
-        console.error('Failed to delete account:', e?.message || e, e?.stack);
+        Logger.error('Failed to delete account', { error: e, stack: e?.stack });
         res.status(500).json({ error: 'Failed to delete account', details: e?.message || String(e) });
     }
 });
@@ -413,7 +414,7 @@ router.get('/ai-prompts', async (req: AuthenticatedRequest, res: Response) => {
 
         res.json(formatted);
     } catch (e) {
-        console.error('Failed to fetch AI prompts:', e);
+        Logger.error('Failed to fetch AI prompts', { error: e });
         res.status(500).json({ error: 'Failed to fetch AI prompts' });
     }
 });
@@ -440,7 +441,7 @@ router.get('/ai-prompts/:promptId', async (req: AuthenticatedRequest, res: Respo
             updatedAt: prompt.updatedAt
         });
     } catch (e) {
-        console.error('Failed to fetch AI prompt:', e);
+        Logger.error('Failed to fetch AI prompt', { error: e });
         res.status(500).json({ error: 'Failed to fetch AI prompt' });
     }
 });
@@ -472,7 +473,7 @@ router.put('/ai-prompts/:promptId', async (req: AuthenticatedRequest, res: Respo
             updatedAt: prompt.updatedAt
         });
     } catch (e) {
-        console.error('Failed to save AI prompt:', e);
+        Logger.error('Failed to save AI prompt', { error: e });
         res.status(500).json({ error: 'Failed to save AI prompt' });
     }
 });
@@ -489,7 +490,7 @@ router.delete('/ai-prompts/:promptId', async (req: AuthenticatedRequest, res: Re
         });
         res.json({ success: true });
     } catch (e) {
-        console.error('Failed to delete AI prompt:', e);
+        Logger.error('Failed to delete AI prompt', { error: e });
         res.status(500).json({ error: 'Failed to delete AI prompt' });
     }
 });

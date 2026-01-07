@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { Logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
@@ -58,7 +59,7 @@ export class AccountUserController {
 
             res.json(newUser);
         } catch (e) {
-            console.error(e);
+            Logger.error('Failed to add user to account', { error: e });
             res.status(500).json({ error: 'Failed' });
         }
     }

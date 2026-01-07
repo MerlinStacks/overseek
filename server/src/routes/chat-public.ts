@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
+import { Logger } from '../utils/logger';
 
 export const createPublicChatRouter = (chatService: ChatService) => {
     const router = Router();
@@ -56,7 +57,7 @@ export const createPublicChatRouter = (chatService: ChatService) => {
             res.json(conversation);
 
         } catch (error) {
-            console.error('Public Chat Error:', error);
+            Logger.error('Public chat conversation error', { error });
             res.status(500).json({ error: 'Failed to start conversation' });
         }
     });
@@ -86,7 +87,7 @@ export const createPublicChatRouter = (chatService: ChatService) => {
             res.json(msg);
 
         } catch (error) {
-            console.error('Public Message Error:', error);
+            Logger.error('Public message error', { error });
             res.status(500).json({ error: 'Failed to send message' });
         }
     });
@@ -123,7 +124,7 @@ export const createPublicChatRouter = (chatService: ChatService) => {
             res.json(messages);
 
         } catch (error) {
-            console.error('Public Poll Error:', error);
+            Logger.error('Public poll error', { error });
             res.status(500).json({ error: 'Failed to fetch messages' });
         }
     });

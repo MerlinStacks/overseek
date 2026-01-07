@@ -4,6 +4,7 @@ import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
 import { InboxAIService } from '../services/InboxAIService';
 import { requireAuth } from '../middleware/auth';
+import { Logger } from '../utils/logger';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -69,7 +70,7 @@ export const createChatRouter = (chatService: ChatService) => {
             );
             res.json(conversations);
         } catch (error) {
-            console.error(error);
+            Logger.error('Failed to fetch conversations', { error });
             res.status(500).json({ error: 'Failed to fetch conversations' });
         }
     });
@@ -201,7 +202,7 @@ export const createChatRouter = (chatService: ChatService) => {
 
             res.json({ draft: result.draft });
         } catch (error) {
-            console.error('Failed to generate AI draft:', error);
+            Logger.error('Failed to generate AI draft', { error });
             res.status(500).json({ error: 'Failed to generate AI draft' });
         }
     });
@@ -240,7 +241,7 @@ export const createChatRouter = (chatService: ChatService) => {
                 }
             });
         } catch (error) {
-            console.error('Failed to upload attachment:', error);
+            Logger.error('Failed to upload attachment', { error });
             res.status(500).json({ error: 'Failed to upload attachment' });
         }
     });

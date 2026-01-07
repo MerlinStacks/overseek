@@ -172,6 +172,10 @@ export class EmailService {
                     const fromLine = headerPart?.body?.from?.[0] || '';
                     const messageId = headerPart?.body?.['message-id']?.[0] || `local-${Date.now()}`;
 
+                    // Extract threading headers for reply matching
+                    const inReplyTo = headerPart?.body?.['in-reply-to']?.[0] || null;
+                    const references = headerPart?.body?.references?.[0] || null;
+
                     // Parse "Name <email@domain.com>"
                     let fromEmail = fromLine;
                     let fromName = '';
@@ -187,7 +191,7 @@ export class EmailService {
                     const bodyPart = message.parts.find(p => p.which === 'TEXT');
                     const body = bodyPart ? bodyPart.body : '[Content cannot be displayed]';
 
-                    Logger.info(`[checkEmails] Processing email`, { fromEmail, subject });
+                    Logger.info(`[checkEmails] Processing email`, { fromEmail, subject, inReplyTo: !!inReplyTo });
 
                     EventBus.emit(EVENTS.EMAIL.RECEIVED, {
                         emailAccountId,
@@ -195,7 +199,9 @@ export class EmailService {
                         fromName,
                         subject,
                         body,
-                        messageId
+                        messageId,
+                        inReplyTo,
+                        references
                     });
 
                     Logger.info(`[checkEmails] Emitted EMAIL.RECEIVED event`, { fromEmail, subject });

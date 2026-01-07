@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/auth';
 import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 interface JwtPayload {
     userId: string;
@@ -94,7 +95,7 @@ export const requireSuperAdmin = async (req: AuthRequest, res: Response, next: N
 
         next();
     } catch (error) {
-        console.error('SuperAdmin check failed:', error);
+        Logger.error('SuperAdmin check failed', { error });
         res.status(500).json({ error: 'Internal server error during authorization' });
     }
 };

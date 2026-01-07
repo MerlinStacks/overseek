@@ -38,9 +38,16 @@ class OverSeek_Admin
 			'sanitize_callback' => array($this, 'sanitize_connection_config'),
 		));
 
-
 		register_setting('overseek_options_group', 'overseek_enable_tracking');
 		register_setting('overseek_options_group', 'overseek_enable_chat');
+		
+		// Privacy settings
+		register_setting('overseek_options_group', 'overseek_require_consent');
+		register_setting('overseek_options_group', 'overseek_cookie_retention_days', array(
+			'type' => 'integer',
+			'default' => 365,
+			'sanitize_callback' => 'absint',
+		));
 	}
 
 	/**
@@ -128,6 +135,30 @@ class OverSeek_Admin
 						</td>
 					</tr>
 				</table>
+
+				<h2>Privacy Settings</h2>
+				<table class="form-table">
+					<tr valign="top">
+						<th scope="row">Cookie Retention</th>
+						<td>
+							<?php $retention = get_option('overseek_cookie_retention_days', 365); ?>
+							<select name="overseek_cookie_retention_days">
+								<option value="30" <?php selected($retention, 30); ?>>30 days</option>
+								<option value="90" <?php selected($retention, 90); ?>>90 days</option>
+								<option value="180" <?php selected($retention, 180); ?>>180 days</option>
+								<option value="365" <?php selected($retention, 365); ?>>1 year</option>
+								<option value="730" <?php selected($retention, 730); ?>>2 years</option>
+							</select>
+							<p class="description">How long to keep visitor tracking cookies. Shorter periods improve privacy compliance.</p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Require Cookie Consent</th>
+						<td>
+							<input type="checkbox" name="overseek_require_consent" value="1" <?php checked(1, get_option('overseek_require_consent'), true); ?> />
+							<p class="description">Only track visitors who have given consent via WP Consent API (GDPR compliance). Requires a compatible consent plugin.</p>
+						</td>
+					</tr>
 
 				<?php submit_button(); ?>
 			</form>

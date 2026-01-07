@@ -142,7 +142,7 @@ export class WooService {
 
     async updateProduct(id: number, data: any, userId?: string) {
         if (this.isDemo) {
-            console.log(`[Demo] Updated Product ${id}:`, data);
+            Logger.debug(`[Demo] Updated Product ${id}`, { data });
             return { ...MOCK_PRODUCTS.find(p => p.id === id), ...data };
         }
         const response = await this.api.put(`products/${id}`, data);
@@ -164,7 +164,7 @@ export class WooService {
 
     async updateOrder(id: number, data: any, userId?: string) {
         if (this.isDemo) {
-            console.log(`[Demo] Updated Order ${id}:`, data);
+            Logger.debug(`[Demo] Updated Order ${id}`, { data });
             return { ...MOCK_ORDERS.find(o => o.id === id), ...data };
         }
         const response = await this.api.put(`orders/${id}`, data);
@@ -220,7 +220,7 @@ export class WooService {
 
     async updatePluginSettings(settings: { account_id?: string; api_url?: string }) {
         if (this.isDemo) {
-            console.log("[Demo] Mocking plugin settings update:", settings);
+            Logger.debug('[Demo] Mocking plugin settings update', { settings });
             return { success: true, message: "Settings updated (Demo)" };
         }
 

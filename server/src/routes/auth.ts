@@ -145,7 +145,7 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req: Authentic
             user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin }
         });
     } catch (error) {
-        console.error('Login error:', error);
+        Logger.error('Login error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -191,7 +191,7 @@ router.put('/me', requireAuth, async (req: AuthenticatedRequest, res: Response) 
         const { passwordHash, ...safeUser } = updatedUser;
         res.json(safeUser);
     } catch (error) {
-        console.error('Update profile error:', error);
+        Logger.error('Update profile error', { error });
         res.status(500).json({ error: 'Failed to update profile' });
     }
 });
@@ -215,7 +215,7 @@ router.post('/upload-avatar', requireAuth, upload.single('avatar'), async (req: 
 
         res.json({ avatarUrl });
     } catch (error) {
-        console.error('Upload error:', error);
+        Logger.error('Upload error', { error });
         res.status(500).json({ error: 'Failed to upload avatar' });
     }
 });
@@ -320,7 +320,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req: Authen
         res.json({ message: 'Password has been reset successfully' });
 
     } catch (error) {
-        console.error('Reset password error:', error);
+        Logger.error('Reset password error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -336,7 +336,7 @@ router.post('/2fa/setup', requireAuth, async (req: AuthRequest, res: Response) =
         // Verify endpoint needed to confirm and save
         res.json({ secret, qrCodeUrl });
     } catch (error) {
-        console.error('2FA setup error:', error);
+        Logger.error('2FA setup error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -353,7 +353,7 @@ router.post('/2fa/verify', requireAuth, async (req: AuthRequest, res: Response) 
 
         res.json({ message: '2FA enabled successfully', backupCodes });
     } catch (error) {
-        console.error('2FA verify error:', error);
+        Logger.error('2FA verify error', { error });
         res.status(500).json({ error: 'Internal server error' });
     }
 });

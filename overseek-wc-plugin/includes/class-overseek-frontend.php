@@ -33,7 +33,7 @@ class OverSeek_Frontend
 
 		if ($chat_enabled && !empty($account_id)) {
 			echo "<!-- OverSeek Live Chat Widget Start -->\n";
-			echo "<script src='" . esc_url($api_url) . "/api/chat/widget.js?id=" . esc_js($account_id) . "' async defer></script>\n";
+			echo "<script src='" . esc_url($api_url) . "/api/chat/widget.js?id=" . esc_js($account_id) . "' defer></script>\n";
 			echo "<!-- OverSeek Live Chat Widget End -->\n";
 		}
 	}

@@ -656,6 +656,9 @@ model Message {
   isInternal Boolean   @default(false) // For private notes
   readAt     DateTime?
 
+  // Email threading: stores RFC 5322 Message-ID for In-Reply-To matching
+  emailMessageId String?
+
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())

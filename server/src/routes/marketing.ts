@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { MarketingService } from '../services/MarketingService';
 import { requireAuth } from '../middleware/auth';
+import { Logger } from '../utils/logger';
 
 const router = Router();
 const service = new MarketingService();
@@ -22,7 +23,7 @@ router.post('/campaigns', async (req: any, res: any) => {
         const campaign = await service.createCampaign(req.user!.accountId, req.body);
         res.json(campaign);
     } catch (e) {
-        console.error('Error creating campaign:', e);
+        Logger.error('Error creating campaign', { error: e });
         res.status(500).json({ error: e });
     }
 });

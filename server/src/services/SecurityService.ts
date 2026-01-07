@@ -4,8 +4,21 @@ import * as qrcode from 'qrcode';
 import { generateToken } from '../utils/auth';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 export class SecurityService {
+
+    // -------------------
+    // Helper: Hash Token
+    // -------------------
+
+    /**
+     * Hashes a token using SHA-256 for secure storage.
+     * Client receives plaintext token; DB stores only the hash.
+     */
+    private static hashToken(token: string): string {
+        return crypto.createHash('sha256').update(token).digest('hex');
+    }
 
     // -------------------
     // Two-Factor Auth
@@ -50,13 +63,14 @@ export class SecurityService {
         // Create Access Token
         const accessToken = generateToken({ userId });
 
-        // Create Refresh Token
-        const refreshTokenStr = crypto.randomBytes(40).toString('hex');
+        // Create Refresh Token - client gets plaintext, DB stores hash
+        const refreshTokenPlain = crypto.randomBytes(40).toString('hex');
+        const refreshTokenHash = this.hashToken(refreshTokenPlain);
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
         await prisma.refreshToken.create({
             data: {
-                token: refreshTokenStr,
+                token: refreshTokenHash, // Store hash, not plaintext
                 userId,
                 expiresAt,
                 ipAddress,
@@ -64,22 +78,29 @@ export class SecurityService {
             }
         });
 
-        return { accessToken, refreshToken: refreshTokenStr };
+        return { accessToken, refreshToken: refreshTokenPlain }; // Return plaintext to client
     }
 
     static async refreshSession(token: string, ipAddress?: string, userAgent?: string) {
+        // Hash the incoming token to compare against stored hash
+        const tokenHash = this.hashToken(token);
+
         const refreshToken = await prisma.refreshToken.findUnique({
-            where: { token },
+            where: { token: tokenHash },
             include: { user: true }
         });
 
         if (!refreshToken || refreshToken.revokedAt || new Date() > refreshToken.expiresAt) {
-            // Token Reuse Detection could go here (revoke all if reused)
+            // Token Reuse Detection: if token not found, could be reuse attempt
+            Logger.warn('Refresh token validation failed', {
+                reason: !refreshToken ? 'not_found' : refreshToken.revokedAt ? 'revoked' : 'expired'
+            });
             throw new Error('Invalid refresh token');
         }
 
-        // Rotate Token
-        const newRefreshTokenStr = crypto.randomBytes(40).toString('hex');
+        // Rotate Token - generate new plaintext, store new hash
+        const newRefreshTokenPlain = crypto.randomBytes(40).toString('hex');
+        const newRefreshTokenHash = this.hashToken(newRefreshTokenPlain);
         const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
         // Revoke old, create new
@@ -91,7 +112,7 @@ export class SecurityService {
             }),
             prisma.refreshToken.create({
                 data: {
-                    token: newRefreshTokenStr,
+                    token: newRefreshTokenHash, // Store hash
                     userId: refreshToken.userId,
                     expiresAt: newExpiresAt,
                     ipAddress,
@@ -102,7 +123,7 @@ export class SecurityService {
 
         const newAccessToken = generateToken({ userId: refreshToken.userId });
 
-        return { accessToken: newAccessToken, refreshToken: newRefreshTokenStr };
+        return { accessToken: newAccessToken, refreshToken: newRefreshTokenPlain }; // Return plaintext
     }
 
     static async revokeUserSessions(userId: string) {
@@ -111,4 +132,18 @@ export class SecurityService {
             data: { revokedAt: new Date() }
         });
     }
+
+    /**
+     * Revokes ALL existing refresh tokens across all users.
+     * Use when migrating from plaintext to hashed token storage.
+     */
+    static async revokeAllSessions() {
+        const result = await prisma.refreshToken.updateMany({
+            where: { revokedAt: null },
+            data: { revokedAt: new Date() }
+        });
+        Logger.info('Revoked all existing refresh tokens', { count: result.count });
+        return result.count;
+    }
 }
+

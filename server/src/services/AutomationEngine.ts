@@ -1,47 +1,31 @@
+/**
+ * Automation Engine
+ * 
+ * Core orchestrator for marketing automation workflows.
+ * Delegates node execution and flow navigation to specialized modules.
+ */
 
-import { AutomationEnrollment, MarketingAutomation } from '@prisma/client';
-import { EmailService } from './EmailService';
-import { InvoiceService } from './InvoiceService';
+import { MarketingAutomation } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
-
-interface FlowNode {
-    id: string;
-    type: string; // 'trigger', 'action', 'delay', 'condition'
-    data: any; // { config: {...} }
-}
-
-interface FlowEdge {
-    id: string;
-    source: string;
-    target: string;
-    sourceHandle?: string | null; // 'true', 'false' for conditions
-}
-
-interface FlowDefinition {
-    nodes: FlowNode[];
-    edges: FlowEdge[];
-}
+import { FlowDefinition } from './automation/types';
+import { NodeExecutor } from './automation/NodeExecutor';
+import { findNextNodeId, calculateDelayDuration } from './automation/FlowNavigator';
 
 export class AutomationEngine {
-    private emailService = new EmailService();
-    private invoiceService = new InvoiceService();
+    private nodeExecutor = new NodeExecutor();
 
-    // Called when an event happens (e.g. Order Created)
+    /**
+     * Called when an event happens (e.g. Order Created)
+     */
     async processTrigger(accountId: string, triggerType: string, data: any) {
         Logger.info(`Processing Trigger: ${triggerType}`, { accountId, triggerType });
 
-        // Find active automations for this trigger
         const automations = await prisma.marketingAutomation.findMany({
-            where: {
-                accountId,
-                triggerType,
-                isActive: true
-            }
+            where: { accountId, triggerType, isActive: true }
         });
 
         for (const automation of automations) {
-            // Check filters (e.g. min order value) provided in triggerConfig or Trigger Node
             const passesFilters = this.checkTriggerFilters(automation, data);
 
             if (passesFilters) {
@@ -52,51 +36,54 @@ export class AutomationEngine {
         }
     }
 
+    /**
+     * Enroll a customer in an automation workflow.
+     */
     async enroll(automation: MarketingAutomation, data: any) {
         Logger.info(`Enrolling ${data.email || 'customer'} in ${automation.name}`);
 
         let targetEmail = data.email;
         let wooCustomerId = data.wooCustomerId;
 
-        // Extract email from data
-        if (!targetEmail && data.billing && data.billing.email) targetEmail = data.billing.email;
+        if (!targetEmail && data.billing?.email) targetEmail = data.billing.email;
 
         if (!targetEmail) {
-            console.warn(`[AutomationEngine] Cannot enroll: No email found in data`);
+            Logger.warn('Cannot enroll: No email found in data', { automation: automation.name });
             return;
         }
 
         const flow = automation.flowDefinition as unknown as FlowDefinition | null;
-        if (!flow || !flow.nodes) {
-            console.warn(`[AutomationEngine] No flow definition for ${automation.name}`);
+        if (!flow?.nodes) {
+            Logger.warn('No flow definition for automation', { automation: automation.name });
             return;
         }
 
-        // Find Trigger Node to start
-        const triggerNode = flow.nodes.find(n => n.type === 'trigger' || n.type === 'TRIGGER');
+        const triggerNode = flow.nodes.find(n =>
+            n.type === 'trigger' || n.type === 'TRIGGER'
+        );
         if (!triggerNode) {
-            console.warn(`[AutomationEngine] No Trigger Node found in flow`);
+            Logger.warn('No Trigger Node found in flow', { automation: automation.name });
             return;
         }
 
-        // Create Enrollment
         const enrollment = await prisma.automationEnrollment.create({
             data: {
                 automationId: automation.id,
                 email: targetEmail,
-                wooCustomerId: wooCustomerId,
+                wooCustomerId,
                 contextData: data,
                 status: 'ACTIVE',
                 currentNodeId: triggerNode.id,
-                nextRunAt: new Date() // Ready to run immediately
+                nextRunAt: new Date()
             }
         });
 
-        // Trigger processing immediately
         await this.processEnrollment(enrollment.id);
     }
 
-    // Cron job or called immediately
+    /**
+     * Process a single enrollment - advances through flow nodes.
+     */
     async processEnrollment(enrollmentId: string) {
         const enrollment = await prisma.automationEnrollment.findUnique({
             where: { id: enrollmentId },
@@ -104,71 +91,53 @@ export class AutomationEngine {
         });
 
         if (!enrollment || enrollment.status !== 'ACTIVE') return;
-
-        // Check scheduling
         if (enrollment.nextRunAt && enrollment.nextRunAt > new Date()) return;
 
         const flow = enrollment.automation.flowDefinition as unknown as FlowDefinition | null;
         if (!flow) return;
 
         let currentNodeId = enrollment.currentNodeId;
-
-        // Loop to process consecutive immediate nodes
-        // Safety Break: max 20 steps to prevent infinite loops
         let stepsProcessed = 0;
         const MAX_STEPS = 20;
 
         while (currentNodeId && stepsProcessed < MAX_STEPS) {
             const node = flow.nodes.find(n => n.id === currentNodeId);
             if (!node) {
-                // End of flow or invalid node
                 await this.completeEnrollment(enrollmentId);
                 return;
             }
 
             Logger.debug(`Processing Node ${node.id} (${node.type})`);
 
-            // Execute Logic based on Type
-            const result = await this.executeNodeLogic(node, enrollment);
+            const result = await this.nodeExecutor.execute(node, enrollment);
 
-            if (result.action === 'WAIT') {
-                // Stop processing, we are waiting (Delay)
-                return;
-            }
+            if (result.action === 'WAIT') return;
 
             if (result.action === 'NEXT') {
-                // Find next node
-                const nextNodeId = this.findNextNodeId(flow, node.id, result.outcome);
+                const nextNodeId = findNextNodeId(flow, node.id, result.outcome);
 
                 if (!nextNodeId) {
                     await this.completeEnrollment(enrollmentId);
                     return;
                 }
 
-                // Prepare to move to next node
                 const nextNode = flow.nodes.find(n => n.id === nextNodeId);
-                let nextRunAt = new Date(); // Default: Run immediately
+                let nextRunAt = new Date();
 
                 if (nextNode && (nextNode.type === 'delay' || nextNode.type === 'DELAY')) {
-                    // Calculate Delay
-                    const durationMs = this.calculateDelayDuration(nextNode.data);
+                    const durationMs = calculateDelayDuration(nextNode.data);
                     nextRunAt = new Date(Date.now() + durationMs);
                     Logger.debug(`Next is Delay. Scheduling for ${nextRunAt.toISOString()}`);
                 }
 
-                // Update DB to move pointer
                 await prisma.automationEnrollment.update({
                     where: { id: enrollmentId },
-                    data: {
-                        currentNodeId: nextNodeId,
-                        nextRunAt: nextRunAt
-                    }
+                    data: { currentNodeId: nextNodeId, nextRunAt }
                 });
 
                 currentNodeId = nextNodeId;
-                enrollment.currentNodeId = nextNodeId; // Local update for loop
+                enrollment.currentNodeId = nextNodeId;
 
-                // If it's a future wait, break loop
                 if (nextRunAt > new Date()) return;
             }
 
@@ -176,172 +145,9 @@ export class AutomationEngine {
         }
     }
 
-    private async executeNodeLogic(node: FlowNode, enrollment: any): Promise<{ action: 'NEXT' | 'WAIT', outcome?: string }> {
-        const type = node.type.toUpperCase();
-
-        if (type === 'TRIGGER') {
-            return { action: 'NEXT' };
-        }
-
-        // Special handling for Abandoned Cart context?
-        // Usually handled in processTrigger filters.
-
-        if (type === 'DELAY') {
-            return { action: 'NEXT' };
-        }
-
-        if (type === 'ACTION') {
-            // e.g. Send Email, Add Tag
-            const actionType = node.data?.actionType || 'SEND_EMAIL';
-
-            if (actionType === 'SEND_EMAIL') {
-                const config = node.data; // { templateId: "...", subject: "...", body: "..." }
-                Logger.info(`Sending Email: ${config.templateId} to ${enrollment.email}`);
-
-                try {
-                    // Resolve Email Account (prefer config, fallback to first available)
-                    let emailAccountId = config.emailAccountId;
-                    if (!emailAccountId) {
-                        const defaultAccount = await prisma.emailAccount.findFirst({
-                            where: { accountId: enrollment.automation.accountId }
-                        });
-                        emailAccountId = defaultAccount?.id;
-                    }
-
-                    if (emailAccountId) {
-                        // Render Templates
-                        const context = {
-                            customer: {
-                                email: enrollment.email,
-                                id: enrollment.wooCustomerId
-                            },
-                            ...enrollment.contextData // Flatten context data (e.g. order details)
-                        };
-
-                        const subject = this.renderTemplate(config.subject || 'Automated Email', context);
-                        const body = this.renderTemplate(config.body || config.html || '', context);
-
-                        await this.emailService.sendEmail(
-                            enrollment.automation.accountId,
-                            emailAccountId,
-                            enrollment.email,
-                            subject,
-                            body || `<p>Email Template: ${config.templateId}</p>`,
-                            enrollment.contextData?.attachments
-                        );
-                    } else {
-                        Logger.warn(`Cannot send email: No Email Account found`, { accountId: enrollment.automation.accountId });
-                    }
-                } catch (err) {
-                    Logger.error(`Failed to send email`, { error: err });
-                }
-            }
-
-            if (actionType === 'GENERATE_INVOICE') {
-                const config = node.data; // { templateId: "..." }
-                Logger.info(`Generating Invoice: Template ${config.templateId} for ${enrollment.email}`);
-
-                try {
-                    // Assuming we have an Order ID in context
-                    const orderId = enrollment.contextData?.id || enrollment.contextData?.orderId || enrollment.contextData?.wooId;
-
-                    if (!orderId) {
-                        Logger.warn(`Cannot generate invoice: No Order ID in context`);
-                    } else {
-                        const pdfUrl = await this.invoiceService.generateInvoicePdf(
-                            enrollment.automation.accountId,
-                            String(orderId),
-                            config.templateId
-                        );
-
-                        // Store in context for subsequent steps (like Email)
-                        // Update Enrollment Context in DB
-                        const newContext = {
-                            ...enrollment.contextData,
-                            invoicePdfUrl: pdfUrl,
-                            attachments: [
-                                ...(enrollment.contextData?.attachments || []),
-                                { filename: 'Invoice.pdf', path: pdfUrl }
-                            ]
-                        };
-
-                        await prisma.automationEnrollment.update({
-                            where: { id: enrollment.id },
-                            data: { contextData: newContext }
-                        });
-
-                        // Update local object for this run
-                        enrollment.contextData = newContext;
-                    }
-
-                } catch (err) {
-                    Logger.error('Failed to generate invoice', { error: err });
-                }
-            }
-
-            return { action: 'NEXT' };
-        }
-
-        if (type === 'CONDITION') {
-            // Evaluate logic
-            // e.g. "Order Total > 100"
-            const outcome = await this.evaluateCondition(node.data, enrollment.contextData);
-            return { action: 'NEXT', outcome: outcome ? 'true' : 'false' };
-        }
-
-        return { action: 'NEXT' };
-    }
-
-    private findNextNodeId(flow: FlowDefinition, currentNodeId: string, outcome?: string): string | null {
-        // Find edges starting from this node
-        const edges = flow.edges.filter(e => e.source === currentNodeId);
-
-        if (edges.length === 0) return null;
-
-        if (edges.length === 1 && !outcome) {
-            return edges[0].target;
-        }
-
-        // Handle Conditional Edges
-        if (outcome) {
-            const match = edges.find(e => e.sourceHandle === outcome || e.id === outcome);
-            if (match) return match.target;
-        }
-
-        // Fallback: Return first
-        return edges[0].target;
-    }
-
-    private calculateDelayDuration(data: any): number {
-        // data: { duration: 1, unit: 'hours' }
-        const val = parseInt(data.value || data.duration || '0');
-        const unit = data.unit || 'minutes';
-
-        const multi: any = {
-            'minutes': 60000,
-            'hours': 3600000,
-            'days': 86400000
-        };
-
-        return val * (multi[unit] || 60000);
-    }
-
-    private async evaluateCondition(data: any, context: any): Promise<boolean> {
-        // data: { field: 'total', operator: 'gt', value: 100 }
-        if (!data || !context) return true;
-
-        const fieldVal = context[data.field];
-        const targetVal = data.value;
-
-        switch (data.operator) {
-            case 'gt': return fieldVal > targetVal;
-            case 'lt': return fieldVal < targetVal;
-            case 'eq': return fieldVal == targetVal;
-            case 'contains': return String(fieldVal).includes(targetVal);
-            default: return true;
-        }
-    }
-
+    /**
+     * Mark enrollment as completed.
+     */
     private async completeEnrollment(id: string) {
         Logger.info(`Enrollment ${id} Completed.`);
         await prisma.automationEnrollment.update({
@@ -350,14 +156,13 @@ export class AutomationEngine {
         });
     }
 
-    // Global ticker
+    /**
+     * Global ticker - processes due enrollments.
+     */
     async runTicker() {
         const now = new Date();
         const due = await prisma.automationEnrollment.findMany({
-            where: {
-                status: 'ACTIVE',
-                nextRunAt: { lte: now }
-            },
+            where: { status: 'ACTIVE', nextRunAt: { lte: now } },
             take: 50
         });
 
@@ -367,46 +172,26 @@ export class AutomationEngine {
     }
 
     /**
-     * Replaces {{variable}} placeholders with values from context
-     */
-    private renderTemplate(template: string, context: any): string {
-        if (!template) return '';
-
-        return template.replace(/\{\{(.*?)\}\}/g, (match, path) => {
-            const keys = path.trim().split('.');
-            let value = context;
-
-            for (const key of keys) {
-                if (value === undefined || value === null) return '';
-                value = value[key];
-            }
-
-            return value !== undefined && value !== null ? String(value) : '';
-        });
-    }
-
-    /**
-     * Checks if data meets the Trigger Config filters (e.g. Min Order Total)
+     * Check if data meets trigger filters.
      */
     private checkTriggerFilters(automation: MarketingAutomation, data: any): boolean {
-        // Get Trigger Node configuration
         const flow = automation.flowDefinition as unknown as FlowDefinition;
-        if (!flow || !flow.nodes) return true; // Loose default
+        if (!flow?.nodes) return true;
 
-        const triggerNode = flow.nodes.find(n => n.type === 'trigger' || n.type === 'TRIGGER');
-        if (!triggerNode || !triggerNode.data) return true;
+        const triggerNode = flow.nodes.find(n =>
+            n.type === 'trigger' || n.type === 'TRIGGER'
+        );
+        if (!triggerNode?.data) return true;
 
-        const config = triggerNode.data; // { minOrderValue: 50, requiredProducts: [123] }
+        const config = triggerNode.data;
 
-        // Example: Min Order Value
         if (config.minOrderValue && data.total) {
             if (parseFloat(data.total) < parseFloat(config.minOrderValue)) {
                 return false;
             }
         }
 
-        // Example: Required Products (if data is Order)
-        if (config.requiredProductIds && Array.isArray(config.requiredProductIds) && config.requiredProductIds.length > 0) {
+        if (config.requiredProductIds?.length > 0) {
             const orderItems = data.line_items || [];
             const hasProduct = orderItems.some((item: any) =>
                 config.requiredProductIds.includes(String(item.product_id))
