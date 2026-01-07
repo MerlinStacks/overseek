@@ -405,6 +405,7 @@ class OverSeek_Server_Tracking
 	/**
 	 * Initialize the visitor cookie early, before any output is sent.
 	 * This MUST run before headers are sent to ensure cookies work.
+	 * Also persists UTM parameters in a session cookie for attribution tracking.
 	 */
 	public function init_visitor_cookie()
 	{
@@ -418,26 +419,80 @@ class OverSeek_Server_Tracking
 		// Check if cookie already exists
 		if (isset($_COOKIE[$cookie_name]) && !empty($_COOKIE[$cookie_name])) {
 			$this->visitor_id = sanitize_text_field($_COOKIE[$cookie_name]);
-			return;
+		} else {
+			// Generate new visitor ID
+			$this->visitor_id = $this->generate_uuid();
+			
+			// Set cookie for 1 year
+			setcookie(
+				$cookie_name,
+				$this->visitor_id,
+				time() + (365 * 24 * 60 * 60),
+				'/',
+				'',
+				is_ssl(),
+				false
+			);
+			$_COOKIE[$cookie_name] = $this->visitor_id;
 		}
 		
-		// Generate new visitor ID
-		$this->visitor_id = $this->generate_uuid();
+		// Persist UTM parameters in session cookie
+		$this->persist_utm_parameters();
+	}
+	
+	/**
+	 * Persist UTM parameters from URL into a session cookie.
+	 */
+	private function persist_utm_parameters()
+	{
+		$utm_cookie = '_os_utm';
 		
-		// Set cookie for 1 year - this works because we're in the 'init' hook
-		// BEFORE any output has been sent
-		setcookie(
-			$cookie_name,
-			$this->visitor_id,
-			time() + (365 * 24 * 60 * 60),
-			'/',
-			'',
-			is_ssl(),
-			false  // httpOnly = false so JS can read it too
-		);
+		$has_new_utm = isset($_GET['utm_source']) || isset($_GET['utm_medium']) || 
+					   isset($_GET['utm_campaign']);
 		
-		// Also set in $_COOKIE superglobal for immediate availability in this request
-		$_COOKIE[$cookie_name] = $this->visitor_id;
+		if ($has_new_utm) {
+			$utm_params = array();
+			if (isset($_GET['utm_source'])) {
+				$utm_params['source'] = sanitize_text_field($_GET['utm_source']);
+			}
+			if (isset($_GET['utm_medium'])) {
+				$utm_params['medium'] = sanitize_text_field($_GET['utm_medium']);
+			}
+			if (isset($_GET['utm_campaign'])) {
+				$utm_params['campaign'] = sanitize_text_field($_GET['utm_campaign']);
+			}
+			
+			$utm_json = wp_json_encode($utm_params);
+			setcookie($utm_cookie, $utm_json, 0, '/', '', is_ssl(), false);
+			$_COOKIE[$utm_cookie] = $utm_json;
+		}
+	}
+	
+	/**
+	 * Get persisted UTM parameters from cookie or URL.
+	 */
+	private function get_utm_parameters()
+	{
+		$utm_cookie = '_os_utm';
+		
+		// URL takes precedence
+		if (isset($_GET['utm_source']) || isset($_GET['utm_campaign'])) {
+			return array(
+				'source' => isset($_GET['utm_source']) ? sanitize_text_field($_GET['utm_source']) : null,
+				'medium' => isset($_GET['utm_medium']) ? sanitize_text_field($_GET['utm_medium']) : null,
+				'campaign' => isset($_GET['utm_campaign']) ? sanitize_text_field($_GET['utm_campaign']) : null,
+			);
+		}
+		
+		// Fall back to cookie
+		if (isset($_COOKIE[$utm_cookie]) && !empty($_COOKIE[$utm_cookie])) {
+			$utm_data = json_decode(stripslashes($_COOKIE[$utm_cookie]), true);
+			if (is_array($utm_data)) {
+				return $utm_data;
+			}
+		}
+		
+		return array();
 	}
 
 	/**
@@ -523,8 +578,9 @@ class OverSeek_Server_Tracking
 	 *
 	 * @param string $type Event type (pageview, add_to_cart, etc.)
 	 * @param array $payload Event-specific data
+	 * @param bool $is_404 Whether this is a 404 error page
 	 */
-	private function queue_event($type, $payload = array())
+	private function queue_event($type, $payload = array(), $is_404 = false)
 	{
 		$visitor_id = $this->get_visitor_id();
 		$visitor_ip = $this->get_visitor_ip();
@@ -542,13 +598,22 @@ class OverSeek_Server_Tracking
 			'visitorIp' => $visitor_ip,
 		);
 
-		// Add UTM parameters
-		if (isset($_GET['utm_source']))
-			$data['utmSource'] = sanitize_text_field($_GET['utm_source']);
-		if (isset($_GET['utm_medium']))
-			$data['utmMedium'] = sanitize_text_field($_GET['utm_medium']);
-		if (isset($_GET['utm_campaign']))
-			$data['utmCampaign'] = sanitize_text_field($_GET['utm_campaign']);
+		// Add 404 flag if this is an error page
+		if ($is_404) {
+			$data['is404'] = true;
+		}
+
+		// Add UTM parameters from URL or persisted cookie
+		$utm = $this->get_utm_parameters();
+		if (!empty($utm['source'])) {
+			$data['utmSource'] = $utm['source'];
+		}
+		if (!empty($utm['medium'])) {
+			$data['utmMedium'] = $utm['medium'];
+		}
+		if (!empty($utm['campaign'])) {
+			$data['utmCampaign'] = $utm['campaign'];
+		}
 
 		$this->event_queue[] = $data;
 	}
@@ -601,7 +666,10 @@ class OverSeek_Server_Tracking
 			return;
 		}
 
-		$payload = array('page_type' => $this->get_page_type());
+		// Detect 404 error pages
+		$is_404 = is_404();
+
+		$payload = array('page_type' => $is_404 ? '404' : $this->get_page_type());
 
 		if (is_product()) {
 			global $product;
@@ -628,7 +696,7 @@ class OverSeek_Server_Tracking
 			$payload['searchQuery'] = get_search_query();
 		}
 
-		$this->queue_event('pageview', $payload);
+		$this->queue_event('pageview', $payload, $is_404);
 	}
 
 	private function get_page_type()

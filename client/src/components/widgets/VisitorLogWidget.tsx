@@ -3,11 +3,12 @@
  * Shows visitors with their recent actions as clickable icons
  */
 import React, { useEffect, useState } from 'react';
-import { Users, Clock, MapPin, FileText, Search, ShoppingCart, Eye, ExternalLink, User, RefreshCw } from 'lucide-react';
+import { Users, Clock, MapPin, FileText, Search, ShoppingCart, Eye, ExternalLink, User, RefreshCw, Globe, Link2 } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import VisitorProfileModal from '../analytics/VisitorProfileModal';
+import { DeviceBrowserBadge } from '../analytics/DeviceBrowserIcons';
 
 interface VisitorEvent {
     id: string;
@@ -28,6 +29,13 @@ interface VisitorSession {
     currentPath: string;
     referrer?: string;
     deviceType?: string;
+    browser?: string;
+    os?: string;
+    // UTM Attribution
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    lastTouchSource?: string;
     // Cross-visit tracking fields
     totalVisits?: number;
     firstTouchSource?: string;
@@ -190,17 +198,50 @@ const VisitorLogWidget: React.FC = () => {
                                                     ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
                                                     : v.email || `Visitor ${v.visitorId.slice(0, 6)}`}
                                             </span>
-                                            <div className="flex items-center gap-1 text-xs text-gray-400">
+                                            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                                                {/* Device/Browser Icons */}
+                                                <DeviceBrowserBadge
+                                                    browser={v.browser}
+                                                    os={v.os}
+                                                    deviceType={v.deviceType}
+                                                />
+                                                <span className="mx-0.5">•</span>
                                                 {v.country && (
                                                     <>
                                                         <MapPin className="w-3 h-3" />
                                                         <span className="truncate">{v.city ? `${v.city}, ` : ''}{v.country}</span>
-                                                        <span className="mx-1">•</span>
+                                                        <span className="mx-0.5">•</span>
                                                     </>
                                                 )}
                                                 <Clock className="w-3 h-3" />
                                                 <span>{formatDistanceToNowStrict(new Date(v.lastActiveAt))} ago</span>
                                             </div>
+                                            {/* Traffic Source Row */}
+                                            {(v.utmCampaign || v.utmSource || v.referrer) && (
+                                                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                                    <Link2 className="w-3 h-3 text-blue-400" />
+                                                    <span className="truncate">
+                                                        {v.utmCampaign ? (
+                                                            <>
+                                                                <span className="text-gray-400">Campaign:</span>{' '}
+                                                                <span className="font-medium text-blue-600">{v.utmCampaign}</span>
+                                                                {v.utmSource && <span className="text-gray-400"> via {v.utmSource}</span>}
+                                                            </>
+                                                        ) : v.utmSource ? (
+                                                            <>
+                                                                <span className="text-gray-400">Source:</span>{' '}
+                                                                <span className="font-medium">{v.utmSource}</span>
+                                                                {v.utmMedium && <span className="text-gray-400"> / {v.utmMedium}</span>}
+                                                            </>
+                                                        ) : v.referrer ? (
+                                                            <>
+                                                                <span className="text-gray-400">Referrer:</span>{' '}
+                                                                <span className="font-medium">{v.referrer.replace(/^https?:\/\//, '').split('/')[0]}</span>
+                                                            </>
+                                                        ) : null}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     {/* Actions count badge + Returning indicator */}

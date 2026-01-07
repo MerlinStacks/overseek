@@ -36,6 +36,13 @@ export class AnalyticsService {
                     currentPath: true,
                     referrer: true,
                     deviceType: true,
+                    browser: true,
+                    os: true,
+                    // UTM Attribution
+                    utmSource: true,
+                    utmMedium: true,
+                    utmCampaign: true,
+                    lastTouchSource: true,
                     wooCustomerId: true,
                     // Attribution fields for cross-visit tracking
                     totalVisits: true,

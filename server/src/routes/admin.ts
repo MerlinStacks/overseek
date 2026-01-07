@@ -368,6 +368,28 @@ router.post('/platform-smtp/test', async (req: AuthenticatedRequest, res: Respon
 });
 
 // ──────────────────────────────────────────────────────────────
+// VAPID KEY GENERATION
+// ──────────────────────────────────────────────────────────────
+
+import webpush from 'web-push';
+
+/**
+ * POST /api/admin/generate-vapid-keys
+ * Generate new VAPID keys for Web Push notifications.
+ */
+router.post('/generate-vapid-keys', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const keys = webpush.generateVAPIDKeys();
+        res.json({
+            publicKey: keys.publicKey,
+            privateKey: keys.privateKey
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Failed to generate VAPID keys' });
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
 // AI PROMPTS MANAGEMENT
 // ──────────────────────────────────────────────────────────────
 

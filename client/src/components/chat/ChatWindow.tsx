@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, Loader2, Zap, Paperclip, MoreHorizontal, ChevronDown, Clock, CheckCircle, RotateCcw, MoreVertical, Settings, FileSignature, Sparkles } from 'lucide-react';
+import { Send, Loader2, Zap, Paperclip, MoreHorizontal, ChevronDown, Clock, CheckCircle, RotateCcw, MoreVertical, Settings, FileSignature, Sparkles, Users, Merge } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -8,6 +8,9 @@ import { format } from 'date-fns';
 import { CannedResponsesManager } from './CannedResponsesManager';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
 import { useDrafts } from '../../hooks/useDrafts';
+import { SnoozeModal } from './SnoozeModal';
+import { AssignModal } from './AssignModal';
+import { MergeModal } from './MergeModal';
 
 interface Message {
     id: string;
@@ -31,10 +34,13 @@ interface ChatWindowProps {
     recipientEmail?: string;
     recipientName?: string;
     status?: string;
-    onStatusChange?: (newStatus: string) => Promise<void>;
+    onStatusChange?: (newStatus: string, snoozeUntil?: Date) => Promise<void>;
+    onAssign?: (userId: string) => Promise<void>;
+    onMerge?: (targetConversationId: string) => Promise<void>;
+    assigneeId?: string;
 }
 
-export function ChatWindow({ conversationId, messages, onSendMessage, recipientEmail, recipientName, status, onStatusChange }: ChatWindowProps) {
+export function ChatWindow({ conversationId, messages, onSendMessage, recipientEmail, recipientName, status, onStatusChange, onAssign, onMerge, assigneeId }: ChatWindowProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [input, setInput] = useState('');
@@ -43,6 +49,12 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
     const [isUploading, setIsUploading] = useState(false);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [showActionsMenu, setShowActionsMenu] = useState(false);
+
+    // Modal states
+    const [showSnoozeModal, setShowSnoozeModal] = useState(false);
+    const [showAssignModal, setShowAssignModal] = useState(false);
+    const [showMergeModal, setShowMergeModal] = useState(false);
+    const [showMoreMenu, setShowMoreMenu] = useState(false);
 
     // Canned Responses
     const { token, user } = useAuth();
@@ -304,7 +316,10 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                         {showActionsMenu && (
                             <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                                 <button
-                                    onClick={() => handleStatusChange('SNOOZED')}
+                                    onClick={() => {
+                                        setShowActionsMenu(false);
+                                        setShowSnoozeModal(true);
+                                    }}
                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                                 >
                                     <Clock size={14} />
@@ -322,9 +337,40 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                     </div>
 
                     {/* More Options */}
-                    <button className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
-                        <MoreVertical size={16} />
-                    </button>
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowMoreMenu(!showMoreMenu)}
+                            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+                        >
+                            <MoreVertical size={16} />
+                        </button>
+
+                        {/* More Options Dropdown */}
+                        {showMoreMenu && (
+                            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+                                <button
+                                    onClick={() => {
+                                        setShowMoreMenu(false);
+                                        setShowAssignModal(true);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-t-lg"
+                                >
+                                    <Users size={14} />
+                                    Assign to team member
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowMoreMenu(false);
+                                        setShowMergeModal(true);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-b-lg"
+                                >
+                                    <Merge size={14} />
+                                    Merge with another conversation
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -617,6 +663,41 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                         }).then(res => res.json()).then(data => setCannedResponses(data));
                     }
                 }}
+            />
+
+            {/* Snooze Modal */}
+            <SnoozeModal
+                isOpen={showSnoozeModal}
+                onClose={() => setShowSnoozeModal(false)}
+                onSnooze={async (snoozeUntil) => {
+                    if (onStatusChange) {
+                        await onStatusChange('SNOOZED', snoozeUntil);
+                    }
+                }}
+            />
+
+            {/* Assign Modal */}
+            <AssignModal
+                isOpen={showAssignModal}
+                onClose={() => setShowAssignModal(false)}
+                onAssign={async (userId) => {
+                    if (onAssign) {
+                        await onAssign(userId);
+                    }
+                }}
+                currentAssigneeId={assigneeId}
+            />
+
+            {/* Merge Modal */}
+            <MergeModal
+                isOpen={showMergeModal}
+                onClose={() => setShowMergeModal(false)}
+                onMerge={async (targetId) => {
+                    if (onMerge) {
+                        await onMerge(targetId);
+                    }
+                }}
+                currentConversationId={conversationId}
             />
         </div>
     );

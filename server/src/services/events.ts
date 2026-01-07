@@ -17,6 +17,12 @@ export const EVENTS = {
     },
     EMAIL: {
         RECEIVED: 'email:received'
+    },
+    SOCIAL: {
+        MESSAGE_RECEIVED: 'social:message_received',
+        MESSAGE_SENT: 'social:message_sent',
+        ACCOUNT_CONNECTED: 'social:account_connected',
+        ACCOUNT_DISCONNECTED: 'social:account_disconnected',
     }
 };
 

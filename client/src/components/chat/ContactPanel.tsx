@@ -1,15 +1,12 @@
 
 import { useState } from 'react';
 import {
-    User, Mail, Phone, Globe, MapPin,
-    MoreVertical, CheckCircle, Clock, XCircle,
-    ChevronDown, ChevronRight, MessageSquare,
-    Tag, FileText, Users, ExternalLink, Merge, RotateCcw
+    User, Mail,
+    MoreVertical,
+    ChevronDown, ChevronRight
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { format } from 'date-fns';
-import { useAuth } from '../../context/AuthContext';
-import { useAccount } from '../../context/AccountContext';
 
 interface ContactPanelProps {
     conversation?: {
@@ -37,8 +34,6 @@ interface ContactPanelProps {
             messages: number;
         };
     };
-    onStatusChange?: (status: string) => void;
-    onMerge?: () => void;
 }
 
 interface SectionProps {
@@ -68,49 +63,15 @@ function Section({ title, defaultOpen = true, children }: SectionProps) {
     );
 }
 
-export function ContactPanel({ conversation, onStatusChange, onMerge }: ContactPanelProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [isUpdating, setIsUpdating] = useState(false);
-
+export function ContactPanel({ conversation }: ContactPanelProps) {
     if (!conversation) return null;
 
     const customer = conversation.wooCustomer;
     const name = customer
-        ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email
+        ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email || 'Anonymous'
         : conversation.guestName || conversation.guestEmail || 'Anonymous';
     const email = customer?.email || conversation.guestEmail;
-    const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
-
-    const isOpen = conversation.status === 'OPEN';
-    const isClosed = conversation.status === 'CLOSED';
-
-    const handleStatusChange = async (newStatus: string) => {
-        if (!token || !currentAccount || isUpdating) return;
-
-        setIsUpdating(true);
-        try {
-            const res = await fetch(`/api/chat/${conversation.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({ status: newStatus })
-            });
-
-            if (res.ok && onStatusChange) {
-                onStatusChange(newStatus);
-            } else {
-                console.error('Failed to update status:', await res.text());
-            }
-        } catch (error) {
-            console.error('Failed to update status', error);
-        } finally {
-            setIsUpdating(false);
-        }
-    };
+    const initials = (name || 'A').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -182,62 +143,9 @@ export function ContactPanel({ conversation, onStatusChange, onMerge }: ContactP
                 )}
             </div>
 
+
             {/* Scrollable Sections */}
             <div className="flex-1 overflow-y-auto">
-                {/* Conversation Actions */}
-                <Section title="Conversation Actions" defaultOpen={true}>
-                    <div className="space-y-2">
-                        {/* Resolve / Reopen Button */}
-                        {isOpen ? (
-                            <button
-                                onClick={() => handleStatusChange('CLOSED')}
-                                disabled={isUpdating}
-                                className={cn(
-                                    "w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                    "bg-green-600 text-white hover:bg-green-700",
-                                    isUpdating && "opacity-50 cursor-not-allowed"
-                                )}
-                            >
-                                <CheckCircle size={16} />
-                                {isUpdating ? 'Resolving...' : 'Resolve Conversation'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => handleStatusChange('OPEN')}
-                                disabled={isUpdating}
-                                className={cn(
-                                    "w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                    "bg-blue-600 text-white hover:bg-blue-700",
-                                    isUpdating && "opacity-50 cursor-not-allowed"
-                                )}
-                            >
-                                <RotateCcw size={16} />
-                                {isUpdating ? 'Reopening...' : 'Reopen Conversation'}
-                            </button>
-                        )}
-
-                        {/* Other Actions */}
-                        <div className="flex gap-2">
-                            <button className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
-                                <Clock size={14} />
-                                Snooze
-                            </button>
-                            <button className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
-                                <Users size={14} />
-                                Assign
-                            </button>
-                        </div>
-
-                        {/* Merge Button */}
-                        <button
-                            onClick={onMerge}
-                            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                        >
-                            <Merge size={14} />
-                            Merge with another conversation
-                        </button>
-                    </div>
-                </Section>
 
                 {/* Conversation Info */}
                 <Section title="Conversation Information" defaultOpen={true}>

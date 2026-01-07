@@ -36,6 +36,10 @@ import policiesRoutes from './routes/policies';
 import { auditsRouter } from './routes/audits';
 import sessionsRoutes from './routes/sessions';
 
+// Social Messaging Webhooks
+import metaWebhookRoutes from './routes/meta-webhook';
+import tiktokWebhookRoutes from './routes/tiktok-webhook';
+
 import { esClient } from './utils/elastic';
 
 import http from 'http';
@@ -187,6 +191,10 @@ app.use('/api/chat', createChatRouter(chatService));
 app.use('/api/chat/public', createPublicChatRouter(chatService)); // Public API
 app.use('/api/chat', widgetRouter); // Serves /api/chat/widget.js
 
+// Mount Social Messaging Webhooks (Public - no auth, validated by signatures)
+app.use('/api/webhook/meta', metaWebhookRoutes);
+app.use('/api/webhook/tiktok', tiktokWebhookRoutes);
+
 // Mount Bull Board (Protected - Super Admin Only)
 Logger.info('[BullBoard] Initializing Bull Board...');
 const serverAdapter = QueueFactory.createBoard();
@@ -213,6 +221,20 @@ EventBus.on(EVENTS.EMAIL.RECEIVED, async (data) => {
         title: '📨 New Message',
         body: `From: ${data.fromName || data.fromEmail}`,
         data: { url: '/inbox' }
+    }, 'message');
+});
+
+// Social Messaging Push Notifications
+EventBus.on(EVENTS.SOCIAL.MESSAGE_RECEIVED, async (data) => {
+    const { PushNotificationService } = require('./services/PushNotificationService');
+    const platformLabel = data.platform === 'FACEBOOK' ? '💬 Messenger'
+        : data.platform === 'INSTAGRAM' ? '📷 Instagram'
+            : '🎵 TikTok';
+
+    await PushNotificationService.sendToAccount(data.accountId, {
+        title: `${platformLabel} Message`,
+        body: 'New message received',
+        data: { url: '/inbox', conversationId: data.conversationId }
     }, 'message');
 });
 

@@ -26,11 +26,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 - [ ] **Janitor Jobs**: Cron jobs for data retention and pruning
 
 
-Inbox details
-- setup facebook, ig and tiktok messages.
-
-
-
 ## 🔒 Security & Technical Debt
 
 - [ ] **Webhook Secret Logic**: Complete implementation in `webhook.ts`

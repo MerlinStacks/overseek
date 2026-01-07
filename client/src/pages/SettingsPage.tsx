@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { SyncStatus } from '../components/sync/SyncStatus';
@@ -12,14 +12,24 @@ import { GoldPriceSettings } from '../components/settings/GoldPriceSettings';
 import { InventoryAlertsSettings } from '../components/settings/InventoryAlertsSettings';
 import { OrderTagSettings } from '../components/settings/OrderTagSettings';
 import { NotificationSettings } from '../components/settings/NotificationSettings';
-import { LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw, Mail, Package, Tags, Coins, Bell } from 'lucide-react';
+import { SocialChannelsSettings } from '../components/settings/SocialChannelsSettings';
+import { LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw, Mail, Package, Tags, Coins, Bell, Share2 } from 'lucide-react';
 
-type TabId = 'general' | 'appearance' | 'chat' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications';
+type TabId = 'general' | 'appearance' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications';
 
 export function SettingsPage() {
     const { currentAccount } = useAccount();
     const isGoldPriceEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
     const [activeTab, setActiveTab] = useState<TabId>('general');
+
+    // Handle URL-based tab selection (for OAuth callbacks)
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab') as TabId | null;
+        if (tab && ['general', 'appearance', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications'].includes(tab)) {
+            setActiveTab(tab);
+        }
+    }, []);
 
     if (!currentAccount) return <div>Loading...</div>;
 
@@ -29,6 +39,7 @@ export function SettingsPage() {
         { id: 'orderTags', label: 'Order Tags', icon: Tags },
         { id: 'goldPrice', label: 'Gold Price', icon: Coins, hidden: !isGoldPriceEnabled },
         { id: 'chat', label: 'Chat', icon: MessageSquare },
+        { id: 'channels', label: 'Channels', icon: Share2 },
         { id: 'intelligence', label: 'Intelligence', icon: Bot },
         { id: 'analytics', label: 'Analytics', icon: Activity },
         { id: 'inventory', label: 'Inventory', icon: Package },
@@ -136,6 +147,18 @@ export function SettingsPage() {
                 {activeTab === 'sync' && <SyncStatus />}
 
                 {activeTab === 'email' && <EmailSettings />}
+
+                {activeTab === 'channels' && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="p-6 border-b border-gray-200">
+                            <h2 className="text-lg font-medium text-gray-900">Social Channels</h2>
+                            <p className="text-sm text-gray-500 mt-1">Connect Facebook, Instagram, and TikTok to receive messages in your inbox.</p>
+                        </div>
+                        <div className="p-6">
+                            <SocialChannelsSettings />
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'notifications' && <NotificationSettings />}
             </div>

@@ -133,6 +133,9 @@ model Account {
   
   // Push Notifications
   pushSubscriptions PushSubscription[]
+  
+  // Social Media Messaging
+  socialAccounts    SocialAccount[]
 }
 
 model Notification {
@@ -585,9 +588,20 @@ model WooReview {
 // Customer Support (Chat & Inbox)
 // --------------------------------------
 
+enum ConversationChannel {
+  EMAIL
+  CHAT
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+}
+
 model Conversation {
   id        String @id @default(uuid())
   accountId String
+
+  // Channel type for message source
+  channel  ConversationChannel @default(CHAT)
 
   // Link to specific known customer (optional, for visitors it's null)
   wooCustomerId String?
@@ -604,6 +618,11 @@ model Conversation {
   guestEmail String?
   guestName  String?
 
+  // Social messaging platform identifiers
+  externalConversationId String?        // Platform-specific thread ID
+  socialAccountId        String?        // Links to SocialAccount
+  socialAccount          SocialAccount? @relation(fields: [socialAccountId], references: [id])
+
   // Merging support
   mergedIntoId String?
   mergedInto   Conversation?  @relation("ConversationMerges", fields: [mergedIntoId], references: [id])
@@ -619,7 +638,9 @@ model Conversation {
   updatedAt DateTime @updatedAt
 
   @@index([accountId, status])
+  @@index([accountId, channel])
   @@index([visitorToken])
+  @@index([externalConversationId])
 }
 
 model Message {
@@ -653,6 +674,42 @@ model CannedResponse {
   updatedAt DateTime @updatedAt
 
   @@unique([accountId, shortcut])
+}
+
+// Social media messaging accounts (Facebook Pages, Instagram, TikTok)
+model SocialAccount {
+  id            String   @id @default(uuid())
+  accountId     String
+  
+  platform      String   // FACEBOOK, INSTAGRAM, TIKTOK
+  externalId    String   // Page ID or Account ID from platform
+  name          String   // Page/Account display name
+  
+  // Authentication
+  accessToken   String   // Page access token (should be encrypted)
+  refreshToken  String?  // For platforms that use refresh tokens
+  tokenExpiry   DateTime?
+  
+  // Platform-specific metadata
+  // Facebook: { pageId, instagramBusinessAccountId }
+  // Instagram: { igUserId, username }
+  // TikTok: { openId, displayName }
+  metadata      Json?    @default("{}")
+  
+  // Webhook configuration
+  webhookSecret String?  // For verifying incoming webhooks
+  
+  isActive      Boolean  @default(true)
+  
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([accountId, platform, externalId])
+  @@index([accountId])
+  @@index([platform, externalId])
 }
 
 // --------------------------------------

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 
 export interface Account {
@@ -34,12 +34,12 @@ interface AccountContextType {
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-    const { token, isLoading: authLoading } = useAuth();
+    const { token, isLoading: authLoading, logout } = useAuth();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const refreshAccounts = async () => {
+    const refreshAccounts = useCallback(async () => {
         if (!token) {
             setAccounts([]);
             setCurrentAccount(null);
@@ -51,6 +51,13 @@ export function AccountProvider({ children }: { children: ReactNode }) {
             const response = await fetch('/api/accounts', {
                 headers: { Authorization: `Bearer ${token}` }
             });
+
+            // Handle expired token - force logout to redirect to login (not wizard)
+            if (response.status === 401) {
+                logout();
+                return;
+            }
+
             if (response.ok) {
                 const data = await response.json();
                 setAccounts(data);
@@ -73,7 +80,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [token, logout, currentAccount?.id]);
 
     // Persist selection to localStorage whenever it changes
     useEffect(() => {

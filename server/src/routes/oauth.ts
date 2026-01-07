@@ -167,4 +167,411 @@ router.post('/meta/exchange', requireAuth, async (req: AuthenticatedRequest, res
     }
 });
 
+// ──────────────────────────────────────────────────────────────
+// META MESSAGING OAUTH FLOW (Facebook/Instagram)
+// ──────────────────────────────────────────────────────────────
+
+import { prisma } from '../utils/prisma';
+import { MetaMessagingService } from '../services/messaging/MetaMessagingService';
+
+/**
+ * GET /api/oauth/meta/messaging/authorize
+ * Initiates Meta OAuth for Messenger/Instagram messaging permissions.
+ */
+router.get('/meta/messaging/authorize', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = (req as any).accountId;
+        const frontendRedirect = req.query.redirect as string || '/settings?tab=channels';
+
+        if (!accountId) {
+            return res.status(400).json({ error: 'No account selected' });
+        }
+
+        // Get Meta app credentials
+        const credentials = await prisma.platformCredentials.findUnique({
+            where: { platform: 'META_MESSAGING' },
+        });
+
+        if (!credentials) {
+            return res.status(400).json({ error: 'Meta messaging not configured. Contact admin.' });
+        }
+
+        const { appId } = credentials.credentials as any;
+
+        const state = Buffer.from(JSON.stringify({
+            accountId,
+            frontendRedirect
+        })).toString('base64');
+
+        // Build callback URL
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+        const callbackUrl = apiUrl
+            ? `${apiUrl}/api/oauth/meta/messaging/callback`
+            : `${req.protocol}://${req.get('host')}/api/oauth/meta/messaging/callback`;
+
+        // Request messaging permissions
+        const scopes = [
+            'pages_messaging',
+            'pages_manage_metadata',
+            'pages_show_list',
+            'instagram_basic',
+            'instagram_manage_messages'
+        ].join(',');
+
+        const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?` +
+            `client_id=${appId}` +
+            `&redirect_uri=${encodeURIComponent(callbackUrl)}` +
+            `&scope=${scopes}` +
+            `&state=${state}`;
+
+        res.json({ authUrl });
+    } catch (error: any) {
+        Logger.error('Meta messaging OAuth init failed', { error });
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/oauth/meta/messaging/callback
+ * Handles callback after user grants messaging permissions.
+ */
+router.get('/meta/messaging/callback', async (req: Request, res: Response) => {
+    let frontendRedirect = '/settings?tab=channels';
+
+    try {
+        const { code, state, error } = req.query;
+
+        if (error) {
+            Logger.warn('Meta messaging OAuth denied', { error });
+            return res.redirect(`${frontendRedirect}&error=oauth_denied`);
+        }
+
+        if (!code || !state) {
+            return res.redirect(`${frontendRedirect}&error=missing_params`);
+        }
+
+        // Decode state
+        const stateData = JSON.parse(Buffer.from(state as string, 'base64').toString('utf-8'));
+        frontendRedirect = stateData.frontendRedirect || frontendRedirect;
+        const accountId = stateData.accountId;
+
+        // Get credentials
+        const credentials = await prisma.platformCredentials.findUnique({
+            where: { platform: 'META_MESSAGING' },
+        });
+
+        if (!credentials) {
+            return res.redirect(`${frontendRedirect}&error=not_configured`);
+        }
+
+        const { appId, appSecret } = credentials.credentials as any;
+
+        // Build callback URL for token exchange
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+        const callbackUrl = apiUrl
+            ? `${apiUrl}/api/oauth/meta/messaging/callback`
+            : `${req.protocol}://${req.get('host')}/api/oauth/meta/messaging/callback`;
+
+        // Exchange code for user access token
+        const tokenResponse = await fetch(
+            `https://graph.facebook.com/v18.0/oauth/access_token?` +
+            `client_id=${appId}` +
+            `&redirect_uri=${encodeURIComponent(callbackUrl)}` +
+            `&client_secret=${appSecret}` +
+            `&code=${code}`
+        );
+        const tokenData = await tokenResponse.json();
+
+        if (tokenData.error) {
+            throw new Error(tokenData.error.message);
+        }
+
+        const userAccessToken = tokenData.access_token;
+
+        // Get list of pages user manages
+        const pages = await MetaMessagingService.listUserPages(userAccessToken);
+
+        if (pages.length === 0) {
+            return res.redirect(`${frontendRedirect}&error=no_pages`);
+        }
+
+        // For now, auto-connect the first page (TODO: show page selector UI)
+        const page = pages[0];
+
+        // Check for linked Instagram account
+        const igAccount = await MetaMessagingService.getInstagramBusinessAccount(
+            page.accessToken,
+            page.id
+        );
+
+        // Store Facebook page as social account
+        await prisma.socialAccount.upsert({
+            where: {
+                accountId_platform_externalId: {
+                    accountId,
+                    platform: 'FACEBOOK',
+                    externalId: page.id,
+                },
+            },
+            create: {
+                accountId,
+                platform: 'FACEBOOK',
+                externalId: page.id,
+                name: page.name,
+                accessToken: page.accessToken,
+                metadata: { userAccessToken },
+            },
+            update: {
+                name: page.name,
+                accessToken: page.accessToken,
+                metadata: { userAccessToken },
+                isActive: true,
+            },
+        });
+
+        // Store Instagram if linked
+        if (igAccount) {
+            await prisma.socialAccount.upsert({
+                where: {
+                    accountId_platform_externalId: {
+                        accountId,
+                        platform: 'INSTAGRAM',
+                        externalId: igAccount.igUserId,
+                    },
+                },
+                create: {
+                    accountId,
+                    platform: 'INSTAGRAM',
+                    externalId: igAccount.igUserId,
+                    name: `@${igAccount.username}`,
+                    accessToken: page.accessToken, // Same page token works for IG
+                    metadata: {
+                        username: igAccount.username,
+                        linkedPageId: page.id
+                    },
+                },
+                update: {
+                    name: `@${igAccount.username}`,
+                    accessToken: page.accessToken,
+                    metadata: {
+                        username: igAccount.username,
+                        linkedPageId: page.id
+                    },
+                    isActive: true,
+                },
+            });
+        }
+
+        Logger.info('Meta messaging connected', {
+            accountId,
+            pageId: page.id,
+            hasInstagram: !!igAccount
+        });
+
+        const igStatus = igAccount ? '&instagram=connected' : '';
+        return res.redirect(`${frontendRedirect}&success=meta_connected${igStatus}`);
+
+    } catch (error: any) {
+        Logger.error('Meta messaging OAuth callback failed', { error });
+        res.redirect(`${frontendRedirect}&error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// TIKTOK MESSAGING OAUTH FLOW
+// ──────────────────────────────────────────────────────────────
+
+import { TikTokMessagingService } from '../services/messaging/TikTokMessagingService';
+
+/**
+ * GET /api/oauth/tiktok/authorize
+ * Initiates TikTok OAuth for Business Messaging.
+ */
+router.get('/tiktok/authorize', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = (req as any).accountId;
+        const frontendRedirect = req.query.redirect as string || '/settings?tab=channels';
+
+        if (!accountId) {
+            return res.status(400).json({ error: 'No account selected' });
+        }
+
+        const credentials = await prisma.platformCredentials.findUnique({
+            where: { platform: 'TIKTOK_MESSAGING' },
+        });
+
+        if (!credentials) {
+            return res.status(400).json({ error: 'TikTok messaging not configured. Contact admin.' });
+        }
+
+        const { clientKey } = credentials.credentials as any;
+
+        const state = Buffer.from(JSON.stringify({
+            accountId,
+            frontendRedirect
+        })).toString('base64');
+
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+        const callbackUrl = apiUrl
+            ? `${apiUrl}/api/oauth/tiktok/callback`
+            : `${req.protocol}://${req.get('host')}/api/oauth/tiktok/callback`;
+
+        // TikTok Business scope for messaging
+        const scopes = 'user.info.basic,dm.manage';
+
+        const authUrl = `https://www.tiktok.com/v2/auth/authorize?` +
+            `client_key=${clientKey}` +
+            `&redirect_uri=${encodeURIComponent(callbackUrl)}` +
+            `&scope=${scopes}` +
+            `&response_type=code` +
+            `&state=${state}`;
+
+        res.json({ authUrl });
+    } catch (error: any) {
+        Logger.error('TikTok OAuth init failed', { error });
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/oauth/tiktok/callback
+ * Handles TikTok OAuth callback.
+ */
+router.get('/tiktok/callback', async (req: Request, res: Response) => {
+    let frontendRedirect = '/settings?tab=channels';
+
+    try {
+        const { code, state, error, error_description } = req.query;
+
+        if (error) {
+            Logger.warn('TikTok OAuth denied', { error, error_description });
+            return res.redirect(`${frontendRedirect}&error=oauth_denied`);
+        }
+
+        if (!code || !state) {
+            return res.redirect(`${frontendRedirect}&error=missing_params`);
+        }
+
+        const stateData = JSON.parse(Buffer.from(state as string, 'base64').toString('utf-8'));
+        frontendRedirect = stateData.frontendRedirect || frontendRedirect;
+        const accountId = stateData.accountId;
+
+        const credentials = await prisma.platformCredentials.findUnique({
+            where: { platform: 'TIKTOK_MESSAGING' },
+        });
+
+        if (!credentials) {
+            return res.redirect(`${frontendRedirect}&error=not_configured`);
+        }
+
+        const { clientKey, clientSecret } = credentials.credentials as any;
+
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+        const callbackUrl = apiUrl
+            ? `${apiUrl}/api/oauth/tiktok/callback`
+            : `${req.protocol}://${req.get('host')}/api/oauth/tiktok/callback`;
+
+        // Exchange code for tokens
+        const tokens = await TikTokMessagingService.exchangeAuthCode(
+            code as string,
+            clientKey,
+            clientSecret,
+            callbackUrl
+        );
+
+        if (!tokens) {
+            return res.redirect(`${frontendRedirect}&error=token_exchange_failed`);
+        }
+
+        // Store TikTok account
+        const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
+
+        await prisma.socialAccount.upsert({
+            where: {
+                accountId_platform_externalId: {
+                    accountId,
+                    platform: 'TIKTOK',
+                    externalId: tokens.openId,
+                },
+            },
+            create: {
+                accountId,
+                platform: 'TIKTOK',
+                externalId: tokens.openId,
+                name: 'TikTok Business',
+                accessToken: tokens.accessToken,
+                refreshToken: tokens.refreshToken,
+                tokenExpiry: expiresAt,
+                metadata: { openId: tokens.openId },
+            },
+            update: {
+                accessToken: tokens.accessToken,
+                refreshToken: tokens.refreshToken,
+                tokenExpiry: expiresAt,
+                isActive: true,
+            },
+        });
+
+        Logger.info('TikTok messaging connected', { accountId, openId: tokens.openId });
+        return res.redirect(`${frontendRedirect}&success=tiktok_connected`);
+
+    } catch (error: any) {
+        Logger.error('TikTok OAuth callback failed', { error });
+        res.redirect(`${frontendRedirect}&error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// SOCIAL ACCOUNTS API
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/oauth/social-accounts
+ * List all connected social messaging accounts.
+ */
+router.get('/social-accounts', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = (req as any).accountId;
+
+        const socialAccounts = await prisma.socialAccount.findMany({
+            where: { accountId, isActive: true },
+            select: {
+                id: true,
+                platform: true,
+                name: true,
+                externalId: true,
+                tokenExpiry: true,
+                createdAt: true,
+            },
+        });
+
+        res.json({ socialAccounts });
+    } catch (error: any) {
+        Logger.error('Failed to list social accounts', { error });
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * DELETE /api/oauth/social-accounts/:id
+ * Disconnect a social messaging account.
+ */
+router.delete('/social-accounts/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = (req as any).accountId;
+        const { id } = req.params;
+
+        await prisma.socialAccount.updateMany({
+            where: { id, accountId },
+            data: { isActive: false },
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        Logger.error('Failed to disconnect social account', { error });
+        res.status(500).json({ error: error.message });
+    }
+});
+
 export default router;
+

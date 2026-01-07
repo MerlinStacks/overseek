@@ -173,7 +173,8 @@ export function InboxPage() {
                         recipientEmail={recipientEmail}
                         recipientName={recipientName}
                         status={activeConversation?.status}
-                        onStatusChange={async (newStatus) => {
+                        assigneeId={activeConversation?.assignedTo}
+                        onStatusChange={async (newStatus, snoozeUntil) => {
                             const res = await fetch(`/api/chat/${selectedId}`, {
                                 method: 'PUT',
                                 headers: {
@@ -181,12 +182,55 @@ export function InboxPage() {
                                     'Authorization': `Bearer ${token}`,
                                     'x-account-id': currentAccount?.id || ''
                                 },
-                                body: JSON.stringify({ status: newStatus })
+                                body: JSON.stringify({
+                                    status: newStatus,
+                                    snoozeUntil: snoozeUntil?.toISOString()
+                                })
                             });
                             if (res.ok) {
                                 setConversations(prev => prev.map(c =>
                                     c.id === selectedId ? { ...c, status: newStatus } : c
                                 ));
+                            }
+                        }}
+                        onAssign={async (userId) => {
+                            const res = await fetch(`/api/chat/${selectedId}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`,
+                                    'x-account-id': currentAccount?.id || ''
+                                },
+                                body: JSON.stringify({ assignedTo: userId || null })
+                            });
+                            if (res.ok) {
+                                setConversations(prev => prev.map(c =>
+                                    c.id === selectedId ? { ...c, assignedTo: userId || null } : c
+                                ));
+                            }
+                        }}
+                        onMerge={async (targetConversationId) => {
+                            const res = await fetch(`/api/chat/${selectedId}/merge`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`,
+                                    'x-account-id': currentAccount?.id || ''
+                                },
+                                body: JSON.stringify({ sourceId: targetConversationId })
+                            });
+                            if (res.ok) {
+                                // Refresh conversations list
+                                const convRes = await fetch('/api/chat/conversations', {
+                                    headers: {
+                                        'Authorization': `Bearer ${token}`,
+                                        'x-account-id': currentAccount?.id || ''
+                                    }
+                                });
+                                if (convRes.ok) {
+                                    const data = await convRes.json();
+                                    setConversations(data);
+                                }
                             }
                         }}
                     />
@@ -203,12 +247,6 @@ export function InboxPage() {
             {selectedId && (
                 <ContactPanel
                     conversation={activeConversation}
-                    onStatusChange={(newStatus) => {
-                        // Update local state
-                        setConversations(prev => prev.map(c =>
-                            c.id === selectedId ? { ...c, status: newStatus } : c
-                        ));
-                    }}
                 />
             )}
         </div>

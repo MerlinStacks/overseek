@@ -5,7 +5,7 @@ import 'react-resizable/css/styles.css';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { renderWidget, WidgetRegistry } from '../components/widgets/WidgetRegistry';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
 import _ from 'lodash';
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { useMobile } from '../hooks/useMobile';
@@ -57,6 +57,8 @@ export function DashboardPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [showAddWidget, setShowAddWidget] = useState(false);
+    // Mobile lock state: locked by default on mobile to prevent accidental drag
+    const [isLayoutLocked, setIsLayoutLocked] = useState(true);
 
     // Date State
     const [dateOption, setDateOption] = useState<DateRangeOption>('today');
@@ -211,6 +213,21 @@ export function DashboardPage() {
 
                     {isSaving && <span className="text-xs text-gray-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Saving...</span>}
 
+                    {/* Mobile Lock Toggle */}
+                    {isMobile && (
+                        <button
+                            onClick={() => setIsLayoutLocked(!isLayoutLocked)}
+                            className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors border ${isLayoutLocked
+                                ? 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                                }`}
+                            title={isLayoutLocked ? 'Unlock to edit layout' : 'Lock layout'}
+                        >
+                            {isLayoutLocked ? <Lock size={16} /> : <Unlock size={16} />}
+                            {isLayoutLocked ? 'Locked' : 'Editing'}
+                        </button>
+                    )}
+
                     <div className="relative">
                         <button
                             onClick={() => setShowAddWidget(!showAddWidget)}
@@ -244,25 +261,27 @@ export function DashboardPage() {
                 cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                 rowHeight={100}
                 onLayoutChange={(l: any, all: any) => onLayoutChange(l, all)}
-                isDraggable={!isMobile}
-                isResizable={!isMobile}
+                isDraggable={!isMobile || !isLayoutLocked}
+                isResizable={!isMobile || !isLayoutLocked}
                 draggableHandle=".drag-handle"
             >
                 {widgets.map(w => (
                     <div key={w.id} className="bg-transparent h-full relative group">
-                        {/* Widget Controls - positioned above widget content */}
-                        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
-                            <button
-                                onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }}
-                                className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded hover:bg-red-50 hover:text-red-500 text-gray-400 pointer-events-auto shadow-sm"
-                                title="Remove Widget"
-                            >
-                                <X size={14} />
-                            </button>
-                            <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded text-gray-500 pointer-events-auto shadow-sm hover:bg-white">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
+                        {/* Widget Controls - hidden when locked on mobile */}
+                        {(!isMobile || !isLayoutLocked) && (
+                            <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }}
+                                    className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded hover:bg-red-50 hover:text-red-500 text-gray-400 pointer-events-auto shadow-sm"
+                                    title="Remove Widget"
+                                >
+                                    <X size={14} />
+                                </button>
+                                <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded text-gray-500 pointer-events-auto shadow-sm hover:bg-white">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
+                                </div>
                             </div>
-                        </div>
+                        )}
                         {renderWidget(w.widgetKey, {
                             settings: w.settings,
                             className: "h-full",

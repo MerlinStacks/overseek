@@ -29,6 +29,9 @@ export interface TrackingEventPayload {
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
+
+    // Page metadata
+    is404?: boolean;
 }
 
 /**
@@ -50,6 +53,30 @@ export async function processEvent(data: TrackingEventPayload) {
     // Filter out bots/crawlers - they shouldn't be tracked
     if (data.userAgent && isBot(data.userAgent)) {
         return null; // Silently skip bot traffic
+    }
+
+    // Filter out non-page URLs for pageview events (e.g. static assets)
+    // These should not be tracked as page views
+    if (data.type === 'pageview' && data.url) {
+        const urlPath = data.url.toLowerCase();
+        // Common static asset extensions that shouldn't be tracked as page views
+        const staticAssetExtensions = [
+            '.js', '.css', '.map',
+            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.bmp', '.avif',
+            '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            '.mp4', '.webm', '.mp3', '.ogg', '.wav',
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+            '.zip', '.tar', '.gz', '.rar',
+            '.xml', '.json'
+        ];
+
+        // Check if URL ends with a static asset extension (ignore query strings)
+        const pathWithoutQuery = urlPath.split('?')[0];
+        const isStaticAsset = staticAssetExtensions.some(ext => pathWithoutQuery.endsWith(ext));
+
+        if (isStaticAsset) {
+            return null; // Silently skip static asset requests
+        }
     }
 
     // 1. Resolve GeoIP if IP is provided
@@ -259,13 +286,19 @@ export async function processEvent(data: TrackingEventPayload) {
     });
 
     // 3. Log Event
+    // Build payload, merging is404 flag for pageview events
+    let eventPayload = data.payload || undefined;
+    if (data.type === 'pageview' && data.is404) {
+        eventPayload = { ...(data.payload || {}), is404: true };
+    }
+
     await prisma.analyticsEvent.create({
         data: {
             sessionId: session.id,
             type: data.type,
             url: data.url,
             pageTitle: data.pageTitle,
-            payload: data.payload || undefined
+            payload: eventPayload
         }
     });
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe, Facebook } from 'lucide-react';
+import { Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe, Facebook, Bell } from 'lucide-react';
 
 interface PlatformCredential {
     id: string;
@@ -57,10 +57,20 @@ const PLATFORMS: PlatformConfig[] = [
             { key: 'appId', label: 'App ID', placeholder: '123456789' },
             { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...' }
         ]
+    },
+    {
+        id: 'WEB_PUSH_VAPID',
+        name: 'Push Notifications',
+        description: 'VAPID keys for Web Push notifications. Generate with: npx web-push generate-vapid-keys',
+        icon: Bell,
+        fields: [
+            { key: 'publicKey', label: 'Public Key', placeholder: 'Base64-encoded public key' },
+            { key: 'privateKey', label: 'Private Key', placeholder: 'Base64-encoded private key' }
+        ]
     }
 ];
 
-type PlatformId = 'PLATFORM_SMTP' | 'GOOGLE_ADS' | 'META_ADS';
+type PlatformId = 'PLATFORM_SMTP' | 'GOOGLE_ADS' | 'META_ADS' | 'WEB_PUSH_VAPID';
 
 /**
  * Super Admin page for managing platform API credentials.
@@ -76,6 +86,7 @@ export function AdminCredentialsPage() {
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [activeTab, setActiveTab] = useState<PlatformId>('PLATFORM_SMTP');
+    const [generating, setGenerating] = useState(false);
 
     useEffect(() => {
         fetchCredentials();
@@ -239,6 +250,41 @@ export function AdminCredentialsPage() {
         return cred?.updatedAt ? new Date(cred.updatedAt).toLocaleDateString() : null;
     };
 
+    /**
+     * Generates VAPID keys and populates the form.
+     */
+    async function handleGenerateVapidKeys() {
+        setGenerating(true);
+        setMessage(null);
+
+        try {
+            const res = await fetch('/api/admin/generate-vapid-keys', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                setMessage({ type: 'error', text: err.error || 'Failed to generate keys' });
+                return;
+            }
+
+            const keys = await res.json();
+            setFormData(prev => ({
+                ...prev,
+                'WEB_PUSH_VAPID': {
+                    publicKey: keys.publicKey,
+                    privateKey: keys.privateKey
+                }
+            }));
+            setMessage({ type: 'success', text: 'VAPID keys generated! Click Save to store them.' });
+        } catch (err) {
+            setMessage({ type: 'error', text: 'Network error generating keys' });
+        } finally {
+            setGenerating(false);
+        }
+    }
+
     if (loading) {
         return <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin text-gray-400" /></div>;
     }
@@ -368,6 +414,16 @@ export function AdminCredentialsPage() {
                         >
                             {testing === currentPlatform.id ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
                             Test Connection
+                        </button>
+                    )}
+                    {currentPlatform.id === 'WEB_PUSH_VAPID' && (
+                        <button
+                            onClick={handleGenerateVapidKeys}
+                            disabled={generating}
+                            className="px-4 py-2 text-purple-600 border border-purple-300 hover:bg-purple-50 rounded-lg flex items-center gap-2 transition-colors"
+                        >
+                            {generating ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+                            Generate Keys
                         </button>
                     )}
                     <button
