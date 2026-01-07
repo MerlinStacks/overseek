@@ -128,6 +128,7 @@ model Account {
   
   // Policies & SOP
   policies          Policy[]
+}
 
 model Notification {
   id        String @id @default(uuid())
