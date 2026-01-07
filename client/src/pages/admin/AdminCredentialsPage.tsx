@@ -89,20 +89,29 @@ export function AdminCredentialsPage() {
             const data = await res.json();
             setCredentials(data);
 
-            // Initialize form data with empty values for all platforms
+            // Initialize form data with existing values from saved credentials
             const initialForm: Record<string, Record<string, string>> = {};
             const initialNotes: Record<string, string> = {};
 
             PLATFORMS.forEach(platform => {
                 initialForm[platform.id] = {};
+                // Initialize all fields with empty values first
                 platform.fields.forEach(field => {
                     initialForm[platform.id][field.key] = '';
                 });
                 initialNotes[platform.id] = '';
             });
 
-            // Populate with existing notes
+            // Populate with existing credentials and notes
             data.forEach((cred: PlatformCredential) => {
+                if (cred.credentials) {
+                    // Populate form with saved credential values
+                    Object.entries(cred.credentials).forEach(([key, value]) => {
+                        if (initialForm[cred.platform]) {
+                            initialForm[cred.platform][key] = value;
+                        }
+                    });
+                }
                 if (cred.notes) {
                     initialNotes[cred.platform] = cred.notes;
                 }
@@ -146,13 +155,7 @@ export function AdminCredentialsPage() {
 
             if (res.ok) {
                 setMessage({ type: 'success', text: `${platformId} credentials saved successfully` });
-                // Clear form after save
-                setFormData(prev => ({
-                    ...prev,
-                    [platformId]: Object.fromEntries(
-                        Object.keys(prev[platformId] || {}).map(k => [k, ''])
-                    )
-                }));
+                // Refresh to get latest saved values (don't clear form)
                 fetchCredentials();
             } else {
                 const err = await res.json();
@@ -319,7 +322,7 @@ export function AdminCredentialsPage() {
                                 {field.label}
                             </label>
                             <input
-                                type="password"
+                                type="text"
                                 className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
                                 placeholder={isConfigured(currentPlatform.id) ? '••••••••' : field.placeholder}
                                 value={formData[currentPlatform.id]?.[field.key] || ''}

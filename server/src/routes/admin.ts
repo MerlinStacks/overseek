@@ -225,7 +225,8 @@ router.post('/broadcast', async (req: AuthenticatedRequest, res: Response) => {
 
 /**
  * GET /api/admin/platform-credentials
- * List all platform credentials (with secrets masked).
+ * List all platform credentials (full values for Super Admin verification).
+ * This endpoint is protected by requireSuperAdmin middleware.
  */
 router.get('/platform-credentials', async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -233,13 +234,9 @@ router.get('/platform-credentials', async (req: AuthenticatedRequest, res: Respo
             orderBy: { platform: 'asc' }
         });
 
-        // Mask sensitive values for display
-        const masked = credentials.map(cred => ({
-            ...cred,
-            credentials: maskCredentials(cred.credentials as Record<string, string>)
-        }));
-
-        res.json(masked);
+        // Return full credentials for Super Admin verification
+        // This is safe because the route is protected by requireSuperAdmin
+        res.json(credentials);
     } catch (e) {
         res.status(500).json({ error: 'Failed to fetch platform credentials' });
     }
