@@ -280,6 +280,8 @@ export class AdsService {
         });
 
         try {
+            Logger.info('Exchanging Google OAuth code', { redirectUri, hasCode: !!code });
+
             const response = await fetch(tokenUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -288,13 +290,30 @@ export class AdsService {
 
             const data = await response.json();
 
+            Logger.info('Google token exchange response', {
+                hasAccessToken: !!data.access_token,
+                hasRefreshToken: !!data.refresh_token,
+                error: data.error,
+                tokenType: data.token_type
+            });
+
             if (data.error) {
                 throw new Error(data.error_description || data.error);
             }
 
+            if (!data.access_token) {
+                throw new Error('No access token received from Google');
+            }
+
+            // Refresh token may not be returned if user previously authorized
+            // We still proceed but log the warning
+            if (!data.refresh_token) {
+                Logger.warn('No refresh token received from Google. User may need to revoke app access at https://myaccount.google.com/permissions and re-authorize.');
+            }
+
             return {
                 accessToken: data.access_token,
-                refreshToken: data.refresh_token
+                refreshToken: data.refresh_token || ''
             };
         } catch (error) {
             Logger.error('Failed to exchange Google OAuth code', { error });

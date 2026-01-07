@@ -34,7 +34,7 @@ router.get('/google/authorize', requireAuth, async (req: AuthenticatedRequest, r
 
         // Get the callback URL using API_URL env var (required for Docker environments)
         // Falls back to request headers for local development
-        const apiUrl = process.env.API_URL;
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, ''); // Strip trailing slashes
         let callbackUrl: string;
         if (apiUrl) {
             callbackUrl = `${apiUrl}/api/oauth/google/callback`;
@@ -96,7 +96,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
 
         // Build redirect URI (must match exactly what was used in authorize)
         // Use API_URL env var for Docker environments, fallback to request headers
-        const apiUrl = process.env.API_URL;
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, ''); // Strip trailing slashes
         let redirectUri: string;
         if (apiUrl) {
             redirectUri = `${apiUrl}/api/oauth/google/callback`;
