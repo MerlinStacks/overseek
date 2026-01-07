@@ -44,7 +44,8 @@ const PLATFORMS: PlatformConfig[] = [
         fields: [
             { key: 'clientId', label: 'Client ID', placeholder: 'xxx.apps.googleusercontent.com' },
             { key: 'clientSecret', label: 'Client Secret', placeholder: 'GOCSPX-xxx' },
-            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character token' }
+            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character token' },
+            { key: 'loginCustomerId', label: 'Manager Account ID (MCC)', placeholder: '123-456-7890 (optional, for MCC access)' }
         ]
     },
     {

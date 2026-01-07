@@ -200,10 +200,21 @@ export class AdsService {
                 developer_token: developerToken
             });
 
-            const customer = client.Customer({
+            // For Manager (MCC) accounts, we need to specify login_customer_id
+            // This is the MCC account ID that has access to the client account
+            const loginCustomerId = creds.loginCustomerId; // Optional: MCC account ID
+
+            const customerConfig: any = {
                 customer_id: adAccount.externalId.replace(/-/g, ''),
                 refresh_token: adAccount.refreshToken
-            });
+            };
+
+            // If accessing through an MCC, add the login_customer_id
+            if (loginCustomerId) {
+                customerConfig.login_customer_id = loginCustomerId.replace(/-/g, '');
+            }
+
+            const customer = client.Customer(customerConfig);
 
             // Calculate date range for last 30 days
             const endDate = new Date();
@@ -255,9 +266,9 @@ export class AdsService {
 
             // GRPC error code 12 = UNIMPLEMENTED
             if (errorCode === 12 || errorMessage.includes('UNIMPLEMENTED') || errorMessage.includes('GRPC target method')) {
-                userFriendlyMessage = 'Google Ads API access denied. Your developer token may be at "Test Account" level. ' +
-                    'Please upgrade to "Explorer Access" or higher at https://ads.google.com/aw/apicenter. ' +
-                    'If recently upgraded, wait a few hours for changes to propagate.';
+                userFriendlyMessage = 'Google Ads API access denied. Possible causes: ' +
+                    '(1) Developer token at "Test Account" level - upgrade to "Explorer Access" at https://ads.google.com/aw/apicenter. ' +
+                    '(2) Missing Manager Account ID (MCC) - if accessing client accounts through an MCC, add the Manager Account ID in Super Admin > Credentials > Google Ads.';
             }
             // GRPC error code 7 = PERMISSION_DENIED
             else if (errorCode === 7 || errorMessage.includes('PERMISSION_DENIED')) {

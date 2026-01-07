@@ -14,6 +14,7 @@ interface PicklistItem {
     totalQuantity: number;
     stockStatus: string;
     imageUrl?: string;
+    manageStock: boolean;
 }
 
 export class PicklistService {
@@ -60,7 +61,12 @@ export class PicklistService {
                 const variationId = item.variation_id || 0;
                 const quantity = item.quantity;
 
-                await this.processLineItem(accountId, productId, variationId, quantity, orderNumber, innerItem => {
+                await this.processLineItem(accountId, productId, variationId, quantity, orderNumber, wooOrderId, innerItem => {
+                    // Skip products that don't have inventory tracking enabled
+                    if (!innerItem.manageStock) {
+                        return;
+                    }
+
                     const key = `${innerItem.productId}`;
 
                     if (!itemMap.has(key)) {
@@ -71,6 +77,7 @@ export class PicklistService {
                             binLocation: innerItem.binLocation || '',
                             stockStatus: innerItem.stockStatus || 'unknown',
                             imageUrl: innerItem.image?.src,
+                            manageStock: innerItem.manageStock,
                             quantityUpdates: [],
                             totalQuantity: 0
                         });
@@ -116,7 +123,8 @@ export class PicklistService {
         variationId: number,
         quantity: number,
         orderContext: string,
-        callback: (item: { productId: number, sku: string, name: string, quantity: number, binLocation: string | null, stockStatus: string | null, image: any }) => void
+        wooOrderId: number,
+        callback: (item: { productId: number, sku: string, name: string, quantity: number, binLocation: string | null, stockStatus: string | null, image: any, manageStock: boolean }) => void
     ) {
         // Check if this product/variant has a BOM
         // Prisma BOM model: productId (String UUID) -> we have wooId (Int).
@@ -141,7 +149,7 @@ export class PicklistService {
         if (!product) {
             // Product not synced? Just return as is with basic BOM fallback if possible (impossible without sync)
             // Or just skip?
-            // Best effort: treat as raw item
+            // Best effort: treat as raw item - skip as we can't determine if it manages stock
             callback({
                 productId,
                 sku: 'UNKNOWN',
@@ -149,7 +157,8 @@ export class PicklistService {
                 quantity,
                 binLocation: '',
                 stockStatus: 'unknown',
-                image: null
+                image: null,
+                manageStock: false // Unknown products don't get added
             });
             return;
         }
@@ -187,6 +196,7 @@ export class PicklistService {
                         // Let's assume childProduct gives us the correct entity.
                         componentQty,
                         orderContext,
+                        wooOrderId,
                         callback
                     );
                 } else {
@@ -198,6 +208,7 @@ export class PicklistService {
             }
         } else {
             // No BOM, it's a leaf product.
+            const raw = product.rawData as any;
             callback({
                 productId: product.wooId,
                 sku: product.sku || '',
@@ -205,7 +216,8 @@ export class PicklistService {
                 quantity,
                 binLocation: product.binLocation,
                 stockStatus: product.stockStatus,
-                image: product.images ? (product.images as any)[0] : null
+                image: product.images ? (product.images as any)[0] : null,
+                manageStock: raw?.manage_stock === true
             });
         }
     }
