@@ -55,6 +55,30 @@ export interface DailyTrend {
 }
 
 /**
+ * Shopping product-level performance insight.
+ * Used for AI analysis of product performance within Shopping campaigns.
+ */
+export interface ShoppingProductInsight {
+    campaignId: string;
+    campaignName: string;
+    productId: string;
+    productTitle: string;
+    productBrand: string;
+    productCategory: string;
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    conversionsValue: number;
+    roas: number;
+    ctr: number;
+    cpc: number;
+    currency: string;
+    dateStart: string;
+    dateStop: string;
+}
+
+/**
  * Cached credentials to avoid repeated DB lookups.
  * In production, consider using Redis for distributed caching.
  */
@@ -837,6 +861,122 @@ export class AdsService {
             return results;
         } catch (error) {
             Logger.error('Failed to list Google Ads customers', { error });
+            throw error;
+        }
+    }
+
+    /**
+     * Fetch Google Shopping product-level performance data.
+     * Returns product performance within Shopping campaigns for AI analysis.
+     * Only includes active campaigns with actual impressions, limited to top products.
+     */
+    static async getGoogleShoppingProducts(adAccountId: string, days: number = 30, limit: number = 200): Promise<ShoppingProductInsight[]> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'GOOGLE' || !adAccount.refreshToken || !adAccount.externalId) {
+            throw new Error('Invalid Google Ad Account');
+        }
+
+        const creds = await getCredentials('GOOGLE_ADS');
+        if (!creds?.clientId || !creds?.clientSecret || !creds?.developerToken) {
+            Logger.warn('Google Ads credentials not configured.');
+            return [];
+        }
+
+        const { clientId, clientSecret, developerToken } = creds;
+
+        try {
+            const client = new GoogleAdsApi({
+                client_id: clientId,
+                client_secret: clientSecret,
+                developer_token: developerToken
+            });
+
+            const loginCustomerId = creds.loginCustomerId;
+            const customerConfig: any = {
+                customer_id: adAccount.externalId.replace(/-/g, ''),
+                refresh_token: adAccount.refreshToken
+            };
+            if (loginCustomerId) {
+                customerConfig.login_customer_id = loginCustomerId.replace(/-/g, '');
+            }
+
+            const customer = client.Customer(customerConfig);
+
+            // Calculate date range
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+
+            const formatDate = (d: Date) => d.toISOString().split('T')[0].replace(/-/g, '');
+
+            // GAQL query for shopping product performance
+            // Only active campaigns with impressions, ordered by spend
+            const query = `
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    segments.product_item_id,
+                    segments.product_title,
+                    segments.product_brand,
+                    segments.product_type_l1,
+                    metrics.cost_micros,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.conversions,
+                    metrics.conversions_value
+                FROM shopping_performance_view
+                WHERE segments.date BETWEEN '${formatDate(startDate)}' AND '${formatDate(endDate)}'
+                    AND campaign.status = 'ENABLED'
+                    AND metrics.impressions > 0
+                ORDER BY metrics.cost_micros DESC
+                LIMIT ${limit}
+            `;
+
+            const results = await customer.query(query);
+
+            const products: ShoppingProductInsight[] = results.map((row: any) => {
+                const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
+                const impressions = row.metrics?.impressions || 0;
+                const clicks = row.metrics?.clicks || 0;
+                const conversions = row.metrics?.conversions || 0;
+                const conversionsValue = row.metrics?.conversions_value || 0;
+
+                return {
+                    campaignId: row.campaign?.id?.toString() || '',
+                    campaignName: row.campaign?.name || 'Unknown',
+                    productId: row.segments?.product_item_id || '',
+                    productTitle: row.segments?.product_title || 'Unknown Product',
+                    productBrand: row.segments?.product_brand || '',
+                    productCategory: row.segments?.product_type_l1 || '',
+                    spend,
+                    impressions,
+                    clicks,
+                    conversions,
+                    conversionsValue,
+                    roas: spend > 0 ? conversionsValue / spend : 0,
+                    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+                    cpc: clicks > 0 ? spend / clicks : 0,
+                    currency: adAccount.currency || 'USD',
+                    dateStart: startDate.toISOString().split('T')[0],
+                    dateStop: endDate.toISOString().split('T')[0]
+                };
+            });
+
+            return products;
+
+        } catch (error: any) {
+            // Handle case where account has no Shopping campaigns
+            if (error.message?.includes('UNIMPLEMENTED') || error.message?.includes('not enabled')) {
+                Logger.info('Shopping performance view not available for this account', { adAccountId });
+                return [];
+            }
+            Logger.error('Failed to fetch Google Shopping Products', {
+                error: error.message,
+                adAccountId
+            });
             throw error;
         }
     }

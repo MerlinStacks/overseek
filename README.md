@@ -5,10 +5,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.0-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/stack-PERN-blueviolet" alt="Stack">
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready">
+  <img src="https://img.shields.io/badge/AI-powered-ff6b6b?logo=openai&logoColor=white" alt="AI Powered">
 </p>
 
 ---
@@ -25,10 +26,17 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 | **Real-Time Intelligence** | Sub-second via Socket.io | Minutes of delay |
 | **Monthly Cost** | $0 | $200-500+/month |
 | **WooCommerce Native** | Deep bi-directional sync | Basic API polling |
+| **AI-Powered Insights** | Built-in assistant & content tools | Expensive add-ons |
 
 ---
 
 ## ✨ Feature Highlights
+
+### 🤖 AI-Powered Intelligence (NEW)
+- **Data-Aware AI Assistant**: Chat with your store data—ask questions about sales, customers, and ads.
+- **AI Product Rewriting**: One-click AI-powered product description generation.
+- **Configurable AI Prompts**: Customize AI behavior via the Super Admin panel.
+- **Multi-Model Support**: Connect to any OpenRouter-compatible model (GPT-4, Claude, etc.).
 
 ### 📊 Analytics & Visitor Intelligence
 - **Live Visitor Tracking**: See who's on your site right now with geographic mapping.
@@ -43,6 +51,7 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **Unified Timeline**: Orders, emails, chats, and site visits in one view.
 - **LTV & AOV Metrics**: Lifetime value calculated automatically.
 - **Behavioral Insights**: Entry/exit pages, time on site, and journey mapping.
+- **Product Sales History**: Track which orders contain specific products.
 
 
 
@@ -51,6 +60,15 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **Webhook Support**: Instant updates via `order.created`, `product.updated`, etc.
 - **Delta Sync**: Only fetch what's changed to save bandwidth.
 - **Historical Import**: Full backfill with "New Order" spam prevention.
+- **Manual Sync Settings**: One-click refresh of measurement units and store config.
+- **Rich Product Data**: Categories, tags, and inventory status pulled automatically.
+
+### 📣 Google Ads Integration (NEW)
+- **OAuth Connection**: Securely link your Google Ads account.
+- **Campaign Monitoring**: Track spend, impressions, clicks, and conversions.
+- **ROAS Tracking**: Automatic Return on Ad Spend calculations.
+- **AI-Powered Insights**: Ask your AI assistant about ad performance.
+- **Shopping Campaign Context**: Understand which products are active in campaigns.
 
 ### 📦 Inventory & Supply Chain
 - **Stock Velocity Reports**: Identify fast/slow movers with days-of-inventory projections.
@@ -59,11 +77,12 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **Picklist Generation**: Bin-location optimized PDFs for warehouse picking.
 - **Supplier Management**: Track sources and shadow inventory.
 
-### 🧾 Visual Invoice Designer
+### 🧾 Visual Invoice & Email Designer
 - **Drag-and-Drop Builder**: Create beautiful invoice templates with `react-grid-layout`.
 - **Dynamic Variables**: Use `{{customer.name}}`, `{{order.total}}`, and more.
 - **PDF Generation**: Print-ready invoices with full tax breakdowns.
 - **Automation Ready**: Attach invoices to email sequences automatically.
+- **Fullscreen Email Editor**: Distraction-free template editing.
 
 
 
@@ -98,6 +117,8 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **Two-Factor Auth**: TOTP-based 2FA support.
 - **Bull Board**: Visual queue management for background jobs.
 - **Health Dashboard**: System status, logs, and diagnostics.
+- **Platform SMTP**: Super Admin configurable system-wide email settings.
+- **AI Prompt Manager**: Centralized management of AI prompt templates.
 
 ---
 

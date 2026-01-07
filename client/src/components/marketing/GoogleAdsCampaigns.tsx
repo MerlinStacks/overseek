@@ -47,9 +47,10 @@ interface GoogleAdsCampaignsProps {
     adAccountId: string;
     accountName: string;
     onBack: () => void;
+    hideBackButton?: boolean;
 }
 
-export function GoogleAdsCampaigns({ adAccountId, accountName, onBack }: GoogleAdsCampaignsProps) {
+export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackButton }: GoogleAdsCampaignsProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [campaigns, setCampaigns] = useState<CampaignInsight[]>([]);
@@ -169,12 +170,14 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack }: GoogleA
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={onBack}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
+                    {!hideBackButton && (
+                        <button
+                            onClick={onBack}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                    )}
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">{accountName}</h2>
                         <p className="text-sm text-gray-500">Campaign Performance Breakdown</p>

@@ -36,17 +36,25 @@ export class SchedulerService {
         setInterval(async () => {
             try {
                 const accounts = await prisma.emailAccount.findMany({ where: { type: 'IMAP' } });
+                Logger.info(`[Email Polling] Starting check - found ${accounts.length} IMAP account(s)`);
+
                 if (accounts.length > 0) {
                     const { EmailService } = await import('./EmailService');
                     const emailService = new EmailService();
                     for (const acc of accounts) {
-                        await emailService.checkEmails(acc.id);
+                        try {
+                            await emailService.checkEmails(acc.id);
+                            Logger.info(`[Email Polling] Checked account: ${acc.email}`);
+                        } catch (accError) {
+                            Logger.error(`[Email Polling] Failed to check account: ${acc.email}`, { error: accError });
+                        }
                     }
                 }
             } catch (error) {
                 Logger.error('Email Polling Error', { error });
             }
         }, 2 * 60 * 1000);
+
 
         // Report Scheduler (Check every 15 minutes)
         setInterval(() => {

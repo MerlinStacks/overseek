@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-01-07
+
+### 🤖 AI Intelligence
+- **AI Chat Assistant**: Data-aware chatbot that can query WooCommerce orders, products, and advertising metrics.
+- **AI Product Rewriting**: One-click AI-powered product description generation on the product edit page.
+- **AI Prompts Management**: Super Admin page for configuring and managing global AI prompt templates.
+- **Multi-Model Support**: Integration with OpenRouter API supporting GPT-4, Claude, and other models.
+
+### 📣 Google Ads Integration
+- **OAuth Connection**: Securely link Google Ads accounts with proper redirect handling.
+- **Campaign Monitoring**: Track spend, impressions, clicks, conversions, and CTR.
+- **ROAS Tracking**: Automatic Return on Ad Spend calculations with `action_values` parsing.
+- **Shopping Campaign Context**: Associate products with active Google Shopping campaigns.
+- **AI-Powered Insights**: Query ad performance data through the AI assistant.
+
+### ✨ Enhancements
+- **Product Edit Page**:
+  - Added **Sales History** tab showing all orders containing the product.
+  - Added **SEO/Merchant Center score tooltips** with actionable improvement hints on hover.
+  - Added **WooCommerce categories, tags, and inventory status** display.
+  - Added **Sync Settings button** for manual measurement unit refresh.
+- **Email Designer**: Fullscreen editing mode for distraction-free template design.
+- **Platform SMTP**: Super Admin configurable system-wide SMTP settings with connection testing.
+- **Super Admin Panel**:
+  - Added **Credentials page** with tab-based interface for platform integrations.
+  - Improved **account management** with robust error handling and deletion support.
+
+### 🐛 Bug Fixes
+- **Setup Wizard**: Fixed flash issue causing demo account creation on hard refresh while logged in.
+- **Admin API**: Resolved 500 errors on `/api/admin/stats`, `/api/accounts`, and account endpoints.
+- **Bull Dashboard**: Fixed continuous "Loading" state issue.
+- **Email Inbox**: Improved IMAP connection handling and error logging.
+
+### ⚙️ Infrastructure
+- Refactored large files (`TrackingService.ts`, `ads.ts`, `ProductEditPage.tsx`) for improved maintainability.
+- Added production logging standards replacing `console.log` with dedicated logger.
+
 ## [1.0.0] - 2026-01-06
 
 ### 🚀 Major Features

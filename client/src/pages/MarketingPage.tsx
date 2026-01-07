@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
-import { GoogleAdsCampaigns } from '../components/marketing/GoogleAdsCampaigns';
+import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
 import { CampaignsList } from '../components/marketing/CampaignsList';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { EmailDesignEditor } from '../components/marketing/EmailDesignEditor';
@@ -34,7 +34,6 @@ export function MarketingPage() {
     const [editorMode, setEditorMode] = useState<EditorMode>(null);
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
     const [editingAutomationData, setEditingAutomationData] = useState<any>(null); // To store full automation data
-    const [selectedAdAccount, setSelectedAdAccount] = useState<any>(null); // For Ad Performance tab
 
     // Sync tab changes to URL
     useEffect(() => {
@@ -208,17 +207,7 @@ export function MarketingPage() {
             <div className="py-4">
                 {activeTab === 'campaigns' && <CampaignsList onEdit={handleEditCampaign} />}
                 {activeTab === 'automations' && <AutomationsList onEdit={handleEditAutomation} />}
-                {activeTab === 'performance' && (
-                    selectedAdAccount ? (
-                        <GoogleAdsCampaigns
-                            adAccountId={selectedAdAccount.id}
-                            accountName={selectedAdAccount.name}
-                            onBack={() => setSelectedAdAccount(null)}
-                        />
-                    ) : (
-                        <AdsView onSelectAccount={(acc: any) => setSelectedAdAccount(acc)} />
-                    )
-                )}
+                {activeTab === 'performance' && <AdPerformanceView />}
                 {activeTab === 'ads' && <AdsView />}
             </div>
         </div>

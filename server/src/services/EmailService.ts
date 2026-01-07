@@ -106,7 +106,14 @@ export class EmailService {
     async checkEmails(emailAccountId: string) {
         // Basic implementation to fetch unseen emails
         const account = await prisma.emailAccount.findUnique({ where: { id: emailAccountId } });
-        if (!account || account.type !== 'IMAP') return;
+        if (!account) {
+            Logger.warn('[checkEmails] Email account not found', { emailAccountId });
+            return;
+        }
+        if (account.type !== 'IMAP') {
+            Logger.warn('[checkEmails] Account is not IMAP type, skipping', { emailAccountId, type: account.type });
+            return;
+        }
 
         // Port 993 uses implicit TLS, port 143 uses STARTTLS
         const useImplicitTLS = account.port === 993;
@@ -116,7 +123,7 @@ export class EmailService {
         try {
             decryptedPassword = decrypt(account.password);
         } catch (e) {
-            Logger.error('Failed to decrypt email password', { emailAccountId, error: e });
+            Logger.error('[checkEmails] Failed to decrypt email password', { emailAccountId, error: e });
             return;
         }
 
@@ -137,8 +144,10 @@ export class EmailService {
         };
 
         try {
+            Logger.info('[checkEmails] Connecting to IMAP server', { host: account.host, port: account.port });
             const connection = await imaps.connect(config);
             await connection.openBox('INBOX');
+            Logger.info('[checkEmails] Connected and opened INBOX');
 
             // Fetch unseen emails
             const searchCriteria = ['UNSEEN'];
@@ -148,6 +157,7 @@ export class EmailService {
             };
 
             const messages = await connection.search(searchCriteria, fetchOptions);
+            Logger.info(`[checkEmails] Found ${messages.length} unseen email(s)`, { email: account.email });
 
             for (const message of messages) {
                 const parts = (imaps as any).getParts(message.attributes.struct);
@@ -176,7 +186,7 @@ export class EmailService {
                 const bodyPart = message.parts.find(p => p.which === 'TEXT');
                 const body = bodyPart ? bodyPart.body : '[Content cannot be displayed]';
 
-                Logger.info(`Received email`, { fromEmail, subject });
+                Logger.info(`[checkEmails] Emitting EMAIL.RECEIVED event`, { fromEmail, subject });
 
                 EventBus.emit(EVENTS.EMAIL.RECEIVED, {
                     emailAccountId,
@@ -189,8 +199,9 @@ export class EmailService {
             }
 
             connection.end();
+            Logger.info('[checkEmails] Disconnected from IMAP server');
         } catch (error) {
-            Logger.error(`Error checking emails`, { email: account.email, error });
+            Logger.error(`[checkEmails] Error checking emails`, { email: account.email, error });
         }
     }
 }

@@ -202,6 +202,7 @@ export class AdsTools {
     /**
      * Analyze Google Ads campaigns with detailed performance breakdown.
      * Returns campaign-level metrics and identifies opportunities.
+     * For Shopping campaigns, includes product-level performance data.
      */
     static async analyzeGoogleAdsCampaigns(accountId: string, days: number = 30) {
         try {
@@ -215,6 +216,7 @@ export class AdsTools {
             }
 
             const allCampaigns: any[] = [];
+            const allProducts: any[] = [];
 
             for (const adAccount of adAccounts) {
                 try {
@@ -225,6 +227,20 @@ export class AdsTools {
                             ...c
                         });
                     });
+
+                    // Also fetch shopping product data for enhanced analysis
+                    try {
+                        const products = await AdsService.getGoogleShoppingProducts(adAccount.id, days, 100);
+                        products.forEach(p => {
+                            allProducts.push({
+                                account: adAccount.name || adAccount.externalId,
+                                ...p
+                            });
+                        });
+                    } catch (err) {
+                        // Shopping data not available for this account - that's OK
+                        Logger.debug(`No shopping data for ${adAccount.id}`, { error: err });
+                    }
                 } catch (err) {
                     Logger.warn(`Failed to fetch campaigns for ${adAccount.id}`, { error: err });
                 }
@@ -260,6 +276,69 @@ export class AdsTools {
                 .sort((a, b) => b.conversionsValue - a.conversionsValue)
                 .slice(0, 3);
 
+            // Build shopping product analysis if data available
+            let shoppingAnalysis: any = null;
+            if (allProducts.length > 0) {
+                const productTotals = allProducts.reduce((acc, p) => ({
+                    spend: acc.spend + p.spend,
+                    conversionsValue: acc.conversionsValue + p.conversionsValue
+                }), { spend: 0, conversionsValue: 0 });
+
+                // Top performing products (high ROAS)
+                const topProducts = [...allProducts]
+                    .filter(p => p.spend > 0)
+                    .sort((a, b) => b.roas - a.roas)
+                    .slice(0, 5);
+
+                // Underperforming products (high spend, low/no conversions)
+                const underperformingProducts = [...allProducts]
+                    .filter(p => p.spend > productTotals.spend * 0.02 && p.roas < 0.5)
+                    .sort((a, b) => b.spend - a.spend)
+                    .slice(0, 5);
+
+                // High click but low conversion products (potential landing page issues)
+                const highClickLowConversion = [...allProducts]
+                    .filter(p => p.clicks > 20 && p.conversions < 1)
+                    .sort((a, b) => b.clicks - a.clicks)
+                    .slice(0, 5);
+
+                // Group products by campaign for context
+                const productsByCampaign = allProducts.reduce((acc: Record<string, any[]>, p) => {
+                    if (!acc[p.campaignName]) acc[p.campaignName] = [];
+                    acc[p.campaignName].push(p);
+                    return acc;
+                }, {});
+
+                shoppingAnalysis = {
+                    total_products_analyzed: allProducts.length,
+                    top_products: topProducts.map(p => ({
+                        product: p.productTitle,
+                        product_id: p.productId,
+                        campaign: p.campaignName,
+                        roas: `${p.roas.toFixed(2)}x`,
+                        spend: `$${p.spend.toFixed(2)}`,
+                        conversions: p.conversions.toFixed(0)
+                    })),
+                    underperforming_products: underperformingProducts.map(p => ({
+                        product: p.productTitle,
+                        product_id: p.productId,
+                        campaign: p.campaignName,
+                        roas: `${p.roas.toFixed(2)}x`,
+                        spend: `$${p.spend.toFixed(2)}`,
+                        issue: p.conversions === 0 ? 'No conversions - consider excluding' : 'Very low ROAS - review pricing/landing page'
+                    })),
+                    high_click_low_conversion: highClickLowConversion.map(p => ({
+                        product: p.productTitle,
+                        product_id: p.productId,
+                        campaign: p.campaignName,
+                        clicks: p.clicks,
+                        conversions: p.conversions.toFixed(0),
+                        issue: 'High traffic but no sales - check landing page, price, or stock'
+                    })),
+                    campaigns_with_products: Object.keys(productsByCampaign).length
+                };
+            }
+
             return {
                 summary: {
                     total_campaigns: allCampaigns.length,
@@ -294,7 +373,8 @@ export class AdsTools {
                     roas: `${c.roas.toFixed(2)}x`,
                     revenue: `$${c.conversionsValue.toFixed(2)}`,
                     suggestion: 'Consider increasing budget'
-                }))
+                })),
+                shopping_products: shoppingAnalysis
             };
 
         } catch (error) {
@@ -438,7 +518,43 @@ export class AdsTools {
                         `Consider increasing budget for: ${googleAnalysis.high_performers.map((c: any) => c.campaign).join(', ')}.`
                     );
                 }
+
+                // Shopping product-level insights
+                if (googleAnalysis.shopping_products) {
+                    const shopping = googleAnalysis.shopping_products;
+
+                    if (shopping.underperforming_products?.length > 0) {
+                        const topWasters = shopping.underperforming_products.slice(0, 3);
+                        suggestions.push(
+                            `🛒 **Shopping - Underperforming Products**: ${shopping.underperforming_products.length} product(s) have very low ROAS. ` +
+                            `Consider excluding: ${topWasters.map((p: any) => `"${p.product}" (${p.spend}, ${p.roas} ROAS)`).join('; ')}.`
+                        );
+                    }
+
+                    if (shopping.high_click_low_conversion?.length > 0) {
+                        const problematic = shopping.high_click_low_conversion.slice(0, 3);
+                        suggestions.push(
+                            `🔍 **Shopping - Landing Page Issues**: ${shopping.high_click_low_conversion.length} product(s) get clicks but no sales. ` +
+                            `Review pricing/stock for: ${problematic.map((p: any) => `"${p.product}" (${p.clicks} clicks, 0 conversions)`).join('; ')}.`
+                        );
+                    }
+
+                    if (shopping.top_products?.length > 0) {
+                        const topPerformers = shopping.top_products.slice(0, 3);
+                        suggestions.push(
+                            `⭐ **Shopping - Top Performers**: Your best products are: ${topPerformers.map((p: any) => `"${p.product}" (${p.roas} ROAS)`).join(', ')}. ` +
+                            `Consider increasing bids on these.`
+                        );
+                    }
+                }
+
                 combinedSummary.google = googleAnalysis.summary;
+                if (googleAnalysis.shopping_products) {
+                    combinedSummary.shopping_analysis = {
+                        products_analyzed: googleAnalysis.shopping_products.total_products_analyzed,
+                        campaigns_with_products: googleAnalysis.shopping_products.campaigns_with_products
+                    };
+                }
             }
 
             // Process Meta Ads

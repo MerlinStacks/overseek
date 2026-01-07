@@ -189,6 +189,38 @@ router.get('/:adAccountId/trends', async (req: AuthenticatedRequest, res: Respon
 });
 
 /**
+ * GET /api/ads/:adAccountId/shopping-products
+ * Fetch product-level performance data for Shopping campaigns.
+ * Only available for Google Ads accounts with Shopping campaigns.
+ * Query params: days (default: 30), limit (default: 200)
+ */
+router.get('/:adAccountId/shopping-products', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { adAccountId } = req.params;
+        const days = parseInt(req.query.days as string) || 30;
+        const limit = Math.min(parseInt(req.query.limit as string) || 200, 500); // Cap at 500
+
+        // Get account to determine platform
+        const accounts = await AdsService.getAdAccounts((req as any).accountId);
+        const adAccount = accounts.find(a => a.id === adAccountId);
+
+        if (!adAccount) {
+            return res.status(404).json({ error: 'Ad account not found' });
+        }
+
+        if (adAccount.platform !== 'GOOGLE') {
+            return res.status(400).json({ error: 'Shopping product data is only available for Google Ads accounts' });
+        }
+
+        const products = await AdsService.getGoogleShoppingProducts(adAccountId, days, limit);
+        res.json(products);
+    } catch (error: any) {
+        Logger.error('Failed to fetch shopping products', { error });
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
  * GET /api/ads/:adAccountId/analysis
  * Get AI-powered analysis and optimization suggestions for a Google Ads account.
  */
