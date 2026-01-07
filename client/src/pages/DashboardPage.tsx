@@ -91,6 +91,9 @@ export function DashboardPage() {
     }
 
     const onLayoutChange = (layout: any, _layouts: any) => {
+        // Don't persist layout changes on mobile to protect desktop layout
+        if (isMobile) return;
+
         // Update local state positions
         const newWidgets = widgets.map(w => {
             const match = layout.find((l: any) => l.i === w.id);

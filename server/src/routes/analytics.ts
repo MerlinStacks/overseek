@@ -130,8 +130,9 @@ router.get('/ads-summary', async (req: AuthenticatedRequest, res: Response) => {
                 let metrics = null;
                 if (adAccount.platform === 'META') {
                     metrics = await AdsService.getMetaInsights(adAccount.id);
+                } else if (adAccount.platform === 'GOOGLE') {
+                    metrics = await AdsService.getGoogleInsights(adAccount.id);
                 }
-                // Add support for other platforms (GOOGLE, etc.) as needed
 
                 if (metrics) {
                     totalSpend += metrics.spend;
@@ -427,6 +428,7 @@ router.get('/stock-velocity', async (req: AuthenticatedRequest, res: Response) =
         const products: any[] = await prisma.$queryRaw`
             SELECT 
                 id, 
+                "wooId",
                 name, 
                 sku, 
                 "mainImage", 
@@ -489,7 +491,8 @@ router.get('/stock-velocity', async (req: AuthenticatedRequest, res: Response) =
         // 4. Calculate Velocity & Days Remaining
         const report = products.map(p => {
             const stock = p.stock_quantity || 0;
-            const sold30d = salesMap.get(p.id) || 0; // Match by Product ID
+            // Use wooId for lookup since ES stores WooCommerce product IDs
+            const sold30d = salesMap.get(p.wooId) || 0;
 
             // Daily Rate
             const dailyRate = sold30d / 30;

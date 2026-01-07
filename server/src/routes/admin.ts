@@ -143,4 +143,156 @@ router.post('/broadcast', async (req: AuthenticatedRequest, res: Response) => {
     }
 });
 
+// ──────────────────────────────────────────────────────────────
+// PLATFORM CREDENTIALS MANAGEMENT
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/platform-credentials
+ * List all platform credentials (with secrets masked).
+ */
+router.get('/platform-credentials', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const credentials = await prisma.platformCredentials.findMany({
+            orderBy: { platform: 'asc' }
+        });
+
+        // Mask sensitive values for display
+        const masked = credentials.map(cred => ({
+            ...cred,
+            credentials: maskCredentials(cred.credentials as Record<string, string>)
+        }));
+
+        res.json(masked);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch platform credentials' });
+    }
+});
+
+/**
+ * GET /api/admin/platform-credentials/:platform
+ * Get credentials for a specific platform (masked).
+ */
+router.get('/platform-credentials/:platform', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { platform } = req.params;
+        const cred = await prisma.platformCredentials.findUnique({
+            where: { platform }
+        });
+
+        if (!cred) {
+            return res.status(404).json({ error: 'Platform credentials not found' });
+        }
+
+        res.json({
+            ...cred,
+            credentials: maskCredentials(cred.credentials as Record<string, string>)
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch platform credentials' });
+    }
+});
+
+/**
+ * PUT /api/admin/platform-credentials/:platform
+ * Create or update credentials for a platform.
+ * Body: { credentials: { clientId, clientSecret, ... }, notes? }
+ */
+router.put('/platform-credentials/:platform', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { platform } = req.params;
+        const { credentials, notes } = req.body;
+
+        if (!credentials || typeof credentials !== 'object') {
+            return res.status(400).json({ error: 'Invalid credentials format' });
+        }
+
+        const cred = await prisma.platformCredentials.upsert({
+            where: { platform },
+            update: { credentials, notes },
+            create: { platform, credentials, notes }
+        });
+
+        res.json({
+            ...cred,
+            credentials: maskCredentials(cred.credentials as Record<string, string>)
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to save platform credentials' });
+    }
+});
+
+/**
+ * DELETE /api/admin/platform-credentials/:platform
+ * Delete credentials for a platform.
+ */
+router.delete('/platform-credentials/:platform', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { platform } = req.params;
+        await prisma.platformCredentials.delete({
+            where: { platform }
+        });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to delete platform credentials' });
+    }
+});
+
+/**
+ * Mask credential values for safe display.
+ * Shows first 4 chars + "..." for each value.
+ */
+function maskCredentials(creds: Record<string, string>): Record<string, string> {
+    const masked: Record<string, string> = {};
+    for (const [key, value] of Object.entries(creds)) {
+        if (typeof value === 'string' && value.length > 4) {
+            masked[key] = value.substring(0, 4) + '********';
+        } else {
+            masked[key] = '********';
+        }
+    }
+    return masked;
+}
+
+// ──────────────────────────────────────────────────────────────
+// PLATFORM SMTP TEST
+// ──────────────────────────────────────────────────────────────
+
+import { platformEmailService } from '../services/PlatformEmailService';
+
+/**
+ * POST /api/admin/platform-smtp/test
+ * Test SMTP connection with provided credentials before saving.
+ * Body: { host, port, username, password, secure? }
+ */
+router.post('/platform-smtp/test', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { host, port, username, password, secure } = req.body;
+
+        if (!host || !port || !username || !password) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: host, port, username, password'
+            });
+        }
+
+        const result = await platformEmailService.testConnection({
+            host,
+            port: parseInt(port),
+            username,
+            password,
+            secure: Boolean(secure)
+        });
+
+        if (result.success) {
+            res.json({ success: true });
+        } else {
+            res.status(400).json({ success: false, error: result.error });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message || 'SMTP test failed' });
+    }
+});
+
 export default router;
+

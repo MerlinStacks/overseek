@@ -1008,3 +1008,27 @@ model InvoiceTemplate {
   
   @@unique([accountId, name])
 }
+
+// --------------------------------------
+// Platform Credentials (Super Admin)
+// --------------------------------------
+
+/// Stores global platform API credentials for integrations.
+/// Only Super Admins can manage these credentials.
+model PlatformCredentials {
+  id        String @id @default(uuid())
+  
+  /// Platform identifier: "GOOGLE_ADS", "META_ADS", etc.
+  platform  String @unique
+  
+  /// Encrypted/stored credentials as JSON
+  /// For Google: { clientId, clientSecret, developerToken }
+  /// For Meta: { appId, appSecret }
+  credentials Json
+  
+  /// Optional notes for admin reference
+  notes String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

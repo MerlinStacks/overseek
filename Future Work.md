@@ -6,11 +6,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ## 🔧 Settings & Configuration
 
-### Super Admin
-- [ ] **Platform SMTP Configuration**: Add SMTP settings for platform-level emails (separate from user email automations)
-
----
-
 ## 📣 Unified Marketing
 
 - [ ] **SMS & WhatsApp Channels**: Extend `MarketingAutomation` to support SMS/WhatsApp nodes via Twilio
@@ -21,7 +16,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 ## 🏷️ Orders & Tags
 
 - [ ] **Order Filtering**: Robust filtering by product and order tags
-- [ ] **Reviews Matching**: Reviews-to-orders matching logic
 
 ---
 
@@ -29,13 +23,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 - [ ] **Full-Screen Modals**: Optimize `OrderPreviewModal` and `CustomerDetails` for small screens
 - [ ] **Tab Stacking**: Vertically stack horizontal tabs on narrow screens
-
----
-
-## 🔌 Integrations
-
-- [ ] **Google Ads Connector**: Complete integration with Google Ads API
-- [ ] **Meta Ads Connector**: Complete integration with Meta Ads API
 
 ---
 

@@ -233,11 +233,23 @@ export class SchedulerService {
             jobId: 'inventory-alerts-daily'
         });
 
+        // Schedule Gold Price Updates (Daily at 06:00 UTC)
+        await queue.add('gold-price-update', {}, {
+            repeat: {
+                pattern: '0 6 * * *', // Daily at 6 AM UTC
+            },
+            jobId: 'gold-price-update-daily'
+        });
+
+        Logger.info('Scheduled Gold Price Update (Daily at 6 AM UTC)');
+
         QueueFactory.createWorker('scheduler', async (job) => {
             if (job.name === 'orchestrate-sync') {
                 await this.dispatchToAllAccounts();
             } else if (job.name === 'inventory-alerts') {
                 await this.dispatchInventoryAlerts();
+            } else if (job.name === 'gold-price-update') {
+                await this.dispatchGoldPriceUpdates();
             }
         });
 
@@ -273,6 +285,33 @@ export class SchedulerService {
         for (const acc of accounts) {
             // We could queue this further, but calling directly is fine for daily low volume
             await InventoryService.sendLowStockAlerts(acc.id);
+        }
+    }
+
+    /**
+     * Updates gold prices for all accounts with GOLD_PRICE_CALCULATOR feature enabled
+     */
+    private static async dispatchGoldPriceUpdates() {
+        const { GoldPriceService } = await import('./GoldPriceService');
+
+        // Find accounts with GOLD_PRICE_CALCULATOR feature enabled
+        const enabledAccounts = await prisma.accountFeature.findMany({
+            where: {
+                featureKey: 'GOLD_PRICE_CALCULATOR',
+                isEnabled: true
+            },
+            select: { accountId: true }
+        });
+
+        Logger.info(`[Scheduler] Updating gold prices for ${enabledAccounts.length} accounts`);
+
+        for (const { accountId } of enabledAccounts) {
+            try {
+                await GoldPriceService.updateAccountPrice(accountId);
+                Logger.info(`[Scheduler] Updated gold price for account ${accountId}`);
+            } catch (error) {
+                Logger.error(`[Scheduler] Failed to update gold price for account ${accountId}`, { error });
+            }
         }
     }
 }

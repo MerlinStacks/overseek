@@ -50,8 +50,8 @@ export function LiveAnalyticsPage() {
     const [reportData, setReportData] = useState<any[]>([]);
     const [loadingReport, setLoadingReport] = useState(false);
 
-    // Date Range (Simple for now: today, 7d, 30d) - Defaults to 30d
-    const [dateRange, setDateRange] = useState('30d');
+    // Date Range (Simple for now: today, 7d, 30d) - Defaults to today
+    const [dateRange, setDateRange] = useState('today');
 
     useEffect(() => {
         if (!currentAccount || !token) return;

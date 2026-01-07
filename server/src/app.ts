@@ -29,6 +29,7 @@ import marketingRoutes from './routes/marketing';
 import emailRoutes from './routes/email';
 import ordersRoutes from './routes/orders'; // Mount Orders API
 import invoicesRoutes from './routes/invoices';
+import oauthRoutes from './routes/oauth'; // OAuth flows for ad platforms
 
 import segmentsRoutes from './routes/segments';
 import { auditsRouter } from './routes/audits';
@@ -171,6 +172,7 @@ app.use('/api/segments', segmentsRoutes);
 app.use('/api/orders', ordersRoutes); // Mount Orders API
 app.use('/api/audits', auditsRouter);
 app.use('/api/sessions', sessionsRoutes);
+app.use('/api/oauth', oauthRoutes); // OAuth flows for Google Ads, Meta
 
 // Mount Chat Routes
 app.use('/api/chat', createChatRouter(chatService));

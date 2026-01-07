@@ -816,26 +816,44 @@ export class TrackingService {
 
     /**
      * Get search analytics: top queries
+     * Handles both dedicated 'search' events AND pageview events with page_type='search'
+     * (WordPress plugin sends searches as pageviews with searchQuery in payload)
      */
     static async getSearches(accountId: string, days: number = 30) {
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-        const searchEvents = await prisma.analyticsEvent.findMany({
+        // Query both 'search' type events AND 'pageview' events (which may contain search data)
+        const events = await prisma.analyticsEvent.findMany({
             where: {
                 session: { accountId },
-                type: 'search',
+                type: { in: ['search', 'pageview'] },
                 createdAt: { gte: startDate }
             },
             select: {
+                type: true,
                 payload: true
             }
         });
 
         const queryCounts = new Map<string, number>();
-        for (const event of searchEvents) {
-            const query = ((event.payload as any)?.searchQuery || (event.payload as any)?.term || '').toLowerCase().trim();
+        let searchCount = 0;
+
+        for (const event of events) {
+            const payload = event.payload as any;
+
+            // For 'search' events, extract query directly
+            // For 'pageview' events, check if page_type is 'search'
+            let query = '';
+
+            if (event.type === 'search') {
+                query = (payload?.searchQuery || payload?.term || '').toLowerCase().trim();
+            } else if (event.type === 'pageview' && payload?.page_type === 'search') {
+                query = (payload?.searchQuery || '').toLowerCase().trim();
+            }
+
             if (query) {
                 queryCounts.set(query, (queryCounts.get(query) || 0) + 1);
+                searchCount++;
             }
         }
 
@@ -844,7 +862,7 @@ export class TrackingService {
                 .map(([query, count]) => ({ query, count }))
                 .sort((a, b) => b.count - a.count)
                 .slice(0, 20),
-            totalSearches: searchEvents.length
+            totalSearches: searchCount
         };
     }
 

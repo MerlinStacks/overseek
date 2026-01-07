@@ -111,11 +111,18 @@ export class ReviewService {
             // Try to find/link customer by email if not already linked
             let newCustomerId: string | null = wooCustomerId;
             if (!wooCustomerId && reviewerEmail) {
-                const customer = await prisma.wooCustomer.findFirst({
-                    where: { accountId, email: reviewerEmail }
-                });
-                if (customer) {
-                    newCustomerId = customer.id;
+                const normalizedEmail = this.normalizeEmail(reviewerEmail);
+                if (normalizedEmail) {
+                    // Use case-insensitive email matching
+                    const customer = await prisma.wooCustomer.findFirst({
+                        where: {
+                            accountId,
+                            email: { equals: normalizedEmail, mode: 'insensitive' }
+                        }
+                    });
+                    if (customer) {
+                        newCustomerId = customer.id;
+                    }
                 }
             }
 

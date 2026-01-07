@@ -23,7 +23,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
 
     const [metrics, setMetrics] = useState<string[]>(initialConfig?.metrics || ['sales']);
     const [dimension, setDimension] = useState(initialConfig?.dimension || 'day');
-    const [dateRange, setDateRange] = useState(initialConfig?.dateRange || '30d');
+    const [dateRange, setDateRange] = useState(initialConfig?.dateRange || 'today');
     const [isLoading, setIsLoading] = useState(false);
     const [results, setResults] = useState<ReportResult[]>([]);
     const [hasSearched, setHasSearched] = useState(false);
