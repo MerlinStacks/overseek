@@ -159,38 +159,101 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                         <div className="w-2/3 p-6 overflow-y-auto bg-white">
                             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Activity Stream</h3>
 
-                            <div className="space-y-6 relative before:absolute before:left-2 before:top-2 before:bottom-0 before:w-0.5 before:bg-gray-100">
-                                {events.map((e, i) => (
-                                    <div key={e.id} className="relative pl-6">
-                                        <div className={`absolute left-0 top-1 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center 
-                                            ${e.type.includes('cart') ? 'bg-amber-100' : e.type === 'purchase' ? 'bg-green-500' : 'bg-gray-200'}`}>
-                                            {/* Dot */}
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-xs text-gray-400 mb-0.5">
-                                                {format(new Date(e.createdAt), 'MMM d, HH:mm:ss')} • {e.type}
-                                            </span>
-                                            <div className="text-sm text-gray-700">
-                                                {e.type === 'pageview' ? (
-                                                    <span className="font-medium">Viewed {e.pageTitle || e.url}</span>
-                                                ) : e.type === 'search' ? (
-                                                    <span className="flex items-center gap-1 font-medium text-purple-600">
-                                                        <Search className="w-3 h-3" /> Searched "{e.payload?.term}"
-                                                    </span>
-                                                ) : e.type === 'add_to_cart' ? (
-                                                    <span>Added items to cart <span className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded ml-1">{JSON.stringify(e.payload?.items)}</span></span>
-                                                ) : (
-                                                    <span>{JSON.stringify(e.payload)}</span>
-                                                )}
+                            <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-0 before:w-0.5 before:bg-gray-100">
+                                {events.map((e, i) => {
+                                    const payload = e.payload || {};
+                                    return (
+                                        <div key={e.id} className="relative pl-6">
+                                            <div className={`absolute left-0 top-1 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center 
+                                            ${e.type.includes('cart') ? 'bg-amber-400' :
+                                                    e.type === 'purchase' ? 'bg-green-500' :
+                                                        e.type === 'product_view' ? 'bg-indigo-400' :
+                                                            e.type === 'checkout_start' ? 'bg-orange-400' :
+                                                                e.type === 'search' ? 'bg-purple-400' :
+                                                                    'bg-blue-300'}`}>
                                             </div>
-                                            {e.type === 'pageview' && (
-                                                <a href={e.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline truncate block mt-0.5 max-w-md">
-                                                    {e.url}
-                                                </a>
-                                            )}
+                                            <div className="flex flex-col">
+                                                <span className="text-xs text-gray-400 mb-0.5">
+                                                    {format(new Date(e.createdAt), 'MMM d, HH:mm:ss')} • <span className="capitalize">{e.type.replace(/_/g, ' ')}</span>
+                                                </span>
+                                                <div className="text-sm text-gray-700">
+                                                    {e.type === 'pageview' && (
+                                                        <div>
+                                                            <span className="font-medium">Viewed {e.pageTitle || 'page'}</span>
+                                                            <a href={e.url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline truncate block mt-0.5 max-w-md">
+                                                                {e.url}
+                                                            </a>
+                                                        </div>
+                                                    )}
+                                                    {e.type === 'product_view' && (
+                                                        <div>
+                                                            <span className="font-medium text-indigo-700">
+                                                                Viewed {payload.productName || 'Product'}
+                                                            </span>
+                                                            {payload.price && (
+                                                                <span className="ml-2 text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
+                                                                    ${payload.price}
+                                                                </span>
+                                                            )}
+                                                            {payload.sku && (
+                                                                <span className="text-xs text-gray-400 ml-2">SKU: {payload.sku}</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {e.type === 'search' && (
+                                                        <span className="flex items-center gap-1 font-medium text-purple-600">
+                                                            <Search className="w-3 h-3" /> Searched "{payload.term || payload.searchQuery || 'unknown'}"
+                                                        </span>
+                                                    )}
+                                                    {e.type === 'add_to_cart' && (
+                                                        <div>
+                                                            <span className="font-medium text-amber-700">
+                                                                Added to cart: {payload.name || payload.productName || 'Product'}
+                                                            </span>
+                                                            {payload.quantity && <span className="text-xs ml-1">(×{payload.quantity})</span>}
+                                                            {payload.price && (
+                                                                <span className="ml-2 text-xs bg-amber-50 text-amber-600 px-2 py-0.5 rounded">
+                                                                    ${payload.price}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {e.type === 'remove_from_cart' && (
+                                                        <span className="text-gray-500">Removed item from cart</span>
+                                                    )}
+                                                    {e.type === 'checkout_start' && (
+                                                        <div>
+                                                            <span className="font-medium text-orange-600">Started checkout</span>
+                                                            {payload.total && (
+                                                                <span className="ml-2 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded">
+                                                                    Cart: ${payload.total}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {e.type === 'purchase' && (
+                                                        <div>
+                                                            <span className="font-medium text-green-600">
+                                                                Purchase completed
+                                                            </span>
+                                                            {payload.total && (
+                                                                <span className="ml-2 text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded font-semibold">
+                                                                    ${payload.total} {payload.currency || ''}
+                                                                </span>
+                                                            )}
+                                                            {payload.orderId && (
+                                                                <span className="text-xs text-gray-400 ml-2">Order #{payload.orderId}</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {!['pageview', 'product_view', 'search', 'add_to_cart', 'remove_from_cart', 'checkout_start', 'purchase'].includes(e.type) && (
+                                                        <span className="text-gray-500 capitalize">{e.type.replace(/_/g, ' ')}</span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {events.length === 0 && (
                                     <div className="text-sm text-gray-400 italic pl-6">No events recorded in this session.</div>
                                 )}
