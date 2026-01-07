@@ -267,7 +267,7 @@ router.get('/p.gif', async (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         res.send(TRANSPARENT_GIF);
     } catch (error) {
-        console.error('Pixel Tracking Error:', error);
+        Logger.error('Pixel Tracking Error', { error });
         res.setHeader('Content-Type', 'image/gif');
         res.setHeader('Cache-Control', 'no-store');
         res.send(TRANSPARENT_GIF);
@@ -291,7 +291,7 @@ router.get('/live', requireAuth, async (req: any, res) => {
         const visitors = await TrackingService.getLiveVisitors(accountId as string);
         res.json(visitors);
     } catch (error) {
-        console.error('Live Users Error:', error);
+        Logger.error('Live Users Error', { error });
         res.status(500).json({ error: 'Failed to fetch live users' });
     }
 });
@@ -304,7 +304,7 @@ router.get('/carts', requireAuth, async (req: any, res) => {
         const carts = await TrackingService.getLiveCarts(accountId as string);
         res.json(carts);
     } catch (error) {
-        console.error('Live Carts Error:', error);
+        Logger.error('Live Carts Error', { error });
         res.status(500).json({ error: 'Failed to fetch live carts' });
     }
 });
@@ -314,7 +314,7 @@ router.get('/session/:sessionId', requireAuth, async (req: any, res) => {
         const history = await TrackingService.getSessionHistory(req.params.sessionId);
         res.json(history);
     } catch (error) {
-        console.error('Session History Error:', error);
+        Logger.error('Session History Error', { error });
         res.status(500).json({ error: 'Failed to fetch session history' });
     }
 });
@@ -335,7 +335,7 @@ router.get('/status', requireAuth, async (req: any, res) => {
             lastSignal: lastSession?.lastActiveAt || null
         });
     } catch (error) {
-        console.error('Status Check Error:', error);
+        Logger.error('Status Check Error', { error });
         res.status(500).json({ error: 'Failed to check status' });
     }
 });

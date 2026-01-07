@@ -6,6 +6,7 @@ import {
     FileText,
     Server,
     Radio,
+    Key,
     ChevronLeft,
     ChevronRight,
     LogOut
@@ -16,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
     { icon: Users, label: 'Accounts', path: '/admin/accounts' },
+    { icon: Key, label: 'Credentials', path: '/admin/credentials' },
     { icon: FileText, label: 'System Logs', path: '/admin/logs' },
     { icon: Radio, label: 'Broadcasts', path: '/admin/broadcast' },
 ];

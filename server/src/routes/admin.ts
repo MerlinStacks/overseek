@@ -62,6 +62,40 @@ router.get('/accounts', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
+ * GET /api/admin/accounts/:accountId
+ * Get a single account by ID with details.
+ */
+router.get('/accounts/:accountId', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { accountId } = req.params;
+
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            include: {
+                _count: { select: { users: true } },
+                features: true,
+                users: {
+                    include: {
+                        user: {
+                            select: { id: true, email: true, fullName: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!account) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+
+        res.json(account);
+    } catch (e) {
+        console.error('Failed to fetch account:', e);
+        res.status(500).json({ error: 'Failed to fetch account' });
+    }
+});
+
+/**
  * DELETE /api/admin/accounts/:accountId
  * Delete an account with double confirmation (must provide exact account name).
  * Body: { confirmAccountName: string }
