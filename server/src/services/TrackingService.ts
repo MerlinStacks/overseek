@@ -273,9 +273,9 @@ export class TrackingService {
         });
 
         // Post-filter to catch any bots that slipped through ingestion
-        // (e.g., sessions created before bot detection was enhanced)
+        // Also filter out empty userAgent strings
         const filteredSessions = sessions.filter(session => {
-            if (!session.userAgent) return false;
+            if (!session.userAgent || session.userAgent.trim() === '') return false;
             return !TrackingService.isBot(session.userAgent);
         });
 
