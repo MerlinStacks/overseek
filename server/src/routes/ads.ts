@@ -118,4 +118,55 @@ router.get('/:adAccountId/insights', async (req: AuthenticatedRequest, res: Resp
     }
 });
 
+/**
+ * PATCH /api/ads/:adAccountId/complete-setup
+ * Complete setup for a pending Google Ads account by providing the Customer ID.
+ * Body: { customerId: string, name?: string }
+ */
+router.patch('/:adAccountId/complete-setup', async (req: AuthenticatedRequest, res: Response) => {
+    const accountId = (req as any).accountId;
+    if (!accountId) return res.status(400).json({ error: 'No account selected' });
+
+    try {
+        const { adAccountId } = req.params;
+        const { customerId, name } = req.body;
+
+        if (!customerId) {
+            return res.status(400).json({ error: 'Customer ID is required' });
+        }
+
+        // Verify the ad account exists and belongs to this account
+        const accounts = await AdsService.getAdAccounts(accountId);
+        const adAccount = accounts.find(a => a.id === adAccountId);
+
+        if (!adAccount) {
+            return res.status(404).json({ error: 'Ad account not found' });
+        }
+
+        if (adAccount.externalId !== 'PENDING_SETUP') {
+            return res.status(400).json({ error: 'Account is already configured' });
+        }
+
+        // Update the account with the provided Customer ID
+        const updatedAccount = await AdsService.updateAccount(adAccountId, {
+            name: name || `Google Ads (${customerId})`
+        });
+
+        // Also update the externalId (need to use prisma directly)
+        const { prisma } = await import('../utils/prisma');
+        await prisma.adAccount.update({
+            where: { id: adAccountId },
+            data: { externalId: customerId.replace(/-/g, '') } // Remove dashes if present
+        });
+
+        Logger.info('Google Ads account setup completed', { adAccountId, customerId });
+
+        res.json({ success: true, message: 'Google Ads account configured successfully' });
+    } catch (error: any) {
+        Logger.error('Failed to complete ad account setup', { error });
+        res.status(500).json({ error: error.message });
+    }
+});
+
 export default router;
+

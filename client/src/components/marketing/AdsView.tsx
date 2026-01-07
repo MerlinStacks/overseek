@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Facebook, TrendingUp, Loader2, Trash2, ExternalLink } from 'lucide-react';
+import { Plus, Facebook, TrendingUp, Loader2, Trash2, ExternalLink, AlertCircle } from 'lucide-react';
 
 interface AdAccount {
     id: string;
@@ -34,6 +34,14 @@ export function AdsView() {
     // Form State
     const [formData, setFormData] = useState({ platform: 'META', externalId: '', accessToken: '', name: '' });
     const [isConnecting, setIsConnecting] = useState(false);
+
+    // Pending Google Ads setup state
+    const [pendingSetup, setPendingSetup] = useState<{ show: boolean; pendingId: string; customerId: string; isSubmitting: boolean }>({
+        show: false,
+        pendingId: '',
+        customerId: '',
+        isSubmitting: false
+    });
 
     useEffect(() => {
         fetchAccounts();
@@ -142,12 +150,48 @@ export function AdsView() {
         }
     }
 
+    async function handleCompletePendingSetup() {
+        if (!currentAccount || !pendingSetup.customerId.trim()) return;
+
+        setPendingSetup(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await fetch(`/api/ads/${pendingSetup.pendingId}/complete-setup`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ customerId: pendingSetup.customerId.trim() })
+            });
+
+            if (res.ok) {
+                alert('Google Ads account configured successfully!');
+                setPendingSetup({ show: false, pendingId: '', customerId: '', isSubmitting: false });
+                fetchAccounts();
+            } else {
+                const err = await res.json();
+                alert(err.error || 'Failed to complete setup');
+            }
+        } catch (err) {
+            alert('Error completing setup');
+        } finally {
+            setPendingSetup(prev => ({ ...prev, isSubmitting: false }));
+        }
+    }
+
     // Check for OAuth callback status
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get('success') === 'google_connected') {
             // Show success message and clean URL
             alert('Google Ads account connected successfully!');
+            window.history.replaceState({}, '', '/marketing?tab=ads');
+            fetchAccounts();
+        } else if (params.get('success') === 'google_pending') {
+            // Show Customer ID input modal
+            const pendingId = params.get('pendingId') || '';
+            setPendingSetup({ show: true, pendingId, customerId: '', isSubmitting: false });
             window.history.replaceState({}, '', '/marketing?tab=ads');
             fetchAccounts();
         } else if (params.get('error')) {
@@ -160,6 +204,60 @@ export function AdsView() {
 
     return (
         <div className="space-y-6">
+            {/* Pending Setup Modal */}
+            {pendingSetup.show && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                            <AlertCircle className="text-amber-500" size={20} />
+                            Complete Google Ads Setup
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Your Google account has been connected. Please enter your Google Ads Customer ID to complete the setup.
+                        </p>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Google Ads Customer ID
+                            </label>
+                            <input
+                                type="text"
+                                className="w-full p-3 border rounded-lg"
+                                placeholder="123-456-7890"
+                                value={pendingSetup.customerId}
+                                onChange={e => setPendingSetup(prev => ({ ...prev, customerId: e.target.value }))}
+                            />
+                            <p className="text-xs text-gray-500 mt-2">
+                                Find your Customer ID in the top-right corner of{' '}
+                                <a href="https://ads.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                                    Google Ads
+                                </a>
+                                . It looks like: 123-456-7890
+                            </p>
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => {
+                                    // Delete the pending account
+                                    handleDisconnect(pendingSetup.pendingId);
+                                    setPendingSetup({ show: false, pendingId: '', customerId: '', isSubmitting: false });
+                                }}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCompletePendingSetup}
+                                disabled={!pendingSetup.customerId.trim() || pendingSetup.isSubmitting}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {pendingSetup.isSubmitting ? <Loader2 className="animate-spin" size={16} /> : null}
+                                Complete Setup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-900">Ad Accounts</h2>
                 <button
@@ -299,8 +397,9 @@ export function AdsView() {
                 ) : (
                     accounts.map(acc => {
                         const ins = insights[acc.id];
+                        const isPending = acc.externalId === 'PENDING_SETUP';
                         return (
-                            <div key={acc.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+                            <div key={acc.id} className={`bg-white rounded-xl shadow-sm border p-6 space-y-4 ${isPending ? 'border-amber-300' : 'border-gray-200'}`}>
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-3">
                                         <div className={`p-2 rounded-lg ${acc.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
@@ -315,11 +414,22 @@ export function AdsView() {
                                         </div>
                                         <div>
                                             <h3 className="font-semibold text-gray-900">{acc.name}</h3>
-                                            <p className="text-xs text-gray-500 font-mono">{acc.externalId}</p>
+                                            <p className="text-xs text-gray-500 font-mono">{isPending ? 'Setup not complete' : acc.externalId}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
+                                        {isPending ? (
+                                            <>
+                                                <button
+                                                    onClick={() => setPendingSetup({ show: true, pendingId: acc.id, customerId: '', isSubmitting: false })}
+                                                    className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full hover:bg-amber-200"
+                                                >
+                                                    Complete Setup
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
+                                        )}
                                         <button
                                             onClick={() => handleDisconnect(acc.id)}
                                             className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"

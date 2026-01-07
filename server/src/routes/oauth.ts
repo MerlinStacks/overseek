@@ -112,43 +112,23 @@ router.get('/google/callback', async (req: Request, res: Response) => {
         const tokens = await AdsService.exchangeGoogleCode(code as string, redirectUri);
         Logger.info('Token exchange successful', { hasAccessToken: !!tokens.accessToken, hasRefreshToken: !!tokens.refreshToken });
 
-        // List available Google Ads customer accounts
-        Logger.info('Listing Google Ads customer accounts');
-        const customers = await AdsService.listGoogleCustomers(tokens.refreshToken);
-        Logger.info('Google Ads customers found', { count: customers.length, customers: customers.map(c => c.id) });
+        // Skip listGoogleCustomers (requires Google Ads API access which may not be configured)
+        // Instead, save tokens and redirect user to enter their Customer ID manually
 
-        if (customers.length === 0) {
-            Logger.warn('No Google Ads accounts found for user');
-            return res.redirect(`${frontendRedirect}?error=no_google_accounts`);
-        }
-
-        // If only one account, auto-connect it
-        if (customers.length === 1) {
-            Logger.info('Auto-connecting single Google Ads account', { customerId: customers[0].id, name: customers[0].name });
-            await AdsService.connectAccount(stateData.accountId, {
-                platform: 'GOOGLE',
-                externalId: customers[0].id,
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken,
-                name: customers[0].name
-            });
-
-            Logger.info('Google Ads account connected successfully');
-            return res.redirect(`${frontendRedirect}?success=google_connected`);
-        }
-
-        // Multiple accounts - connect the first one for simplicity
-        Logger.info('Connecting first of multiple Google Ads accounts', { customerId: customers[0].id, totalAccounts: customers.length });
-        await AdsService.connectAccount(stateData.accountId, {
+        // Store tokens temporarily in a pending ad account
+        // The user will complete setup by entering their Customer ID
+        const pendingAccount = await AdsService.connectAccount(stateData.accountId, {
             platform: 'GOOGLE',
-            externalId: customers[0].id,
+            externalId: 'PENDING_SETUP',
             accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            name: customers[0].name
+            refreshToken: tokens.refreshToken || '',
+            name: 'Google Ads (Pending Setup)'
         });
 
-        Logger.info('Google Ads account connected successfully');
-        return res.redirect(`${frontendRedirect}?success=google_connected&accounts=${customers.length}`);
+        Logger.info('Google Ads tokens saved, pending customer ID entry', { pendingAccountId: pendingAccount.id });
+
+        // Redirect with pending flag so frontend shows customer ID input
+        return res.redirect(`${frontendRedirect}?success=google_pending&pendingId=${pendingAccount.id}`);
 
     } catch (error: any) {
         Logger.error('Google OAuth callback failed', {
