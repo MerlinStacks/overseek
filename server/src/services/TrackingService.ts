@@ -249,23 +249,36 @@ export class TrackingService {
 
     /**
      * Get Live Visitors (Active in last 3 mins)
-     * Note: Bots are already filtered at ingestion time via isBot() check in processEvent
+     * Filters out bots and sessions without userAgent
      */
     static async getLiveVisitors(accountId: string) {
         const threeMinsAgo = new Date(Date.now() - 3 * 60 * 1000);
 
-        return prisma.analyticsSession.findMany({
+        const sessions = await prisma.analyticsSession.findMany({
             where: {
                 accountId,
                 lastActiveAt: {
                     gte: threeMinsAgo
+                },
+                // Exclude sessions with no userAgent (likely bots or server-side requests)
+                userAgent: {
+                    not: null
                 }
             },
             orderBy: {
                 lastActiveAt: 'desc'
             },
-            take: 50 // Cap at 50 for live view
+            take: 100 // Fetch more initially, we'll filter further
         });
+
+        // Post-filter to catch any bots that slipped through ingestion
+        // (e.g., sessions created before bot detection was enhanced)
+        const filteredSessions = sessions.filter(session => {
+            if (!session.userAgent) return false;
+            return !TrackingService.isBot(session.userAgent);
+        });
+
+        return filteredSessions.slice(0, 50); // Cap at 50 for live view
     }
 
     /**

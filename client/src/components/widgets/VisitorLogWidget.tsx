@@ -39,6 +39,8 @@ function getEventIcon(type: string) {
     switch (type) {
         case 'pageview':
             return FileText;
+        case 'product_view':
+            return Eye;
         case 'search':
             return Search;
         case 'add_to_cart':
@@ -58,6 +60,8 @@ function getEventIconClasses(type: string) {
     switch (type) {
         case 'pageview':
             return 'bg-blue-50 text-blue-500 hover:bg-blue-100';
+        case 'product_view':
+            return 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100';
         case 'search':
             return 'bg-purple-50 text-purple-500 hover:bg-purple-100';
         case 'add_to_cart':
@@ -70,6 +74,45 @@ function getEventIconClasses(type: string) {
         default:
             return 'bg-gray-50 text-gray-500 hover:bg-gray-100';
     }
+}
+
+/** 
+ * De-duplicate events: if same URL has both pageview and product_view,
+ * keep only the more specific event (product_view) 
+ */
+function deduplicateEvents(events: VisitorEvent[]): VisitorEvent[] {
+    const urlEventMap = new Map<string, VisitorEvent>();
+    const otherEvents: VisitorEvent[] = [];
+
+    // Event type priority: higher = more specific (keeps this one)
+    const typePriority: Record<string, number> = {
+        'pageview': 1,
+        'product_view': 2,
+        'search': 3,
+        'add_to_cart': 4,
+        'checkout_start': 5,
+        'checkout_success': 6,
+        'purchase': 7
+    };
+
+    for (const event of events) {
+        const url = event.url || '';
+        const priority = typePriority[event.type] || 0;
+
+        // For pageview/product_view on same URL, keep the higher priority one
+        if (event.type === 'pageview' || event.type === 'product_view') {
+            const existing = urlEventMap.get(url);
+            if (!existing || priority > (typePriority[existing.type] || 0)) {
+                urlEventMap.set(url, event);
+            }
+        } else {
+            otherEvents.push(event);
+        }
+    }
+
+    // Combine and sort by createdAt
+    return [...urlEventMap.values(), ...otherEvents]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 const VisitorLogWidget: React.FC = () => {
@@ -172,32 +215,35 @@ const VisitorLogWidget: React.FC = () => {
                                 </div>
 
                                 {/* Action Icons Row */}
-                                {v.events && v.events.length > 0 && (
-                                    <div className="flex items-center gap-1 pl-10 flex-wrap">
-                                        {v.events.slice(0, 8).map((event, idx) => {
-                                            const IconComponent = getEventIcon(event.type);
-                                            const iconClasses = getEventIconClasses(event.type);
-                                            const tooltip = event.pageTitle || event.url || event.type;
+                                {v.events && v.events.length > 0 && (() => {
+                                    const dedupedEvents = deduplicateEvents(v.events);
+                                    return (
+                                        <div className="flex items-center gap-1 pl-10 flex-wrap">
+                                            {dedupedEvents.slice(0, 8).map((event, idx) => {
+                                                const IconComponent = getEventIcon(event.type);
+                                                const iconClasses = getEventIconClasses(event.type);
+                                                const tooltip = event.pageTitle || event.url || event.type;
 
-                                            return (
-                                                <a
-                                                    key={event.id}
-                                                    href={event.url || '#'}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${iconClasses}`}
-                                                    title={`${tooltip}\n${formatDistanceToNowStrict(new Date(event.createdAt))} ago`}
-                                                >
-                                                    <IconComponent className="w-3 h-3" />
-                                                </a>
-                                            );
-                                        })}
-                                        {v.events.length > 8 && (
-                                            <span className="text-xs text-gray-400 ml-1">+{v.events.length - 8}</span>
-                                        )}
-                                    </div>
-                                )}
+                                                return (
+                                                    <a
+                                                        key={event.id}
+                                                        href={event.url || '#'}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${iconClasses}`}
+                                                        title={`${tooltip}\n${formatDistanceToNowStrict(new Date(event.createdAt))} ago`}
+                                                    >
+                                                        <IconComponent className="w-3 h-3" />
+                                                    </a>
+                                                );
+                                            })}
+                                            {dedupedEvents.length > 8 && (
+                                                <span className="text-xs text-gray-400 ml-1">+{dedupedEvents.length - 8}</span>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         ))}
                     </div>

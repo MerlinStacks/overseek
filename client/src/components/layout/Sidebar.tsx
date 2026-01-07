@@ -64,6 +64,7 @@ const navItems = [
             { icon: GitBranch, label: 'Attribution', path: '/analytics/attribution' },
             { icon: TrendingUp, label: 'Cohorts', path: '/analytics/cohorts' },
             { icon: Repeat, label: 'Customers', path: '/analytics/customers' },
+            { icon: BarChart3, label: 'Acquisition', path: '/live' },
             { icon: BarChart3, label: 'Reports', path: '/reports' },
         ]
     },
