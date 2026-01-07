@@ -189,6 +189,35 @@ export class WooService {
         return this.requestWithRetry('get', 'system_status');
     }
 
+    /**
+     * Fetches store-level settings from WooCommerce including measurement units and currency.
+     * Used during account creation to sync OverSeek with the store's configured units.
+     */
+    async getStoreSettings(): Promise<{ weightUnit: string; dimensionUnit: string; currency: string }> {
+        if (this.isDemo) {
+            return { weightUnit: 'kg', dimensionUnit: 'cm', currency: 'USD' };
+        }
+
+        try {
+            // Fetch product settings (contains weight and dimension units)
+            const productResponse = await this.requestWithRetry('get', 'settings/products');
+            const productSettings = productResponse.data;
+
+            const weightUnit = productSettings.find((s: any) => s.id === 'woocommerce_weight_unit')?.value || 'kg';
+            const dimensionUnit = productSettings.find((s: any) => s.id === 'woocommerce_dimension_unit')?.value || 'cm';
+
+            // Fetch general settings (contains currency)
+            const generalResponse = await this.requestWithRetry('get', 'settings/general');
+            const generalSettings = generalResponse.data;
+            const currency = generalSettings.find((s: any) => s.id === 'woocommerce_currency')?.value || 'USD';
+
+            return { weightUnit, dimensionUnit, currency };
+        } catch (error) {
+            Logger.warn('Failed to fetch WooCommerce store settings, using defaults', { error });
+            return { weightUnit: 'kg', dimensionUnit: 'cm', currency: 'USD' };
+        }
+    }
+
     async updatePluginSettings(settings: { account_id?: string; api_url?: string }) {
         if (this.isDemo) {
             console.log("[Demo] Mocking plugin settings update:", settings);

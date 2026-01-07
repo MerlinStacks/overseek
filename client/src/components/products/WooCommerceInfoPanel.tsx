@@ -1,0 +1,101 @@
+import { Package, FolderTree, Tags, CheckCircle2, XCircle } from 'lucide-react';
+
+interface WooCategory {
+    id: number;
+    name: string;
+    slug: string;
+}
+
+interface WooTag {
+    id: number;
+    name: string;
+    slug: string;
+}
+
+interface WooCommerceInfoPanelProps {
+    manageStock: boolean;
+    categories: WooCategory[];
+    tags: WooTag[];
+}
+
+/**
+ * Displays WooCommerce-specific product metadata:
+ * - Inventory tracking status
+ * - Product categories
+ * - Product tags
+ */
+export function WooCommerceInfoPanel({ manageStock, categories, tags }: WooCommerceInfoPanelProps) {
+    return (
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <Package size={16} className="text-purple-600" />
+                WooCommerce Info
+            </h3>
+
+            <div className="space-y-5">
+                {/* Inventory Tracking Status */}
+                <div className="flex items-center justify-between py-2 px-3 bg-gray-50/80 rounded-lg border border-gray-100">
+                    <div className="flex items-center gap-2">
+                        <Package size={16} className="text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">Inventory Tracking</span>
+                    </div>
+                    {manageStock ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 text-xs font-medium rounded-full border border-green-200">
+                            <CheckCircle2 size={12} />
+                            Enabled
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full border border-gray-200">
+                            <XCircle size={12} />
+                            Disabled
+                        </span>
+                    )}
+                </div>
+
+                {/* Categories */}
+                <div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <FolderTree size={14} className="text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">Categories</span>
+                    </div>
+                    {categories.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {categories.map((cat) => (
+                                <span
+                                    key={cat.id}
+                                    className="inline-flex items-center px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+                                >
+                                    {cat.name}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-400 italic">No categories assigned</p>
+                    )}
+                </div>
+
+                {/* Tags */}
+                <div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <Tags size={14} className="text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">Tags</span>
+                    </div>
+                    {tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {tags.map((tag) => (
+                                <span
+                                    key={tag.id}
+                                    className="inline-flex items-center px-3 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-200 hover:bg-amber-100 transition-colors"
+                                >
+                                    #{tag.name}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-400 italic">No tags assigned</p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}

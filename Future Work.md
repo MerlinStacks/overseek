@@ -40,6 +40,14 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 - [ ] **AutomationEngine Filters**: Detailed filter implementation
 - [ ] **CI/CD Optimization**: Optimized Docker layers
 
+We need to make the picklist only show products that have track inventory enabled.
+
+The product edit page should have a AI rewrite product description button. this will use the ai prompt from the superadmin panel along with the current description to generate a new description, replacing the current one. It will always use the accounts openrouter api key and model select to do so.
+
+
+
+
+
 ---
 
 ## ✅ Completed

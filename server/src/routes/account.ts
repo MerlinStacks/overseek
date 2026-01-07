@@ -53,4 +53,39 @@ router.get('/:accountId/product-tags', async (req: AuthenticatedRequest, res: Re
     }
 });
 
+// Sync WooCommerce store settings (weight/dimension units, currency)
+router.post('/:accountId/sync-settings', async (req: AuthenticatedRequest, res: Response) => {
+    const { WooService } = await import('../services/woo');
+    const { prisma } = await import('../utils/prisma');
+    const { Logger } = await import('../utils/logger');
+
+    try {
+        const { accountId } = req.params;
+
+        const wooService = await WooService.forAccount(accountId);
+        const storeSettings = await wooService.getStoreSettings();
+
+        const updatedAccount = await prisma.account.update({
+            where: { id: accountId },
+            data: {
+                weightUnit: storeSettings.weightUnit,
+                dimensionUnit: storeSettings.dimensionUnit,
+                currency: storeSettings.currency
+            }
+        });
+
+        Logger.info('Synced WooCommerce store settings', { accountId, settings: storeSettings });
+
+        res.json({
+            success: true,
+            weightUnit: updatedAccount.weightUnit,
+            dimensionUnit: updatedAccount.dimensionUnit,
+            currency: updatedAccount.currency
+        });
+    } catch (error) {
+        Logger.error('Failed to sync WooCommerce settings', { accountId: req.params.accountId, error });
+        res.status(500).json({ error: 'Failed to sync WooCommerce settings' });
+    }
+});
+
 export default router;

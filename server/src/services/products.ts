@@ -20,7 +20,11 @@ export class ProductsService {
             description: raw?.description || '',
             short_description: raw?.short_description || '',
             // Fallback for when images column is empty (legacy sync)
-            images: (Array.isArray(product.images) && product.images.length > 0) ? product.images : (raw?.images || [])
+            images: (Array.isArray(product.images) && product.images.length > 0) ? product.images : (raw?.images || []),
+            // WooCommerce inventory & taxonomy fields
+            manageStock: raw?.manage_stock ?? false,
+            categories: raw?.categories || [],
+            tags: raw?.tags || []
         };
     }
 

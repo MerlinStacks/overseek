@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { IndexingService } from '../services/search/IndexingService';
 import { GoldPriceService } from '../services/GoldPriceService';
+import { WooService } from '../services/woo';
+import { Logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
@@ -36,6 +38,34 @@ export class AccountController {
                         }
                     }
                 });
+
+                // Fetch WooCommerce store settings to sync measurement units
+                try {
+                    const wooService = new WooService({
+                        url: wooUrl,
+                        consumerKey: wooConsumerKey,
+                        consumerSecret: wooConsumerSecret,
+                        accountId: account.id
+                    });
+
+                    const storeSettings = await wooService.getStoreSettings();
+
+                    // Update account with fetched settings
+                    const updatedAccount = await prisma.account.update({
+                        where: { id: account.id },
+                        data: {
+                            weightUnit: storeSettings.weightUnit,
+                            dimensionUnit: storeSettings.dimensionUnit,
+                            currency: storeSettings.currency
+                        }
+                    });
+
+                    return res.json(updatedAccount);
+                } catch (settingsError) {
+                    // Log but don't fail account creation - settings use defaults
+                    Logger.warn('Failed to fetch WooCommerce store settings during account creation', { accountId: account.id, error: settingsError });
+                }
+
                 res.json(account);
             } catch (e: any) {
                 if (e.code === 'P2003') {

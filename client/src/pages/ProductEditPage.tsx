@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
@@ -12,10 +12,12 @@ import { LogisticsPanel } from '../components/products/LogisticsPanel';
 import { VariationsPanel } from '../components/products/VariationsPanel';
 import { PricingPanel } from '../components/products/PricingPanel';
 import { BOMPanel } from '../components/products/BOMPanel';
+import { WooCommerceInfoPanel } from '../components/products/WooCommerceInfoPanel';
 import { GoldPricePanel } from '../components/products/GoldPricePanel';
 import { Tabs } from '../components/ui/Tabs';
 import { ImageGallery } from '../components/products/ImageGallery';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
+import { ProductSalesHistory } from '../components/products/ProductSalesHistory';
 
 // Services
 import { ProductService } from '../services/ProductService';
@@ -62,6 +64,10 @@ interface ProductData {
     type?: 'simple' | 'variable' | 'grouped' | 'external';
     variations?: number[]; // IDs
     rawData?: any;
+
+    // WooCommerce taxonomy & inventory
+    categories?: { id: number; name: string; slug: string }[];
+    tags?: { id: number; name: string; slug: string }[];
 }
 
 interface ProductVariant {
@@ -300,6 +306,13 @@ export function ProductEditPage() {
                                 onChange={(imgs) => setFormData(prev => ({ ...prev, images: imgs }))}
                             />
                         </div>
+
+                        {/* WooCommerce Info Panel */}
+                        <WooCommerceInfoPanel
+                            manageStock={product.manageStock ?? false}
+                            categories={product.categories || []}
+                            tags={product.tags || []}
+                        />
                     </div>
                 </div>
             )
@@ -368,7 +381,7 @@ export function ProductEditPage() {
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">SEO Health</h3>
                                 <div className="flex gap-2">
-                                    <SeoScoreBadge score={seoResult.score || 0} size="md" />
+                                    <SeoScoreBadge score={seoResult.score || 0} size="md" tests={seoResult.tests} />
                                 </div>
                             </div>
                             <SeoAnalysisPanel
@@ -400,8 +413,18 @@ export function ProductEditPage() {
             )
         },
         {
+            id: 'sales',
+            label: 'Sales History',
+            icon: <ShoppingCart size={16} />,
+            content: (
+                <div className="max-w-5xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <ProductSalesHistory productWooId={product.wooId} />
+                </div>
+            )
+        },
+        {
             id: 'history',
-            label: 'History',
+            label: 'Edit History',
             icon: <Clock size={16} />,
             content: (
                 <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -432,8 +455,8 @@ export function ProductEditPage() {
                                     </span>
                                 </h1>
                                 <div className="flex items-center gap-3 mt-1">
-                                    <SeoScoreBadge score={seoResult.score || 0} size="sm" />
-                                    <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" />
+                                    <SeoScoreBadge score={seoResult.score || 0} size="sm" tests={seoResult.tests} />
+                                    <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues} />
                                 </div>
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
                                     <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded text-xs text-gray-600">ID: {product.wooId}</span>

@@ -8,6 +8,7 @@ import { Logger } from '../utils/logger';
 import { SeoScoringService } from '../services/SeoScoringService';
 import { MerchantCenterService } from '../services/MerchantCenterService';
 import { IndexingService } from '../services/search/IndexingService';
+import { esClient } from '../utils/elastic';
 
 const router = Router();
 
@@ -156,6 +157,102 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
     } catch (error: any) {
         Logger.error('Error', { error });
         res.status(500).json({ error: 'Failed to update product' });
+    }
+});
+
+/**
+ * GET /:id/sales-history
+ * Fetches orders containing this product from Elasticsearch.
+ * Returns sales history with order details.
+ */
+router.get('/:id/sales-history', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = (req as any).accountId;
+        const wooId = parseInt(req.params.id);
+        if (isNaN(wooId)) return res.status(400).json({ error: 'Invalid product ID' });
+
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const from = (page - 1) * limit;
+
+        // Query Elasticsearch for orders containing this product in line_items
+        const response = await esClient.search({
+            index: 'orders',
+            size: limit,
+            from,
+            body: {
+                query: {
+                    bool: {
+                        must: [
+                            { term: { accountId } },
+                            {
+                                nested: {
+                                    path: 'line_items',
+                                    query: {
+                                        term: { 'line_items.productId': wooId }
+                                    },
+                                    inner_hits: {
+                                        name: 'matched_items',
+                                        size: 10
+                                    }
+                                }
+                            }
+                        ],
+                        filter: [
+                            { terms: { status: ['completed', 'processing', 'on-hold', 'pending'] } }
+                        ]
+                    }
+                },
+                sort: [{ date_created: { order: 'desc' } }]
+            }
+        });
+
+        const hits = response.hits.hits;
+        const total = typeof response.hits.total === 'number'
+            ? response.hits.total
+            : response.hits.total?.value || 0;
+
+        // Format the results
+        const sales = hits.map((hit: any) => {
+            const order = hit._source;
+            const matchedItems = hit.inner_hits?.matched_items?.hits?.hits || [];
+
+            // Get quantity and total for this product from matched line items
+            let quantity = 0;
+            let lineTotal = 0;
+
+            matchedItems.forEach((itemHit: any) => {
+                const item = itemHit._source;
+                quantity += item.quantity || 0;
+                lineTotal += parseFloat(item.total) || 0;
+            });
+
+            return {
+                orderId: order.id,
+                orderNumber: order.number || `#${order.id}`,
+                date: order.date_created,
+                status: order.status,
+                customerName: order.billing
+                    ? `${order.billing.first_name || ''} ${order.billing.last_name || ''}`.trim() || order.billing.email
+                    : 'Guest',
+                customerEmail: order.billing?.email,
+                quantity,
+                lineTotal,
+                currency: order.currency || 'USD'
+            };
+        });
+
+        res.json({
+            sales,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        });
+
+    } catch (error: any) {
+        Logger.error('Error fetching product sales history', { error });
+        res.status(500).json({ error: 'Failed to fetch sales history' });
     }
 });
 

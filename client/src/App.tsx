@@ -45,6 +45,7 @@ import { AdminAccountsPage } from './pages/admin/AdminAccountsPage';
 import { AdminLogsPage } from './pages/admin/AdminLogsPage';
 import { AdminBroadcastPage } from './pages/admin/AdminBroadcastPage';
 import { AdminCredentialsPage } from './pages/admin/AdminCredentialsPage';
+import { AdminAIPromptsPage } from './pages/admin/AdminAIPromptsPage';
 
 // Component to handle redirection based on account status
 // Component to ensure account exists/is selected
@@ -84,6 +85,7 @@ function App() {
                                         <Route path="/admin/logs" element={<AdminLogsPage />} />
                                         <Route path="/admin/broadcast" element={<AdminBroadcastPage />} />
                                         <Route path="/admin/credentials" element={<AdminCredentialsPage />} />
+                                        <Route path="/admin/ai-prompts" element={<AdminAIPromptsPage />} />
                                     </Route>
 
                                     <Route element={<DashboardLayout><Outlet /></DashboardLayout>}>

@@ -7,6 +7,7 @@ import {
     Server,
     Radio,
     Key,
+    Sparkles,
     ChevronLeft,
     ChevronRight,
     LogOut
@@ -18,6 +19,7 @@ const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
     { icon: Users, label: 'Accounts', path: '/admin/accounts' },
     { icon: Key, label: 'Credentials', path: '/admin/credentials' },
+    { icon: Sparkles, label: 'AI Prompts', path: '/admin/ai-prompts' },
     { icon: FileText, label: 'System Logs', path: '/admin/logs' },
     { icon: Radio, label: 'Broadcasts', path: '/admin/broadcast' },
 ];

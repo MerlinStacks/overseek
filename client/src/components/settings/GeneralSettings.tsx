@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
@@ -7,6 +7,7 @@ export function GeneralSettings() {
     const { token } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
     const [isSaving, setIsSaving] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -80,6 +81,31 @@ export function GeneralSettings() {
         }
     };
 
+    const handleSyncSettings = async () => {
+        if (!currentAccount || !token) return;
+
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`/api/accounts/${currentAccount.id}/sync-settings`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!res.ok) throw new Error('Failed to sync settings');
+
+            const data = await res.json();
+            await refreshAccounts();
+            alert(`Synced from WooCommerce:\n• Weight Unit: ${data.weightUnit}\n• Dimension Unit: ${data.dimensionUnit}\n• Currency: ${data.currency}`);
+        } catch (error) {
+            console.error(error);
+            alert('Failed to sync settings: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     if (!currentAccount) return <div>Loading...</div>;
 
     return (
@@ -148,6 +174,37 @@ export function GeneralSettings() {
                                 value={formData.wooConsumerSecret}
                                 onChange={handleChange}
                             />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-900">Store Units & Currency</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">Synced from your WooCommerce store settings</p>
+                        </div>
+                        <button
+                            onClick={handleSyncSettings}
+                            disabled={isSyncing}
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
+                        >
+                            <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+                            {isSyncing ? 'Syncing...' : 'Sync from WooCommerce'}
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 max-w-md">
+                        <div className="bg-gray-50 rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Weight</p>
+                            <p className="font-mono font-medium text-gray-900">{currentAccount.weightUnit || 'kg'}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Dimension</p>
+                            <p className="font-mono font-medium text-gray-900">{currentAccount.dimensionUnit || 'cm'}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Currency</p>
+                            <p className="font-mono font-medium text-gray-900">{currentAccount.currency || 'USD'}</p>
                         </div>
                     </div>
                 </div>

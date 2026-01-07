@@ -1032,3 +1032,26 @@ model PlatformCredentials {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// --------------------------------------
+// AI Prompts (Super Admin)
+// --------------------------------------
+
+/// Stores configurable AI prompt templates.
+/// Only Super Admins can manage these prompts.
+model AIPrompt {
+  id        String @id @default(uuid())
+  
+  /// Unique prompt identifier: "product_description", "customer_email", etc.
+  promptId  String @unique
+  
+  /// The prompt template content
+  content   String @db.Text
+  
+  /// Name for display purposes
+  name      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+

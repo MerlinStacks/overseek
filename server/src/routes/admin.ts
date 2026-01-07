@@ -370,5 +370,110 @@ router.post('/platform-smtp/test', async (req: AuthenticatedRequest, res: Respon
     }
 });
 
+// ──────────────────────────────────────────────────────────────
+// AI PROMPTS MANAGEMENT
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/ai-prompts
+ * List all configured AI prompts.
+ */
+router.get('/ai-prompts', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const prompts = await prisma.aIPrompt.findMany({
+            orderBy: { promptId: 'asc' }
+        });
+
+        // Map to expected format
+        const formatted = prompts.map(p => ({
+            id: p.promptId,
+            name: p.name,
+            content: p.content,
+            updatedAt: p.updatedAt
+        }));
+
+        res.json(formatted);
+    } catch (e) {
+        console.error('Failed to fetch AI prompts:', e);
+        res.status(500).json({ error: 'Failed to fetch AI prompts' });
+    }
+});
+
+/**
+ * GET /api/admin/ai-prompts/:promptId
+ * Get a specific AI prompt by ID.
+ */
+router.get('/ai-prompts/:promptId', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { promptId } = req.params;
+        const prompt = await prisma.aIPrompt.findUnique({
+            where: { promptId }
+        });
+
+        if (!prompt) {
+            return res.status(404).json({ error: 'Prompt not found' });
+        }
+
+        res.json({
+            id: prompt.promptId,
+            name: prompt.name,
+            content: prompt.content,
+            updatedAt: prompt.updatedAt
+        });
+    } catch (e) {
+        console.error('Failed to fetch AI prompt:', e);
+        res.status(500).json({ error: 'Failed to fetch AI prompt' });
+    }
+});
+
+/**
+ * PUT /api/admin/ai-prompts/:promptId
+ * Create or update an AI prompt.
+ * Body: { content: string, name?: string }
+ */
+router.put('/ai-prompts/:promptId', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { promptId } = req.params;
+        const { content, name } = req.body;
+
+        if (!content || typeof content !== 'string') {
+            return res.status(400).json({ error: 'Content is required' });
+        }
+
+        const prompt = await prisma.aIPrompt.upsert({
+            where: { promptId },
+            update: { content, name },
+            create: { promptId, content, name }
+        });
+
+        res.json({
+            id: prompt.promptId,
+            name: prompt.name,
+            content: prompt.content,
+            updatedAt: prompt.updatedAt
+        });
+    } catch (e) {
+        console.error('Failed to save AI prompt:', e);
+        res.status(500).json({ error: 'Failed to save AI prompt' });
+    }
+});
+
+/**
+ * DELETE /api/admin/ai-prompts/:promptId
+ * Delete an AI prompt.
+ */
+router.delete('/ai-prompts/:promptId', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { promptId } = req.params;
+        await prisma.aIPrompt.delete({
+            where: { promptId }
+        });
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Failed to delete AI prompt:', e);
+        res.status(500).json({ error: 'Failed to delete AI prompt' });
+    }
+});
+
 export default router;
 

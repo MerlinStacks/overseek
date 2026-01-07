@@ -34,7 +34,7 @@ interface AccountContextType {
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-    const { token } = useAuth();
+    const { token, isLoading: authLoading } = useAuth();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -83,11 +83,19 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }, [currentAccount?.id]);
 
     useEffect(() => {
+        // Don't fetch accounts until auth has finished loading
+        // This prevents the race condition where we see no token during initial hydration
+        if (authLoading) {
+            return;
+        }
         refreshAccounts();
-    }, [token]);
+    }, [token, authLoading]);
+
+    // isLoading should be true if either auth is loading or accounts are loading
+    const effectiveLoading = authLoading || isLoading;
 
     return (
-        <AccountContext.Provider value={{ accounts, currentAccount, isLoading, refreshAccounts, setCurrentAccount }}>
+        <AccountContext.Provider value={{ accounts, currentAccount, isLoading: effectiveLoading, refreshAccounts, setCurrentAccount }}>
             {children}
         </AccountContext.Provider>
     );
