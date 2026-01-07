@@ -32,6 +32,11 @@ interface VisitorSession {
         events: number;
     };
     events?: VisitorEvent[];
+    customer?: {
+        firstName?: string | null;
+        lastName?: string | null;
+        email?: string;
+    } | null;
 }
 
 /** Returns an icon component based on event type */
@@ -173,7 +178,9 @@ const VisitorLogWidget: React.FC = () => {
                                         {/* Name & Location */}
                                         <div className="flex flex-col min-w-0">
                                             <span className="font-medium text-gray-800 text-sm truncate">
-                                                {v.email || `Visitor ${v.visitorId.slice(0, 6)}`}
+                                                {v.customer?.firstName
+                                                    ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
+                                                    : v.email || `Visitor ${v.visitorId.slice(0, 6)}`}
                                             </span>
                                             <div className="flex items-center gap-1 text-xs text-gray-400">
                                                 {v.country && (

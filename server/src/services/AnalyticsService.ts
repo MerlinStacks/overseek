@@ -19,7 +19,7 @@ export class AnalyticsService {
             whereClause.lastActiveAt = { gte: thirtyMinsAgo };
         }
 
-        const [data, total] = await Promise.all([
+        const [sessions, total] = await Promise.all([
             prisma.analyticsSession.findMany({
                 where: whereClause,
                 orderBy: { lastActiveAt: 'desc' },
@@ -45,6 +45,38 @@ export class AnalyticsService {
             prisma.analyticsSession.count({ where: whereClause })
         ]);
 
+        // Batch fetch linked WooCustomer data for sessions with wooCustomerId
+        const wooCustomerIds = sessions
+            .map(s => s.wooCustomerId)
+            .filter((id): id is number => id !== null);
+
+        let customerMap = new Map<number, { firstName: string | null; lastName: string | null; email: string }>();
+
+        if (wooCustomerIds.length > 0) {
+            const customers = await prisma.wooCustomer.findMany({
+                where: {
+                    accountId,
+                    wooId: { in: wooCustomerIds }
+                },
+                select: {
+                    wooId: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true
+                }
+            });
+
+            for (const c of customers) {
+                customerMap.set(c.wooId, { firstName: c.firstName, lastName: c.lastName, email: c.email });
+            }
+        }
+
+        // Attach customer data to sessions
+        const data = sessions.map(session => ({
+            ...session,
+            customer: session.wooCustomerId ? customerMap.get(session.wooCustomerId) || null : null
+        }));
+
         return { data, total, page, totalPages: Math.ceil(total / limit) };
     }
 
@@ -63,8 +95,8 @@ export class AnalyticsService {
             type: { in: commerceTypes }
         };
         if (liveMode) {
-            const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000);
-            whereClause.createdAt = { gte: thirtyMinsAgo };
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+            whereClause.createdAt = { gte: oneHourAgo };
         }
 
         const [data, total] = await Promise.all([

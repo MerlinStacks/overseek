@@ -34,7 +34,11 @@ export const VisitorsTable = ({ data }: VisitorsTableProps) => (
                                 {v.deviceType === 'mobile' ? <Smartphone size={16} /> : <Monitor size={16} />}
                             </div>
                             <div>
-                                <div className="font-medium text-gray-900 break-all">{v.visitorId.substring(0, 8)}...</div>
+                                <div className="font-medium text-gray-900 break-all">
+                                    {v.customer?.firstName
+                                        ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
+                                        : `${v.visitorId.substring(0, 8)}...`}
+                                </div>
                                 <div className="text-xs text-gray-500">{v.os} • {v.browser}</div>
                             </div>
                         </div>

@@ -36,4 +36,9 @@ export interface LiveSession {
     referrer: string | null;
     utmSource: string | null;
     utmCampaign: string | null;
+    customer?: {
+        firstName?: string | null;
+        lastName?: string | null;
+        email?: string;
+    } | null;
 }
