@@ -256,4 +256,94 @@ router.get('/:id/sales-history', requireAuth, async (req: AuthenticatedRequest, 
     }
 });
 
+/**
+ * POST /:id/rewrite-description
+ * Uses AI to rewrite the product description based on admin-configured prompts.
+ * Uses the account's OpenRouter API key and model selection.
+ */
+router.post('/:id/rewrite-description', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = (req as any).accountId;
+        const wooId = parseInt(req.params.id);
+        if (isNaN(wooId)) return res.status(400).json({ error: 'Invalid product ID' });
+
+        const { currentDescription, productName, categories, shortDescription } = req.body;
+
+        // Fetch account's AI settings
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { openRouterApiKey: true, aiModel: true }
+        });
+
+        if (!account?.openRouterApiKey) {
+            return res.status(400).json({
+                error: 'No OpenRouter API key configured. Please add your API key in Settings > AI.'
+            });
+        }
+
+        // Fetch the product_description prompt from super admin config
+        const promptConfig = await prisma.aIPrompt.findUnique({
+            where: { promptId: 'product_description' }
+        });
+
+        if (!promptConfig?.content) {
+            return res.status(400).json({
+                error: 'Product description AI prompt not configured. Contact your administrator.'
+            });
+        }
+
+        // Build the prompt by substituting variables
+        let prompt = promptConfig.content
+            .replace(/\{\{product_name\}\}/g, productName || '')
+            .replace(/\{\{current_description\}\}/g, currentDescription || '')
+            .replace(/\{\{short_description\}\}/g, shortDescription || '')
+            .replace(/\{\{category\}\}/g, categories || '');
+
+        const model = account.aiModel || 'openai/gpt-4o';
+
+        // Call OpenRouter API
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${account.openRouterApiKey}`,
+                'HTTP-Referer': 'https://overseek.app',
+                'X-Title': 'OverSeek Product Rewrite',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                max_tokens: 2000,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            Logger.error('OpenRouter API error during rewrite', { error: errorText, status: response.status });
+            return res.status(502).json({
+                error: 'Failed to generate description. Check your API key and try again.'
+            });
+        }
+
+        const data = await response.json();
+        const generatedDescription = data.choices?.[0]?.message?.content || '';
+
+        if (!generatedDescription) {
+            return res.status(500).json({ error: 'AI returned empty response' });
+        }
+
+        res.json({ description: generatedDescription.trim() });
+
+    } catch (error: any) {
+        Logger.error('Error rewriting product description', { error });
+        res.status(500).json({ error: 'Failed to rewrite description' });
+    }
+});
+
 export default router;

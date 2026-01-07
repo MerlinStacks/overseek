@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { FileText, Building2, Code, Eye } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileText, Building2, Code, Eye, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
 
 
 interface GeneralInfoPanelProps {
@@ -11,8 +13,61 @@ interface GeneralInfoPanelProps {
     onChange: (updates: any) => void;
 }
 
+/**
+ * General product info panel with name, SKU, supplier, and description.
+ * Includes AI rewrite functionality for the description field.
+ */
 export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }: GeneralInfoPanelProps) {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [viewMode, setViewMode] = useState<'visual' | 'code'>('visual');
+    const [isRewriting, setIsRewriting] = useState(false);
+    const [rewriteError, setRewriteError] = useState<string | null>(null);
+
+    /**
+     * Calls the AI rewrite endpoint to generate a new product description.
+     * Uses the account's OpenRouter API key and the admin-configured prompt.
+     */
+    async function handleAIRewrite() {
+        if (!token || !currentAccount || !product?.wooId) return;
+
+        setIsRewriting(true);
+        setRewriteError(null);
+
+        try {
+            const categoryNames = product.categories?.map((c: any) => c.name).join(', ') || '';
+
+            const res = await fetch(`/api/products/${product.wooId}/rewrite-description`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({
+                    currentDescription: formData.description || '',
+                    productName: formData.name || product.name || '',
+                    shortDescription: formData.short_description || '',
+                    categories: categoryNames
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setRewriteError(data.error || 'Failed to rewrite description');
+                return;
+            }
+
+            if (data.description) {
+                onChange({ description: data.description });
+            }
+        } catch (err: any) {
+            setRewriteError(err.message || 'Network error');
+        } finally {
+            setIsRewriting(false);
+        }
+    }
 
     return (
         <div className="space-y-6">
@@ -64,21 +119,47 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                     <div>
                         <div className="flex items-center justify-between mb-2">
                             <label className="block text-sm font-medium text-gray-700">Full Description</label>
-                            <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
+                            <div className="flex items-center gap-2">
+                                {/* AI Rewrite Button */}
                                 <button
-                                    onClick={() => setViewMode('visual')}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'visual' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    onClick={handleAIRewrite}
+                                    disabled={isRewriting}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                                    title="Rewrite description using AI"
                                 >
-                                    <Eye size={14} /> Visual
+                                    {isRewriting ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <Sparkles size={14} />
+                                    )}
+                                    {isRewriting ? 'Rewriting...' : 'AI Rewrite'}
                                 </button>
-                                <button
-                                    onClick={() => setViewMode('code')}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'code' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    <Code size={14} /> Code
-                                </button>
+
+                                {/* View Mode Toggle */}
+                                <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
+                                    <button
+                                        onClick={() => setViewMode('visual')}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'visual' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        <Eye size={14} /> Visual
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('code')}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'code' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        <Code size={14} /> Code
+                                    </button>
+                                </div>
                             </div>
                         </div>
+
+                        {/* Rewrite Error Message */}
+                        {rewriteError && (
+                            <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
+                                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                                <span>{rewriteError}</span>
+                            </div>
+                        )}
 
                         {viewMode === 'visual' ? (
                             <div className="bg-white/50 border border-gray-200 rounded-lg overflow-hidden transition-all duration-300">
