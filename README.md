@@ -37,17 +37,14 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **UTM Attribution**: First-click and last-click attribution modeling.
 - **Abandoned Cart Detection**: Automatic identification and recovery flows.
 
-<p align="center">
-  <img src="./Ecommerce%20Log%20Example.png" alt="Ecommerce Stream" width="45%">
-  <img src="./Visitor%20Log%20Example.png" alt="Visitor Log" width="45%">
-</p>
+
 
 ### 👤 Customer 360 Profiles
 - **Unified Timeline**: Orders, emails, chats, and site visits in one view.
 - **LTV & AOV Metrics**: Lifetime value calculated automatically.
 - **Behavioral Insights**: Entry/exit pages, time on site, and journey mapping.
 
-![Visitor Profile Example](./Visitor%20profile%20Example.png)
+
 
 ### 🛒 WooCommerce Sync Engine
 - **Deep Integration**: Bi-directional sync of orders, products, customers, and reviews.
@@ -68,7 +65,7 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **PDF Generation**: Print-ready invoices with full tax breakdowns.
 - **Automation Ready**: Attach invoices to email sequences automatically.
 
-![Invoice Designer Example](./Invoice%20Designer%20Example.png)
+
 
 ### ⚡ Marketing Automation
 - **Visual Flow Builder**: Drag-and-drop node editor powered by React Flow.
