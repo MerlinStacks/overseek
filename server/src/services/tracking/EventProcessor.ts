@@ -222,6 +222,7 @@ export async function processEvent(data: TrackingEventPayload) {
     }
 
     // Check if returning visitor (exists in DB already)
+    // Include lastTouchSource to preserve attribution during internal navigation
     const existingSession = await prisma.analyticsSession.findUnique({
         where: {
             accountId_visitorId: {
@@ -233,7 +234,8 @@ export async function processEvent(data: TrackingEventPayload) {
             id: true,
             firstTouchSource: true,
             firstTouchAt: true,
-            totalVisits: true
+            totalVisits: true,
+            lastTouchSource: true
         }
     });
 
@@ -295,11 +297,15 @@ export async function processEvent(data: TrackingEventPayload) {
             };
             currentSource = typeMap[data.referrerType] || parseTrafficSource(data.referrer);
         } else if (data.referrerType === 'internal') {
-            // Internal referrer = same site navigation, keep existing source or direct
-            currentSource = sessionPayload.trafficSource || 'direct';
+            // Internal referrer = same site navigation, preserve existing session's source
+            currentSource = existingSession?.lastTouchSource || 'direct';
         } else {
             // No pre-computed type, fall back to server-side parsing
-            currentSource = sessionPayload.trafficSource || parseTrafficSource(data.referrer);
+            // Preserve existing session's source if parsing returns 'direct' (same-site or empty referrer)
+            const parsedSource = parseTrafficSource(data.referrer);
+            currentSource = parsedSource === 'direct'
+                ? (existingSession?.lastTouchSource || 'direct')
+                : parsedSource;
         }
     }
     // If none of the above, stays 'direct'

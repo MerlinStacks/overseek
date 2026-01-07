@@ -668,8 +668,9 @@ class OverSeek_Server_Tracking
      * @param string $type Event type (pageview, add_to_cart, etc.)
      * @param array $payload Event-specific data
      * @param bool $is_404 Whether this is a 404 error page
+     * @param bool $send_immediately If true, send event immediately (for AJAX requests where shutdown may not fire)
      */
-    private function queue_event($type, $payload = array(), $is_404 = false)
+    private function queue_event($type, $payload = array(), $is_404 = false, $send_immediately = false)
     {
         // Skip if no consent
         if (!$this->has_tracking_consent()) {
@@ -731,7 +732,36 @@ class OverSeek_Server_Tracking
             $data['landingReferrer'] = $landing_referrer;
         }
 
-        $this->event_queue[] = $data;
+        // For AJAX requests, send important e-commerce events immediately
+        // because the shutdown hook may not fire before wp_die()
+        if ($send_immediately || wp_doing_ajax()) {
+            $this->send_event_immediately($data);
+        } else {
+            $this->event_queue[] = $data;
+        }
+    }
+
+    /**
+     * Send a single event immediately (blocking request).
+     * Used for critical events during AJAX where shutdown may not fire.
+     *
+     * @param array $data Event data to send
+     */
+    private function send_event_immediately($data)
+    {
+        $visitor_ip = $data['visitorIp'] ?? '';
+        unset($data['visitorIp']);
+
+        wp_remote_post($this->api_url . '/api/t/e', array(
+            'timeout' => 5, // 5 sec blocking timeout for critical events
+            'blocking' => true,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'X-Forwarded-For' => $visitor_ip,
+                'X-Real-IP' => $visitor_ip,
+            ),
+            'body' => wp_json_encode($data),
+        ));
     }
 
     /**

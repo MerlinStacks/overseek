@@ -1,5 +1,8 @@
-
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+/**
+ * FlowBuilder - Visual automation flow builder using ReactFlow.
+ * n8n/FunnelKit-style canvas with draggable triggers, actions, delays, and conditions.
+ */
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     ReactFlow,
     ReactFlowProvider,
@@ -17,6 +20,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { TriggerNode, ActionNode, DelayNode, ConditionNode } from './FlowNodes';
+import { NodeConfigPanel } from './NodeConfigPanel';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 // Define Node Types
 const nodeTypes: NodeTypes = {
@@ -25,15 +30,6 @@ const nodeTypes: NodeTypes = {
     delay: DelayNode,
     condition: ConditionNode,
 };
-
-const initialDefaultNodes: Node[] = [
-    {
-        id: 'trigger-1',
-        type: 'trigger',
-        data: { label: 'Order Created', type: 'TRIGGER' },
-        position: { x: 250, y: 50 },
-    },
-];
 
 let id = 0;
 const getId = () => `node_${Date.now()}_${id++}`;
@@ -64,6 +60,55 @@ const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel }) => {
     );
 };
 
+// Toolbox item component
+interface ToolboxItemProps {
+    label: string;
+    nodeType: string;
+    config?: any;
+    colorClass: string;
+    icon: string;
+}
+
+const ToolboxItem: React.FC<ToolboxItemProps> = ({ label, nodeType, config, colorClass, icon }) => (
+    <div
+        className={`p-2.5 bg-white border ${colorClass} rounded cursor-grab shadow-sm flex items-center gap-2 hover:shadow-md transition-shadow text-sm`}
+        onDragStart={(event) => {
+            event.dataTransfer.setData('application/reactflow', nodeType);
+            event.dataTransfer.setData('application/label', label);
+            event.dataTransfer.setData('application/config', JSON.stringify(config || {}));
+            event.dataTransfer.effectAllowed = 'move';
+        }}
+        draggable
+    >
+        <span>{icon}</span>
+        <span className="font-medium text-gray-700">{label}</span>
+    </div>
+);
+
+// Collapsible section component
+interface ToolboxSectionProps {
+    title: string;
+    children: React.ReactNode;
+    defaultOpen?: boolean;
+}
+
+const ToolboxSection: React.FC<ToolboxSectionProps> = ({ title, children, defaultOpen = true }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+
+    return (
+        <div className="mb-3">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex items-center gap-1 text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 hover:text-gray-700"
+            >
+                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {title}
+            </button>
+            {isOpen && <div className="space-y-2">{children}</div>}
+        </div>
+    );
+};
+
 interface Props {
     initialFlow?: { nodes: Node[], edges: Edge[] } | null;
     onSave: (flow: { nodes: Node[], edges: Edge[] }) => void;
@@ -74,15 +119,17 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-    const { screenToFlowPosition, setViewport } = useReactFlow();
+    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+    const { screenToFlowPosition } = useReactFlow();
 
-    // Load initial flow
+    // Load initial flow - start with empty canvas if no existing flow
     useEffect(() => {
         if (initialFlow && initialFlow.nodes && initialFlow.nodes.length > 0) {
             setNodes(initialFlow.nodes);
             setEdges(initialFlow.edges || []);
         } else {
-            setNodes(initialDefaultNodes);
+            // Empty canvas - user drags trigger first
+            setNodes([]);
             setEdges([]);
         }
     }, [initialFlow, setNodes, setEdges]);
@@ -129,50 +176,146 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
         [screenToFlowPosition, setNodes],
     );
 
+    // Handle node click to open config panel
+    const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+        setSelectedNode(node);
+    }, []);
+
+    // Handle pane click to close config panel
+    const onPaneClick = useCallback(() => {
+        setSelectedNode(null);
+    }, []);
+
+    // Update node data from config panel
+    const updateNodeData = useCallback((nodeId: string, newData: any) => {
+        setNodes((nds) =>
+            nds.map((node) => {
+                if (node.id === nodeId) {
+                    return { ...node, data: newData };
+                }
+                return node;
+            })
+        );
+        // Update selected node reference
+        setSelectedNode((prev) => prev?.id === nodeId ? { ...prev, data: newData } : prev);
+    }, [setNodes]);
+
+    // Delete node from config panel
+    const deleteNode = useCallback((nodeId: string) => {
+        setNodes((nds) => nds.filter((node) => node.id !== nodeId));
+        setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+        setSelectedNode(null);
+    }, [setNodes, setEdges]);
+
     return (
         <div className="flex h-full w-full">
-            {/* Sidebar */}
-            <aside className="w-64 bg-gray-50 border-r p-4 flex flex-col gap-4 z-10">
-                <div className="font-bold border-b pb-2 mb-2 text-gray-700">Toolbox</div>
-                <p className="text-xs text-gray-500 mb-2">Drag components to the canvas</p>
+            {/* Sidebar Toolbox */}
+            <aside className="w-56 bg-gray-50 border-r p-3 flex flex-col overflow-y-auto z-10">
+                <div className="font-bold text-sm border-b pb-2 mb-3 text-gray-800">Toolbox</div>
+                <p className="text-xs text-gray-500 mb-4">Drag nodes to the canvas to build your flow</p>
 
-                <div
-                    className="p-3 bg-white border border-green-200 rounded cursor-grab shadow-sm flex items-center gap-2 hover:border-green-400"
-                    onDragStart={(event) => {
-                        event.dataTransfer.setData('application/reactflow', 'action');
-                        event.dataTransfer.setData('application/label', 'Send Email');
-                        event.dataTransfer.setData('application/config', JSON.stringify({ actionType: 'SEND_EMAIL' }));
-                        event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    draggable
-                >
-                    ✉️ Send Email
-                </div>
+                <ToolboxSection title="Triggers" defaultOpen={true}>
+                    <ToolboxItem
+                        label="Order Created"
+                        nodeType="trigger"
+                        config={{ triggerType: 'ORDER_CREATED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="🛒"
+                    />
+                    <ToolboxItem
+                        label="Order Completed"
+                        nodeType="trigger"
+                        config={{ triggerType: 'ORDER_COMPLETED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="✅"
+                    />
+                    <ToolboxItem
+                        label="Abandoned Cart"
+                        nodeType="trigger"
+                        config={{ triggerType: 'ABANDONED_CART' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="🛒"
+                    />
+                    <ToolboxItem
+                        label="Review Left"
+                        nodeType="trigger"
+                        config={{ triggerType: 'REVIEW_LEFT' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="⭐"
+                    />
+                    <ToolboxItem
+                        label="Manual Entry"
+                        nodeType="trigger"
+                        config={{ triggerType: 'MANUAL' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="👤"
+                    />
+                </ToolboxSection>
 
-                <div
-                    className="p-3 bg-white border border-yellow-200 rounded cursor-grab shadow-sm flex items-center gap-2 hover:border-yellow-400"
-                    onDragStart={(event) => {
-                        event.dataTransfer.setData('application/reactflow', 'delay');
-                        event.dataTransfer.setData('application/label', 'Wait 1 Hour');
-                        event.dataTransfer.setData('application/config', JSON.stringify({ duration: 1, unit: 'hours' }));
-                        event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    draggable
-                >
-                    ⏱️ Wait 1 Hour
-                </div>
+                <ToolboxSection title="Actions" defaultOpen={true}>
+                    <ToolboxItem
+                        label="Send Email"
+                        nodeType="action"
+                        config={{ actionType: 'SEND_EMAIL' }}
+                        colorClass="border-green-300 hover:border-green-400"
+                        icon="✉️"
+                    />
+                    <ToolboxItem
+                        label="Send SMS"
+                        nodeType="action"
+                        config={{ actionType: 'SEND_SMS' }}
+                        colorClass="border-green-300 hover:border-green-400"
+                        icon="📱"
+                    />
+                    <ToolboxItem
+                        label="Add Tag"
+                        nodeType="action"
+                        config={{ actionType: 'ADD_TAG' }}
+                        colorClass="border-green-300 hover:border-green-400"
+                        icon="🏷️"
+                    />
+                    <ToolboxItem
+                        label="Webhook"
+                        nodeType="action"
+                        config={{ actionType: 'WEBHOOK' }}
+                        colorClass="border-green-300 hover:border-green-400"
+                        icon="🔗"
+                    />
+                </ToolboxSection>
 
-                <div
-                    className="p-3 bg-white border border-orange-200 rounded cursor-grab shadow-sm flex items-center gap-2 hover:border-orange-400"
-                    onDragStart={(event) => {
-                        event.dataTransfer.setData('application/reactflow', 'condition');
-                        event.dataTransfer.setData('application/label', 'Check Condition');
-                        event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    draggable
-                >
-                    ❓ Condition
-                </div>
+                <ToolboxSection title="Timing" defaultOpen={true}>
+                    <ToolboxItem
+                        label="Wait 1 Hour"
+                        nodeType="delay"
+                        config={{ duration: 1, unit: 'hours' }}
+                        colorClass="border-yellow-300 hover:border-yellow-400"
+                        icon="⏱️"
+                    />
+                    <ToolboxItem
+                        label="Wait 1 Day"
+                        nodeType="delay"
+                        config={{ duration: 1, unit: 'days' }}
+                        colorClass="border-yellow-300 hover:border-yellow-400"
+                        icon="📅"
+                    />
+                    <ToolboxItem
+                        label="Wait 3 Days"
+                        nodeType="delay"
+                        config={{ duration: 3, unit: 'days' }}
+                        colorClass="border-yellow-300 hover:border-yellow-400"
+                        icon="📅"
+                    />
+                </ToolboxSection>
+
+                <ToolboxSection title="Logic" defaultOpen={false}>
+                    <ToolboxItem
+                        label="Condition"
+                        nodeType="condition"
+                        config={{}}
+                        colorClass="border-orange-300 hover:border-orange-400"
+                        icon="❓"
+                    />
+                </ToolboxSection>
             </aside>
 
             {/* Canvas */}
@@ -185,21 +328,42 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                     onConnect={onConnect}
                     onDrop={onDrop}
                     onDragOver={onDragOver}
+                    onNodeClick={onNodeClick}
+                    onPaneClick={onPaneClick}
                     nodeTypes={nodeTypes}
                     fitView
                     defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
                     snapToGrid
                 >
                     <Controls />
-                    <Background color="#f1f5f9" gap={16} />
+                    <Background color="#e2e8f0" gap={16} />
                     <Panel position="top-right">
                         <FlowControls
                             onSave={(n, e) => onSave({ nodes: n, edges: e })}
                             onCancel={onCancel}
                         />
                     </Panel>
+
+                    {/* Empty state hint */}
+                    {nodes.length === 0 && (
+                        <Panel position="top-center">
+                            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-lg text-sm mt-4 shadow-sm">
+                                👈 Drag a <strong>Trigger</strong> from the toolbox to start building your flow
+                            </div>
+                        </Panel>
+                    )}
                 </ReactFlow>
             </div>
+
+            {/* Node Configuration Panel */}
+            {selectedNode && (
+                <NodeConfigPanel
+                    node={selectedNode}
+                    onClose={() => setSelectedNode(null)}
+                    onUpdate={updateNodeData}
+                    onDelete={deleteNode}
+                />
+            )}
         </div>
     );
 };

@@ -1,4 +1,4 @@
-import { esClient } from './utils/elastic';
+import { esClient } from '../../utils/elastic';
 
 async function verifyOrders() {
     try {

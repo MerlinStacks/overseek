@@ -1,3 +1,9 @@
+/**
+ * Analytics Routes
+ * 
+ * Main analytics router combining visitor, sales, and behaviour endpoints.
+ */
+
 import { Router, Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
 import { SalesAnalytics } from '../services/analytics/sales';
@@ -7,23 +13,30 @@ import { CustomerAnalytics } from '../services/analytics/customer';
 import { RoadblockAnalytics } from '../services/analytics/roadblock';
 import { AdsService } from '../services/ads';
 import { requireAuth } from '../middleware/auth';
-import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AnalyticsService } from '../services/AnalyticsService';
+
+// Import sub-routers
+import analyticsReports from './analyticsReports';
+import analyticsInventory from './analyticsInventory';
 
 const router = Router();
 
 router.use(requireAuth);
 
+// Mount sub-routers
+router.use('/', analyticsReports);     // /templates, /schedules
+router.use('/', analyticsInventory);   // /stock-velocity
+
+// --- Visitor & Channel Endpoints ---
 router.get('/visitors/log', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
         const liveMode = req.query.live === 'true';
-        const data = await AnalyticsService.getVisitorLog(accountId, page, limit, liveMode);
-        res.json(data);
+        res.json(await AnalyticsService.getVisitorLog(accountId, page, limit, liveMode));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -33,8 +46,7 @@ router.get('/ecommerce/log', async (req: AuthenticatedRequest, res: Response) =>
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
         const liveMode = req.query.live === 'true';
-        const data = await AnalyticsService.getEcommerceLog(accountId, page, limit, liveMode);
-        res.json(data);
+        res.json(await AnalyticsService.getEcommerceLog(accountId, page, limit, liveMode));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -48,493 +60,134 @@ router.get('/visitors/:id', async (req: AuthenticatedRequest, res: Response) => 
 });
 
 router.get('/channels', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const data = await AnalyticsService.getChannelBreakdown(accountId);
-        res.json(data);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+    try { res.json(await AnalyticsService.getChannelBreakdown((req as any).accountId)); }
+    catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/search-terms', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const data = await AnalyticsService.getSearchTerms(accountId);
-        res.json(data);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+    try { res.json(await AnalyticsService.getSearchTerms((req as any).accountId)); }
+    catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// --- Sales Endpoints ---
 router.get('/sales', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
-        if (!accountId) return res.status(400).json({ error: 'No account' });
-
         const { startDate, endDate } = req.query;
-
         const total = await SalesAnalytics.getTotalSales(accountId, startDate as string, endDate as string);
-
         const account = await prisma.account.findUnique({ where: { id: accountId } });
-        const currency = account?.currency || 'USD';
-
-        res.json({ total, currency });
-    } catch (err: any) {
-        Logger.error('Error', { error: err });
-        res.status(500).json({ error: err.message });
-    }
+        res.json({ total, currency: account?.currency || 'USD' });
+    } catch (err: any) { Logger.error('Error', { error: err }); res.status(500).json({ error: err.message }); }
 });
 
 router.get('/recent-orders', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        if (!accountId) return res.status(400).json({ error: 'No account' });
-
-        const orders = await SalesAnalytics.getRecentOrders(accountId);
-        res.json(orders);
-    } catch (err: any) {
-        Logger.error('Error', { error: err });
-        res.status(500).json({ error: err.message });
-    }
+    try { res.json(await SalesAnalytics.getRecentOrders((req as any).accountId)); }
+    catch (err: any) { Logger.error('Error', { error: err }); res.status(500).json({ error: err.message }); }
 });
 
-// Aggregate Ad Spend across ALL connected accounts
+router.get('/sales-chart', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { startDate, endDate, interval } = req.query;
+        res.json(await SalesAnalytics.getSalesOverTime((req as any).accountId, startDate as string, endDate as string, interval as any));
+    } catch (e) { Logger.error('Sales Chart Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
+});
+
+router.get('/top-products', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { startDate, endDate } = req.query;
+        res.json(await SalesAnalytics.getTopProducts((req as any).accountId, startDate as string, endDate as string));
+    } catch (e) { Logger.error('Top Products Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
+});
+
+router.get('/customer-growth', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { startDate, endDate } = req.query;
+        res.json(await CustomerAnalytics.getCustomerGrowth((req as any).accountId, startDate as string, endDate as string));
+    } catch (e) { Logger.error('Customer Growth Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
+});
+
+router.get('/forecast', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const days = parseInt(req.query.days as string) || 30;
+        res.json(await SalesAnalytics.getSalesForecast((req as any).accountId, days));
+    } catch (e) { Logger.error('Forecast Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
+});
+
+router.post('/custom-report', async (req: AuthenticatedRequest, res: Response) => {
+    try { res.json(await SalesAnalytics.getCustomReport((req as any).accountId, req.body)); }
+    catch (e) { Logger.error('Custom Report Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
+});
+
+// --- Ads Summary ---
 router.get('/ads-summary', async (req: AuthenticatedRequest, res: Response) => {
     try {
         const accountId = (req as any).accountId;
-        if (!accountId) return res.status(400).json({ error: 'No account' });
-
-        // Get the account's currency
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         const currency = account?.currency || 'USD';
-
-        // Get all connected ad accounts for this store
         const adAccounts = await AdsService.getAdAccounts(accountId);
 
-        if (!adAccounts.length) {
-            // No ad accounts connected - return empty defaults
-            return res.json({
-                spend: 0,
-                roas: 0,
-                clicks: 0,
-                impressions: 0,
-                currency
-            });
-        }
+        if (!adAccounts.length) return res.json({ spend: 0, roas: 0, clicks: 0, impressions: 0, currency });
 
-        // Aggregate metrics from all connected ad accounts
-        let totalSpend = 0;
-        let totalClicks = 0;
-        let totalImpressions = 0;
-        let totalRevenue = 0;
+        let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalRevenue = 0;
 
         for (const adAccount of adAccounts) {
             try {
-                let metrics = null;
-                if (adAccount.platform === 'META') {
-                    metrics = await AdsService.getMetaInsights(adAccount.id);
-                } else if (adAccount.platform === 'GOOGLE') {
-                    metrics = await AdsService.getGoogleInsights(adAccount.id);
-                }
+                const metrics = adAccount.platform === 'META'
+                    ? await AdsService.getMetaInsights(adAccount.id)
+                    : adAccount.platform === 'GOOGLE' ? await AdsService.getGoogleInsights(adAccount.id) : null;
 
                 if (metrics) {
                     totalSpend += metrics.spend;
                     totalClicks += metrics.clicks;
                     totalImpressions += metrics.impressions;
-                    totalRevenue += metrics.spend * metrics.roas; // ROAS = Revenue / Spend
+                    totalRevenue += metrics.spend * metrics.roas;
                 }
-            } catch (err) {
-                // Log but don't fail the entire request if one ad account fails
-                Logger.warn('Failed to fetch insights for ad account', { adAccountId: adAccount.id, error: err });
-            }
+            } catch (err) { Logger.warn('Failed to fetch insights', { adAccountId: adAccount.id }); }
         }
 
-        // Calculate aggregate ROAS
-        const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-
-        res.json({
-            spend: totalSpend,
-            roas,
-            clicks: totalClicks,
-            impressions: totalImpressions,
-            currency
-        });
-    } catch (error) {
-        Logger.error('Error fetching ad summary', { error });
-        res.status(500).json({ error: 'Failed to fetch ad spend' });
-    }
+        res.json({ spend: totalSpend, roas: totalSpend > 0 ? totalRevenue / totalSpend : 0, clicks: totalClicks, impressions: totalImpressions, currency });
+    } catch (error) { Logger.error('Error fetching ad summary', { error }); res.status(500).json({ error: 'Failed' }); }
 });
 
-// --- New Reports Endpoints ---
-
-router.get('/sales-chart', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate, interval } = req.query;
-        const data = await SalesAnalytics.getSalesOverTime(accountId, startDate as string, endDate as string, interval as any);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
-});
-
-router.get('/top-products', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await SalesAnalytics.getTopProducts(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
-});
-
-router.get('/customer-growth', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await CustomerAnalytics.getCustomerGrowth(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
-});
-
-
-
-router.get('/forecast', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const days = parseInt(req.query.days as string) || 30;
-        const data = await SalesAnalytics.getSalesForecast(accountId, days);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
-});
-
-router.post('/custom-report', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        // config expected: { metrics: [], dimension: '', startDate: '', endDate: '' }
-        const config = req.body;
-        const data = await SalesAnalytics.getCustomReport(accountId, config);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
-});
-
+// --- Acquisition & Behaviour ---
 router.get('/acquisition/channels', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await AcquisitionAnalytics.getAcquisitionChannels(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+    try { const { startDate, endDate } = req.query; res.json(await AcquisitionAnalytics.getAcquisitionChannels((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Acquisition Channels Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
 });
 
 router.get('/acquisition/campaigns', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await AcquisitionAnalytics.getAcquisitionCampaigns(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+    try { const { startDate, endDate } = req.query; res.json(await AcquisitionAnalytics.getAcquisitionCampaigns((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Acquisition Campaigns Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
 });
 
 router.get('/behaviour/pages', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await BehaviourAnalytics.getBehaviourPages(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+    try { const { startDate, endDate } = req.query; res.json(await BehaviourAnalytics.getBehaviourPages((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Behaviour Pages Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
 });
 
 router.get('/behaviour/search', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await BehaviourAnalytics.getSiteSearch(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+    try { const { startDate, endDate } = req.query; res.json(await BehaviourAnalytics.getSiteSearch((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Site Search Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
 });
 
 router.get('/behaviour/entry', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await BehaviourAnalytics.getEntryPages(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+    try { const { startDate, endDate } = req.query; res.json(await BehaviourAnalytics.getEntryPages((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Entry Pages Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
 });
 
 router.get('/behaviour/exit', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await BehaviourAnalytics.getExitPages(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+    try { const { startDate, endDate } = req.query; res.json(await BehaviourAnalytics.getExitPages((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Exit Pages Error', { error: e }); res.status(500).json({ error: 'Failed' }); }
 });
 
 router.get('/behaviour/roadblocks', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await RoadblockAnalytics.getRoadblockPages(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed to fetch roadblocks' }); }
+    try { const { startDate, endDate } = req.query; res.json(await RoadblockAnalytics.getRoadblockPages((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Roadblocks Error', { error: e }); res.status(500).json({ error: 'Failed to fetch roadblocks' }); }
 });
 
 router.get('/behaviour/funnel-dropoff', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { startDate, endDate } = req.query;
-        const data = await RoadblockAnalytics.getDropOffFunnel(accountId, startDate as string, endDate as string);
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: 'Failed to fetch funnel' }); }
-});
-
-
-// --- Template & Schedule Endpoints ---
-
-router.get('/templates', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-
-        // 1. User Templates
-        const userTemplates = await prisma.reportTemplate.findMany({
-            where: { accountId },
-            orderBy: { createdAt: 'desc' }
-        });
-
-        // 2. System Templates (Hardcoded)
-        const systemTemplates = [
-            {
-                id: 'sys_overview',
-                name: 'Overview',
-                type: 'SYSTEM',
-                config: { dimension: 'day', metrics: ['sales', 'orders', 'aov'], dateRange: '30d' }
-            },
-            {
-                id: 'sys_products',
-                name: 'Product Performance',
-                type: 'SYSTEM',
-                config: { dimension: 'product', metrics: ['quantity', 'sales'], dateRange: '30d' }
-            },
-            {
-                id: 'sys_top_sellers',
-                name: 'Top Sellers (90d)',
-                type: 'SYSTEM',
-                config: { dimension: 'product', metrics: ['sales'], dateRange: '90d' }
-            },
-            {
-                id: 'sys_bought_together',
-                name: 'Frequent Orders (Proxy)',
-                type: 'SYSTEM',
-                config: { dimension: 'product', metrics: ['orders'], dateRange: '90d' }
-            }
-        ];
-
-        res.json([...systemTemplates, ...userTemplates]);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-router.post('/templates', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { name, config } = req.body;
-
-        const template = await prisma.reportTemplate.create({
-            data: {
-                accountId,
-                name,
-                config,
-                type: 'CUSTOM'
-            }
-        });
-        res.json(template);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-router.delete('/templates/:id', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        await prisma.reportTemplate.delete({
-            where: { id: req.params.id, accountId } // Ensure ownership
-        });
-        res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// Schedules
-router.get('/schedules', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const schedules = await prisma.reportSchedule.findMany({
-            where: { accountId },
-            include: { template: true }
-        });
-        res.json(schedules);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-router.post('/schedules', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        const { templateId, frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive } = req.body;
-
-        // Clone System Templates if needed
-        let targetTemplateId = templateId;
-
-        if (templateId.startsWith('sys_')) {
-            const sysConfigs: any = {
-                'sys_overview': { dimension: 'day', metrics: ['sales', 'orders', 'aov'], dateRange: '30d' },
-                'sys_products': { dimension: 'product', metrics: ['quantity', 'sales'], dateRange: '30d' },
-                'sys_top_sellers': { dimension: 'product', metrics: ['sales'], dateRange: '90d' },
-                // sys_stock_velocity removed
-                'sys_bought_together': { dimension: 'product', metrics: ['orders'], dateRange: '90d' },
-            };
-
-            const config = sysConfigs[templateId];
-            if (!config) return res.status(400).json({ error: 'Invalid System Template' });
-
-            const clone = await prisma.reportTemplate.create({
-                data: {
-                    accountId,
-                    name: `System Clone: ${templateId}`,
-                    type: 'SYSTEM_CLONE',
-                    config
-                }
-            });
-            targetTemplateId = clone.id;
-        }
-
-        const schedule = await prisma.reportSchedule.create({
-            data: {
-                accountId,
-                reportTemplateId: targetTemplateId,
-                frequency,
-                dayOfWeek,
-                dayOfMonth,
-                time,
-                emailRecipients,
-                isActive: isActive ?? true
-            }
-        });
-
-        res.json(schedule);
-
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// --- Dedicated Reports ---
-
-router.get('/stock-velocity', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-
-        // 1. Fetch Products with stock data from Postgres
-        // We use queryRaw to extract JSON fields efficiently
-        const products: any[] = await prisma.$queryRaw`
-            SELECT 
-                id, 
-                "wooId",
-                name, 
-                sku, 
-                "mainImage", 
-                "price", 
-                CAST("rawData"->>'stock_quantity' AS INTEGER) as stock_quantity
-            FROM "WooProduct"
-            WHERE "accountId" = ${accountId}
-            AND "rawData"->>'manage_stock' = 'true'
-            AND "rawData"->>'stock_quantity' IS NOT NULL
-        `;
-
-        if (!products.length) {
-            return res.json([]);
-        }
-
-        // 2. Fetch Sales History (Last 30 Days) from Elasticsearch
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 30);
-
-        const response = await esClient.search({
-            index: 'orders',
-            size: 0,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            { term: { accountId } },
-                            { range: { date_created: { gte: startDate.toISOString(), lte: endDate.toISOString() } } },
-                            { terms: { status: ['completed', 'processing', 'on-hold'] } }
-                        ]
-                    }
-                },
-                aggs: {
-                    products: {
-                        nested: { path: 'line_items' },
-                        aggs: {
-                            by_product: {
-                                terms: { field: 'line_items.productId', size: 10000 },
-                                aggs: {
-                                    total_qty: { sum: { field: 'line_items.quantity' } }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        // 3. Map Sales to Map<ProductId, QtySold>
-        const salesMap = new Map<number, number>();
-        const buckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
-
-        buckets.forEach((b: any) => {
-            if (b.key) {
-                salesMap.set(b.key, b.total_qty.value);
-            }
-        });
-
-        // 4. Calculate Velocity & Days Remaining
-        const report = products.map(p => {
-            const stock = p.stock_quantity || 0;
-            // Use wooId for lookup since ES stores WooCommerce product IDs
-            const sold30d = salesMap.get(p.wooId) || 0;
-
-            // Daily Rate
-            const dailyRate = sold30d / 30;
-
-            // Days Remaining
-            let daysRemaining = 999; // Default to 'plenty'
-            if (stock === 0) {
-                if (dailyRate > 0) {
-                    daysRemaining = 0; // Urgent: Out of stock but selling!
-                } else {
-                    daysRemaining = 999; // Dead stock: No stock, no sales.
-                }
-            } else if (dailyRate > 0) {
-                daysRemaining = Math.max(0, Math.round(stock / dailyRate));
-            }
-
-            return {
-                id: p.id,
-                name: p.name,
-                sku: p.sku,
-                image: p.mainImage,
-                stock,
-                soldLast30d: sold30d,
-                dailyVelocity: parseFloat(dailyRate.toFixed(2)),
-                daysRemaining
-            };
-        });
-
-        // Sort by Days Remaining (Ascending - urgent first)
-        report.sort((a, b) => {
-            // If days remaining is 999 (infinity), move to bottom
-            if (a.daysRemaining === 999 && b.daysRemaining !== 999) return 1;
-            if (a.daysRemaining !== 999 && b.daysRemaining === 999) return -1;
-            return a.daysRemaining - b.daysRemaining;
-        });
-
-        res.json(report);
-
-    } catch (e: any) {
-        Logger.error('Stock Velocity Error', { error: e });
-        res.status(500).json({ error: e.message });
-    }
+    try { const { startDate, endDate } = req.query; res.json(await RoadblockAnalytics.getDropOffFunnel((req as any).accountId, startDate as string, endDate as string)); }
+    catch (e) { Logger.error('Funnel Error', { error: e }); res.status(500).json({ error: 'Failed to fetch funnel' }); }
 });
 
 export default router;

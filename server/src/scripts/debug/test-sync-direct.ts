@@ -1,7 +1,7 @@
 
 import { PrismaClient } from '@prisma/client';
-import { OrderSync } from './services/sync/OrderSync';
-import { QueueFactory } from './services/queue/QueueFactory';
+import { OrderSync } from '../../services/sync/OrderSync';
+import { QueueFactory } from '../../services/queue/QueueFactory';
 
 const prisma = new PrismaClient();
 

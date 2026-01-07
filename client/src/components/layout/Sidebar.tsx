@@ -25,7 +25,8 @@ import {
     GitBranch,
     Repeat,
     X,
-    BookOpen
+    BookOpen,
+    Zap
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -78,6 +79,7 @@ const navItems = [
         children: [
             { icon: Star, label: 'Reviews', path: '/reviews' },
             { icon: Megaphone, label: 'Marketing', path: '/marketing' },
+            { icon: Zap, label: 'Flows', path: '/flows' },
         ]
     },
     {

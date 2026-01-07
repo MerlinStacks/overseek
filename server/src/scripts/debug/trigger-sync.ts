@@ -1,5 +1,5 @@
 
-import { QueueFactory, QUEUES } from './services/queue/QueueFactory';
+import { QueueFactory, QUEUES } from '../../services/queue/QueueFactory';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();

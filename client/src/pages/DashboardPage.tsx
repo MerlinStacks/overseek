@@ -7,7 +7,7 @@ import { useAccount } from '../context/AccountContext';
 import { renderWidget, WidgetRegistry } from '../components/widgets/WidgetRegistry';
 import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
 import _ from 'lodash';
-import { useRef, useLayoutEffect, useState, useEffect } from 'react';
+import { useRef, useLayoutEffect, useState, useEffect, useMemo } from 'react';
 import { useMobile } from '../hooks/useMobile';
 import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 
@@ -15,10 +15,15 @@ import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } f
 const withWidth = (WrappedComponent: any) => {
     return (props: any) => {
         const ref = useRef<HTMLDivElement>(null);
-        const [width, setWidth] = useState(1200);
+        // Initialize with 0 to prevent rendering at wrong breakpoint
+        const [width, setWidth] = useState(0);
 
         useLayoutEffect(() => {
             if (!ref.current) return;
+
+            // Set initial width immediately
+            setWidth(ref.current.offsetWidth || ref.current.clientWidth);
+
             const observer = new ResizeObserver((entries) => {
                 for (const entry of entries) {
                     setWidth(entry.contentRect.width);
@@ -30,11 +35,14 @@ const withWidth = (WrappedComponent: any) => {
 
         return (
             <div ref={ref} className={props.className} style={{ width: '100%', height: '100%' }}>
-                <WrappedComponent
-                    {...props}
-                    width={width}
-                    className="" // clear class on child to avoid conflicts
-                />
+                {/* Only render grid when we know actual width to prevent layout jump */}
+                {width > 0 && (
+                    <WrappedComponent
+                        {...props}
+                        width={width}
+                        className="" // clear class on child to avoid conflicts
+                    />
+                )}
             </div>
         );
     };
@@ -142,38 +150,32 @@ export function DashboardPage() {
             setIsSaving(false);
         }
     }, 2000);
-
-    // Map to RGL layout format for lg breakpoint
-    const rglLayout = widgets.map(w => ({
-        i: w.id,
-        x: w.position.x,
-        y: w.position.y,
-        w: w.position.w,
-        h: w.position.h
-    }));
-
     /**
-     * Generate layouts for all breakpoints from the lg layout.
-     * This prevents layout reset when window is resized to smaller sizes.
-     * Items are re-flowed to fit the column count of each breakpoint.
+     * Memoized responsive layouts for all breakpoints.
+     * Generated from widget positions, only recalculates when widgets change.
+     * This prevents layout reset when the library re-renders.
      */
-    const generateResponsiveLayouts = () => {
+    const responsiveLayouts = useMemo(() => {
         const breakpointCols = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 };
-        const layouts: { [key: string]: typeof rglLayout } = {};
+        const layouts: { [key: string]: { i: string; x: number; y: number; w: number; h: number }[] } = {};
 
         for (const [bp, cols] of Object.entries(breakpointCols)) {
-            layouts[bp] = rglLayout.map(item => {
+            layouts[bp] = widgets.map(widget => {
                 // Clamp width to max available columns
-                const w = Math.min(item.w, cols);
+                const w = Math.min(widget.position.w, cols);
                 // Clamp x position so item stays within bounds
-                const x = Math.min(item.x, Math.max(0, cols - w));
-                return { ...item, w, x };
+                const x = Math.min(widget.position.x, Math.max(0, cols - w));
+                return {
+                    i: widget.id,
+                    x,
+                    y: widget.position.y,
+                    w,
+                    h: widget.position.h
+                };
             });
         }
         return layouts;
-    };
-
-    const responsiveLayouts = generateResponsiveLayouts();
+    }, [widgets]);
 
     const addWidget = (key: string) => {
         const entry = WidgetRegistry[key];
@@ -291,6 +293,8 @@ export function DashboardPage() {
                 isDraggable={!isMobile || !isLayoutLocked}
                 isResizable={!isMobile || !isLayoutLocked}
                 draggableHandle=".drag-handle"
+                compactType={null}
+                preventCollision={true}
             >
                 {widgets.map(w => (
                     <div key={w.id} className="bg-transparent h-full relative group">

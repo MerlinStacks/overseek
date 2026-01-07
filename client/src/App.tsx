@@ -16,6 +16,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
 import { MarketingPage } from './pages/MarketingPage';
+import { FlowsPage } from './pages/FlowsPage';
 import { TeamPage } from './pages/TeamPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { CustomersPage } from './pages/CustomersPage';
@@ -101,6 +102,7 @@ function App() {
                                         <Route path="/customers/segments" element={<AccountGuard><SegmentsPage /></AccountGuard>} />
                                         <Route path="/customers/:id" element={<AccountGuard><CustomerDetailsPage /></AccountGuard>} />
                                         <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
+                                        <Route path="/flows" element={<AccountGuard><FlowsPage /></AccountGuard>} />
                                         <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
                                         <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />
                                         <Route path="/analytics" element={<AccountGuard><AnalyticsOverviewPage /></AccountGuard>} />
