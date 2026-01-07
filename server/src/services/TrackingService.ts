@@ -51,7 +51,8 @@ export class TrackingService {
             currentPath: data.url
         };
 
-        if (data.ipAddress) sessionPayload.ipAddress = data.ipAddress;
+        // Mask IP before storing for privacy (hide last octet for IPv4, last 80 bits for IPv6)
+        if (data.ipAddress) sessionPayload.ipAddress = TrackingService.maskIpAddress(data.ipAddress);
         if (data.userAgent) sessionPayload.userAgent = data.userAgent;
         if (country) sessionPayload.country = country;
         if (city) sessionPayload.city = city;
@@ -477,6 +478,43 @@ export class TrackingService {
         ];
 
         return botPatterns.some(pattern => ua.includes(pattern));
+    }
+
+    /**
+     * Mask IP address for privacy - hide last octet for IPv4, last 80 bits for IPv6
+     * Examples:
+     * - IPv4: 192.168.1.123 -> 192.168.1.xxx
+     * - IPv6: 2001:0db8:85a3:0000:0000:8a2e:0370:7334 -> 2001:0db8:85a3::xxxx
+     */
+    static maskIpAddress(ip: string): string {
+        if (!ip) return '';
+
+        // Handle IPv4
+        if (ip.includes('.') && !ip.includes(':')) {
+            const parts = ip.split('.');
+            if (parts.length === 4) {
+                parts[3] = 'xxx';
+                return parts.join('.');
+            }
+        }
+
+        // Handle IPv6 (or IPv4-mapped IPv6)
+        if (ip.includes(':')) {
+            const parts = ip.split(':');
+            // Mask last 5 segments (80 bits) for IPv6
+            if (parts.length >= 5) {
+                const maskedParts = parts.slice(0, Math.max(3, parts.length - 5));
+                maskedParts.push('xxxx');
+                return maskedParts.join(':');
+            }
+        }
+
+        // Fallback: mask last 5 characters
+        if (ip.length > 5) {
+            return ip.substring(0, ip.length - 5) + 'xxxxx';
+        }
+
+        return 'xxx.xxx.xxx.xxx';
     }
 
 

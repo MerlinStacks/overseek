@@ -1,36 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { searchArticles } from '../../data/helpContent';
 
 export function HelpSearch() {
     const [query, setQuery] = useState('');
-    const [results, setResults] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const navigate = useNavigate();
-    const { token } = useAuth();
 
-    useEffect(() => {
+    // Client-side search - instant results, no API delay
+    const results = useMemo(() => {
         if (query.length > 2) {
-            const fetchResults = setTimeout(async () => {
-                try {
-                    const res = await fetch(`/api/help/search?q=${query}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const data = await res.json();
-                    setResults(Array.isArray(data) ? data : []);
-                    setIsOpen(true);
-                } catch (e) {
-                    console.error(e);
-                    setResults([]);
-                }
-            }, 300);
-            return () => clearTimeout(fetchResults);
-        } else {
-            setResults([]);
-            setIsOpen(false);
+            return searchArticles(query);
         }
-    }, [query, token]);
+        return [];
+    }, [query]);
 
     return (
         <div className="relative w-full max-w-2xl mx-auto z-50">
@@ -49,7 +33,7 @@ export function HelpSearch() {
 
             {isOpen && results.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-50">
-                    {results.map((article: any) => (
+                    {results.map((article) => (
                         <div
                             key={article.id}
                             className="p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors flex flex-col items-start text-left"
@@ -66,6 +50,12 @@ export function HelpSearch() {
                             </span>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {isOpen && query.length > 2 && results.length === 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-50 p-4 text-center text-gray-500 text-sm">
+                    No articles found for "{query}"
                 </div>
             )}
         </div>

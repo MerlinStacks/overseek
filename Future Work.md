@@ -4,14 +4,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ---
 
-## 🐛 Known Issues & Bugs
-
-### Analytics & Tracking
-- [ ] **Live Streams**: Ecommerce Stream and Live Visitor Log not displaying live data correctly
-- [ ] **Active Visitor Count**: Count appears inaccurate
-- [ ] **Revenue Page**: Analytics revenue page shows no data
-
-
 ## 🔧 Settings & Configuration
 
 ### Super Admin

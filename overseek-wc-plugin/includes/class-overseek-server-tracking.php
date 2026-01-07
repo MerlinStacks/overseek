@@ -154,11 +154,42 @@ class OverSeek_Server_Tracking
     }
 
     /**
-     * Send tracking event to Overseek API (non-blocking).
+     * Get the real visitor IP address.
+     * Handles proxies and load balancers.
+     */
+    private function get_visitor_ip()
+    {
+        $ip = '';
+        
+        // Check for proxied IP first
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            // X-Forwarded-For can contain multiple IPs, get the first one
+            $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+            $ip = trim($ips[0]);
+        } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+            $ip = $_SERVER['HTTP_X_REAL_IP'];
+        } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+            $ip = $_SERVER['HTTP_CLIENT_IP'];
+        } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
+            $ip = $_SERVER['REMOTE_ADDR'];
+        }
+        
+        // Validate IP
+        if (filter_var($ip, FILTER_VALIDATE_IP)) {
+            return $ip;
+        }
+        
+        return '';
+    }
+
+    /**
+     * Send tracking event to Overseek API.
+     * Uses synchronous requests with error logging for reliability.
      */
     private function send_event($type, $payload = array())
     {
         $visitor_id = $this->get_visitor_id();
+        $visitor_ip = $this->get_visitor_ip();
 
         $data = array(
             'accountId' => $this->account_id,
@@ -169,6 +200,7 @@ class OverSeek_Server_Tracking
             'referrer' => isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : '',
             'payload' => $payload,
             'serverSide' => true,
+            'userAgent' => isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field($_SERVER['HTTP_USER_AGENT']) : '',
         );
 
         // Add UTM parameters if present
@@ -179,13 +211,22 @@ class OverSeek_Server_Tracking
         if (isset($_GET['utm_campaign']))
             $data['utmCampaign'] = sanitize_text_field($_GET['utm_campaign']);
 
-        // Non-blocking request (fire and forget)
-        wp_remote_post($this->api_url . '/api/t/e', array(
-            'timeout' => 0.01, // Near-instant timeout for non-blocking
-            'blocking' => false,
-            'headers' => array('Content-Type' => 'application/json'),
+        // Send request with proper timeout and error handling
+        $response = wp_remote_post($this->api_url . '/api/t/e', array(
+            'timeout' => 5, // 5 second timeout - enough for reliable delivery
+            'blocking' => true,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'X-Forwarded-For' => $visitor_ip, // Forward real visitor IP
+                'X-Real-IP' => $visitor_ip,
+            ),
             'body' => wp_json_encode($data),
         ));
+
+        // Log errors for debugging (only if WP_DEBUG is enabled)
+        if (is_wp_error($response) && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('OverSeek Tracking Error: ' . $response->get_error_message() . ' | Event: ' . $type);
+        }
     }
 
     /**

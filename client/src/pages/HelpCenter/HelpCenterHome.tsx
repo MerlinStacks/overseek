@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useState } from 'react';
+import { getHelpCollections } from '../../data/helpContent';
 import { HelpSearch } from '../../components/HelpCenter/HelpSearch';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Box, Settings, Map, FileText, HelpCircle, TrendingUp, Users, ShoppingCart, MessageSquare, Tag } from 'lucide-react';
+import { BookOpen, Box, Settings, Map, FileText, HelpCircle, TrendingUp, Users, ShoppingCart, MessageSquare, Tag, Compass, Package, Truck, BarChart2 } from 'lucide-react';
 
-const ICON_MAP: any = {
+const ICON_MAP: Record<string, any> = {
     'Box': Box,
     'Settings': Settings,
     'Map': Map,
@@ -14,37 +14,17 @@ const ICON_MAP: any = {
     'ShoppingCart': ShoppingCart,
     'MessageSquare': MessageSquare,
     'Tag': Tag,
+    'Compass': Compass,
+    'Package': Package,
+    'Truck': Truck,
+    'BarChart2': BarChart2,
     'default': BookOpen
 };
 
 export function HelpCenterHome() {
-    const { token } = useAuth();
-    const [collections, setCollections] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
-
-    useEffect(() => {
-        const fetchCollections = async () => {
-            try {
-                const res = await fetch('/api/help/collections', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                setCollections(Array.isArray(data) ? data : []);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchCollections();
-    }, [token]);
-
-    if (loading) return (
-        <div className="flex items-center justify-center min-h-[60vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-    );
+    // Use static content - no API call needed
+    const collections = getHelpCollections();
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -75,7 +55,7 @@ export function HelpCenterHome() {
                                 <p className="text-gray-500 text-sm mb-6 flex-grow leading-relaxed">{collection.description}</p>
 
                                 <div className="space-y-3 pt-4 border-t border-gray-50">
-                                    {collection.articles?.length > 0 ? collection.articles.slice(0, 5).map((article: any) => (
+                                    {collection.articles?.length > 0 ? collection.articles.slice(0, 5).map((article) => (
                                         <div
                                             key={article.id}
                                             onClick={() => navigate(`/help/article/${article.slug}`)}

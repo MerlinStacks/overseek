@@ -77,42 +77,25 @@ function getEventIconClasses(type: string) {
 }
 
 /** 
- * De-duplicate events: if same URL has both pageview and product_view,
- * keep only the more specific event (product_view) 
+ * De-duplicate events: when both pageview and product_view exist for the SAME URL,
+ * keep only product_view (more specific). All other events are preserved.
  */
 function deduplicateEvents(events: VisitorEvent[]): VisitorEvent[] {
-    const urlEventMap = new Map<string, VisitorEvent>();
-    const otherEvents: VisitorEvent[] = [];
-
-    // Event type priority: higher = more specific (keeps this one)
-    const typePriority: Record<string, number> = {
-        'pageview': 1,
-        'product_view': 2,
-        'search': 3,
-        'add_to_cart': 4,
-        'checkout_start': 5,
-        'checkout_success': 6,
-        'purchase': 7
-    };
-
+    // Find URLs that have product_view events
+    const productViewUrls = new Set<string>();
     for (const event of events) {
-        const url = event.url || '';
-        const priority = typePriority[event.type] || 0;
-
-        // For pageview/product_view on same URL, keep the higher priority one
-        if (event.type === 'pageview' || event.type === 'product_view') {
-            const existing = urlEventMap.get(url);
-            if (!existing || priority > (typePriority[existing.type] || 0)) {
-                urlEventMap.set(url, event);
-            }
-        } else {
-            otherEvents.push(event);
+        if (event.type === 'product_view' && event.url) {
+            productViewUrls.add(event.url);
         }
     }
 
-    // Combine and sort by createdAt
-    return [...urlEventMap.values(), ...otherEvents]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Filter out pageviews for URLs that also have product_view
+    return events.filter(event => {
+        if (event.type === 'pageview' && event.url && productViewUrls.has(event.url)) {
+            return false; // Skip this pageview, product_view will be shown instead
+        }
+        return true;
+    });
 }
 
 const VisitorLogWidget: React.FC = () => {

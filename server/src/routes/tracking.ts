@@ -71,170 +71,22 @@ setInterval(() => {
 
 
 /**
- * Serve Tracking Script
+ * DEPRECATED: JavaScript Tracking Script
+ * This endpoint is kept for backwards compatibility but returns a no-op.
+ * All tracking is now handled server-side via the WordPress plugin.
  * GET /api/tracking/tracking.js
  */
 router.get('/tracking.js', (req, res) => {
     const accountId = req.query.id;
-    Logger.debug(`Tracking script requested`, { accountId, referer: req.headers.referer || 'none' });
+    Logger.debug(`Tracking script requested (deprecated)`, { accountId, referer: req.headers.referer || 'none' });
 
+    // Return a no-op script - all tracking is now server-side
     const script = `
+// OverSeek: Client-side tracking is deprecated.
+// All analytics are now collected server-side via the WordPress plugin.
+// This script intentionally does nothing.
 (function() {
-    // Dynamic Endpoint Generation
-    // We derive the API URL from the script tag itself to ensure we always hit the correct backend, 
-    // regardless of the hosting store's protocol (HTTP/HTTPS).
-    const scriptBase = new URL(document.currentScript.src);
-    const ENDPOINT = scriptBase.origin + '/api/tracking/events';
-
-    // Helper: Generate UUID
-    function generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
-
-    // Helper: Get/Set Cookie
-    function getCookie(name) {
-        var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-        if (match) return match[2];
-    }
-    function setCookie(name, value, days) {
-        var expires = "";
-        if (days) {
-            var date = new Date();
-            date.setTime(date.getTime() + (days*24*60*60*1000));
-            expires = "; expires=" + date.toUTCString();
-        }
-        document.cookie = name + "=" + (value || "")  + expires + "; path=/";
-    }
-
-    // 1. Initialize Visitor ID
-    let visitorId = getCookie('_os_vid');
-    if (!visitorId) {
-        visitorId = generateUUID();
-        setCookie('_os_vid', visitorId, 365);
-    }
-
-    // Get Account ID from URL query param
-    const scriptTag = document.currentScript;
-    const urlParams = new URLSearchParams(scriptTag.src.split('?')[1]);
-    const accountId = urlParams.get('id');
-
-    if (!accountId) {
-        console.warn('OverSeek: Account ID missing');
-        return;
-    }
-
-    // 2. Send Event
-    function sendEvent(type, payload = {}) {
-        const data = {
-            accountId,
-            visitorId,
-            type,
-            url: window.location.href,
-            pageTitle: document.title,
-            referrer: document.referrer,
-            payload
-        };
-
-        // Capture UTMs
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('utm_source')) data.utmSource = urlParams.get('utm_source');
-        if (urlParams.has('utm_medium')) data.utmMedium = urlParams.get('utm_medium');
-        if (urlParams.has('utm_campaign')) data.utmCampaign = urlParams.get('utm_campaign');
-
-        // Use Beacon if available for guaranteed delivery on unload, else fetch/xhr
-        if (navigator.sendBeacon) {
-            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-            navigator.sendBeacon(ENDPOINT, blob);
-        } else {
-            fetch(ENDPOINT, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            }).catch(e => console.error(e));
-        }
-    }
-
-    // 3. Track Pageview
-    sendEvent('pageview');
-
-    // 4. WooCommerce Events (jQuery)
-    if (typeof jQuery !== 'undefined') {
-        jQuery(document.body).on('added_to_cart', function(e, fragments, cart_hash, button) {
-            let total = 0;
-            // Capture Product ID and Quantity
-            let productId = null;
-            let quantity = 1;
-
-            if (button && button.length) {
-                productId = button.data('product_id');
-                quantity = button.data('quantity') || 1;
-            }
-
-            try {
-                // Attempt 1: Parse from fragments if available
-                if (fragments && fragments['div.widget_shopping_cart_content']) {
-                    const div = document.createElement('div');
-                    div.innerHTML = fragments['div.widget_shopping_cart_content'];
-                    // Try common selectors for subtotal
-                    const amountEl = div.querySelector('.woocommerce-mini-cart__total .amount') || 
-                                     div.querySelector('.total .amount');
-                    if (amountEl) {
-                         const text = amountEl.textContent || '';
-                         const clean = text.replace(/[^0-9.]/g, '');
-                         total = parseFloat(clean) || 0;
-                    }
-                }
-            } catch (err) {
-                console.error('OverSeek: Error parsing cart', err);
-            }
-             
-            sendEvent('add_to_cart', { total: total, productId: productId, quantity: quantity });
-        });
-
-        jQuery(document.body).on('removed_from_cart', function(e, fragments, cart_hash, button) {
-            // Similar logic for removal
-            setTimeout(() => {
-                let total = 0;
-                const amountEl = document.querySelector('.woocommerce-mini-cart__total .amount') || 
-                                 document.querySelector('.total .amount');
-                if (amountEl) {
-                     const text = amountEl.textContent || '';
-                     const clean = text.replace(/[^0-9.]/g, '');
-                     total = parseFloat(clean) || 0;
-                }
-                sendEvent('remove_from_cart', { total: total });
-            }, 500);
-        });
-
-    // 5. Checkout Email Capture (Abandoned Cart)
-    const emailField = document.querySelector('input#billing_email');
-    if (emailField) {
-        emailField.addEventListener('blur', function(e) {
-            const email = e.target.value;
-            if (email && email.includes('@')) {
-                 sendEvent('checkout_start', { email: email });
-            }
-        });
-        
-        // Also capture on change if they use autofill
-        emailField.addEventListener('change', function(e) {
-             const email = e.target.value;
-             if (email && email.includes('@')) {
-                  sendEvent('checkout_start', { email: email });
-             }
-        });
-    }
-
-    // Periodic Heartbeat (keep session alive)
-    setInterval(() => {
-        if (document.visibilityState === 'visible') {
-            sendEvent('heartbeat');
-        }
-    }, 30000);
-
+    // No-op: Server-side tracking is active
 })();
     `;
 
@@ -304,7 +156,7 @@ router.post('/events', async (req, res) => {
 // POST /api/tracking/e (or mount as /api/t/e in app.ts)
 router.post('/e', async (req, res) => {
     try {
-        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign } = req.body;
+        const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent } = req.body;
 
         if (!accountId || !visitorId || !type) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -322,10 +174,16 @@ router.post('/e', async (req, res) => {
         const origin = req.headers.origin || req.headers.referer || 'unknown';
         Logger.debug(`Tracking event received`, { type, accountId, origin });
 
-        let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        // Get IP from forwarded headers (server-side tracking sends real visitor IP)
+        let ip = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket.remoteAddress;
         if (Array.isArray(ip)) ip = ip[0];
+        // If comma-separated, take the first IP
+        if (typeof ip === 'string' && ip.includes(',')) {
+            ip = ip.split(',')[0].trim();
+        }
 
-        const userAgent = req.headers['user-agent'];
+        // Prefer userAgent from body (sent by WordPress plugin) over headers
+        const userAgent = bodyUserAgent || req.headers['user-agent'];
 
         await TrackingService.processEvent({
             accountId,

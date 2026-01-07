@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Calendar, User, Eye, Share2, Printer } from 'lucide-react';
+import { getArticleBySlug } from '../../data/helpContent';
+import { ArrowLeft, Calendar, User, Share2, Printer } from 'lucide-react';
 
 function SimpleMarkdown({ content }: { content: string }) {
     if (!content) return null;
@@ -36,45 +35,22 @@ function SimpleMarkdown({ content }: { content: string }) {
 
 export function HelpArticle() {
     const { slug } = useParams();
-    const { token } = useAuth();
     const navigate = useNavigate();
-    const [article, setArticle] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
 
-    useEffect(() => {
-        const fetchArticle = async () => {
-            try {
-                const res = await fetch(`/api/help/articles/${slug}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error('Article not found');
-                const data = await res.json();
-                setArticle(data);
-            } catch (err) {
-                setError('Article not found or unavailable.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchArticle();
-    }, [slug, token]);
+    // Get article from static content - no API call needed
+    const article = slug ? getArticleBySlug(slug) : null;
 
-    if (loading) return (
-        <div className="flex items-center justify-center min-h-[60vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-    );
-
-    if (error) return (
-        <div className="max-w-3xl mx-auto py-20 text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
-            <p className="text-gray-500 mb-6">{error}</p>
-            <button onClick={() => navigate('/help')} className="text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-2 mx-auto">
-                <ArrowLeft size={16} /> Back to Help Center
-            </button>
-        </div>
-    );
+    if (!article) {
+        return (
+            <div className="max-w-3xl mx-auto py-20 text-center">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
+                <p className="text-gray-500 mb-6">Article not found or unavailable.</p>
+                <button onClick={() => navigate('/help')} className="text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-2 mx-auto">
+                    <ArrowLeft size={16} /> Back to Help Center
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">
@@ -140,7 +116,7 @@ export function HelpArticle() {
                     <SimpleMarkdown content={article.content} />
                 </div>
 
-                {/* Feedback Footer - TODO: Connect to feedback API */}
+                {/* Feedback Footer */}
                 <div className="bg-gray-50 p-8 text-center border-t border-gray-100">
                     <p className="text-gray-900 font-medium mb-4">Was this article helpful?</p>
                     <div className="flex justify-center gap-4">

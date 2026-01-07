@@ -104,9 +104,20 @@ export class ReviewService {
 
         for (const review of reviews) {
             const reviewerEmail = review.reviewerEmail;
-            const wooCustomerId = review.wooCustomerId;
+            let wooCustomerId = review.wooCustomerId;
             const productId = review.productId;
             const reviewDate = review.dateCreated;
+
+            // Try to find/link customer by email if not already linked
+            let newCustomerId: string | null = wooCustomerId;
+            if (!wooCustomerId && reviewerEmail) {
+                const customer = await prisma.wooCustomer.findFirst({
+                    where: { accountId, email: reviewerEmail }
+                });
+                if (customer) {
+                    newCustomerId = customer.id;
+                }
+            }
 
             // 180-day lookback window
             const lookbackDate = new Date(reviewDate);
@@ -145,8 +156,8 @@ export class ReviewService {
                 const billingLast = data.billing?.last_name;
 
                 // Priority 1: Customer ID match (100)
-                if (wooCustomerId) {
-                    const customer = await prisma.wooCustomer.findUnique({ where: { id: wooCustomerId } });
+                if (newCustomerId) {
+                    const customer = await prisma.wooCustomer.findUnique({ where: { id: newCustomerId } });
                     if (customer && orderCustomerId === customer.wooId) {
                         matchScore = 100;
                     } else if (customer && normalizedOrderEmail === this.normalizeEmail(customer.email)) {
@@ -180,20 +191,33 @@ export class ReviewService {
 
             matches.sort((a, b) => b.score !== a.score ? b.score - a.score : a.daysDiff - b.daysDiff);
 
+            // Build update data
+            const updateData: { wooOrderId?: string | null; wooCustomerId?: string | null } = {};
+            let needsUpdate = false;
+
+            // Update customer link if changed
+            if (newCustomerId !== review.wooCustomerId) {
+                updateData.wooCustomerId = newCustomerId;
+                needsUpdate = true;
+            }
+
+            // Update order link
             if (matches.length > 0) {
                 matchedReviews++;
                 const bestMatch = matches[0];
                 if (review.wooOrderId !== bestMatch.orderId) {
-                    await prisma.wooReview.update({
-                        where: { id: review.id },
-                        data: { wooOrderId: bestMatch.orderId }
-                    });
-                    updatedReviews++;
+                    updateData.wooOrderId = bestMatch.orderId;
+                    needsUpdate = true;
                 }
             } else if (review.wooOrderId) {
+                updateData.wooOrderId = null;
+                needsUpdate = true;
+            }
+
+            if (needsUpdate) {
                 await prisma.wooReview.update({
                     where: { id: review.id },
-                    data: { wooOrderId: null }
+                    data: updateData
                 });
                 updatedReviews++;
             }
