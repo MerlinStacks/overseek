@@ -1,6 +1,7 @@
 import { WidgetProps } from './WidgetRegistry';
 import { ShoppingBag, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
@@ -39,7 +40,13 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
                         <div key={order.id} className="flex justify-between items-center text-sm p-2 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer">
                             <div>
                                 <p className="text-xs text-gray-500 mb-0.5">#{order.id}</p>
-                                <p className="font-medium text-gray-900">{order.billing?.first_name || 'Guest'} {order.billing?.last_name}</p>
+                                {order.customer_id && order.customer_id > 0 ? (
+                                    <Link to={`/customers/${order.customer_id}`} className="font-medium text-gray-900 hover:text-blue-600">
+                                        {order.billing?.first_name || 'Guest'} {order.billing?.last_name}
+                                    </Link>
+                                ) : (
+                                    <p className="font-medium text-gray-900">{order.billing?.first_name || 'Guest'} {order.billing?.last_name}</p>
+                                )}
                                 <p className="text-xs text-gray-500">{order.line_items?.length || 0} items</p>
                             </div>
                             <span className="font-medium text-gray-900">

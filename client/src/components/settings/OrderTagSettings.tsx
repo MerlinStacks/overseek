@@ -7,6 +7,7 @@ interface TagMapping {
     productTag: string;
     orderTag: string;
     enabled: boolean;
+    color?: string;  // Hex color for display (e.g. "#3B82F6")
 }
 
 /**
@@ -89,7 +90,7 @@ export function OrderTagSettings() {
     function addTagMapping(productTag: string) {
         setMappings(prev => [
             ...prev,
-            { productTag, orderTag: productTag, enabled: true }
+            { productTag, orderTag: productTag, enabled: true, color: '#3B82F6' }
         ]);
         setShowAddDropdown(false);
         setSearchQuery('');
@@ -230,9 +231,10 @@ export function OrderTagSettings() {
                         {/* Header */}
                         <div className="grid grid-cols-12 gap-4 text-xs font-semibold text-gray-500 uppercase px-2">
                             <div className="col-span-1">Active</div>
-                            <div className="col-span-4">Product Tag</div>
+                            <div className="col-span-3">Product Tag</div>
                             <div className="col-span-1 text-center">→</div>
-                            <div className="col-span-5">Order Tag Name</div>
+                            <div className="col-span-4">Order Tag Name</div>
+                            <div className="col-span-2">Color</div>
                             <div className="col-span-1"></div>
                         </div>
 
@@ -251,13 +253,13 @@ export function OrderTagSettings() {
                                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
                                 </div>
-                                <div className="col-span-4">
+                                <div className="col-span-3">
                                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-sm bg-gray-100 text-gray-700">
                                         {mapping.productTag}
                                     </span>
                                 </div>
                                 <div className="col-span-1 text-center text-gray-400">→</div>
-                                <div className="col-span-5">
+                                <div className="col-span-4">
                                     <input
                                         type="text"
                                         value={mapping.orderTag}
@@ -265,6 +267,21 @@ export function OrderTagSettings() {
                                         placeholder="Order tag name"
                                         className="w-full px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white border-gray-300"
                                     />
+                                </div>
+                                <div className="col-span-2 flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={mapping.color || '#6B7280'}
+                                        onChange={(e) => updateMapping(mapping.productTag, { color: e.target.value })}
+                                        className="w-8 h-8 rounded cursor-pointer border border-gray-300"
+                                        title="Tag color"
+                                    />
+                                    <span
+                                        className="inline-flex items-center px-2 py-0.5 rounded text-xs text-white"
+                                        style={{ backgroundColor: mapping.color || '#6B7280' }}
+                                    >
+                                        {mapping.orderTag || 'Preview'}
+                                    </span>
                                 </div>
                                 <div className="col-span-1 flex justify-end">
                                     <button

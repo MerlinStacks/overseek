@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { formatDate } from '../utils/format';
@@ -14,6 +14,7 @@ interface Order {
     total: number;
     currency: string;
     date_created: string;
+    customer_id?: number;
     tags?: string[];
     billing: {
         first_name: string;
@@ -49,6 +50,7 @@ export function OrdersPage() {
 
     // Tag filtering - initialize from URL
     const [availableTags, setAvailableTags] = useState<string[]>([]);
+    const [tagColors, setTagColors] = useState<Record<string, string>>({});
     const [selectedTags, setSelectedTags] = useState<string[]>(
         tagsFromUrl ? tagsFromUrl.split(',').filter(Boolean) : []
     );
@@ -70,7 +72,7 @@ export function OrdersPage() {
     }, [currentAccount, token, searchQuery, page, limit, selectedTags]);
 
 
-    // Fetch available tags
+    // Fetch available tags and colors
     useEffect(() => {
         if (!currentAccount || !token) return;
         fetch('/api/sync/orders/tags', {
@@ -80,8 +82,14 @@ export function OrdersPage() {
             }
         })
             .then(res => res.json())
-            .then(data => setAvailableTags(data.tags || []))
-            .catch(() => setAvailableTags([]));
+            .then(data => {
+                setAvailableTags(data.tags || []);
+                setTagColors(data.tagColors || {});
+            })
+            .catch(() => {
+                setAvailableTags([]);
+                setTagColors({});
+            });
     }, [currentAccount, token]);
 
     async function fetchOrders() {
@@ -331,22 +339,44 @@ export function OrdersPage() {
                                             </span>
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-900">
-                                            <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
-                                            <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
+                                            {order.customer_id && order.customer_id > 0 ? (
+                                                <Link
+                                                    to={`/customers/${order.customer_id}`}
+                                                    className="block hover:text-blue-600"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
+                                                    <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
+                                                </Link>
+                                            ) : (
+                                                <>
+                                                    <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
+                                                    <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
+                                                </>
+                                            )}
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-sm font-medium">
                                             {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total)}
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                                {(order.tags || []).slice(0, 3).map(tag => (
-                                                    <span
-                                                        key={tag}
-                                                        className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600"
-                                                    >
-                                                        {tag}
-                                                    </span>
-                                                ))}
+                                                {(order.tags || []).slice(0, 3).map(tag => {
+                                                    const bgColor = tagColors[tag] || '#E5E7EB';
+                                                    // Determine if text should be light or dark based on background
+                                                    const isLight = parseInt(bgColor.slice(1), 16) > 0xffffff / 2;
+                                                    return (
+                                                        <span
+                                                            key={tag}
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs"
+                                                            style={{
+                                                                backgroundColor: bgColor,
+                                                                color: tagColors[tag] ? '#ffffff' : '#4B5563'
+                                                            }}
+                                                        >
+                                                            {tag}
+                                                        </span>
+                                                    );
+                                                })}
                                                 {(order.tags || []).length > 3 && (
                                                     <span className="text-xs text-gray-400">+{order.tags!.length - 3}</span>
                                                 )}

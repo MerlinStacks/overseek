@@ -190,7 +190,7 @@ router.get('/orders/search', async (req: AuthenticatedRequest, res: Response) =>
     }
 });
 
-// Get unique order tags for an account
+// Get unique order tags for an account (with colors)
 router.get('/orders/tags', async (req: AuthenticatedRequest, res: Response) => {
     const accountId = req.headers['x-account-id'] as string || req.query.accountId as string;
 
@@ -200,7 +200,23 @@ router.get('/orders/tags', async (req: AuthenticatedRequest, res: Response) => {
 
     try {
         const tags = await SearchQueryService.getOrderTags(accountId);
-        res.json({ tags });
+
+        // Fetch tag colors from account settings
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { orderTagMappings: true }
+        });
+
+        const tagColors: Record<string, string> = {};
+        if (account?.orderTagMappings && Array.isArray(account.orderTagMappings)) {
+            for (const mapping of account.orderTagMappings as any[]) {
+                if (mapping.orderTag && mapping.color) {
+                    tagColors[mapping.orderTag] = mapping.color;
+                }
+            }
+        }
+
+        res.json({ tags, tagColors });
     } catch (error) {
         Logger.error('Failed to fetch order tags', { error });
         res.status(500).json({ error: 'Failed to fetch order tags' });

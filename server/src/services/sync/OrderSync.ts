@@ -107,6 +107,55 @@ export class OrderSync extends BaseSync {
             page++;
         }
 
+        // After all orders are synced, recalculate customer order counts from local data
+        Logger.info('Recalculating customer order counts from local orders...', { accountId });
+        try {
+            // Get all distinct customer_ids from orders
+            const ordersWithCustomers = await prisma.wooOrder.findMany({
+                where: { accountId },
+                select: { rawData: true }
+            });
+
+            // Count orders per customer_id
+            const customerOrderCounts = new Map<number, number>();
+            for (const order of ordersWithCustomers) {
+                const customerId = (order.rawData as any)?.customer_id;
+                if (customerId && customerId > 0) {
+                    customerOrderCounts.set(customerId, (customerOrderCounts.get(customerId) || 0) + 1);
+                }
+            }
+
+            // Update each customer's ordersCount in DB and ES
+            for (const [wooId, count] of customerOrderCounts) {
+                // Update Prisma
+                await prisma.wooCustomer.updateMany({
+                    where: { accountId, wooId },
+                    data: { ordersCount: count }
+                });
+
+                // Update Elasticsearch
+                try {
+                    const { esClient } = await import('../../utils/elastic');
+                    await esClient.update({
+                        index: 'customers',
+                        id: `${accountId}_${wooId}`,
+                        body: {
+                            doc: { ordersCount: count }
+                        },
+                        refresh: true
+                    }).catch(() => {
+                        // Document may not exist, that's OK
+                    });
+                } catch (e) {
+                    // ES update failure is non-fatal
+                }
+            }
+
+            Logger.info(`Updated order counts for ${customerOrderCounts.size} customers`, { accountId });
+        } catch (error: any) {
+            Logger.warn('Failed to recalculate customer order counts', { accountId, error: error.message });
+        }
+
         Logger.info(`Order Sync Complete. Total: ${totalProcessed}`, { accountId });
     }
 }

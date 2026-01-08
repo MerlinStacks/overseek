@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Bell, BellOff, MessageSquare, ShoppingCart, Loader2, Smartphone, Send, CheckCircle, XCircle } from 'lucide-react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
 
 /**
  * Settings panel for configuring push notifications.
@@ -9,6 +11,8 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
  * which notification types they want to receive.
  */
 export function NotificationSettings() {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const {
         isSupported,
         isSubscribed,
@@ -35,13 +39,23 @@ export function NotificationSettings() {
      * Sends a test push notification to verify the setup is working.
      */
     const handleTestNotification = async () => {
+        if (!token || !currentAccount) {
+            setTestError('Authentication required');
+            setTestStatus('error');
+            return;
+        }
+
         setTestStatus('sending');
         setTestError(null);
 
         try {
             const res = await fetch('/api/notifications/push/test', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
 
             if (!res.ok) {
@@ -210,8 +224,8 @@ export function NotificationSettings() {
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${testStatus === 'success' ? 'bg-green-100' :
-                                        testStatus === 'error' ? 'bg-red-100' :
-                                            'bg-purple-100'
+                                    testStatus === 'error' ? 'bg-red-100' :
+                                        'bg-purple-100'
                                     }`}>
                                     {testStatus === 'success' ? (
                                         <CheckCircle className="w-5 h-5 text-green-600" />

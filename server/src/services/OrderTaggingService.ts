@@ -8,6 +8,7 @@ interface TagMapping {
     productTag: string;  // The tag name from WooCommerce product
     orderTag: string;    // The tag name to apply to orders
     enabled: boolean;    // Whether this mapping is active
+    color?: string;      // Optional hex color for display (e.g. "#3B82F6")
 }
 
 /**
