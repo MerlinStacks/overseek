@@ -7,17 +7,23 @@
 
 import path from 'node:path';
 import { defineConfig } from 'prisma/config';
-import { config } from 'dotenv';
 
-// Load .env file manually (Prisma 7 doesn't auto-load .env)
-config();
+// Get directory name (works in both ESM and CommonJS contexts)
+const configDir = typeof import.meta !== 'undefined' && import.meta.dirname
+    ? import.meta.dirname
+    : __dirname;
 
 export default defineConfig({
     earlyAccess: true,
 
-    schema: path.join(import.meta.dirname, 'schema.prisma'),
+    schema: path.join(configDir, 'schema.prisma'),
 
     migrate: {
-        migrations: path.join(import.meta.dirname, 'migrations'),
+        migrations: path.join(configDir, 'migrations'),
+    },
+
+    // Datasource URL for migrations and db push (read directly from env)
+    datasource: {
+        url: process.env.DATABASE_URL || '',
     },
 });

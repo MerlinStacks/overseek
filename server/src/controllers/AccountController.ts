@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 import { IndexingService } from '../services/search/IndexingService';
 import { GoldPriceService } from '../services/GoldPriceService';
 import { WooService } from '../services/woo';
 import { Logger } from '../utils/logger';
 
-const prisma = new PrismaClient();
 
 export class AccountController {
     static async create(req: Request, res: Response) {

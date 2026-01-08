@@ -1,9 +1,9 @@
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../utils/prisma';
 import axios from 'axios';
 import https from 'https';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     const log = await prisma.syncLog.findFirst({

@@ -1,10 +1,10 @@
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 import { IndexingService } from '../services/search/IndexingService';
 import { esClient } from '../utils/elastic';
 import { Logger } from '../utils/logger';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function reindexAll() {
     try {

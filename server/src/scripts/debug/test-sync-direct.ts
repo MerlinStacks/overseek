@@ -1,9 +1,9 @@
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../utils/prisma';
 import { OrderSync } from '../../services/sync/OrderSync';
 import { QueueFactory } from '../../services/queue/QueueFactory';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     // Find the account that failed (from logs) or just the first one

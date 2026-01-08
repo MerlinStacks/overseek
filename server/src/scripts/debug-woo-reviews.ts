@@ -5,10 +5,10 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 https.globalAgent.options.rejectUnauthorized = false;
 dotenv.config();
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 import { WooService } from '../services/woo';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     console.log("Starting Debug Script...");

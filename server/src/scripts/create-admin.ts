@@ -1,9 +1,9 @@
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 import { hash, genSalt } from 'bcryptjs';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     const email = process.env.ADMIN_EMAIL || 'admin@overseek.com';

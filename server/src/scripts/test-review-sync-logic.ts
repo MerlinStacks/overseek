@@ -3,11 +3,11 @@ import dotenv from 'dotenv';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Keep for safety
 dotenv.config();
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 import { WooService } from '../services/woo';
 import { ReviewSync } from '../services/sync/ReviewSync';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 // Expose protected method
 class TestReviewSync extends ReviewSync {

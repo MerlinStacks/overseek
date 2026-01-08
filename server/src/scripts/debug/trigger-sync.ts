@@ -1,8 +1,8 @@
 
 import { QueueFactory, QUEUES } from '../../services/queue/QueueFactory';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../utils/prisma';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     // Find an account

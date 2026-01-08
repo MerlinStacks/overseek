@@ -9,10 +9,10 @@
 
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../../prisma/generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 // Re-export types from generated client for consumers
-export * from '../../prisma/generated/prisma';
+export * from '@prisma/client';
 
 // Create PostgreSQL connection pool
 const connectionString = process.env.DATABASE_URL;

@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 
-const prisma = new PrismaClient();
 
 export class AccountUserController {
     static async listUsers(req: Request, res: Response) {

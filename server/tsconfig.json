@@ -6,20 +6,10 @@
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "strict": true,
-        "skipLibCheck": true,
-        "baseUrl": ".",
-        "paths": {
-            "@prisma/client": [
-                "prisma/generated/prisma"
-            ],
-            "@prisma/client/*": [
-                "prisma/generated/prisma/*"
-            ]
-        }
+        "skipLibCheck": true
     },
     "include": [
-        "src",
-        "prisma/generated"
+        "src"
     ],
     "exclude": [
         "scripts",

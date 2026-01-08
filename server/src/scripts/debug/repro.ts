@@ -1,8 +1,8 @@
 
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../utils/prisma';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     const fakeUserId = '28cbe786-f3c8-4b98-bb20-f6f35b8be0e1'; // usage of the specific ID from the log

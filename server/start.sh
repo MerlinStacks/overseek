@@ -5,7 +5,7 @@ echo "[Startup] Starting deployment script..."
 
 # Ensure Prisma Client is up to date
 echo "[Startup] Generating Prisma Client..."
-npx prisma generate
+npx prisma generate --config ./prisma/prisma.config.ts
 
 # Retry loop for database migrations
 # This handles the case where Postgres is not yet ready to accept connections
@@ -13,7 +13,7 @@ echo "[Startup] Running database migrations..."
 MAX_RETRIES=30
 COUNT=0
 
-until npx prisma db push --accept-data-loss; do
+until npx prisma db push --accept-data-loss --config ./prisma/prisma.config.ts; do
   COUNT=$((COUNT+1))
   if [ $COUNT -ge $MAX_RETRIES ]; then
     echo "[Startup] Migration failed after $MAX_RETRIES attempts. Exiting."

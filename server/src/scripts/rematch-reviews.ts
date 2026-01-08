@@ -5,10 +5,10 @@
  * Usage: npx ts-node src/scripts/rematch-reviews.ts
  */
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 interface OrderMatchResult {
     orderId: string;

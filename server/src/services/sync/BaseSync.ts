@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../utils/prisma';
 import { WooService } from '../woo';
 import { Logger } from '../../utils/logger';
 import { SyncJobData } from '../queue/SyncQueue';
 
-const prisma = new PrismaClient();
 
 export abstract class BaseSync {
 

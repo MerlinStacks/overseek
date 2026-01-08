@@ -1,10 +1,9 @@
 import { BaseSync } from './BaseSync';
 import { WooService } from '../woo';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
 import { Logger } from '../../utils/logger';
 
-const prisma = new PrismaClient();
 
 export class CustomerSync extends BaseSync {
     protected entityType = 'customers';

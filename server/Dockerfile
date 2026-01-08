@@ -39,6 +39,6 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
-# Start command
-RUN chmod +x start.sh
+# Start command (convert CRLF to LF for Linux compatibility)
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 CMD ["./start.sh"]
