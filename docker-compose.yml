@@ -40,8 +40,8 @@ services:
   # Node API (Express + Prisma)
   api:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
       args:
         DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
     pull_policy: build

@@ -1,7 +1,7 @@
-# Base stage - using slim (Debian) instead of Alpine for better npm compatibility
+# Base stage - using slim (Debian) for better npm compatibility
 FROM node:18-slim
 
-WORKDIR /app/server
+WORKDIR /app
 
 # Install system dependencies (build tools for native modules)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,14 +11,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy server package files
-COPY package.json ./
+# Copy root package files (needed for workspace/lockfile resolution)
+COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm install --legacy-peer-deps
+# Copy server package files
+COPY server/package.json ./server/
+
+# Create client placeholder with minimal package.json (workspace requirement)
+COPY client/package.json ./client/
+
+# Install dependencies using workspace
+RUN npm install --workspace=server --legacy-peer-deps
 
 # Copy server source code
-COPY . .
+COPY server/ ./server/
+
+WORKDIR /app/server
 
 # Generate Prisma Client (requires DATABASE_URL at build time)
 ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
