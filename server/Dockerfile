@@ -1,19 +1,21 @@
-# Base stage
-FROM node:18-alpine
+# Base stage - using slim (Debian) instead of Alpine for better npm compatibility
+FROM node:18-slim
 
 WORKDIR /app/server
 
 # Install system dependencies (build tools for native modules)
-RUN apk add --no-cache openssl python3 make g++
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy server package files
 COPY package.json ./
 
-# Debug: Show what we're installing
-RUN cat package.json
-
-# Install dependencies with verbose logging
-RUN npm install --legacy-peer-deps --loglevel verbose 2>&1 || (cat /root/.npm/_logs/*.log 2>/dev/null; exit 1)
+# Install dependencies
+RUN npm install --legacy-peer-deps
 
 # Copy server source code
 COPY . .
@@ -29,5 +31,5 @@ RUN npm run build
 EXPOSE 3000
 
 # Start command
-RUN apk add --no-cache dos2unix && dos2unix start.sh && chmod +x start.sh
+RUN chmod +x start.sh
 CMD ["./start.sh"]
