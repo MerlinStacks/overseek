@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Store, ArrowRight, SkipForward } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -16,6 +16,8 @@ export function SetupWizard() {
     const { token, logout, isLoading: authLoading } = useAuth();
     const { refreshAccounts, currentAccount, accounts, isLoading } = useAccount();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const isAddingNew = searchParams.get('addNew') === 'true';
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -24,12 +26,14 @@ export function SetupWizard() {
         }
     }, [authLoading, token, navigate]);
 
-    // Redirect to dashboard if user already has accounts
+    // Redirect to dashboard if user already has accounts (unless adding new)
     useEffect(() => {
-        if (!isLoading && accounts.length > 0) {
+        console.log('[SetupWizard] Redirect check:', { isLoading, accountsLength: accounts.length, isAddingNew });
+        if (!isLoading && accounts.length > 0 && !isAddingNew) {
+            console.log('[SetupWizard] Redirecting to dashboard');
             navigate('/');
         }
-    }, [accounts, isLoading, navigate]);
+    }, [accounts, isLoading, navigate, isAddingNew]);
 
     // Show loading during auth check
     if (authLoading) {

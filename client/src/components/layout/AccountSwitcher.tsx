@@ -1,11 +1,13 @@
 import { ChevronsUpDown, Plus, Check } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 
 export function AccountSwitcher() {
     const { accounts, currentAccount, setCurrentAccount } = useAccount();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -65,7 +67,7 @@ export function AccountSwitcher() {
 
                     <div className="border-t border-slate-700 p-1">
                         <button
-                            onClick={() => window.location.href = '/setup'}
+                            onClick={() => navigate('/setup?addNew=true')}
                             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-400 hover:bg-slate-700 rounded-md transition-colors"
                         >
                             <Plus size={14} />
