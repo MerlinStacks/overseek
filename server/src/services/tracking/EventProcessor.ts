@@ -280,7 +280,7 @@ export async function processEvent(data: TrackingEventPayload) {
         // Store landing referrer if not already set
         if (!sessionPayload.referrer) {
             sessionPayload.referrer = data.landingReferrer;
-            sessionPayload.trafficSource = currentSource;
+            // Note: trafficSource is derived from firstTouchSource/lastTouchSource, not stored separately
         }
     }
     // Priority 4: Current page referrer
@@ -335,34 +335,23 @@ export async function processEvent(data: TrackingEventPayload) {
     const isPageView = pageViewTypes.includes(data.type);
     sessionPayload.totalVisits = (existingSession?.totalVisits || 0) + (isPageView ? 1 : 0);
 
-    // Upsert
-    // DEBUG: Log session payload to diagnose Prisma validation errors
-    console.log('DEBUG sessionPayload:', JSON.stringify(sessionPayload, null, 2));
-    console.log('DEBUG accountId:', data.accountId, 'visitorId:', data.visitorId);
-
-    let session;
-    try {
-        session = await prisma.analyticsSession.upsert({
-            where: {
-                accountId_visitorId: {
-                    accountId: data.accountId,
-                    visitorId: data.visitorId
-                }
-            },
-            create: {
+    // Upsert session
+    const session = await prisma.analyticsSession.upsert({
+        where: {
+            accountId_visitorId: {
                 accountId: data.accountId,
-                visitorId: data.visitorId,
-                firstTouchSource: currentSource,
-                firstTouchAt: new Date(),
-                ...sessionPayload
-            },
-            update: sessionPayload
-        });
-    } catch (upsertError: any) {
-        console.error('Prisma upsert error:', upsertError.message || upsertError);
-        console.error('Session payload was:', JSON.stringify(sessionPayload, null, 2));
-        throw upsertError;
-    }
+                visitorId: data.visitorId
+            }
+        },
+        create: {
+            accountId: data.accountId,
+            visitorId: data.visitorId,
+            firstTouchSource: currentSource,
+            firstTouchAt: new Date(),
+            ...sessionPayload
+        },
+        update: sessionPayload
+    });
 
     // 3. Log Event
     // Build payload, merging is404 flag for pageview events
