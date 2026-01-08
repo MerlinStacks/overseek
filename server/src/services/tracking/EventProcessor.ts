@@ -125,7 +125,7 @@ export async function processEvent(data: TrackingEventPayload) {
     // For simplicity, we'll strip falsy values to avoid overwriting with null if the client didn't send them this time
     if (data.referrer) {
         sessionPayload.referrer = data.referrer;
-        sessionPayload.trafficSource = parseTrafficSource(data.referrer);
+        // Note: trafficSource is tracked via firstTouchSource/lastTouchSource fields
     }
     if (data.utmSource) sessionPayload.utmSource = data.utmSource;
     if (data.utmMedium) sessionPayload.utmMedium = data.utmMedium;
