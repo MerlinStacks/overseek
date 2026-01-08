@@ -184,4 +184,27 @@ router.patch('/push/preferences', async (req: AuthenticatedRequest, res: Respons
     }
 });
 
+/**
+ * POST /push/test - Send a test notification to verify setup.
+ */
+router.post('/push/test', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const accountId = req.headers['x-account-id'] as string;
+        const userId = req.user?.id;
+        if (!accountId || !userId) {
+            return res.status(400).json({ error: 'Account ID and user required' });
+        }
+
+        const result = await PushNotificationService.sendTestNotification(userId, accountId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Failed to send test notification' });
+        }
+
+        res.json({ success: true, sent: result.sent, failed: result.failed });
+    } catch (error) {
+        Logger.error('[notifications] Test notification failed', { error });
+        res.status(500).json({ error: 'Failed to send test notification' });
+    }
+});
+
 export default router;

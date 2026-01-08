@@ -239,4 +239,71 @@ export class PushNotificationService {
 
         return { sent, failed };
     }
+
+    /**
+     * Sends a test notification to a specific user's subscribed devices.
+     * Used to verify push notification setup is working correctly.
+     */
+    static async sendTestNotification(
+        userId: string,
+        accountId: string
+    ): Promise<{ success: boolean; sent: number; failed: number; error?: string }> {
+        const keys = await this.getVapidKeys();
+        if (!keys) {
+            return { success: false, sent: 0, failed: 0, error: 'VAPID keys not configured' };
+        }
+
+        webpush.setVapidDetails(
+            'mailto:notifications@overseek.io',
+            keys.publicKey,
+            keys.privateKey
+        );
+
+        const subscriptions = await prisma.pushSubscription.findMany({
+            where: { userId, accountId }
+        });
+
+        if (subscriptions.length === 0) {
+            return { success: false, sent: 0, failed: 0, error: 'No subscriptions found' };
+        }
+
+        const notification = {
+            title: '🔔 Test Notification',
+            body: 'Push notifications are working correctly!',
+            data: { type: 'test', timestamp: Date.now() }
+        };
+
+        let sent = 0;
+        let failed = 0;
+
+        for (const sub of subscriptions) {
+            try {
+                const pushSubscription: WebPushSubscription = {
+                    endpoint: sub.endpoint,
+                    keys: {
+                        p256dh: sub.p256dh,
+                        auth: sub.auth
+                    }
+                };
+
+                await webpush.sendNotification(
+                    pushSubscription,
+                    JSON.stringify(notification)
+                );
+                sent++;
+            } catch (error: unknown) {
+                failed++;
+                const statusCode = (error as { statusCode?: number })?.statusCode;
+                if (statusCode === 410 || statusCode === 404) {
+                    await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => { });
+                    Logger.info('[PushNotificationService] Removed stale subscription during test', { subId: sub.id });
+                } else {
+                    Logger.error('[PushNotificationService] Test notification failed', { error, subId: sub.id });
+                }
+            }
+        }
+
+        Logger.info('[PushNotificationService] Test notification sent', { userId, sent, failed });
+        return { success: sent > 0, sent, failed };
+    }
 }

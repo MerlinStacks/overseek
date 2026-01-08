@@ -1,4 +1,5 @@
-import { Bell, BellOff, MessageSquare, ShoppingCart, Loader2, Smartphone } from 'lucide-react';
+import { useState } from 'react';
+import { Bell, BellOff, MessageSquare, ShoppingCart, Loader2, Smartphone, Send, CheckCircle, XCircle } from 'lucide-react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 /**
@@ -19,11 +20,46 @@ export function NotificationSettings() {
         updatePreferences
     } = usePushNotifications();
 
+    const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+    const [testError, setTestError] = useState<string | null>(null);
+
     const handleToggle = async () => {
         if (isSubscribed) {
             await unsubscribe();
         } else {
             await subscribe();
+        }
+    };
+
+    /**
+     * Sends a test push notification to verify the setup is working.
+     */
+    const handleTestNotification = async () => {
+        setTestStatus('sending');
+        setTestError(null);
+
+        try {
+            const res = await fetch('/api/notifications/push/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to send test notification');
+            }
+
+            setTestStatus('success');
+            // Reset after 3 seconds
+            setTimeout(() => setTestStatus('idle'), 3000);
+        } catch (error) {
+            setTestError(error instanceof Error ? error.message : 'Failed to send test');
+            setTestStatus('error');
+            // Reset after 5 seconds
+            setTimeout(() => {
+                setTestStatus('idle');
+                setTestError(null);
+            }, 5000);
         }
     };
 
@@ -88,8 +124,8 @@ export function NotificationSettings() {
                         onClick={handleToggle}
                         disabled={isLoading}
                         className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${isSubscribed
-                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
                             } disabled:opacity-50`}
                     >
                         {isLoading ? (
@@ -165,6 +201,55 @@ export function NotificationSettings() {
                                 className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
                             />
                         </label>
+                    </div>
+                )}
+
+                {/* Test Notification */}
+                {isSubscribed && (
+                    <div className="border-t border-gray-200 pt-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${testStatus === 'success' ? 'bg-green-100' :
+                                        testStatus === 'error' ? 'bg-red-100' :
+                                            'bg-purple-100'
+                                    }`}>
+                                    {testStatus === 'success' ? (
+                                        <CheckCircle className="w-5 h-5 text-green-600" />
+                                    ) : testStatus === 'error' ? (
+                                        <XCircle className="w-5 h-5 text-red-600" />
+                                    ) : (
+                                        <Send className="w-5 h-5 text-purple-600" />
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="font-medium text-gray-900">Test Notification</p>
+                                    <p className="text-sm text-gray-500">
+                                        {testStatus === 'success'
+                                            ? 'Notification sent successfully!'
+                                            : testStatus === 'error'
+                                                ? testError || 'Failed to send notification'
+                                                : 'Send a test to verify notifications work'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleTestNotification}
+                                disabled={testStatus === 'sending'}
+                                className="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+                            >
+                                {testStatus === 'sending' ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Sending...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send className="w-4 h-4" />
+                                        Send Test
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 )}
 

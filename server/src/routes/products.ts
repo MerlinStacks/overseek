@@ -9,6 +9,7 @@ import { SeoScoringService } from '../services/SeoScoringService';
 import { MerchantCenterService } from '../services/MerchantCenterService';
 import { IndexingService } from '../services/search/IndexingService';
 import { esClient } from '../utils/elastic';
+import { marked } from 'marked';
 
 const router = Router();
 
@@ -347,17 +348,9 @@ router.post('/:id/rewrite-description', requireAuth, async (req: AuthenticatedRe
             return res.status(500).json({ error: 'AI returned empty response' });
         }
 
-        // Convert newlines to HTML for ReactQuill compatibility
-        // Split by double newline (paragraph breaks) and wrap each in <p> tags
-        // Single newlines within paragraphs become <br> tags
-        const formattedDescription = generatedDescription
-            .trim()
-            .split(/\n\n+/)  // Split on double+ newlines (paragraph breaks)
-            .map((paragraph: string) => {
-                const withBreaks = paragraph.trim().replace(/\n/g, '<br>');
-                return `<p>${withBreaks}</p>`;
-            })
-            .join('');
+        // Convert markdown to HTML for ReactQuill compatibility
+        // The AI returns markdown (## headers, **bold**, * bullets) which needs HTML conversion
+        const formattedDescription = marked.parse(generatedDescription.trim()) as string;
 
         res.json({ description: formattedDescription });
 
