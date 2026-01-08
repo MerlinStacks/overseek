@@ -37,7 +37,6 @@ export class ProductSync extends BaseSync {
                         stockStatus: p.stock_status,
                         rawData: p as any,
                         mainImage: p.images?.[0]?.src,
-                        // @ts-ignore - TS2353: Persistent Docker build error masking this field
                         weight: p.weight ? parseFloat(p.weight) : null,
                         length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
                         width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
@@ -53,7 +52,6 @@ export class ProductSync extends BaseSync {
                         stockStatus: p.stock_status,
                         permalink: p.permalink,
                         mainImage: p.images?.[0]?.src,
-                        // @ts-ignore - TS2353: Persistent Docker build error masking this field
                         weight: p.weight ? parseFloat(p.weight) : null,
                         length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
                         width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,

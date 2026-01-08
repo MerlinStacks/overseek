@@ -41,7 +41,6 @@ export class ProductsService {
                 length: data.length ? parseFloat(data.length) : undefined,
                 width: data.width ? parseFloat(data.width) : undefined,
                 height: data.height ? parseFloat(data.height) : undefined,
-                // @ts-ignore - TS2353: Persistent Docker build error masking this field
                 isGoldPriceApplied: data.isGoldPriceApplied,
                 cogs: data.cogs ? parseFloat(data.cogs) : undefined, // NEW
                 supplierId: data.supplierId || null,                 // NEW

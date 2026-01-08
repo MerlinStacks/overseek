@@ -93,7 +93,6 @@ export class GoldPriceService {
             await prisma.account.update({
                 where: { id: accountId },
                 data: {
-                    // @ts-ignore - TS2353: Persistent Docker build error masking this field
                     goldPrice: price,
                     goldPriceCurrency: accountCurrency || 'USD' // Ideally usually matches account.currency
                 }
