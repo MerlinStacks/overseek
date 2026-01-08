@@ -456,6 +456,11 @@ class OverSeek_Server_Tracking
 
 		// Review Tracking
 		add_action('comment_post', array($this, 'track_review'), 10, 3);
+		
+		// WooCommerce Store API (Blocks) cart update support
+		// The shutdown hook may not fire reliably for REST API requests,
+		// so we hook into cart response to ensure events are sent
+		add_filter('woocommerce_store_api_cart_response', array($this, 'flush_on_store_api_response'), 999, 2);
 	}
 	
 	/**
@@ -1077,6 +1082,30 @@ class OverSeek_Server_Tracking
 
 		// Clear queue after sending
 		$this->event_queue = array();
+	}
+
+	/**
+	 * Flush events when WooCommerce Store API responds.
+	 * This ensures events are sent during REST API requests (WooCommerce Blocks)
+	 * where the shutdown hook may not fire reliably.
+	 *
+	 * @param array $response The Store API cart response
+	 * @param WC_Cart $cart The cart instance
+	 * @return array The unmodified response
+	 */
+	public function flush_on_store_api_response($response, $cart)
+	{
+		// Only flush if there are queued events
+		if (!empty($this->event_queue)) {
+			// Debug logging
+			if (defined('WP_DEBUG') && WP_DEBUG && defined('OVERSEEK_DEBUG') && OVERSEEK_DEBUG) {
+				error_log('OverSeek: Store API response intercepted, flushing ' . count($this->event_queue) . ' events');
+			}
+			
+			$this->flush_event_queue();
+		}
+		
+		return $response;
 	}
 
 	public function track_pageview()

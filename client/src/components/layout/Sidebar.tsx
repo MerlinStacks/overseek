@@ -33,7 +33,6 @@ import { AccountSwitcher } from './AccountSwitcher';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { SyncProgressOverlay } from './SyncProgressOverlay';
 import { SidebarSyncStatus } from './SidebarSyncStatus';
 
 interface SidebarProps {
@@ -82,23 +81,8 @@ const navItems = [
             { icon: Zap, label: 'Flows', path: '/flows' },
         ]
     },
-    {
-        type: 'group',
-        label: 'Tools',
-        icon: PenTool,
-        children: [
-            { icon: FileText, label: 'Invoice Designer', path: '/invoices/design' },
-        ]
-    },
-    {
-        type: 'group',
-        label: 'Operations',
-        icon: BookOpen,
-        children: [
-            { icon: FileText, label: 'Policies & SOP', path: '/policies' },
-        ]
-    },
-    { type: 'link', icon: Shield, label: 'Team', path: '/team' },
+    { type: 'link', icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
+    { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
 ];
 
 export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
@@ -350,9 +334,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 )}
             </div>
 
-            <SyncProgressOverlay collapsed={collapsed && !isMobile} />
-
-            <div className="mt-auto px-3 pb-2 z-10">
+            <div className="mt-auto px-3 pb-3 space-y-2">
                 {/* Settings Link (Pinned Bottom) */}
                 <NavLink
                     to="/settings"
@@ -373,19 +355,17 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 </NavLink>
 
                 <SidebarSyncStatus collapsed={collapsed && !isMobile} />
-            </div>
 
-            {/* Collapse button (desktop only) */}
-            {!isMobile && (
-                <div className="p-4 border-t border-gray-100">
+                {/* Collapse button (desktop only) */}
+                {!isMobile && (
                     <button
                         onClick={() => setCollapsed(!collapsed)}
-                        className="w-full flex items-center justify-center p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
+                        className="w-full flex items-center justify-center gap-2 p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-lg transition-colors text-sm"
                     >
-                        {collapsed ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 text-sm"><ChevronLeft size={16} /> <span>Collapse</span></div>}
+                        {collapsed ? <ChevronRight size={18} /> : <><ChevronLeft size={18} /><span>Collapse</span></>}
                     </button>
-                </div>
-            )}
+                )}
+            </div>
         </>
     );
 

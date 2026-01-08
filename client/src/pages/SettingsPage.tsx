@@ -13,9 +13,10 @@ import { InventoryAlertsSettings } from '../components/settings/InventoryAlertsS
 import { OrderTagSettings } from '../components/settings/OrderTagSettings';
 import { NotificationSettings } from '../components/settings/NotificationSettings';
 import { SocialChannelsSettings } from '../components/settings/SocialChannelsSettings';
-import { LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw, Mail, Package, Tags, Coins, Bell, Share2 } from 'lucide-react';
+import { TeamSettings } from '../components/settings/TeamSettings';
+import { LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw, Mail, Package, Tags, Coins, Bell, Share2, Users } from 'lucide-react';
 
-type TabId = 'general' | 'appearance' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications';
+type TabId = 'general' | 'appearance' | 'team' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications';
 
 export function SettingsPage() {
     const { currentAccount } = useAccount();
@@ -26,7 +27,7 @@ export function SettingsPage() {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab') as TabId | null;
-        if (tab && ['general', 'appearance', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications'].includes(tab)) {
+        if (tab && ['general', 'appearance', 'team', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications'].includes(tab)) {
             setActiveTab(tab);
         }
     }, []);
@@ -36,6 +37,7 @@ export function SettingsPage() {
     const tabs: { id: TabId; label: string; icon: React.ElementType; hidden?: boolean }[] = [
         { id: 'general', label: 'General', icon: LayoutGrid },
         { id: 'appearance', label: 'Appearance', icon: Palette },
+        { id: 'team', label: 'Team', icon: Users },
         { id: 'orderTags', label: 'Order Tags', icon: Tags },
         { id: 'goldPrice', label: 'Gold Price', icon: Coins, hidden: !isGoldPriceEnabled },
         { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -161,6 +163,8 @@ export function SettingsPage() {
                 )}
 
                 {activeTab === 'notifications' && <NotificationSettings />}
+
+                {activeTab === 'team' && <TeamSettings />}
             </div>
         </div>
     );

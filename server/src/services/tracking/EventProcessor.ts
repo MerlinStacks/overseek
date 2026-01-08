@@ -328,8 +328,12 @@ export async function processEvent(data: TrackingEventPayload) {
     sessionPayload.lastTouchSource = currentSource;
     sessionPayload.lastTouchAt = new Date();
 
-    // Increment visit count
-    sessionPayload.totalVisits = (existingSession?.totalVisits || 0) + (data.type === 'pageview' ? 1 : 0);
+    // Increment visit count for page-based events
+    // Includes standard pageview plus specialized page events (product_view, cart_view, checkout_view)
+    // which are sent instead of pageview for richer analytics data
+    const pageViewTypes = ['pageview', 'product_view', 'cart_view', 'checkout_view'];
+    const isPageView = pageViewTypes.includes(data.type);
+    sessionPayload.totalVisits = (existingSession?.totalVisits || 0) + (isPageView ? 1 : 0);
 
     // Upsert
     const session = await prisma.analyticsSession.upsert({
