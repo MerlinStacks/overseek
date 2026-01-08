@@ -160,11 +160,19 @@ interface TriggerConfigProps {
 
 const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }) => {
     const triggerTypes = [
-        { value: 'ORDER_CREATED', label: 'Order Created' },
-        { value: 'ORDER_COMPLETED', label: 'Order Completed' },
-        { value: 'ABANDONED_CART', label: 'Abandoned Cart' },
-        { value: 'REVIEW_LEFT', label: 'Review Left' },
-        { value: 'MANUAL', label: 'Manual Entry' },
+        { value: 'ORDER_CREATED', label: 'Order Created', group: 'WooCommerce' },
+        { value: 'ORDER_COMPLETED', label: 'Order Completed', group: 'WooCommerce' },
+        { value: 'ABANDONED_CART', label: 'Cart Abandoned', group: 'WooCommerce' },
+        { value: 'CART_VIEWED', label: 'Cart Viewed', group: 'WooCommerce' },
+        { value: 'REVIEW_LEFT', label: 'Review Left', group: 'WooCommerce' },
+        { value: 'CUSTOMER_SIGNUP', label: 'Customer Signup', group: 'Customer' },
+        { value: 'TAG_ADDED', label: 'Tag Added', group: 'Customer' },
+        { value: 'TAG_REMOVED', label: 'Tag Removed', group: 'Customer' },
+        { value: 'MANUAL', label: 'Manual Entry', group: 'Customer' },
+        { value: 'SUBSCRIPTION_CREATED', label: 'Subscription Created', group: 'Subscriptions' },
+        { value: 'SUBSCRIPTION_CANCELLED', label: 'Subscription Cancelled', group: 'Subscriptions' },
+        { value: 'EMAIL_OPENED', label: 'Email Opened', group: 'Email Engagement' },
+        { value: 'LINK_CLICKED', label: 'Link Clicked', group: 'Email Engagement' },
     ];
 
     return (
@@ -236,6 +244,7 @@ const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
         { value: 'SEND_EMAIL', label: 'Send Email' },
         { value: 'SEND_SMS', label: 'Send SMS' },
         { value: 'ADD_TAG', label: 'Add Tag' },
+        { value: 'REMOVE_TAG', label: 'Remove Tag' },
         { value: 'WEBHOOK', label: 'Webhook' },
     ];
 
@@ -307,6 +316,21 @@ const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
                         placeholder="VIP Customer"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
+                    <p className="text-xs text-gray-500 mt-1">This tag will be added to the contact</p>
+                </div>
+            )}
+
+            {config.actionType === 'REMOVE_TAG' && (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tag Name</label>
+                    <input
+                        type="text"
+                        value={config.tagName || ''}
+                        onChange={(e) => onUpdate('tagName', e.target.value)}
+                        placeholder="Abandoned Cart"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">This tag will be removed from the contact</p>
                 </div>
             )}
 
@@ -333,31 +357,179 @@ interface DelayConfigProps {
 }
 
 const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
+    const delayMode = config.delayMode || 'SPECIFIC_PERIOD';
+    const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    const toggleDay = (day: string) => {
+        const current = config.delayUntilDays || [];
+        if (current.includes(day)) {
+            onUpdate('delayUntilDays', current.filter((d: string) => d !== day));
+        } else {
+            onUpdate('delayUntilDays', [...current, day]);
+        }
+    };
+
     return (
-        <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Wait Duration</label>
-            <div className="flex items-center gap-2">
-                <input
-                    type="number"
-                    min="1"
-                    value={config.duration || 1}
-                    onChange={(e) => onUpdate('duration', parseInt(e.target.value) || 1)}
-                    className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-                <select
-                    value={config.unit || 'hours'}
-                    onChange={(e) => onUpdate('unit', e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                    <option value="days">Days</option>
-                    <option value="weeks">Weeks</option>
-                </select>
+        <div className="space-y-4">
+            {/* Delay Mode Selector */}
+            <div className="space-y-2">
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input
+                        type="radio"
+                        name="delayMode"
+                        value="SPECIFIC_PERIOD"
+                        checked={delayMode === 'SPECIFIC_PERIOD'}
+                        onChange={() => onUpdate('delayMode', 'SPECIFIC_PERIOD')}
+                        className="w-4 h-4 text-blue-600"
+                    />
+                    <div>
+                        <div className="font-medium text-gray-900">Delay for a specific period</div>
+                        <div className="text-xs text-gray-500">Wait for a specified number of hours, days, or weeks before continuing</div>
+                    </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input
+                        type="radio"
+                        name="delayMode"
+                        value="SPECIFIC_DATE"
+                        checked={delayMode === 'SPECIFIC_DATE'}
+                        onChange={() => onUpdate('delayMode', 'SPECIFIC_DATE')}
+                        className="w-4 h-4 text-blue-600"
+                    />
+                    <div>
+                        <div className="font-medium text-gray-900">Delay until a specific date and time</div>
+                        <div className="text-xs text-gray-500">Set a specific date and time</div>
+                    </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input
+                        type="radio"
+                        name="delayMode"
+                        value="CUSTOM_FIELD"
+                        checked={delayMode === 'CUSTOM_FIELD'}
+                        onChange={() => onUpdate('delayMode', 'CUSTOM_FIELD')}
+                        className="w-4 h-4 text-blue-600"
+                    />
+                    <div>
+                        <div className="font-medium text-gray-900">Delay until a custom field date</div>
+                        <div className="text-xs text-gray-500">Choose from contacts custom field</div>
+                    </div>
+                </label>
             </div>
-            <p className="text-xs text-gray-500 mt-2">
-                Contacts will wait {config.duration || 1} {config.unit || 'hours'} before proceeding
-            </p>
+
+            {/* Specific Period Options */}
+            {delayMode === 'SPECIFIC_PERIOD' && (
+                <div className="space-y-3 p-3 bg-gray-50 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min="1"
+                            value={config.duration || 1}
+                            onChange={(e) => onUpdate('duration', parseInt(e.target.value) || 1)}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                        <select
+                            value={config.unit || 'hours'}
+                            onChange={(e) => onUpdate('unit', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                            <option value="weeks">Weeks</option>
+                        </select>
+                    </div>
+
+                    {/* Time of day constraint */}
+                    <label className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            checked={config.delayUntilTimeEnabled || false}
+                            onChange={(e) => onUpdate('delayUntilTimeEnabled', e.target.checked)}
+                            className="rounded"
+                        />
+                        <span className="text-sm text-gray-600">Delay until a specific time of day</span>
+                    </label>
+                    {config.delayUntilTimeEnabled && (
+                        <input
+                            type="time"
+                            value={config.delayUntilTime || '09:00'}
+                            onChange={(e) => onUpdate('delayUntilTime', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        />
+                    )}
+
+                    {/* Day of week constraint */}
+                    <label className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            checked={config.delayUntilDaysEnabled || false}
+                            onChange={(e) => onUpdate('delayUntilDaysEnabled', e.target.checked)}
+                            className="rounded"
+                        />
+                        <span className="text-sm text-gray-600">Delay until a specific day(s) of the week</span>
+                    </label>
+                    {config.delayUntilDaysEnabled && (
+                        <div className="flex flex-wrap gap-1">
+                            {daysOfWeek.map(day => (
+                                <button
+                                    key={day}
+                                    type="button"
+                                    onClick={() => toggleDay(day)}
+                                    className={`px-2 py-1 text-xs rounded ${(config.delayUntilDays || []).includes(day)
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                        }`}
+                                >
+                                    {day}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Summary pill */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+                        <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[10px] font-bold">i</span>
+                        </div>
+                        <span className="text-xs text-blue-700">
+                            Delay of {config.duration || 1} {config.unit || 'hours'}.
+                            {config.delayUntilTimeEnabled && ` Until ${config.delayUntilTime || '09:00'}.`}
+                            {config.delayUntilDaysEnabled && (config.delayUntilDays?.length > 0) && ` On ${config.delayUntilDays.join(', ')}.`}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {/* Specific Date Options */}
+            {delayMode === 'SPECIFIC_DATE' && (
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                    <input
+                        type="datetime-local"
+                        value={config.specificDate || ''}
+                        onChange={(e) => onUpdate('specificDate', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                </div>
+            )}
+
+            {/* Custom Field Options */}
+            {delayMode === 'CUSTOM_FIELD' && (
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                    <select
+                        value={config.customFieldKey || ''}
+                        onChange={(e) => onUpdate('customFieldKey', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">Select a date field...</option>
+                        <option value="birthday">Birthday</option>
+                        <option value="subscription_renewal">Subscription Renewal</option>
+                        <option value="last_order_date">Last Order Date</option>
+                    </select>
+                </div>
+            )}
         </div>
     );
 };

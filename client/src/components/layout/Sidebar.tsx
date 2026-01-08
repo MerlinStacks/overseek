@@ -102,19 +102,18 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     useEffect(() => {
         if (!currentAccount || !token) return;
 
-        // Check for open conversations (unread indicator)
+        // Check for unread conversations count
         const checkUnread = async () => {
             try {
-                const res = await fetch('/api/chat/conversations', {
+                const res = await fetch('/api/chat/unread-count', {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': currentAccount.id
                     }
                 });
                 if (res.ok) {
-                    const conversations = await res.json();
-                    // Has unread if there are any OPEN conversations
-                    setHasUnread(conversations.length > 0);
+                    const data = await res.json();
+                    setHasUnread(data.count > 0);
                 }
             } catch {
                 // Silently fail
@@ -132,12 +131,19 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 }
             };
 
+            const handleConversationRead = () => {
+                // Re-check unread count when a conversation is marked as read
+                checkUnread();
+            };
+
             socket.on('conversation:updated', handleNewMessage);
             socket.on('message:new', handleNewMessage);
+            socket.on('conversation:read', handleConversationRead);
 
             return () => {
                 socket.off('conversation:updated', handleNewMessage);
                 socket.off('message:new', handleNewMessage);
+                socket.off('conversation:read', handleConversationRead);
             };
         }
     }, [currentAccount, token, socket, location.pathname]);

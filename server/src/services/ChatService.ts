@@ -115,10 +115,15 @@ export class ChatService {
             });
             Logger.info('[ChatService] Blocked contact, auto-resolved', { contactEmail, conversationId });
         } else {
-            // Normal flow: update status to OPEN
+            // Normal flow: update status to OPEN and mark as unread for customer messages
             await prisma.conversation.update({
                 where: { id: conversationId },
-                data: { updatedAt: new Date(), status: 'OPEN' }
+                data: {
+                    updatedAt: new Date(),
+                    status: 'OPEN',
+                    // Mark as unread when customer sends a message
+                    ...(senderType === 'CUSTOMER' ? { isRead: false } : {})
+                }
             });
         }
 
@@ -157,6 +162,33 @@ export class ChatService {
 
     async updateStatus(id: string, status: string) {
         return prisma.conversation.update({ where: { id }, data: { status } });
+    }
+
+    /**
+     * Mark a conversation as read by staff
+     */
+    async markAsRead(id: string) {
+        const conv = await prisma.conversation.update({
+            where: { id },
+            data: { isRead: true }
+        });
+        // Emit socket event so other clients know it's been read
+        this.io.to(`account:${conv.accountId}`).emit('conversation:read', { id });
+        return conv;
+    }
+
+    /**
+     * Get count of unread conversations for an account
+     */
+    async getUnreadCount(accountId: string): Promise<number> {
+        return prisma.conversation.count({
+            where: {
+                accountId,
+                isRead: false,
+                status: 'OPEN',
+                mergedIntoId: null
+            }
+        });
     }
 
     async mergeConversations(targetId: string, sourceId: string) {

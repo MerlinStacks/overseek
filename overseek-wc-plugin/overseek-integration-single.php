@@ -402,6 +402,13 @@ class OverSeek_Server_Tracking
 	 * @var array
 	 */
 	private $event_queue = array();
+	
+	/**
+	 * Guard flags to prevent duplicate event tracking per request.
+	 * Some WooCommerce hooks can fire multiple times per page load.
+	 */
+	private $cart_view_tracked = false;
+	private $checkout_view_tracked = false;
 
 	/**
 	 * Initialize hooks.
@@ -1381,6 +1388,12 @@ class OverSeek_Server_Tracking
 	 */
 	public function track_cart_view()
 	{
+		// Guard: Prevent duplicate tracking if hook fires multiple times
+		if ($this->cart_view_tracked) {
+			return;
+		}
+		$this->cart_view_tracked = true;
+		
 		$payload = array();
 
 		if (WC()->cart) {
@@ -1410,6 +1423,12 @@ class OverSeek_Server_Tracking
 	 */
 	public function track_checkout_view()
 	{
+		// Guard: Prevent duplicate tracking if hook fires multiple times
+		if ($this->checkout_view_tracked) {
+			return;
+		}
+		$this->checkout_view_tracked = true;
+		
 		$payload = array();
 
 		if (WC()->cart) {

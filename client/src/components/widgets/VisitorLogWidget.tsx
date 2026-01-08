@@ -10,12 +10,21 @@ import { useAccount } from '../../context/AccountContext';
 import VisitorProfileModal from '../analytics/VisitorProfileModal';
 import { DeviceBrowserBadge } from '../analytics/DeviceBrowserIcons';
 
+interface PayloadItem {
+    id?: number;
+    sku?: string;
+    name?: string;
+    quantity?: number;
+    price?: number;
+}
+
 interface EventPayload {
     total?: number;
     currency?: string;
     itemCount?: number;
     name?: string;
     is404?: boolean;
+    items?: PayloadItem[];
     [key: string]: unknown;
 }
 
@@ -294,8 +303,18 @@ const VisitorLogWidget: React.FC = () => {
 
                                                 if (event.type === 'purchase' && payload?.total) {
                                                     const currency = payload.currency || 'USD';
-                                                    const itemCount = payload.itemCount || 0;
-                                                    tooltip = `💰 Purchase: ${currency} ${payload.total.toFixed(2)} (${itemCount} items)`;
+                                                    tooltip = `Ecommerce order\n- Revenue: ${currency}${payload.total.toFixed(2)}`;
+                                                    // Show item details if available
+                                                    if (payload.items && Array.isArray(payload.items) && payload.items.length > 0) {
+                                                        const itemLines = payload.items.map((item: PayloadItem) => {
+                                                            const sku = item.sku ? `${item.sku}: ` : '';
+                                                            const name = item.name || 'Item';
+                                                            const qty = item.quantity || 1;
+                                                            const price = item.price !== undefined ? `, Price: ${currency}${item.price.toFixed(2)}` : '';
+                                                            return `# ${sku}${name}, Quantity: ${qty}${price}`;
+                                                        });
+                                                        tooltip += '\n' + itemLines.join('\n');
+                                                    }
                                                 } else if (event.type === 'add_to_cart' && payload) {
                                                     const productName = payload.name || 'Product';
                                                     const cartTotal = payload.total;

@@ -128,13 +128,14 @@ export class InventoryService {
 
     /**
      * Check inventory health based on sales velocity (30 days).
+     * Returns at-risk products even if InventorySettings haven't been configured.
      */
     static async checkInventoryHealth(accountId: string) {
-        // 1. Get Inventory Settings
+        // 1. Get Inventory Settings (use defaults if not configured)
         const settings = await prisma.inventorySettings.findUnique({ where: { accountId } });
-        if (!settings || !settings.isEnabled) return [];
 
-        const thresholdDays = settings.lowStockThresholdDays;
+        // Use default threshold of 14 days if settings don't exist
+        const thresholdDays = settings?.lowStockThresholdDays ?? 14;
 
         // 2. Get Sales Data (Last 30 Days) from DB
         const thirtyDaysAgo = new Date();

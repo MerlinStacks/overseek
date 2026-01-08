@@ -214,7 +214,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                 <div className="font-bold text-sm border-b pb-2 mb-3 text-gray-800">Toolbox</div>
                 <p className="text-xs text-gray-500 mb-4">Drag nodes to the canvas to build your flow</p>
 
-                <ToolboxSection title="Triggers" defaultOpen={true}>
+                <ToolboxSection title="WooCommerce Triggers" defaultOpen={true}>
                     <ToolboxItem
                         label="Order Created"
                         nodeType="trigger"
@@ -230,11 +230,18 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                         icon="✅"
                     />
                     <ToolboxItem
-                        label="Abandoned Cart"
+                        label="Cart Abandoned"
                         nodeType="trigger"
                         config={{ triggerType: 'ABANDONED_CART' }}
                         colorClass="border-blue-300 hover:border-blue-400"
                         icon="🛒"
+                    />
+                    <ToolboxItem
+                        label="Cart Viewed"
+                        nodeType="trigger"
+                        config={{ triggerType: 'CART_VIEWED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="👁️"
                     />
                     <ToolboxItem
                         label="Review Left"
@@ -243,12 +250,70 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                         colorClass="border-blue-300 hover:border-blue-400"
                         icon="⭐"
                     />
+                </ToolboxSection>
+
+                <ToolboxSection title="Customer Triggers" defaultOpen={false}>
+                    <ToolboxItem
+                        label="Customer Signup"
+                        nodeType="trigger"
+                        config={{ triggerType: 'CUSTOMER_SIGNUP' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="👤"
+                    />
+                    <ToolboxItem
+                        label="Tag Added"
+                        nodeType="trigger"
+                        config={{ triggerType: 'TAG_ADDED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="🏷️"
+                    />
+                    <ToolboxItem
+                        label="Tag Removed"
+                        nodeType="trigger"
+                        config={{ triggerType: 'TAG_REMOVED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="🏷️"
+                    />
                     <ToolboxItem
                         label="Manual Entry"
                         nodeType="trigger"
                         config={{ triggerType: 'MANUAL' }}
                         colorClass="border-blue-300 hover:border-blue-400"
-                        icon="👤"
+                        icon="✋"
+                    />
+                </ToolboxSection>
+
+                <ToolboxSection title="Subscription Triggers" defaultOpen={false}>
+                    <ToolboxItem
+                        label="Subscription Created"
+                        nodeType="trigger"
+                        config={{ triggerType: 'SUBSCRIPTION_CREATED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="💳"
+                    />
+                    <ToolboxItem
+                        label="Subscription Cancelled"
+                        nodeType="trigger"
+                        config={{ triggerType: 'SUBSCRIPTION_CANCELLED' }}
+                        colorClass="border-blue-300 hover:border-blue-400"
+                        icon="❌"
+                    />
+                </ToolboxSection>
+
+                <ToolboxSection title="Email Engagement" defaultOpen={false}>
+                    <ToolboxItem
+                        label="Email Opened"
+                        nodeType="trigger"
+                        config={{ triggerType: 'EMAIL_OPENED' }}
+                        colorClass="border-purple-300 hover:border-purple-400"
+                        icon="📧"
+                    />
+                    <ToolboxItem
+                        label="Link Clicked"
+                        nodeType="trigger"
+                        config={{ triggerType: 'LINK_CLICKED' }}
+                        colorClass="border-purple-300 hover:border-purple-400"
+                        icon="🔗"
                     />
                 </ToolboxSection>
 
@@ -275,6 +340,13 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                         icon="🏷️"
                     />
                     <ToolboxItem
+                        label="Remove Tag"
+                        nodeType="action"
+                        config={{ actionType: 'REMOVE_TAG' }}
+                        colorClass="border-green-300 hover:border-green-400"
+                        icon="🏷️"
+                    />
+                    <ToolboxItem
                         label="Webhook"
                         nodeType="action"
                         config={{ actionType: 'WEBHOOK' }}
@@ -284,6 +356,20 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                 </ToolboxSection>
 
                 <ToolboxSection title="Timing" defaultOpen={true}>
+                    <ToolboxItem
+                        label="Wait 15 Minutes"
+                        nodeType="delay"
+                        config={{ duration: 15, unit: 'minutes' }}
+                        colorClass="border-yellow-300 hover:border-yellow-400"
+                        icon="⏱️"
+                    />
+                    <ToolboxItem
+                        label="Wait 30 Minutes"
+                        nodeType="delay"
+                        config={{ duration: 30, unit: 'minutes' }}
+                        colorClass="border-yellow-300 hover:border-yellow-400"
+                        icon="⏱️"
+                    />
                     <ToolboxItem
                         label="Wait 1 Hour"
                         nodeType="delay"
@@ -304,6 +390,20 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                         config={{ duration: 3, unit: 'days' }}
                         colorClass="border-yellow-300 hover:border-yellow-400"
                         icon="📅"
+                    />
+                    <ToolboxItem
+                        label="Wait 1 Week"
+                        nodeType="delay"
+                        config={{ duration: 1, unit: 'weeks' }}
+                        colorClass="border-yellow-300 hover:border-yellow-400"
+                        icon="📆"
+                    />
+                    <ToolboxItem
+                        label="Custom Delay"
+                        nodeType="delay"
+                        config={{ duration: 1, unit: 'hours', isCustom: true }}
+                        colorClass="border-orange-300 hover:border-orange-400"
+                        icon="⚙️"
                     />
                 </ToolboxSection>
 

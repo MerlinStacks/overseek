@@ -23,6 +23,7 @@ interface Conversation {
     messages: { content: string, createdAt: string, senderType: string }[];
     updatedAt: string;
     status: string;
+    isRead?: boolean;
 }
 
 interface ConversationListProps {
@@ -165,6 +166,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                         const isSelected = selectedId === conv.id;
                         const isEmail = conv.guestEmail || conv.wooCustomer?.email;
                         const conversationHasDraft = hasDraft(conv.id);
+                        const isUnread = conv.isRead === false;
 
                         return (
                             <div
@@ -174,7 +176,8 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                                     "flex gap-3 p-3 cursor-pointer border-b border-gray-50 transition-colors",
                                     isSelected
                                         ? "bg-blue-50 border-l-2 border-l-blue-600"
-                                        : "hover:bg-gray-50 border-l-2 border-l-transparent"
+                                        : "hover:bg-gray-50 border-l-2 border-l-transparent",
+                                    isUnread && !isSelected && "bg-blue-50/30"
                                 )}
                             >
                                 {/* Avatar */}
@@ -189,8 +192,14 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="flex items-center gap-1.5 min-w-0">
+                                            {isUnread && (
+                                                <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                                            )}
                                             {isEmail && <Mail size={12} className="text-gray-400 flex-shrink-0" />}
-                                            <span className="font-medium text-gray-900 truncate text-sm">{name}</span>
+                                            <span className={cn(
+                                                "truncate text-sm",
+                                                isUnread ? "font-semibold text-gray-900" : "font-medium text-gray-900"
+                                            )}>{name}</span>
                                         </div>
                                         <span className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
                                             {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false })}

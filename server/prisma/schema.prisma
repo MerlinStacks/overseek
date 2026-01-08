@@ -610,6 +610,7 @@ model Conversation {
   wooCustomerId String?
 
   status   String @default("OPEN") // OPEN, CLOSED, SNOOZED
+  isRead   Boolean @default(false) // Tracks whether staff has read the conversation
   priority String @default("MEDIUM") // LOW, MEDIUM, HIGH
 
   assignedTo String? // User ID of agent

@@ -79,6 +79,13 @@ export function InboxPage() {
             }
         });
 
+        // Listen for read status updates from other clients
+        socket.on('conversation:read', (data: { id: string }) => {
+            setConversations(prev => prev.map(c =>
+                c.id === data.id ? { ...c, isRead: true } : c
+            ));
+        });
+
         socket.on('message:new', (msg: any) => {
             if (selectedId === msg.conversationId) {
                 setMessages(prev => [...prev, msg]);
@@ -104,13 +111,14 @@ export function InboxPage() {
 
         return () => {
             socket.off('conversation:updated');
+            socket.off('conversation:read');
             socket.off('message:new');
         };
     }, [socket, selectedId, currentAccount, token]);
 
     // Fetch Messages when selected
     useEffect(() => {
-        if (!selectedId || !token) return;
+        if (!selectedId || !token || !currentAccount) return;
 
         socket?.emit('join:conversation', selectedId);
 
@@ -123,10 +131,30 @@ export function InboxPage() {
         };
         fetchMessages();
 
+        // Mark conversation as read
+        const markAsRead = async () => {
+            try {
+                await fetch(`/api/chat/${selectedId}/read`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+                // Update local state
+                setConversations(prev => prev.map(c =>
+                    c.id === selectedId ? { ...c, isRead: true } : c
+                ));
+            } catch (error) {
+                console.error('Failed to mark conversation as read', error);
+            }
+        };
+        markAsRead();
+
         return () => {
             socket?.emit('leave:conversation', selectedId);
         };
-    }, [selectedId, token, socket]);
+    }, [selectedId, token, socket, currentAccount]);
 
     const handleSendMessage = async (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean) => {
         if (!selectedId) return;

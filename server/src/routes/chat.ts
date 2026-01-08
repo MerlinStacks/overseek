@@ -83,6 +83,20 @@ export const createChatRouter = (chatService: ChatService) => {
         res.json(conv);
     });
 
+    // GET /api/chat/unread-count - Get count of unread conversations
+    router.get('/unread-count', async (req: any, res) => {
+        try {
+            const accountId = req.headers['x-account-id'];
+            if (!accountId) return res.status(400).json({ error: 'Account ID required' });
+
+            const count = await chatService.getUnreadCount(String(accountId));
+            res.json({ count });
+        } catch (error) {
+            Logger.error('Failed to get unread count', { error });
+            res.status(500).json({ error: 'Failed to get unread count' });
+        }
+    });
+
     // --- Canned Responses ---
 
     router.get('/canned-responses', async (req: any, res) => {
@@ -180,6 +194,17 @@ export const createChatRouter = (chatService: ChatService) => {
         const { sourceId } = req.body;
         await chatService.mergeConversations(req.params.id, sourceId);
         res.json({ success: true });
+    });
+
+    // POST /api/chat/:id/read - Mark conversation as read
+    router.post('/:id/read', async (req, res) => {
+        try {
+            await chatService.markAsRead(req.params.id);
+            res.json({ success: true });
+        } catch (error) {
+            Logger.error('Failed to mark conversation as read', { error });
+            res.status(500).json({ error: 'Failed to mark as read' });
+        }
     });
 
     // POST /api/chat/:id/ai-draft - Generate AI draft reply
