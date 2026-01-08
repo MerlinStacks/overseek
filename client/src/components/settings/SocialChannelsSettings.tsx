@@ -64,10 +64,10 @@ export function SocialChannelsSettings() {
     const fetchAccounts = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/oauth/social-accounts');
-            setAccounts(response.data.socialAccounts || []);
+            const response = await api.get<{ socialAccounts: SocialAccount[] }>('/oauth/social-accounts');
+            setAccounts(response.socialAccounts || []);
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Failed to load connected accounts.');
+            setError(err.message || 'Failed to load connected accounts.');
         } finally {
             setLoading(false);
         }
@@ -83,17 +83,15 @@ export function SocialChannelsSettings() {
             setError(null);
 
             const endpoint = platform === 'meta'
-                ? '/oauth/meta/messaging/authorize'
-                : '/oauth/tiktok/authorize';
+                ? '/oauth/meta/messaging/authorize?redirect=/settings?tab=channels'
+                : '/oauth/tiktok/authorize?redirect=/settings?tab=channels';
 
-            const response = await api.get(endpoint, {
-                params: { redirect: '/settings?tab=channels' }
-            });
+            const response = await api.get<{ authUrl: string }>(endpoint);
 
             // Redirect to OAuth consent screen
-            window.location.href = response.data.authUrl;
+            window.location.href = response.authUrl;
         } catch (err: any) {
-            setError(err.response?.data?.error || `Failed to start ${platform} connection.`);
+            setError(err.message || `Failed to start ${platform} connection.`);
             setConnecting(null);
         }
     };

@@ -357,7 +357,7 @@ export async function processEvent(data: TrackingEventPayload) {
     // Check if we need to create a new visit (30 min inactivity gap)
     const VISIT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
     const now = new Date();
-    
+
     // Get the most recent visit for this session
     let currentVisit = await prisma.analyticsVisit.findFirst({
         where: { sessionId: session.id },
@@ -371,15 +371,14 @@ export async function processEvent(data: TrackingEventPayload) {
         }
     });
 
-    const isPageView = ['pageview', 'product_view', 'cart_view', 'checkout_view'].includes(data.type);
-    const timeSinceLastActivity = currentVisit 
+    const timeSinceLastActivity = currentVisit
         ? now.getTime() - new Date(currentVisit.endedAt).getTime()
         : Infinity;
 
     // Create new visit if: no existing visit OR 30+ min gap
     if (!currentVisit || timeSinceLastActivity > VISIT_TIMEOUT_MS) {
         const visitNumber = currentVisit ? currentVisit.visitNumber + 1 : 1;
-        
+
         currentVisit = await prisma.analyticsVisit.create({
             data: {
                 sessionId: session.id,
