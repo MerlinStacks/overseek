@@ -7,7 +7,7 @@ WORKDIR /app/server
 RUN apk add --no-cache openssl
 
 # Copy server package files
-COPY package.json package-lock.json ./
+COPY package.json ./
 
 # Install dependencies
 RUN npm install
