@@ -19,7 +19,7 @@
         "@types/jsonwebtoken": "^9.0.10",
         "@types/multer": "^2.0.0",
         "@woocommerce/woocommerce-rest-api": "^1.0.2",
-        "bcryptjs": "^3.0.3",
+        "bcryptjs": "^2.4.3",
         "bullmq": "^5.1.0",
         "cors": "^2.8.5",
         "dotenv": "^16.3.1",
@@ -56,6 +56,6 @@
         "@types/ua-parser-js": "^0.7.39",
         "nodemon": "^3.0.2",
         "ts-node": "^10.9.2",
-        "typescript": "5.9"
+        "typescript": "^5.7.2"
     }
 }
