@@ -1,24 +1,19 @@
 # Base stage
 FROM node:18-alpine
 
-WORKDIR /app
+WORKDIR /app/server
 
 # Install system dependencies
 RUN apk add --no-cache openssl
 
-# Copy root package files (needed for workspace dependency resolution)
+# Copy server package files
 COPY package.json package-lock.json ./
 
-# Copy server package files
-COPY server/package.json ./server/
-
-# Install all workspace dependencies
-RUN npm install --workspace=server
+# Install dependencies
+RUN npm install
 
 # Copy server source code
-COPY server/ ./server/
-
-WORKDIR /app/server
+COPY . .
 
 # Generate Prisma Client
 RUN npx prisma generate
@@ -30,6 +25,5 @@ RUN npm run build
 EXPOSE 3000
 
 # Start command
-COPY server/start.sh .
 RUN apk add --no-cache dos2unix && dos2unix start.sh && chmod +x start.sh
 CMD ["./start.sh"]

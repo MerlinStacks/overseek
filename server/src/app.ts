@@ -126,7 +126,11 @@ app.use(helmet({
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Request Logging
+// Request ID for correlation
+import { requestId } from './middleware/requestId';
+app.use(requestId);
+
+// Request Logging (uses request ID)
 import { requestLogger } from './middleware/requestLogger';
 app.use(requestLogger);
 
