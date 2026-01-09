@@ -52,7 +52,7 @@ export function OpenInboxWidget(_props: WidgetProps) {
     return (
         <div
             onClick={handleClick}
-            className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-sm border border-gray-200/50 flex flex-col h-full justify-center items-center relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 flex flex-col h-full justify-center items-center relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
         >
             {/* Notification Indicator */}
             {count > 0 && (

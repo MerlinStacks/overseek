@@ -59,7 +59,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
     }
 
     return (
-        <div className={`bg-white h-full w-full p-6 flex flex-col justify-between rounded-xl shadow-sm border border-gray-200 ${className}`}>
+        <div className={`bg-white h-full w-full p-6 flex flex-col justify-between rounded-xl shadow-xs border border-gray-200 ${className}`}>
             <div className="flex justify-between items-start">
                 <div>
                     <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>

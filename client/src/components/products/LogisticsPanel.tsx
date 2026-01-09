@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Package, Ruler } from 'lucide-react';
 
 interface LogisticsPanelProps {
@@ -10,7 +10,7 @@ interface LogisticsPanelProps {
 
 export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'cm', onChange }: LogisticsPanelProps) {
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
                 <Package size={16} className="text-blue-600" />
                 Inventory &amp; Shipping
@@ -22,7 +22,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                     <select
                         value={formData.stockStatus}
                         onChange={(e) => onChange({ stockStatus: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                     >
                         <option value="instock">In Stock</option>
                         <option value="outofstock">Out of Stock</option>
@@ -37,7 +37,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                         value={formData.binLocation}
                         onChange={(e) => onChange({ binLocation: e.target.value })}
                         placeholder="e.g. A-12-4"
-                        className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                     />
                 </div>
             </div>
@@ -54,7 +54,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                             step="0.01"
                             value={formData.weight}
                             onChange={(e) => onChange({ weight: e.target.value })}
-                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                         />
                     </div>
                     <div>
@@ -64,7 +64,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                             step="0.01"
                             value={formData.length}
                             onChange={(e) => onChange({ length: e.target.value })}
-                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                         />
                     </div>
                     <div>
@@ -74,7 +74,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                             step="0.01"
                             value={formData.width}
                             onChange={(e) => onChange({ width: e.target.value })}
-                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                         />
                     </div>
                     <div>
@@ -84,7 +84,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                             step="0.01"
                             value={formData.height}
                             onChange={(e) => onChange({ height: e.target.value })}
-                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                         />
                     </div>
                 </div>

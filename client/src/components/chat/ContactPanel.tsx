@@ -96,7 +96,7 @@ export function ContactPanel({ conversation }: ContactPanelProps) {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <span className="text-sm font-medium text-gray-700">Contact</span>
-                <button className="p-1 rounded hover:bg-gray-100 text-gray-400">
+                <button className="p-1 rounded-sm hover:bg-gray-100 text-gray-400">
                     <MoreVertical size={16} />
                 </button>
             </div>
@@ -152,7 +152,7 @@ export function ContactPanel({ conversation }: ContactPanelProps) {
                     <div className="space-y-3 text-sm">
                         <div className="flex justify-between">
                             <span className="text-gray-500">Status</span>
-                            <span className={cn("px-2 py-0.5 rounded text-xs font-medium", getStatusColor(conversation.status))}>
+                            <span className={cn("px-2 py-0.5 rounded-sm text-xs font-medium", getStatusColor(conversation.status))}>
                                 {conversation.status}
                             </span>
                         </div>

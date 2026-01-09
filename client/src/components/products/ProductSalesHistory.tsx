@@ -109,7 +109,7 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
     }
 
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100/50">
                 <div className="flex items-center justify-between">
@@ -168,7 +168,7 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
                                     )}
                                 </td>
                                 <td className="px-6 py-4 text-center">
-                                    <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-1 bg-blue-50 text-blue-700 text-sm font-medium rounded">
+                                    <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-1 bg-blue-50 text-blue-700 text-sm font-medium rounded-sm">
                                         {sale.quantity}
                                     </span>
                                 </td>

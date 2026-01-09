@@ -4,7 +4,7 @@
  * Shows recognizable icons for common browsers (Chrome, Firefox, Safari, Edge)
  * and operating systems (Windows, macOS, iOS, Android, Linux).
  */
-import React from 'react';
+import * as React from 'react';
 import { Monitor, Smartphone, Tablet, Globe, Apple } from 'lucide-react';
 
 /** Browser icon mapping - returns inline SVG for brand recognition */

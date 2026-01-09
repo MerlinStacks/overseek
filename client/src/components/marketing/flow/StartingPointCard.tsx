@@ -2,7 +2,7 @@
  * StartingPointCard - Initial canvas placeholder for empty flows.
  * Shows dashed-border cards with "Select an Event" and "Use Recipe" options.
  */
-import React from 'react';
+import * as React from 'react';
 import { MousePointer2, BookOpen } from 'lucide-react';
 
 interface StartingPointCardProps {

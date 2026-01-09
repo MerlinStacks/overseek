@@ -136,7 +136,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                         <div className="flex-1">
                             <label className="block text-sm font-medium mb-1">Flow Name</label>
                             <input
-                                className="w-full p-2 border rounded"
+                                className="w-full p-2 border rounded-sm"
                                 placeholder="e.g., Post-Purchase Follow Up"
                                 value={newFlowName}
                                 onChange={e => setNewFlowName(e.target.value)}
@@ -145,7 +145,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                             />
                         </div>
                         <div className="flex gap-2">
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Create & Edit</button>
+                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-sm">Create & Edit</button>
                             <button type="button" onClick={() => { setShowCreate(false); setNewFlowName(''); }} className="px-4 py-2 text-gray-500">Cancel</button>
                         </div>
                     </form>
@@ -155,7 +155,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             {isLoading ? <Loader2 className="animate-spin" /> : (
                 <div className="grid gap-4">
                     {flows.map(flow => (
-                        <div key={flow.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                        <div key={flow.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <div className={`p-3 rounded-lg ${flow.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                                     <Zap size={24} />

@@ -39,11 +39,11 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/50 backdrop-blur-xs">
             {/* Full Screen Container */}
             <div className="flex flex-col h-full w-full bg-white overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 bg-linear-to-r from-blue-600 to-indigo-600 text-white">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white/20 rounded-lg">
                             <Mail size={20} />

@@ -503,7 +503,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                     onClick={() => handleSelectCanned(r)}
                                     className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
                                 >
-                                    <span className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                    <span className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded-sm text-gray-600">
                                         /{r.shortcut}
                                     </span>
                                     <p className="text-sm text-gray-700 mt-1 line-clamp-1">{r.content}</p>
@@ -561,7 +561,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                         </div>
                         <button
                             onClick={() => setQuotedMessage(null)}
-                            className="p-1 rounded hover:bg-blue-100 text-blue-400"
+                            className="p-1 rounded-sm hover:bg-blue-100 text-blue-400"
                         >
                             <X size={14} />
                         </button>
@@ -608,7 +608,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                 type="button"
                                 onClick={handleGenerateAIDraft}
                                 disabled={isGeneratingDraft}
-                                className="p-2 rounded hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
+                                className="p-2 rounded-sm hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
                                 title="Generate AI Draft Reply"
                                 aria-label="Generate AI draft reply"
                             >
@@ -617,7 +617,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                             <button
                                 type="button"
                                 onClick={() => setInput('/')}
-                                className="p-2 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                                className="p-2 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                                 title="Canned Responses"
                                 aria-label="Insert canned response"
                             >
@@ -634,7 +634,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={isUploading}
-                                className="p-2 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                                className="p-2 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
                                 title="Attach File"
                                 aria-label="Attach file"
                             >
@@ -646,7 +646,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                     type="button"
                                     onClick={() => setSignatureEnabled(!signatureEnabled)}
                                     className={cn(
-                                        "p-2 rounded transition-colors",
+                                        "p-2 rounded-sm transition-colors",
                                         signatureEnabled && user?.emailSignature
                                             ? "text-blue-600 bg-blue-50 hover:bg-blue-100"
                                             : "text-gray-400 hover:bg-gray-100 hover:text-gray-600",

@@ -27,7 +27,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 return (
                     <div className="p-4 h-full overflow-hidden">
                         <div className="flex items-start gap-2 text-slate-500 mb-2">
-                            <Type size={14} className="flex-shrink-0 mt-0.5" />
+                            <Type size={14} className="shrink-0 mt-0.5" />
                             <span className="text-xs font-medium uppercase tracking-wider">Text Block</span>
                         </div>
                         <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
@@ -37,7 +37,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 );
             case 'image':
                 return (
-                    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
+                    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-linear-to-br from-slate-50 to-slate-100 rounded-lg">
                         {itemConfig.content ? (
                             <img src={itemConfig.content} alt="Invoice" className="w-full h-full object-contain" />
                         ) : (
@@ -52,7 +52,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 );
             case 'order_table':
                 return (
-                    <div className="p-4 h-full bg-gradient-to-br from-emerald-50 to-teal-50 flex flex-col rounded-lg border border-dashed border-emerald-300">
+                    <div className="p-4 h-full bg-linear-to-br from-emerald-50 to-teal-50 flex flex-col rounded-lg border border-dashed border-emerald-300">
                         <div className="flex items-center gap-2 text-emerald-600 mb-3">
                             <Table size={16} />
                             <span className="text-xs font-semibold uppercase tracking-wider">Order Items Table</span>
@@ -65,14 +65,14 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                                     <span className="w-16 text-right">Price</span>
                                 </div>
                                 <div className="flex gap-4 text-xs text-emerald-500">
-                                    <span className="flex-1 bg-emerald-100 rounded h-3"></span>
-                                    <span className="w-12 bg-emerald-100 rounded h-3"></span>
-                                    <span className="w-16 bg-emerald-100 rounded h-3"></span>
+                                    <span className="flex-1 bg-emerald-100 rounded-sm h-3"></span>
+                                    <span className="w-12 bg-emerald-100 rounded-sm h-3"></span>
+                                    <span className="w-16 bg-emerald-100 rounded-sm h-3"></span>
                                 </div>
                                 <div className="flex gap-4 text-xs text-emerald-500">
-                                    <span className="flex-1 bg-emerald-100 rounded h-3"></span>
-                                    <span className="w-12 bg-emerald-100 rounded h-3"></span>
-                                    <span className="w-16 bg-emerald-100 rounded h-3"></span>
+                                    <span className="flex-1 bg-emerald-100 rounded-sm h-3"></span>
+                                    <span className="w-12 bg-emerald-100 rounded-sm h-3"></span>
+                                    <span className="w-16 bg-emerald-100 rounded-sm h-3"></span>
                                 </div>
                             </div>
                         </div>
@@ -80,7 +80,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 );
             case 'totals':
                 return (
-                    <div className="p-4 h-full bg-gradient-to-br from-amber-50 to-orange-50 flex flex-col rounded-lg border border-dashed border-amber-300">
+                    <div className="p-4 h-full bg-linear-to-br from-amber-50 to-orange-50 flex flex-col rounded-lg border border-dashed border-amber-300">
                         <div className="flex items-center gap-2 text-amber-600 mb-3">
                             <DollarSign size={16} />
                             <span className="text-xs font-semibold uppercase tracking-wider">Totals</span>
@@ -88,19 +88,19 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         <div className="flex-1 flex flex-col justify-center space-y-2">
                             <div className="flex justify-between text-xs">
                                 <span className="text-amber-600">Subtotal:</span>
-                                <span className="w-20 bg-amber-100 rounded h-3"></span>
+                                <span className="w-20 bg-amber-100 rounded-sm h-3"></span>
                             </div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-amber-600">Shipping:</span>
-                                <span className="w-16 bg-amber-100 rounded h-3"></span>
+                                <span className="w-16 bg-amber-100 rounded-sm h-3"></span>
                             </div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-amber-600">Tax:</span>
-                                <span className="w-14 bg-amber-100 rounded h-3"></span>
+                                <span className="w-14 bg-amber-100 rounded-sm h-3"></span>
                             </div>
                             <div className="flex justify-between text-xs font-bold pt-2 border-t border-amber-200">
                                 <span className="text-amber-700">Total:</span>
-                                <span className="w-24 bg-amber-200 rounded h-4"></span>
+                                <span className="w-24 bg-amber-200 rounded-sm h-4"></span>
                             </div>
                         </div>
                     </div>
@@ -112,7 +112,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
 
     return (
         <div
-            className="flex-1 overflow-y-auto p-8 bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100"
+            className="flex-1 overflow-y-auto p-8 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100"
             onClick={() => onSelect(null)}
         >
             {/* Paper Container */}
@@ -171,7 +171,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 {layout.length === 0 && (
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center p-8">
-                            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+                            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-linear-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
                                 <Table size={32} className="text-indigo-500" />
                             </div>
                             <h3 className="text-lg font-bold text-slate-700 mb-2">Start Building Your Invoice</h3>

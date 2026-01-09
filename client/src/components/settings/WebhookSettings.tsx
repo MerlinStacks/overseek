@@ -68,7 +68,7 @@ export function WebhookSettings() {
     const CopyButton = ({ text, field }: { text: string; field: string }) => (
         <button
             onClick={() => handleCopy(text, field)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm ${copiedField === field
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-xs ${copiedField === field
                     ? 'bg-green-100 text-green-700 border border-green-200'
                     : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
                 }`}
@@ -82,7 +82,7 @@ export function WebhookSettings() {
         <div className="space-y-6">
             {/* Info Banner */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
-                <Info className="flex-shrink-0 w-5 h-5 text-blue-600 mt-0.5" />
+                <Info className="shrink-0 w-5 h-5 text-blue-600 mt-0.5" />
                 <div className="text-sm text-blue-800">
                     <p className="font-medium mb-1">Instant Order Sync with Webhooks</p>
                     <p>
@@ -143,7 +143,7 @@ export function WebhookSettings() {
                                     <span className={`w-2 h-2 rounded-full ${webhook.topic.includes('order') ? 'bg-green-500' : 'bg-blue-500'
                                         }`} />
                                     <p className="text-sm font-medium text-gray-900">{webhook.name}</p>
-                                    <span className="text-xs font-mono text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                                    <span className="text-xs font-mono text-gray-500 bg-gray-200 px-2 py-0.5 rounded-sm">
                                         {webhook.topic}
                                     </span>
                                 </div>
@@ -160,27 +160,27 @@ export function WebhookSettings() {
                 <h3 className="text-sm font-medium text-gray-900 mb-3">Quick Setup Guide</h3>
                 <ol className="space-y-3 text-sm text-gray-700">
                     <li className="flex gap-3">
-                        <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">1</span>
+                        <span className="shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">1</span>
                         <span>Go to <strong>WooCommerce → Settings → Advanced → Webhooks</strong></span>
                     </li>
                     <li className="flex gap-3">
-                        <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">2</span>
+                        <span className="shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">2</span>
                         <span>Click <strong>Add Webhook</strong></span>
                     </li>
                     <li className="flex gap-3">
-                        <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">3</span>
+                        <span className="shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">3</span>
                         <span>Set <strong>Status</strong> to Active</span>
                     </li>
                     <li className="flex gap-3">
-                        <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">4</span>
+                        <span className="shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">4</span>
                         <span>Select the <strong>Topic</strong> (e.g., Order created)</span>
                     </li>
                     <li className="flex gap-3">
-                        <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">5</span>
+                        <span className="shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">5</span>
                         <span>Paste the <strong>Delivery URL</strong> from above</span>
                     </li>
                     <li className="flex gap-3">
-                        <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">6</span>
+                        <span className="shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">6</span>
                         <span>Paste the <strong>Secret</strong> and click <strong>Save webhook</strong></span>
                     </li>
                 </ol>

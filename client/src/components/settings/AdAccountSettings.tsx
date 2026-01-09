@@ -528,7 +528,7 @@ export function AdAccountSettings() {
                         const isPending = acc.externalId === 'PENDING_SETUP';
                         const hasError = insightErrors[acc.id];
                         return (
-                            <div key={acc.id} className={`bg-white rounded-xl shadow-sm border p-4 ${isPending ? 'border-amber-300' : hasError ? 'border-red-200' : 'border-gray-200'}`}>
+                            <div key={acc.id} className={`bg-white rounded-xl shadow-xs border p-4 ${isPending ? 'border-amber-300' : hasError ? 'border-red-200' : 'border-gray-200'}`}>
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-3">
                                         <div className={`p-2 rounded-lg ${acc.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
@@ -565,14 +565,14 @@ export function AdAccountSettings() {
                                                 <button
                                                     onClick={() => fetchInsights(acc.id)}
                                                     disabled={loadingInsights[acc.id]}
-                                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
+                                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-sm disabled:opacity-50"
                                                     title="Refresh data"
                                                 >
                                                     <RefreshCw size={16} className={loadingInsights[acc.id] ? 'animate-spin' : ''} />
                                                 </button>
                                                 <button
                                                     onClick={() => openEditModal(acc)}
-                                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-sm"
                                                     title="Edit credentials"
                                                 >
                                                     <Pencil size={16} />
@@ -581,7 +581,7 @@ export function AdAccountSettings() {
                                         )}
                                         <button
                                             onClick={() => handleDisconnect(acc.id)}
-                                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-sm"
                                             title="Disconnect"
                                         >
                                             <Trash2 size={16} />
@@ -621,7 +621,7 @@ export function AdAccountSettings() {
                                 {hasError && (
                                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                                         <div className="flex items-start gap-2">
-                                            <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+                                            <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
                                             <div className="text-sm text-red-700">
                                                 <p className="font-medium">Failed to load data</p>
                                                 <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>

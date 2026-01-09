@@ -35,7 +35,7 @@ export function AdminDashboard() {
     }, [token]);
 
     const StatCard = ({ title, value, icon: Icon, color }: any) => (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
             <div className="flex justify-between items-start">
                 <div>
                     <p className="text-sm font-medium text-slate-500">{title}</p>

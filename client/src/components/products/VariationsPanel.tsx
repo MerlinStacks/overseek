@@ -31,7 +31,7 @@ export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, varia
     };
 
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="px-6 py-4 border-b border-gray-100/50 bg-white/30 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                     <Layers size={16} className="text-blue-600" />

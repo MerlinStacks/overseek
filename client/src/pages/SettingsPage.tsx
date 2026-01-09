@@ -202,7 +202,7 @@ export function SettingsPage() {
             {/* Desktop: Sidebar + Content */}
             <div className="hidden lg:flex gap-6">
                 {/* Sidebar Navigation */}
-                <aside className="w-56 flex-shrink-0">
+                <aside className="w-56 shrink-0">
                     <nav className="glass-panel rounded-xl p-3 sticky top-24 space-y-4">
                         {categories.map((category) => {
                             const visibleTabs = category.tabs.filter(t => !t.hidden);
@@ -260,7 +260,7 @@ export function SettingsPage() {
  */
 function SettingsCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
                 <h2 className="text-base font-medium text-gray-900">{title}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">{description}</p>

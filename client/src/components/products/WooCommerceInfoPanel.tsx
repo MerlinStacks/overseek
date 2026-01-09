@@ -26,7 +26,7 @@ interface WooCommerceInfoPanelProps {
  */
 export function WooCommerceInfoPanel({ manageStock, categories, tags }: WooCommerceInfoPanelProps) {
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
                 <Package size={16} className="text-purple-600" />
                 WooCommerce Info

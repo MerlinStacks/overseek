@@ -61,15 +61,15 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
      */
     const getSuggestionIcon = (suggestion: string) => {
         if (suggestion.includes('🔴') || suggestion.includes('Underperforming')) {
-            return <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />;
+            return <AlertTriangle size={16} className="text-red-500 shrink-0" />;
         }
         if (suggestion.includes('🟢') || suggestion.includes('High Performer')) {
-            return <TrendingUp size={16} className="text-green-500 flex-shrink-0" />;
+            return <TrendingUp size={16} className="text-green-500 shrink-0" />;
         }
         if (suggestion.includes('✅')) {
-            return <CheckCircle size={16} className="text-green-500 flex-shrink-0" />;
+            return <CheckCircle size={16} className="text-green-500 shrink-0" />;
         }
-        return <Lightbulb size={16} className="text-amber-500 flex-shrink-0" />;
+        return <Lightbulb size={16} className="text-amber-500 shrink-0" />;
     };
 
     /**
@@ -89,7 +89,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
     // Loading state
     if (loading) {
         return (
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-sm border border-gray-200/50 h-full flex items-center justify-center">
+            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex items-center justify-center">
                 <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
             </div>
         );
@@ -98,7 +98,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
     // No ad accounts connected message
     if (data?.message) {
         return (
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-sm border border-gray-200/50 h-full flex flex-col">
+            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
                     <Lightbulb size={20} className="text-amber-500" />
                     <h3 className="font-semibold text-gray-900">Ad Suggestions</h3>
@@ -122,14 +122,14 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
     // Error state
     if (error || !data) {
         return (
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-sm border border-gray-200/50 h-full flex flex-col items-center justify-center">
+            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex flex-col items-center justify-center">
                 <p className="text-sm text-gray-500">{error || 'No data available'}</p>
             </div>
         );
     }
 
     return (
-        <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-sm border border-gray-200/50 h-full flex flex-col overflow-hidden">
+        <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">

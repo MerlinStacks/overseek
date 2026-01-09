@@ -69,7 +69,7 @@ export const RevenuePage: React.FC = () => {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardContent className="p-6">
                         <div className="flex items-center gap-3">
                             <div className="p-3 bg-green-100 rounded-xl">
@@ -82,7 +82,7 @@ export const RevenuePage: React.FC = () => {
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardContent className="p-6">
                         <div className="flex items-center gap-3">
                             <div className="p-3 bg-blue-100 rounded-xl">
@@ -95,7 +95,7 @@ export const RevenuePage: React.FC = () => {
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardContent className="p-6">
                         <div className="flex items-center gap-3">
                             <div className="p-3 bg-purple-100 rounded-xl">
@@ -112,7 +112,7 @@ export const RevenuePage: React.FC = () => {
 
             {/* Revenue by Source */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold">Revenue by First Touch</CardTitle>
                     </CardHeader>
@@ -140,7 +140,7 @@ export const RevenuePage: React.FC = () => {
                     </CardContent>
                 </Card>
 
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold">Revenue by Last Touch</CardTitle>
                     </CardHeader>
@@ -171,7 +171,7 @@ export const RevenuePage: React.FC = () => {
 
             {/* Revenue by Country & Device */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                             <Globe className="w-4 h-4" /> Revenue by Country
@@ -189,7 +189,7 @@ export const RevenuePage: React.FC = () => {
                     </CardContent>
                 </Card>
 
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold">Revenue by Device</CardTitle>
                     </CardHeader>

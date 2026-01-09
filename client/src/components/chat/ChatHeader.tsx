@@ -123,7 +123,7 @@ export function ChatHeader({
                     onClick={onToggleSearch}
                     aria-label="Search messages"
                     className={cn(
-                        "p-1.5 rounded transition-colors",
+                        "p-1.5 rounded-sm transition-colors",
                         showSearch ? "bg-blue-100 text-blue-600" : "hover:bg-gray-100 text-gray-500"
                     )}
                     title="Search messages"
@@ -136,7 +136,7 @@ export function ChatHeader({
                     <button
                         onClick={() => setShowMoreMenu(!showMoreMenu)}
                         aria-label="More options"
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+                        className="p-1.5 rounded-sm hover:bg-gray-100 text-gray-500"
                     >
                         <MoreVertical size={16} />
                     </button>

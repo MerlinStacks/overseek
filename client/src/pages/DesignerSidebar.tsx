@@ -25,7 +25,7 @@ const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
  */
 export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
     return (
-        <div className="w-72 bg-white/70 backdrop-blur-sm border-r border-slate-200/60 flex flex-col">
+        <div className="w-72 bg-white/70 backdrop-blur-xs border-r border-slate-200/60 flex flex-col">
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100">
                 <div className="flex items-center gap-2">
@@ -45,7 +45,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                         return (
                             <div
                                 key={item.id}
-                                className={`flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer shadow-sm hover:shadow-md ${colors.hover} transition-all duration-200 group active:scale-[0.98]`}
+                                className={`flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer shadow-xs hover:shadow-md ${colors.hover} transition-all duration-200 group active:scale-[0.98]`}
                                 onClick={() => onAddItem(item.type)}
                                 draggable={true}
                                 onDragStart={(e) => {
@@ -72,7 +72,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
 
             {/* Tips Section */}
             <div className="p-4 border-t border-slate-100">
-                <div className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
+                <div className="p-4 bg-linear-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
                     <p className="font-semibold text-indigo-700 text-xs mb-1.5">💡 Quick Tip</p>
                     <p className="text-xs text-indigo-600/80 leading-relaxed">
                         Click components to add them. Drag to reorder and resize on canvas.

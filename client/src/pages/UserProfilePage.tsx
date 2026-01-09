@@ -112,9 +112,9 @@ export function UserProfilePage() {
                 )}
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 {/* Header / Banner */}
-                <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+                <div className="h-32 bg-linear-to-r from-blue-600 to-indigo-600"></div>
 
                 <div className="px-8 pb-8">
                     {/* Avatar & Info */}
@@ -132,7 +132,7 @@ export function UserProfilePage() {
                                 </div>
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="absolute bottom-0 right-0 w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-colors"
+                                    className="absolute bottom-0 right-0 w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-xs text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-colors"
                                 >
                                     <Camera size={14} />
                                 </button>
@@ -151,7 +151,7 @@ export function UserProfilePage() {
                                         type="text"
                                         value={formData.fullName}
                                         onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                                        className="text-2xl font-bold text-gray-900 border-b border-gray-300 focus:border-blue-500 outline-none bg-transparent px-1 py-0.5 w-full"
+                                        className="text-2xl font-bold text-gray-900 border-b border-gray-300 focus:border-blue-500 outline-hidden bg-transparent px-1 py-0.5 w-full"
                                         placeholder="Full Name"
                                     />
                                 ) : (
@@ -194,14 +194,14 @@ export function UserProfilePage() {
                                                     type="time"
                                                     value={formData.shiftStart}
                                                     onChange={(e) => setFormData({ ...formData, shiftStart: e.target.value })}
-                                                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-500 outline-none"
+                                                    className="border border-gray-300 rounded-sm px-2 py-1 text-sm focus:border-blue-500 outline-hidden"
                                                 />
                                                 <span className="text-gray-400">-</span>
                                                 <input
                                                     type="time"
                                                     value={formData.shiftEnd}
                                                     onChange={(e) => setFormData({ ...formData, shiftEnd: e.target.value })}
-                                                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-500 outline-none"
+                                                    className="border border-gray-300 rounded-sm px-2 py-1 text-sm focus:border-blue-500 outline-hidden"
                                                 />
                                             </div>
                                         ) : (

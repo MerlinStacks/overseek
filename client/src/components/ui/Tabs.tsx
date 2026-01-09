@@ -19,7 +19,7 @@ export function Tabs({ tabs, defaultTab, className = '' }: TabsProps) {
     return (
         <div className={`space-y-6 ${className}`}>
             {/* Tab Header */}
-            <div className="flex items-center gap-1 p-1 bg-white/40 backdrop-blur-md border border-white/50 rounded-xl overflow-x-auto no-scrollbar shadow-sm">
+            <div className="flex items-center gap-1 p-1 bg-white/40 backdrop-blur-md border border-white/50 rounded-xl overflow-x-auto no-scrollbar shadow-xs">
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}

@@ -82,7 +82,7 @@ function XPPopup({ amount, visible }: { amount: number; visible: boolean }) {
     if (!visible) return null;
     return (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 animate-xp-pop pointer-events-none">
-            <div className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 text-white font-bold rounded-full shadow-lg">
+            <div className="flex items-center gap-1 px-3 py-1.5 bg-linear-to-r from-amber-400 to-yellow-500 text-white font-bold rounded-full shadow-lg">
                 <Zap size={16} />
                 +{amount} XP
             </div>
@@ -111,13 +111,13 @@ function LevelProgress({ xp, level }: { xp: number; level: number }) {
     return (
         <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
-                <div className="w-6 h-6 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                <div className="w-6 h-6 bg-linear-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-xs">
                     {level}
                 </div>
             </div>
             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                    className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
+                    className="h-full bg-linear-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
                     style={{ width: `${Math.min(progress, 100)}%` }}
                 />
             </div>
@@ -136,8 +136,8 @@ function StreakBadge({ streak }: { streak: number }) {
     const isOnFire = streak >= 14;
 
     return (
-        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${isOnFire ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white animate-pulse' :
-                isHot ? 'bg-gradient-to-r from-orange-400 to-amber-400 text-white' :
+        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${isOnFire ? 'bg-linear-to-r from-red-500 to-orange-500 text-white animate-pulse' :
+                isHot ? 'bg-linear-to-r from-orange-400 to-amber-400 text-white' :
                     'bg-orange-100 text-orange-600'
             }`}>
             <Flame size={12} className={isOnFire ? 'animate-bounce' : ''} />
@@ -458,7 +458,7 @@ export function AITodoWidget(_props: WidgetProps) {
     const completedTodos = todos.filter(t => t.completed);
 
     return (
-        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-sm border border-gray-200/50 flex flex-col h-full overflow-hidden relative">
+        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-xs border border-gray-200/50 flex flex-col h-full overflow-hidden relative">
             {/* Confetti */}
             <Confetti active={showConfetti} />
 
@@ -467,7 +467,7 @@ export function AITodoWidget(_props: WidgetProps) {
 
             {/* Level Up Overlay */}
             {levelUp && (
-                <div className="absolute inset-0 bg-gradient-to-b from-violet-500/20 to-purple-500/20 z-40 flex items-center justify-center animate-pulse">
+                <div className="absolute inset-0 bg-linear-to-b from-violet-500/20 to-purple-500/20 z-40 flex items-center justify-center animate-pulse">
                     <div className="bg-white rounded-2xl shadow-2xl px-6 py-4 text-center">
                         <Trophy className="w-12 h-12 text-amber-500 mx-auto mb-2" />
                         <p className="text-xl font-bold text-gray-900">Level Up!</p>
@@ -477,7 +477,7 @@ export function AITodoWidget(_props: WidgetProps) {
             )}
 
             {/* Header with Game Stats */}
-            <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-violet-50 to-purple-50">
+            <div className="px-4 py-3 border-b border-gray-100 bg-linear-to-r from-violet-50 to-purple-50">
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-violet-100 rounded-lg">
@@ -525,7 +525,7 @@ export function AITodoWidget(_props: WidgetProps) {
                         value={newTask}
                         onChange={(e) => setNewTask(e.target.value)}
                         placeholder="Add a quest..."
-                        className="flex-1 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400 transition-all"
+                        className="flex-1 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg outline-hidden focus:ring-2 focus:ring-violet-200 focus:border-violet-400 transition-all"
                     />
                     <button
                         type="submit"
@@ -562,7 +562,7 @@ export function AITodoWidget(_props: WidgetProps) {
                             >
                                 <button
                                     onClick={() => toggleTodo(todo.id, todo.completed, todo.priority)}
-                                    className="w-5 h-5 border-2 border-gray-300 rounded-full hover:border-violet-500 hover:scale-110 transition-all flex items-center justify-center flex-shrink-0"
+                                    className="w-5 h-5 border-2 border-gray-300 rounded-full hover:border-violet-500 hover:scale-110 transition-all flex items-center justify-center shrink-0"
                                 >
                                     {justCompleted === todo.id && (
                                         <Check size={12} className="text-green-500" />
@@ -581,7 +581,7 @@ export function AITodoWidget(_props: WidgetProps) {
                                         </span>
                                     </div>
                                 </div>
-                                <span className={`${getPriorityColor(todo.priority)} flex-shrink-0`}>
+                                <span className={`${getPriorityColor(todo.priority)} shrink-0`}>
                                     {getPriorityIcon(todo.priority)}
                                 </span>
                                 <button
@@ -607,7 +607,7 @@ export function AITodoWidget(_props: WidgetProps) {
                                     >
                                         <button
                                             onClick={() => toggleTodo(todo.id, todo.completed, todo.priority)}
-                                            className="w-5 h-5 bg-gradient-to-br from-green-400 to-emerald-500 border-2 border-green-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
+                                            className="w-5 h-5 bg-linear-to-br from-green-400 to-emerald-500 border-2 border-green-500 rounded-full flex items-center justify-center shrink-0 shadow-xs"
                                         >
                                             <Check size={12} className="text-white" />
                                         </button>
@@ -632,7 +632,7 @@ export function AITodoWidget(_props: WidgetProps) {
             </div>
 
             {/* Footer Stats */}
-            <div className="px-4 py-2 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-violet-50/50 flex items-center justify-between text-xs text-gray-500">
+            <div className="px-4 py-2 border-t border-gray-100 bg-linear-to-r from-gray-50 to-violet-50/50 flex items-center justify-between text-xs text-gray-500">
                 <span className="flex items-center gap-1">
                     <Trophy size={12} className="text-amber-500" />
                     {gameStats.totalCompleted} total

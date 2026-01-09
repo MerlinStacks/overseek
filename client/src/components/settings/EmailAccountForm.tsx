@@ -40,7 +40,7 @@ export function EmailAccountForm({
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                 <h2 className="text-lg font-medium text-gray-900">
                     {formData.id ? 'Edit Account' : 'New Email Account'}
@@ -56,7 +56,7 @@ export function EmailAccountForm({
                         <label className="block text-sm font-medium text-gray-700 mb-1">Account Name</label>
                         <input
                             type="text"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                             placeholder="e.g. Support Inbox"
                             value={formData.name || ''}
                             onChange={(e) => handleChange('name', e.target.value)}
@@ -66,7 +66,7 @@ export function EmailAccountForm({
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                         <input
                             type="email"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                             placeholder="support@example.com"
                             value={formData.email || ''}
                             onChange={(e) => handleChange('email', e.target.value)}
@@ -83,7 +83,7 @@ export function EmailAccountForm({
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Protocol</label>
                             <select
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                 value={formData.type}
                                 onChange={(e) => handleChange('type', e.target.value)}
                             >
@@ -95,7 +95,7 @@ export function EmailAccountForm({
                             <label className="block text-sm font-medium text-gray-700 mb-1">Host</label>
                             <input
                                 type="text"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                 placeholder="smtp.gmail.com"
                                 value={formData.host || ''}
                                 onChange={(e) => handleChange('host', e.target.value)}
@@ -107,7 +107,7 @@ export function EmailAccountForm({
                             <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
                             <input
                                 type="number"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                 placeholder="587"
                                 value={formData.port || ''}
                                 onChange={(e) => handleChange('port', parseInt(e.target.value))}
@@ -117,7 +117,7 @@ export function EmailAccountForm({
                             <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
                             <input
                                 type="text"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                 value={formData.username || ''}
                                 onChange={(e) => handleChange('username', e.target.value)}
                             />
@@ -126,7 +126,7 @@ export function EmailAccountForm({
                             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                             <input
                                 type="password"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                 placeholder="••••••••"
                                 value={formData.password || ''}
                                 onChange={(e) => handleChange('password', e.target.value)}
@@ -139,7 +139,7 @@ export function EmailAccountForm({
                             id="secure"
                             checked={formData.isSecure}
                             onChange={(e) => handleChange('isSecure', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <label htmlFor="secure" className="text-sm text-gray-700">Use Secure Connection (TLS/SSL)</label>
                     </div>

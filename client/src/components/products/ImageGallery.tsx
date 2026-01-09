@@ -69,7 +69,7 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
                         )}
                         <button
                             onClick={() => handleRemove(idx)}
-                            className="absolute top-2 right-2 p-1 bg-white/90 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                            className="absolute top-2 right-2 p-1 bg-white/90 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-xs"
                         >
                             <X size={14} />
                         </button>
@@ -81,7 +81,7 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
                     <input
                         type="text"
                         placeholder="Image URL..."
-                        className="w-full text-xs p-1 mb-2 border rounded"
+                        className="w-full text-xs p-1 mb-2 border rounded-sm"
                         value={newUrl}
                         onChange={e => setNewUrl(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleAdd()}

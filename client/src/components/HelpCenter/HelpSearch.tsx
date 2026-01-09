@@ -23,7 +23,7 @@ export function HelpSearch() {
                 <input
                     type="text"
                     placeholder="Search for help..."
-                    className="w-full pl-12 pr-4 py-4 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-gray-900 placeholder-gray-500 backdrop-blur-sm transition-all shadow-sm hover:shadow-md"
+                    className="w-full pl-12 pr-4 py-4 bg-white/50 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-gray-900 placeholder-gray-500 backdrop-blur-xs transition-all shadow-xs hover:shadow-md"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => { if (query.length > 2) setIsOpen(true); }}

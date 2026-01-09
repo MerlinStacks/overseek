@@ -49,7 +49,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
 
                 {/* Header */}
@@ -96,9 +96,9 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                             </div>
 
                             {/* Customer Card */}
-                            <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-xl p-4 border border-gray-200/80 shadow-sm">
+                            <div className="bg-linear-to-br from-slate-50 to-gray-50 rounded-xl p-4 border border-gray-200/80 shadow-xs">
                                 <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-sm">
+                                    <div className="w-10 h-10 bg-linear-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-xs">
                                         {order.billing?.first_name?.charAt(0) || ''}{order.billing?.last_name?.charAt(0) || ''}
                                     </div>
                                     <div>
@@ -109,8 +109,8 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                             </div>
 
                             {/* Items Section */}
-                            <div className="rounded-xl border border-gray-200/80 overflow-hidden shadow-sm">
-                                <div className="px-4 py-3 bg-gradient-to-r from-gray-50 to-slate-50 border-b border-gray-200/80 flex items-center justify-between">
+                            <div className="rounded-xl border border-gray-200/80 overflow-hidden shadow-xs">
+                                <div className="px-4 py-3 bg-linear-to-r from-gray-50 to-slate-50 border-b border-gray-200/80 flex items-center justify-between">
                                     <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Order Items</span>
                                     <span className="text-xs font-medium text-gray-400 bg-gray-200/60 px-2 py-0.5 rounded-full">{order.line_items?.length || 0} item{order.line_items?.length !== 1 ? 's' : ''}</span>
                                 </div>
@@ -118,7 +118,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                                     {order.line_items?.map((item: any) => (
                                         <div key={item.id} className="p-3.5 flex justify-between items-start gap-3 hover:bg-gray-50/50 transition-colors">
                                             <div className="flex items-start gap-3 flex-1 min-w-0">
-                                                <div className="w-9 h-9 bg-gradient-to-br from-gray-100 to-gray-50 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 flex-shrink-0">
+                                                <div className="w-9 h-9 bg-linear-to-br from-gray-100 to-gray-50 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 shrink-0">
                                                     <Package size={16} />
                                                 </div>
                                                 <div className="min-w-0 flex-1">
@@ -128,7 +128,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="font-semibold text-gray-900 text-sm flex-shrink-0">
+                                            <div className="font-semibold text-gray-900 text-sm shrink-0">
                                                 {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.total)}
                                             </div>
                                         </div>
@@ -136,7 +136,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                                 </div>
 
                                 {/* Total Row */}
-                                <div className="px-4 py-3.5 bg-gradient-to-r from-gray-800 to-slate-900 flex items-center justify-between">
+                                <div className="px-4 py-3.5 bg-linear-to-r from-gray-800 to-slate-900 flex items-center justify-between">
                                     <span className="text-sm font-medium text-gray-300 uppercase tracking-wide">Total</span>
                                     <span className="text-xl font-bold text-white">
                                         {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency || 'USD' }).format(Number(order.total))}
@@ -162,7 +162,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                     </button>
                     <button
                         onClick={() => navigate(`/orders/${orderId}`)}
-                        className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm shadow-blue-200 transition-all hover:shadow-md"
+                        className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-xs shadow-blue-200 transition-all hover:shadow-md"
                     >
                         View Full Details
                         <ExternalLink size={16} />

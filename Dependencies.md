@@ -120,15 +120,17 @@
 ---
 
 ## Build Tools
-| Package | Location | Purpose |
-|---------|----------|---------|
-| `vite` | Client | Build tool |
-| `typescript` | Both | Type checking |
-| `tailwindcss` | Client | CSS framework |
-| `eslint` | Client | Linting |
-| `nodemon` | Server | Development auto-reload |
-| `ts-node` | Server | TypeScript execution |
-| `concurrently` | Root | Run multiple scripts |
+| Package | Location | Version | Purpose |
+|---------|----------|---------|----------|
+| `vite` | Client | ^7.3.1 | Build tool |
+| `typescript` | Both | ^5.2.2 | Type checking |
+| `tailwindcss` | Client | ^4.1.18 | CSS framework (v4 with CSS-first config) |
+| `@tailwindcss/postcss` | Client | ^4.1.18 | PostCSS plugin for TailwindCSS 4 |
+| `eslint` | Client | ^9.39.0 | Linting (flat config) |
+| `typescript-eslint` | Client | ^8.32.0 | TypeScript ESLint integration |
+| `nodemon` | Server | | Development auto-reload |
+| `ts-node` | Server | | TypeScript execution |
+| `concurrently` | Root | | Run multiple scripts |
 
 ---
 
@@ -147,6 +149,8 @@
 | HTTP Client (Server) | axios | Native fetch | ✅ Complete |
 | Lodash (Client) | lodash | Native JS utilities | ✅ Complete |
 | File Uploads | multer | @fastify/multipart | ✅ Complete |
+| ESLint | v8 + typescript-eslint v6 | ESLint 9 + typescript-eslint 8 | ✅ Complete |
+| TailwindCSS | v3.4 | v4.1 (CSS-first config) | ✅ Complete |
 
 ---
 

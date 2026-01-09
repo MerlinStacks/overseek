@@ -130,28 +130,28 @@ export function ReportsPage() {
                 </div>
 
                 {/* Tab Navigation */}
-                <div className="flex bg-white/80 backdrop-blur-sm p-1.5 rounded-xl border border-gray-200/60 shadow-sm">
+                <div className="flex bg-white/80 backdrop-blur-xs p-1.5 rounded-xl border border-gray-200/60 shadow-xs">
                     <button
                         onClick={() => setActiveTab('overview')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'overview' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'overview' ? 'bg-linear-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                     >
                         Overview
                     </button>
                     <button
                         onClick={() => setActiveTab('forecast')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'forecast' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'forecast' ? 'bg-linear-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                     >
                         Forecasting
                     </button>
                     <button
                         onClick={() => setActiveTab('stock_velocity')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'stock_velocity' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'stock_velocity' ? 'bg-linear-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                     >
                         Stock Velocity
                     </button>
                     <button
                         onClick={() => setActiveTab('premade')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'premade' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'premade' ? 'bg-linear-to-r from-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                     >
                         Report Library
                     </button>
@@ -160,7 +160,7 @@ export function ReportsPage() {
                             setShouldAutoRun(false);
                             setActiveTab('custom');
                         }}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'custom' ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md shadow-green-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'custom' ? 'bg-linear-to-r from-green-500 to-green-600 text-white shadow-md shadow-green-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                     >
                         Custom Builder
                     </button>
@@ -170,11 +170,11 @@ export function ReportsPage() {
             {/* Date Range Selector (for applicable tabs) */}
             {(activeTab === 'overview' || activeTab === 'forecast' || activeTab === 'premade') && (
                 <div className="flex justify-end">
-                    <div className="flex bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="flex bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden">
                         <select
                             value={dateOption}
                             onChange={(e) => setDateOption(e.target.value as DateRangeOption)}
-                            className="bg-transparent border-r border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 outline-none focus:bg-gray-50"
+                            className="bg-transparent border-r border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 outline-hidden focus:bg-gray-50"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -187,7 +187,7 @@ export function ReportsPage() {
                         <select
                             value={comparisonOption}
                             onChange={(e) => setComparisonOption(e.target.value as ComparisonOption)}
-                            className="bg-transparent px-4 py-2.5 text-sm text-gray-500 outline-none focus:bg-gray-50"
+                            className="bg-transparent px-4 py-2.5 text-sm text-gray-500 outline-hidden focus:bg-gray-50"
                         >
                             <option value="none">No Comparison</option>
                             <option value="previous_period">vs Previous Period</option>
@@ -202,21 +202,21 @@ export function ReportsPage() {
                     <>
                         {/* KPI Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                                 <div className="flex items-center gap-3 text-gray-500 mb-2">
                                     <div className="p-2 bg-green-100 text-green-600 rounded-lg"><DollarSign size={20} /></div>
                                     <span className="text-sm font-medium">Total Revenue</span>
                                 </div>
                                 <div className="text-3xl font-bold text-gray-900">${totalRevenue.toLocaleString()}</div>
                             </div>
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                                 <div className="flex items-center gap-3 text-gray-500 mb-2">
                                     <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Users size={20} /></div>
                                     <span className="text-sm font-medium">New Customers</span>
                                 </div>
                                 <div className="text-3xl font-bold text-gray-900">{newCustomersCount}</div>
                             </div>
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                                 <div className="flex items-center gap-3 text-gray-500 mb-2">
                                     <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><TrendingUp size={20} /></div>
                                     <span className="text-sm font-medium">Avg Order Value</span>
@@ -229,7 +229,7 @@ export function ReportsPage() {
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Sales Chart (Custom SVG implementation for zero deps) */}
-                            <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                                 <h3 className="text-lg font-bold text-gray-900 mb-6">Revenue Trend</h3>
                                 <div className="h-64 relative flex items-end justify-between gap-1">
                                     {isLoading ? (
@@ -247,7 +247,7 @@ export function ReportsPage() {
                                                         style={{ height: `${height}%` }}
                                                     ></div>
                                                     {/* Tooltip */}
-                                                    <div className="absolute bottom-full mb-2 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded z-10 whitespace-nowrap">
+                                                    <div className="absolute bottom-full mb-2 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded-sm z-10 whitespace-nowrap">
                                                         {d.date}: ${d.sales}
                                                     </div>
                                                 </div>
@@ -258,7 +258,7 @@ export function ReportsPage() {
                             </div>
 
                             {/* Top Products */}
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                                 <h3 className="text-lg font-bold text-gray-900 mb-6">Top Selling Products</h3>
                                 <div className="space-y-4">
                                     {isLoading ? (
@@ -268,7 +268,7 @@ export function ReportsPage() {
                                     ) : topProducts.map((p, i) => (
                                         <div key={i} className="flex items-center justify-between">
                                             <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">
+                                                <div className="w-8 h-8 rounded-sm bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
                                                     <Package size={14} />
                                                 </div>
                                                 <span className="text-sm font-medium text-gray-900 truncate">{p.name || 'Unknown Product'}</span>
@@ -317,7 +317,7 @@ export function ReportsPage() {
                                 />
                             ) : (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-400 border border-gray-200/60 rounded-2xl bg-gray-50/30">
-                                    <div className="p-4 bg-white rounded-2xl shadow-sm mb-4">
+                                    <div className="p-4 bg-white rounded-2xl shadow-xs mb-4">
                                         <FileText size={48} className="text-gray-300" />
                                     </div>
                                     <p className="text-lg font-medium text-gray-500">Select a report to view details</p>

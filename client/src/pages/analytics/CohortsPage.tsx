@@ -70,7 +70,7 @@ export const CohortsPage: React.FC = () => {
                 <p className="text-sm text-gray-500 mt-1">Track visitor retention over time by signup week.</p>
             </div>
 
-            <Card className="border-0 shadow-sm overflow-hidden">
+            <Card className="border-0 shadow-xs overflow-hidden">
                 <CardHeader>
                     <CardTitle className="text-sm font-semibold">Retention Matrix</CardTitle>
                 </CardHeader>
@@ -115,11 +115,11 @@ export const CohortsPage: React.FC = () => {
             {/* Legend */}
             <div className="flex items-center gap-4 text-xs text-gray-500">
                 <span>Retention:</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded"></span> 70%+</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-400 rounded"></span> 50-69%</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-yellow-400 rounded"></span> 30-49%</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-orange-400 rounded"></span> 15-29%</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-400 rounded"></span> &lt;15%</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> 70%+</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-400 rounded-sm"></span> 50-69%</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-yellow-400 rounded-sm"></span> 30-49%</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-orange-400 rounded-sm"></span> 15-29%</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-400 rounded-sm"></span> &lt;15%</span>
             </div>
         </div>
     );

@@ -106,7 +106,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                     <input
                         type="text"
                         placeholder="Search (Products, Customers, Orders)..."
-                        className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-transparent focus:bg-white focus:border-blue-200 rounded-full transition-all outline-none"
+                        className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-transparent focus:bg-white focus:border-blue-200 rounded-full transition-all outline-hidden"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onFocus={() => setIsFocused(true)}
@@ -128,7 +128,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                                             <div className="px-4 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider">Products</div>
                                             {results.products.map(p => (
                                                 <div key={`p-${p.id}`} className="px-4 py-2 hover:bg-gray-50 cursor-pointer flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center text-gray-400">
+                                                    <div className="w-8 h-8 bg-gray-100 rounded-sm flex items-center justify-center text-gray-400">
                                                         <span className="text-xs">IMG</span>
                                                     </div>
                                                     <div>

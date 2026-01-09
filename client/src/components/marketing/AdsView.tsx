@@ -301,7 +301,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
 
                     {/* Connect Form */}
                     {showConnect && (
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
+                        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200 mb-6">
                             <h3 className="font-semibold mb-4">Connect Ad Platform</h3>
                             <form onSubmit={handleConnect} className="grid gap-4 max-w-md">
                                 <div>
@@ -331,7 +331,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                             <p className="text-xs text-amber-700 mb-2">
                                                 Add this redirect URI to your Google Cloud OAuth credentials:
                                             </p>
-                                            <code className="block bg-white border border-amber-300 rounded px-3 py-2 text-xs font-mono text-gray-800 break-all select-all">
+                                            <code className="block bg-white border border-amber-300 rounded-sm px-3 py-2 text-xs font-mono text-gray-800 break-all select-all">
                                                 {window.location.origin}/api/oauth/google/callback
                                             </code>
                                         </div>
@@ -431,7 +431,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                 const ins = insights[acc.id];
                                 const isPending = acc.externalId === 'PENDING_SETUP';
                                 return (
-                                    <div key={acc.id} className={`bg-white rounded-xl shadow-sm border p-6 space-y-4 ${isPending ? 'border-amber-300' : 'border-gray-200'}`}>
+                                    <div key={acc.id} className={`bg-white rounded-xl shadow-xs border p-6 space-y-4 ${isPending ? 'border-amber-300' : 'border-gray-200'}`}>
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-lg ${acc.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
@@ -465,7 +465,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                         <button
                                                             onClick={() => fetchInsights(acc.id)}
                                                             disabled={loadingInsights[acc.id]}
-                                                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
+                                                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-sm disabled:opacity-50"
                                                             title="Refresh data"
                                                         >
                                                             <RefreshCw size={16} className={loadingInsights[acc.id] ? 'animate-spin' : ''} />
@@ -473,7 +473,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                         {(acc.platform === 'GOOGLE' || acc.platform === 'META') && !isPending && (
                                                             <button
                                                                 onClick={() => onSelectAccount ? onSelectAccount(acc) : setSelectedAccount(acc)}
-                                                                className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded"
+                                                                className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-sm"
                                                                 title="View campaign breakdown"
                                                             >
                                                                 <BarChart2 size={16} />
@@ -483,7 +483,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                 )}
                                                 <button
                                                     onClick={() => handleDisconnect(acc.id)}
-                                                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-sm"
                                                     title="Disconnect"
                                                 >
                                                     <Trash2 size={16} />
@@ -522,7 +522,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                         {insightErrors[acc.id] && (
                                             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                                                 <div className="flex items-start gap-2">
-                                                    <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+                                                    <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
                                                     <div className="text-sm text-red-700">
                                                         <p className="font-medium">Failed to load data</p>
                                                         <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>

@@ -147,7 +147,7 @@ export function OrderTagSettings() {
     const hasUnmappedTags = getAvailableTags().length > 0;
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -250,7 +250,7 @@ export function OrderTagSettings() {
                                         type="checkbox"
                                         checked={mapping.enabled}
                                         onChange={(e) => updateMapping(mapping.productTag, { enabled: e.target.checked })}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div className="col-span-3">
@@ -273,11 +273,11 @@ export function OrderTagSettings() {
                                         type="color"
                                         value={mapping.color || '#6B7280'}
                                         onChange={(e) => updateMapping(mapping.productTag, { color: e.target.value })}
-                                        className="w-8 h-8 rounded cursor-pointer border border-gray-300"
+                                        className="w-8 h-8 rounded-sm cursor-pointer border border-gray-300"
                                         title="Tag color"
                                     />
                                     <span
-                                        className="inline-flex items-center px-2 py-0.5 rounded text-xs text-white"
+                                        className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs text-white"
                                         style={{ backgroundColor: mapping.color || '#6B7280' }}
                                     >
                                         {mapping.orderTag || 'Preview'}

@@ -134,7 +134,7 @@ export function AdminSettingsPage() {
             </h1>
 
             {/* GeoIP Database Section */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
                     <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
                         <Globe size={20} className="text-blue-600" />

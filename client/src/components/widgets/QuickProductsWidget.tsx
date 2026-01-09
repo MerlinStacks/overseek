@@ -54,7 +54,7 @@ export function QuickProductsWidget() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search cached products..."
-                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
                 />
             </div>
 

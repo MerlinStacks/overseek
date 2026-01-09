@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Save, DollarSign, Users, TrendingUp, Globe, Activity, Percent } from 'lucide-react';
 import { DIMENSION_OPTIONS, METRIC_OPTIONS, ReportDimension, ReportMetric } from '../../types/analytics';
 
@@ -58,7 +58,7 @@ export function ReportConfigPanel({
     const conversionMetrics = METRIC_OPTIONS.filter(m => m.category === 'conversion');
 
     return (
-        <div className="w-full md:w-80 flex-shrink-0 space-y-5 border-r border-gray-100 pr-6">
+        <div className="w-full md:w-80 shrink-0 space-y-5 border-r border-gray-100 pr-6">
             <div className="animate-in fade-in slide-in-from-left-2 space-y-5">
 
                 {/* Header */}
@@ -75,14 +75,14 @@ export function ReportConfigPanel({
                 </div>
 
                 {/* Time Range */}
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-gray-100/60 shadow-sm">
+                <div className="bg-white/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 shadow-xs">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                         Time Range
                     </label>
                     <select
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value)}
-                        className="w-full bg-gray-50/80 border border-gray-200/80 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-none"
+                        className="w-full bg-gray-50/80 border border-gray-200/80 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-hidden"
                     >
                         <option value="today">Today</option>
                         <option value="yesterday">Yesterday</option>
@@ -94,14 +94,14 @@ export function ReportConfigPanel({
                 </div>
 
                 {/* Group By Dimension */}
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-gray-100/60 shadow-sm">
+                <div className="bg-white/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 shadow-xs">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                         Group By
                     </label>
                     <select
                         value={dimension}
                         onChange={(e) => setDimension(e.target.value)}
-                        className="w-full bg-gray-50/80 border border-gray-200/80 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-none"
+                        className="w-full bg-gray-50/80 border border-gray-200/80 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-hidden"
                     >
                         <optgroup label="Time">
                             {timeDimensions.map(d => (
@@ -122,7 +122,7 @@ export function ReportConfigPanel({
                 </div>
 
                 {/* Metrics Selection */}
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-gray-100/60 shadow-sm">
+                <div className="bg-white/60 backdrop-blur-xs rounded-xl p-4 border border-gray-100/60 shadow-xs">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
                         Metrics
                     </label>
@@ -137,8 +137,8 @@ export function ReportConfigPanel({
                                 <label
                                     key={m.value}
                                     className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer border text-sm transition-all ${metrics.includes(m.value)
-                                            ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
-                                            : 'hover:bg-gray-50 border-gray-100 text-gray-600'
+                                        ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-xs'
+                                        : 'hover:bg-gray-50 border-gray-100 text-gray-600'
                                         }`}
                                 >
                                     <input
@@ -164,8 +164,8 @@ export function ReportConfigPanel({
                                 <label
                                     key={m.value}
                                     className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer border text-sm transition-all ${metrics.includes(m.value)
-                                            ? 'bg-green-50 border-green-200 text-green-700 shadow-sm'
-                                            : 'hover:bg-gray-50 border-gray-100 text-gray-600'
+                                        ? 'bg-green-50 border-green-200 text-green-700 shadow-xs'
+                                        : 'hover:bg-gray-50 border-gray-100 text-gray-600'
                                         }`}
                                 >
                                     <input
@@ -191,8 +191,8 @@ export function ReportConfigPanel({
                                 <label
                                     key={m.value}
                                     className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer border text-sm transition-all ${metrics.includes(m.value)
-                                            ? 'bg-purple-50 border-purple-200 text-purple-700 shadow-sm'
-                                            : 'hover:bg-gray-50 border-gray-100 text-gray-600'
+                                        ? 'bg-purple-50 border-purple-200 text-purple-700 shadow-xs'
+                                        : 'hover:bg-gray-50 border-gray-100 text-gray-600'
                                         }`}
                                 >
                                     <input
@@ -213,7 +213,7 @@ export function ReportConfigPanel({
                 <button
                     onClick={onGenerate}
                     disabled={isLoading || metrics.length === 0}
-                    className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
+                    className="w-full bg-linear-to-r from-blue-600 to-blue-700 text-white py-3 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
                 >
                     {isLoading ? (
                         <span className="flex items-center justify-center gap-2">

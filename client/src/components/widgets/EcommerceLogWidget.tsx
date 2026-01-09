@@ -106,7 +106,7 @@ const EcommerceLogWidget: React.FC = () => {
                 </div>
             ) : (
                 events.map(e => (
-                    <div key={e.id} className="flex gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-sm">
+                    <div key={e.id} className="flex gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-xs">
                         <div className="mt-0.5 shrink-0 bg-gray-50 p-2 rounded-full h-fit">
                             {getIcon(e.type)}
                         </div>

@@ -90,7 +90,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
         <div className="space-y-6">
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-red-50 rounded-lg">
                             <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -101,7 +101,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
                         </div>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-orange-50 rounded-lg">
                             <DollarSign className="w-5 h-5 text-orange-500" />
@@ -114,7 +114,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
                         </div>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-green-50 rounded-lg">
                             <TrendingDown className="w-5 h-5 text-green-500" />
@@ -131,7 +131,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
 
             {/* Drop-off Funnel */}
             {funnel && funnel.funnel.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
                     <h3 className="text-sm font-semibold text-gray-900 mb-4">Checkout Funnel Drop-off</h3>
                     <div className="flex items-end justify-between gap-4 h-32">
                         {funnel.funnel.map((stage, i) => {
@@ -140,7 +140,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
                             return (
                                 <div key={stage.stage} className="flex-1 flex flex-col items-center">
                                     <div
-                                        className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-md transition-all"
+                                        className="w-full bg-linear-to-t from-blue-500 to-blue-400 rounded-t-md transition-all"
                                         style={{ height: `${Math.max(height, 5)}%` }}
                                     />
                                     <div className="mt-2 text-center">
@@ -158,7 +158,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
             )}
 
             {/* Roadblock Pages Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
                     <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-500" />

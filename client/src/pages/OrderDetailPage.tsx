@@ -126,7 +126,7 @@ export function OrderDetailPage() {
 
                 {/* Main Content - Items */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 font-semibold text-gray-800 flex items-center gap-2">
                             <Package size={18} className="text-gray-400" />
                             Order Items
@@ -217,7 +217,7 @@ export function OrderDetailPage() {
                 {/* Sidebar - Customer Details */}
                 <div className="space-y-6">
                     {/* Customer Card */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                         <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
                             <User size={18} className="text-blue-500" />
                             Customer Details
@@ -262,7 +262,7 @@ export function OrderDetailPage() {
                     </div>
 
                     {/* Address Card */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                         <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
                             <MapPin size={18} className="text-blue-500" />
                             Addresses
@@ -298,7 +298,7 @@ export function OrderDetailPage() {
             </div>
 
             {/* History Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6">
                 <div className="flex items-center gap-2 mb-4">
                     <Clock size={18} className="text-gray-400" />
                     <h2 className="text-lg font-medium text-gray-900">Order History</h2>
@@ -358,7 +358,7 @@ function OrderMetaItem({ meta, onImageClick }: { meta: any, onImageClick: (url: 
     return (
         <div className="text-xs text-gray-500 flex flex-col gap-1 mt-1">
             <div className="flex gap-1">
-                <span className="font-medium bg-gray-100 px-1 rounded">{meta.key}:</span>
+                <span className="font-medium bg-gray-100 px-1 rounded-sm">{meta.key}:</span>
                 {/* Show text if it's not an image, OR if the image failed to load */}
                 {!showImage && (
                     <span className="break-all">

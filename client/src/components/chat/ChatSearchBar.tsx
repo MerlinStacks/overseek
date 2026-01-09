@@ -29,7 +29,7 @@ export function ChatSearchBar({
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder="Search messages..."
-                className="flex-1 text-sm outline-none"
+                className="flex-1 text-sm outline-hidden"
                 autoFocus
                 aria-label="Search messages"
             />
@@ -40,7 +40,7 @@ export function ChatSearchBar({
             )}
             <button
                 onClick={onClose}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400"
+                className="p-1 rounded-sm hover:bg-gray-100 text-gray-400"
                 aria-label="Close search"
             >
                 <X size={14} />

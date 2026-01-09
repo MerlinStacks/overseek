@@ -27,7 +27,7 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
     const Icon = config.icon;
 
     return (
-        <div className="w-80 bg-white/90 backdrop-blur-sm border-l border-slate-200/60 flex flex-col shadow-xl z-20">
+        <div className="w-80 bg-white/90 backdrop-blur-xs border-l border-slate-200/60 flex flex-col shadow-xl z-20">
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -62,7 +62,7 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Content</label>
                                     <textarea
-                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
                                         rows={6}
                                         placeholder="Enter your text content..."
                                         value={selectedItem.content}
@@ -81,7 +81,7 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Image URL</label>
                                     <input
                                         type="text"
-                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 transition-all"
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 transition-all"
                                         placeholder="https://example.com/logo.png"
                                         value={selectedItem.content}
                                         onChange={e => onUpdateContent(e.target.value)}

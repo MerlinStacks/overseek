@@ -87,7 +87,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                             type="text"
                             required
                             placeholder="e.g. ABC Manufacturing"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             value={formData.name}
                             onChange={e => setFormData({ ...formData, name: e.target.value })}
                         />
@@ -98,7 +98,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                         <input
                             type="text"
                             placeholder="John Smith"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.contactName}
                             onChange={e => setFormData({ ...formData, contactName: e.target.value })}
                         />
@@ -109,7 +109,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                         <input
                             type="email"
                             placeholder="supplier@example.com"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.email}
                             onChange={e => setFormData({ ...formData, email: e.target.value })}
                         />
@@ -118,7 +118,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
                         <select
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.currency}
                             onChange={e => setFormData({ ...formData, currency: e.target.value })}
                         >
@@ -135,7 +135,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                         <input
                             type="text"
                             placeholder="e.g. Net 30"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.paymentTerms}
                             onChange={e => setFormData({ ...formData, paymentTerms: e.target.value })}
                         />
@@ -147,7 +147,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                             type="number"
                             min="0"
                             placeholder="7"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.leadTimeMin}
                             onChange={e => setFormData({ ...formData, leadTimeMin: e.target.value })}
                         />
@@ -159,7 +159,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
                             type="number"
                             min="0"
                             placeholder="14"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.leadTimeMax}
                             onChange={e => setFormData({ ...formData, leadTimeMax: e.target.value })}
                         />

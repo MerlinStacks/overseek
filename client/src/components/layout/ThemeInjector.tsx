@@ -51,7 +51,7 @@ export function ThemeInjector() {
 
             // We might need to inject a style tag to override Tailwind classes if we want deep integration,
             // but for now let's hope we can use CSS variables or inline styles where needed.
-            // Actually, for Tailwind, we can't easily override 'bg-blue-600' unless we use 'bg-[var(--primary-color)]' everywhere.
+            // Actually, for Tailwind, we can't easily override 'bg-blue-600' unless we use 'bg-(--primary-color)' everywhere.
             // A brutal but effective way for "whitelabeling" existing Tailwind UI is to use a style tag to override rules.
 
             // However, a safer bet for now for "Whitelabeling" finding specific elements might be too complex.

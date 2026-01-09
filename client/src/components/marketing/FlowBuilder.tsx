@@ -51,15 +51,15 @@ const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel }) => {
     const { getNodes, getEdges } = useReactFlow();
 
     return (
-        <div className="flex gap-2 bg-white p-2 rounded shadow-sm border">
+        <div className="flex gap-2 bg-white p-2 rounded-sm shadow-xs border">
             <button
-                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200"
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
                 onClick={onCancel}
             >
                 Cancel
             </button>
             <button
-                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700"
                 onClick={() => onSave(getNodes(), getEdges())}
             >
                 Save Flow

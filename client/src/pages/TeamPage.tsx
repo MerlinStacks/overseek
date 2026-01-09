@@ -89,7 +89,7 @@ export function TeamPage() {
             </div>
 
             {/* Invite Card */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mb-8">
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs mb-8">
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <UserPlus size={20} className="text-blue-600" />
                     Add New Member
@@ -99,7 +99,7 @@ export function TeamPage() {
                         <input
                             type="email"
                             placeholder="Enter user email address"
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                         />
@@ -123,7 +123,7 @@ export function TeamPage() {
             </div>
 
             {/* Members List */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>

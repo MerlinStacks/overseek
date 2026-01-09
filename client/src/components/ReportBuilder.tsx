@@ -98,7 +98,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
     };
 
     return (
-        <div className={`space - y - 6 ${viewMode ? 'h-full flex flex-col' : 'bg-white p-6 rounded-xl shadow-sm border border-gray-200'} `}>
+        <div className={`space - y - 6 ${viewMode ? 'h-full flex flex-col' : 'bg-white p-6 rounded-xl shadow-xs border border-gray-200'} `}>
             <div className={`flex flex - col md: flex - row gap - 6 ${viewMode ? 'h-full' : ''} `}>
 
                 {/* Configuration Panel - Hidden in View Mode unless toggled (future feature) */}

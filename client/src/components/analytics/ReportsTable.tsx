@@ -23,7 +23,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
                     <tr>

@@ -140,7 +140,7 @@ export function TrackingScriptHelper() {
     return (
         <div className="space-y-8">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
-                <Info className="flex-shrink-0 w-5 h-5 text-blue-600 mt-0.5" />
+                <Info className="shrink-0 w-5 h-5 text-blue-600 mt-0.5" />
                 <div className="text-sm text-blue-800">
                     <p className="font-medium mb-1">WooCommerce Plugin Setup</p>
                     <p>To enable Live View and abandoned cart tracking, install the OverSeek plugin and paste the configuration below.</p>
@@ -166,7 +166,7 @@ export function TrackingScriptHelper() {
                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                             onClick={handleCopyConfig}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm ${configCopied
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-xs ${configCopied
                                 ? 'bg-green-100 text-green-700 border border-green-200'
                                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
                                 }`}
@@ -175,7 +175,7 @@ export function TrackingScriptHelper() {
                             {configCopied ? 'Copied' : 'Copy'}
                         </button>
                     </div>
-                    <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed border border-slate-800 shadow-sm relative">
+                    <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed border border-slate-800 shadow-xs relative">
                         <code>{connectionConfig || 'Loading configuration...'}</code>
                     </pre>
                 </div>
@@ -198,7 +198,7 @@ export function TrackingScriptHelper() {
                             <button
                                 onClick={sendTestEvent}
                                 disabled={testStatus === 'loading'}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-xs"
                             >
                                 <Zap size={14} className={testStatus === 'loading' ? 'animate-pulse' : ''} />
                                 {testStatus === 'loading' ? 'Sending...' : 'Send Test Event'}
@@ -206,7 +206,7 @@ export function TrackingScriptHelper() {
                             <button
                                 onClick={checkConnection}
                                 disabled={checkStatus === 'loading'}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-xs"
                             >
                                 <RefreshCw size={14} className={checkStatus === 'loading' ? 'animate-spin' : ''} />
                                 Check Status
@@ -217,7 +217,7 @@ export function TrackingScriptHelper() {
                     {/* Test Event Feedback */}
                     {testStatus === 'success' && (
                         <div className="p-3 rounded-md text-sm border bg-purple-50 border-purple-200 text-purple-800 flex items-start gap-3">
-                            <Zap className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                            <Zap className="w-5 h-5 text-purple-600 shrink-0" />
                             <div>
                                 <p className="font-semibold">Test Event Sent!</p>
                                 <p className="mt-1 opacity-90">A test pageview was sent directly to your analytics. Checking connection status...</p>
@@ -227,7 +227,7 @@ export function TrackingScriptHelper() {
 
                     {testStatus === 'error' && (
                         <div className="p-3 rounded-md text-sm border bg-red-50 border-red-200 text-red-800 flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
                             <div>
                                 <p className="font-semibold">Test Event Failed</p>
                                 <p className="mt-1 opacity-90">Could not send test event. Check your network connection.</p>
@@ -241,9 +241,9 @@ export function TrackingScriptHelper() {
                             checkStatus === 'inactive' ? 'bg-amber-50 border-amber-200 text-amber-800' :
                                 'bg-red-50 border-red-200 text-red-800'
                             }`}>
-                            {checkStatus === 'connected' && <Check className="w-5 h-5 text-green-600 flex-shrink-0" />}
-                            {checkStatus === 'inactive' && <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />}
-                            {checkStatus === 'error' && <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />}
+                            {checkStatus === 'connected' && <Check className="w-5 h-5 text-green-600 shrink-0" />}
+                            {checkStatus === 'inactive' && <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />}
+                            {checkStatus === 'error' && <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />}
 
                             <div>
                                 <p className="font-semibold">
@@ -281,7 +281,7 @@ export function TrackingScriptHelper() {
                         <button
                             onClick={verifyStore}
                             disabled={storeStatus === 'loading'}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-xs"
                         >
                             <Store size={14} className={storeStatus === 'loading' ? 'animate-pulse' : ''} />
                             {storeStatus === 'loading' ? 'Verifying...' : 'Verify Store Plugin'}
@@ -294,9 +294,9 @@ export function TrackingScriptHelper() {
                             }`}>
                             <div className="flex items-start gap-3">
                                 {storeResult.success ? (
-                                    <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                                    <Check className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
                                 ) : (
-                                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                                 )}
                                 <div className="flex-1 space-y-2">
                                     <p className={`font-semibold ${storeResult.success ? 'text-green-800' : 'text-amber-800'}`}>

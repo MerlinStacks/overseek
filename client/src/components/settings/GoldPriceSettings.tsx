@@ -67,7 +67,7 @@ export function GoldPriceSettings() {
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                 <div>
                     <h2 className="text-lg font-medium text-gray-900">Gold Price Configuration</h2>
@@ -91,7 +91,7 @@ export function GoldPriceSettings() {
                                 step="0.01"
                                 value={priceInput}
                                 onChange={e => setPriceInput(e.target.value)}
-                                className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 outline-none"
+                                className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 outline-hidden"
                             />
                         </div>
                     </div>

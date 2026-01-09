@@ -110,7 +110,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/50 backdrop-blur-xs"
                 onClick={onClose}
             />
 
@@ -139,7 +139,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                             placeholder="Search conversations..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                     </div>
                 </div>
@@ -167,7 +167,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                                         isMerging && "opacity-50 cursor-not-allowed"
                                     )}
                                 >
-                                    <div className="w-9 h-9 rounded-full bg-gray-400 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
+                                    <div className="w-9 h-9 rounded-full bg-gray-400 flex items-center justify-center text-white text-sm font-medium shrink-0">
                                         <MessageSquare size={16} />
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -175,7 +175,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                                             <div className="font-medium text-gray-900 truncate">
                                                 {getConversationName(conv)}
                                             </div>
-                                            <div className="text-xs text-gray-400 flex-shrink-0">
+                                            <div className="text-xs text-gray-400 shrink-0">
                                                 {format(new Date(conv.updatedAt), 'MMM d')}
                                             </div>
                                         </div>
@@ -183,7 +183,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                                             {getLastMessage(conv)}
                                         </div>
                                         <div className={cn(
-                                            "inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                            "inline-block mt-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium",
                                             conv.status === 'OPEN' && "bg-green-100 text-green-700",
                                             conv.status === 'CLOSED' && "bg-gray-100 text-gray-600",
                                             conv.status === 'SNOOZED' && "bg-yellow-100 text-yellow-700"

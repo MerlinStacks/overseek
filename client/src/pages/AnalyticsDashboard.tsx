@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import VisitorLogWidget from '../components/widgets/VisitorLogWidget';
 import EcommerceLogWidget from '../components/widgets/EcommerceLogWidget';
@@ -19,7 +19,7 @@ const AnalyticsDashboard: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
                 {/* Visitor Log Section */}
-                <Card className="flex flex-col h-full overflow-hidden border-0 shadow-sm ring-1 ring-gray-200">
+                <Card className="flex flex-col h-full overflow-hidden border-0 shadow-xs ring-1 ring-gray-200">
                     <CardHeader className="bg-white border-b border-gray-100 py-4">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
@@ -34,7 +34,7 @@ const AnalyticsDashboard: React.FC = () => {
                 </Card>
 
                 {/* Ecommerce Stream Section */}
-                <Card className="flex flex-col h-full overflow-hidden border-0 shadow-sm ring-1 ring-gray-200">
+                <Card className="flex flex-col h-full overflow-hidden border-0 shadow-xs ring-1 ring-gray-200">
                     <CardHeader className="bg-white border-b border-gray-100 py-4">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
@@ -51,7 +51,7 @@ const AnalyticsDashboard: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Conversion Funnel */}
-                <Card className="border-0 shadow-sm ring-1 ring-gray-200">
+                <Card className="border-0 shadow-xs ring-1 ring-gray-200">
                     <CardHeader className="bg-white border-b border-gray-100 py-4">
                         <CardTitle className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                             <TrendingUp className="w-4 h-4 text-green-500" />
@@ -64,7 +64,7 @@ const AnalyticsDashboard: React.FC = () => {
                 </Card>
 
                 {/* Session Stats */}
-                <Card className="border-0 shadow-sm ring-1 ring-gray-200">
+                <Card className="border-0 shadow-xs ring-1 ring-gray-200">
                     <CardHeader className="bg-white border-b border-gray-100 py-4">
                         <CardTitle className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                             <PieChart className="w-4 h-4 text-purple-500" />

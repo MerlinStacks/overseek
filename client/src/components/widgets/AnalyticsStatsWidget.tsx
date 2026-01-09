@@ -96,7 +96,7 @@ export const AnalyticsStatsWidget: React.FC<AnalyticsStatsWidgetProps> = ({ days
                 <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Devices</div>
                 <div className="flex gap-2">
                     {stats.devices.map(d => (
-                        <div key={d.type} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs text-gray-600">
+                        <div key={d.type} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-sm text-xs text-gray-600">
                             {getDeviceIcon(d.type)}
                             <span className="capitalize">{d.type}</span>
                             <span className="text-gray-400">({d.sessions})</span>
@@ -110,7 +110,7 @@ export const AnalyticsStatsWidget: React.FC<AnalyticsStatsWidgetProps> = ({ days
                 <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Browsers</div>
                 <div className="flex flex-wrap gap-1">
                     {stats.browsers.slice(0, 5).map(b => (
-                        <span key={b.name} className="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600">
+                        <span key={b.name} className="px-2 py-0.5 bg-gray-100 rounded-sm text-xs text-gray-600">
                             {b.name} ({b.sessions})
                         </span>
                     ))}

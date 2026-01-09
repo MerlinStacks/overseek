@@ -86,7 +86,7 @@ export function TeamSettings() {
     return (
         <div className="space-y-6">
             {/* Invite Card */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <UserPlus size={20} className="text-blue-600" />
                     Add New Member
@@ -96,7 +96,7 @@ export function TeamSettings() {
                         <input
                             type="email"
                             placeholder="Enter user email address"
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                         />
@@ -120,7 +120,7 @@ export function TeamSettings() {
             </div>
 
             {/* Members List */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
                 <div className="p-4 border-b border-gray-200">
                     <h3 className="font-medium text-gray-900">Team Members</h3>
                     <p className="text-sm text-gray-500">Manage who has access to {currentAccount?.name}</p>

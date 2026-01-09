@@ -151,7 +151,7 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
 
                     <div className="space-y-2">
                         {activeJobs.map((job) => (
-                            <div key={job.id} className="bg-gray-50 p-2 rounded border border-gray-100">
+                            <div key={job.id} className="bg-gray-50 p-2 rounded-sm border border-gray-100">
                                 <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-2">
                                         <Loader2 size={12} className="animate-spin text-blue-500" />
@@ -187,7 +187,7 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
 
             {/* Collapsed tooltip (when no active jobs) */}
             {collapsed && isHovered && !hasActiveJobs && (
-                <div className="absolute left-full ml-2 bottom-0 px-3 py-2 bg-gray-900 text-white text-xs rounded z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-2 bottom-0 px-3 py-2 bg-gray-900 text-white text-xs rounded-sm z-50 whitespace-nowrap">
                     {current.label}
                     <span className="block text-gray-400">{current.subtext}</span>
                 </div>

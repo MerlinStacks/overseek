@@ -74,7 +74,7 @@ export function AppearanceSettings() {
                     <input
                         type="text"
                         name="appName"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                         value={settings.appName}
                         onChange={handleChange}
                         placeholder="OverSeek"
@@ -90,14 +90,14 @@ export function AppearanceSettings() {
                             name="primaryColor"
                             value={settings.primaryColor}
                             onChange={handleChange}
-                            className="h-10 w-20 p-1 border border-gray-300 rounded cursor-pointer"
+                            className="h-10 w-20 p-1 border border-gray-300 rounded-sm cursor-pointer"
                         />
                         <input
                             type="text"
                             name="primaryColor"
                             value={settings.primaryColor}
                             onChange={handleChange}
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono uppercase"
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono uppercase"
                         />
                     </div>
                     <p className="text-xs text-gray-500 mt-1">Main brand color used for buttons and highlights.</p>
@@ -108,7 +108,7 @@ export function AppearanceSettings() {
                     <input
                         type="url"
                         name="logoUrl"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                         value={settings.logoUrl}
                         onChange={handleChange}
                         placeholder="https://example.com/logo.png"

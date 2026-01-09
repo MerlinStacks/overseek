@@ -106,7 +106,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                     <div className="relative">
                         <button
                             onClick={() => setShowFilterMenu(!showFilterMenu)}
-                            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+                            className="p-1.5 rounded-sm hover:bg-gray-100 text-gray-500"
                         >
                             <Filter size={16} />
                         </button>
@@ -119,7 +119,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                         onClick={() => setFilter('mine')}
                         className={cn(
                             "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
-                            filter === 'mine' ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                            filter === 'mine' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
                         )}
                     >
                         Mine {counts.mine > 0 && <span className="ml-1 text-gray-400">{counts.mine}</span>}
@@ -128,7 +128,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                         onClick={() => setFilter('unassigned')}
                         className={cn(
                             "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
-                            filter === 'unassigned' ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                            filter === 'unassigned' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
                         )}
                     >
                         Unassigned {counts.unassigned > 0 && <span className="ml-1 text-gray-400">{counts.unassigned}</span>}
@@ -137,7 +137,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                         onClick={() => setFilter('all')}
                         className={cn(
                             "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
-                            filter === 'all' ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                            filter === 'all' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
                         )}
                     >
                         All {counts.all > 0 && <span className="ml-1 text-gray-400">{counts.all}</span>}
@@ -189,7 +189,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                             >
                                 {/* Avatar */}
                                 <div className={cn(
-                                    "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0",
+                                    "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0",
                                     isSelected ? "bg-blue-600" : "bg-gray-500"
                                 )}>
                                     {initials}
@@ -201,15 +201,15 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-1.5 min-w-0">
                                             {isUnread && (
-                                                <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                                                <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0" />
                                             )}
-                                            {isEmail && <Mail size={12} className="text-gray-400 flex-shrink-0" />}
+                                            {isEmail && <Mail size={12} className="text-gray-400 shrink-0" />}
                                             <span className={cn(
                                                 "truncate text-sm",
                                                 isUnread ? "font-bold text-gray-900" : "font-medium text-gray-700"
                                             )}>{name}</span>
                                         </div>
-                                        <span className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
+                                        <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">
                                             {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false })}
                                         </span>
                                     </div>
@@ -232,7 +232,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                                     {/* Status Badge */}
                                     <div className="flex items-center gap-2 mt-1.5">
                                         {conv.status === 'OPEN' && (
-                                            <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded">
+                                            <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded-sm">
                                                 Open
                                             </span>
                                         )}
@@ -242,7 +242,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                                             </span>
                                         )}
                                         {conversationHasDraft && (
-                                            <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded">
+                                            <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded-sm">
                                                 <Pencil size={10} />
                                                 Draft
                                             </span>

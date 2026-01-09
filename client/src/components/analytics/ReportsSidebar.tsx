@@ -72,7 +72,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
                 <button
                     onClick={() => onSelect(t)}
                     className={`w-full text-left p-3 rounded-xl transition-all duration-200 relative overflow-hidden ${isActive
-                            ? `${colors.bg} ${colors.text} shadow-sm ring-1 ${colors.ring}`
+                            ? `${colors.bg} ${colors.text} shadow-xs ring-1 ${colors.ring}`
                             : 'hover:bg-white/60 text-gray-600 hover:text-gray-900 border border-transparent hover:border-white/40'
                         }`}
                 >
@@ -80,7 +80,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
                     <div className="flex items-center gap-3 relative z-10">
                         <div className={`p-1.5 rounded-lg transition-all ${isActive
                                 ? `${colors.bg} ${colors.text}`
-                                : 'bg-gray-100 text-gray-400 group-hover/item:bg-white group-hover/item:shadow-sm'
+                                : 'bg-gray-100 text-gray-400 group-hover/item:bg-white group-hover/item:shadow-xs'
                             }`}>
                             {isSystem && CATEGORY_ICONS[category] ? CATEGORY_ICONS[category] : <BarChart3 size={14} />}
                         </div>
@@ -108,7 +108,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
     };
 
     return (
-        <div className="w-80 flex-shrink-0 bg-white/50 backdrop-blur-xl border border-white/20 h-[calc(100vh-12rem)] overflow-y-auto flex flex-col sticky top-0 rounded-2xl shadow-lg">
+        <div className="w-80 shrink-0 bg-white/50 backdrop-blur-xl border border-white/20 h-[calc(100vh-12rem)] overflow-y-auto flex flex-col sticky top-0 rounded-2xl shadow-lg">
 
             {/* Search Header */}
             <div className="p-4 sticky top-0 bg-white/80 backdrop-blur-md z-10 border-b border-gray-100/50">
@@ -119,7 +119,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
                         placeholder="Search reports..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-gray-50/50 border border-gray-200/60 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-none"
+                        className="w-full pl-9 pr-4 py-2 bg-gray-50/50 border border-gray-200/60 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-hidden"
                     />
                 </div>
             </div>

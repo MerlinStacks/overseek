@@ -58,7 +58,7 @@ export function AdminLogsPage() {
                 </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-100 uppercase text-xs text-slate-500 font-medium">

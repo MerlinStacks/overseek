@@ -184,7 +184,7 @@ export function AdminAccountsPage() {
         <div className="space-y-6">
             <h1 className="text-2xl font-bold text-slate-800">Manage Accounts</h1>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-100 uppercase text-xs text-slate-500 font-medium">
                         <tr>
@@ -210,7 +210,7 @@ export function AdminAccountsPage() {
                                                     key={key}
                                                     onClick={() => toggleFeature(account.id, key, !!isEnabled)}
                                                     className={cn(
-                                                        "px-2 py-1 rounded text-xs transition-colors border",
+                                                        "px-2 py-1 rounded-sm text-xs transition-colors border",
                                                         isEnabled
                                                             ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
                                                             : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-600"
@@ -249,7 +249,7 @@ export function AdminAccountsPage() {
 
             {/* Delete Confirmation Modal */}
             {deleteTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
                     <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md mx-4">
                         <h2 className="text-lg font-bold text-slate-900 mb-2">Delete Account</h2>
                         <p className="text-sm text-slate-600 mb-4">
@@ -263,7 +263,7 @@ export function AdminAccountsPage() {
                             value={confirmName}
                             onChange={(e) => setConfirmName(e.target.value)}
                             placeholder="Type account name to confirm"
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent mb-4"
+                            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-red-500 focus:border-transparent mb-4"
                             autoFocus
                         />
                         <div className="flex justify-end gap-3">

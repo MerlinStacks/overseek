@@ -29,7 +29,7 @@ export function AccountSwitcher() {
                 className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors group"
             >
                 <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white font-bold shrink-0">
+                    <div className="w-8 h-8 rounded-sm bg-blue-500 flex items-center justify-center text-white font-bold shrink-0">
                         {currentAccount.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="text-left overflow-hidden">

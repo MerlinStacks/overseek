@@ -53,7 +53,7 @@ export function SaveReportModal({ isOpen, onClose, onSave }: SaveReportModalProp
                     <label className="flex items-center gap-2 cursor-pointer mb-4">
                         <input
                             type="checkbox"
-                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                            className="rounded-sm text-blue-600 focus:ring-blue-500 w-4 h-4"
                             checked={enableSchedule}
                             onChange={e => setEnableSchedule(e.target.checked)}
                         />

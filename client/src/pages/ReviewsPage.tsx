@@ -142,14 +142,14 @@ export const ReviewsPage = () => {
                         <input
                             type="text"
                             placeholder="Search reviews..."
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
 
                     <select
-                        className="border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        className="border border-gray-300 rounded-lg px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
@@ -181,7 +181,7 @@ export const ReviewsPage = () => {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
@@ -221,7 +221,7 @@ export const ReviewsPage = () => {
                                                 {review.order && (
                                                     <div className="group relative">
                                                         <CheckCircle size={16} className="text-green-500 cursor-help" />
-                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded p-2 text-center whitespace-normal z-10 shadow-lg">
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded-sm p-2 text-center whitespace-normal z-10 shadow-lg">
                                                             Verified Owner via Order #{review.order.number}
                                                         </div>
                                                     </div>

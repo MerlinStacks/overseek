@@ -53,7 +53,7 @@ export function SeoScoreBadge({ score, size = 'md', tests }: SeoScoreBadgeProps)
                                         Fixes Needed ({failedTests.length})
                                     </p>
                                     {failedTests.map((t, i) => (
-                                        <div key={i} className="text-xs text-red-700 bg-red-50 px-2 py-1.5 rounded border border-red-100">
+                                        <div key={i} className="text-xs text-red-700 bg-red-50 px-2 py-1.5 rounded-sm border border-red-100">
                                             <span className="font-medium">{t.test}:</span> {t.message}
                                         </div>
                                     ))}
@@ -66,7 +66,7 @@ export function SeoScoreBadge({ score, size = 'md', tests }: SeoScoreBadgeProps)
                                         Passed ({passedTests.length})
                                     </p>
                                     {passedTests.map((t, i) => (
-                                        <div key={i} className="text-xs text-green-700 bg-green-50 px-2 py-1.5 rounded border border-green-100">
+                                        <div key={i} className="text-xs text-green-700 bg-green-50 px-2 py-1.5 rounded-sm border border-green-100">
                                             {t.test}
                                         </div>
                                     ))}

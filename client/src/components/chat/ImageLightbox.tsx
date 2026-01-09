@@ -68,7 +68,7 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
             onClick={handleBackdropClick}
         >
             {/* Header Controls */}
-            <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 bg-gradient-to-b from-black/50 to-transparent">
+            <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 bg-linear-to-b from-black/50 to-transparent">
                 <div className="text-white/70 text-sm">
                     Press ESC to close • +/- to zoom
                 </div>
@@ -80,7 +80,7 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
                     >
                         <ZoomOut size={20} />
                     </button>
-                    <span className="text-white text-sm min-w-[3rem] text-center">
+                    <span className="text-white text-sm min-w-12 text-center">
                         {Math.round(scale * 100)}%
                     </span>
                     <button

@@ -24,7 +24,7 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
     }, [currentAccount, token]);
 
     return (
-        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-xs border border-gray-200 overflow-hidden ${className}`}>
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold text-gray-900">Recent Orders</h3>
                 <ShoppingBag size={18} className="text-gray-400" />

@@ -2,7 +2,7 @@
  * StepTypePopup - Compact popup for selecting step types when clicking "+" button.
  * Shows Action, Delay, Condition, Goal, Jump, Exit options.
  */
-import React from 'react';
+import * as React from 'react';
 import { X, Zap, Clock, GitBranch, Target, ArrowUpDown, LogOut } from 'lucide-react';
 
 export type StepType = 'action' | 'delay' | 'condition' | 'goal' | 'jump' | 'exit';
@@ -60,7 +60,7 @@ export const StepTypePopup: React.FC<StepTypePopupProps> = ({
                     <h3 className="text-sm font-semibold text-gray-900">Add Step</h3>
                     <button
                         onClick={onClose}
-                        className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                        className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-sm transition-colors"
                     >
                         <X size={14} />
                     </button>

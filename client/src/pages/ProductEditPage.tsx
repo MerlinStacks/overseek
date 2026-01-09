@@ -293,7 +293,7 @@ export function ProductEditPage() {
 
 
                     <div className="space-y-6">
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-4">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-4">
                             {mainImageFailed ? (
                                 <div className="w-full h-64 bg-gray-50 rounded-lg flex flex-col items-center justify-center text-gray-400">
                                     <ImageOff size={48} />
@@ -303,7 +303,7 @@ export function ProductEditPage() {
                                 <img
                                     src={product.mainImage || formData.images?.[0]?.src}
                                     alt=""
-                                    className="w-full h-auto rounded-lg border border-gray-100 shadow-sm"
+                                    className="w-full h-auto rounded-lg border border-gray-100 shadow-xs"
                                     referrerPolicy="no-referrer"
                                     onError={() => setMainImageFailed(true)}
                                 />
@@ -314,7 +314,7 @@ export function ProductEditPage() {
                             )}
                         </div>
 
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
                             <ImageGallery
                                 images={formData.images || []}
                                 onChange={(imgs) => setFormData(prev => ({ ...prev, images: imgs }))}
@@ -391,7 +391,7 @@ export function ProductEditPage() {
             content: (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="space-y-6">
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">SEO Health</h3>
                                 <div className="flex gap-2">
@@ -409,13 +409,13 @@ export function ProductEditPage() {
                                     type="text"
                                     value={formData.focusKeyword}
                                     onChange={(e) => setFormData({ ...formData, focusKeyword: e.target.value })}
-                                    className="w-full px-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    className="w-full px-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                                 />
                             </div>
                         </div>
                     </div>
                     <div className="space-y-6">
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6">
+                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
                             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Merchant Center Status</h3>
                             <MerchantCenterPanel
                                 score={product.merchantCenterScore || 0}
@@ -451,7 +451,7 @@ export function ProductEditPage() {
     return (
         <div className="min-h-screen bg-gray-50/50 pb-20">
             {/* Header Sticky Bar */}
-            <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm transition-all">
+            <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-xs transition-all">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
@@ -473,7 +473,7 @@ export function ProductEditPage() {
                                     <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues} />
                                 </div>
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
-                                    <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded text-xs text-gray-600">ID: {product.wooId}</span>
+                                    <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded-sm text-xs text-gray-600">ID: {product.wooId}</span>
                                     {product.sku && <span className="flex items-center gap-1"><Tag size={12} /> {product.sku}</span>}
                                     <span>•</span>
                                     <a
@@ -494,7 +494,7 @@ export function ProductEditPage() {
                             <button
                                 onClick={handleSync}
                                 disabled={isSyncing || isLoading}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/50 border border-gray-300/80 text-gray-700 font-medium rounded-lg hover:bg-white transition-colors backdrop-blur-sm disabled:opacity-50"
+                                className="flex items-center gap-2 px-4 py-2 bg-white/50 border border-gray-300/80 text-gray-700 font-medium rounded-lg hover:bg-white transition-colors backdrop-blur-xs disabled:opacity-50"
                             >
                                 {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                                 <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
@@ -502,7 +502,7 @@ export function ProductEditPage() {
                             <button
                                 onClick={handleSave}
                                 disabled={isSaving}
-                                className="flex items-center gap-2 px-6 py-2 bg-blue-600/90 text-white font-medium rounded-lg hover:bg-blue-600 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all backdrop-blur-sm"
+                                className="flex items-center gap-2 px-6 py-2 bg-blue-600/90 text-white font-medium rounded-lg hover:bg-blue-600 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all backdrop-blur-xs"
                             >
                                 {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                                 Save Changes

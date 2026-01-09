@@ -72,7 +72,7 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
     };
 
     return (
-        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[200px] ${className}`} style={{ minHeight: '200px' }}>
+        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-xs border border-gray-200 overflow-hidden min-h-[200px] ${className}`} style={{ minHeight: '200px' }}>
             <div className="flex justify-between items-center mb-2">
                 <h3 className="font-semibold text-gray-900">Customer Growth</h3>
                 <Users size={18} className="text-gray-400" />

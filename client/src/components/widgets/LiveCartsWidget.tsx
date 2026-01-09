@@ -77,7 +77,7 @@ const LiveCartsWidget: React.FC<WidgetProps> = ({ className }) => {
 
     if (loading && carts.length === 0) {
         return (
-            <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+            <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-xs border border-gray-200 overflow-hidden ${className}`}>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-semibold text-gray-900">Live Carts</h3>
                     <ShoppingCart size={18} className="text-gray-400" />
@@ -90,7 +90,7 @@ const LiveCartsWidget: React.FC<WidgetProps> = ({ className }) => {
     }
 
     return (
-        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-xs border border-gray-200 overflow-hidden ${className}`}>
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-gray-900">Live Carts</h3>
@@ -152,14 +152,14 @@ const LiveCartsWidget: React.FC<WidgetProps> = ({ className }) => {
                                                 )}
                                             </div>
                                             <div className="text-xs text-gray-500 flex items-center gap-1 truncate">
-                                                <UserIcon className="w-3 h-3 flex-shrink-0" />
+                                                <UserIcon className="w-3 h-3 shrink-0" />
                                                 <span className="truncate">
                                                     {cart.customerName || cart.email || `Visitor ${cart.visitorId?.slice(0, 6) || 'Unknown'}...`}
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="text-right flex-shrink-0">
+                                    <div className="text-right shrink-0">
                                         <div className="text-xs text-gray-400 flex items-center justify-end gap-1">
                                             <Clock className="w-3 h-3" />
                                             {cart.minutesSinceActivity < 1

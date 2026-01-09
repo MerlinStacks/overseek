@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { BarChart3, Trash2 } from 'lucide-react';
 import { ReportTemplate } from '../../types/analytics';
 
@@ -13,7 +13,7 @@ export function SystemReportsList({ templates, onSelect, onDelete }: SystemRepor
     const customTemplates = templates.filter(t => t.type === 'CUSTOM');
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
             <h3 className="text-lg font-bold text-gray-900 mb-6">Premade & Saved Reports</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -64,7 +64,7 @@ export function SystemReportsList({ templates, onSelect, onDelete }: SystemRepor
                                 </div>
                                 <button
                                     onClick={(e) => onDelete(e, t.id)}
-                                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
+                                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded-sm"
                                     title="Delete Template"
                                 >
                                     <Trash2 size={16} />

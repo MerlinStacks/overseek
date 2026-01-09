@@ -80,7 +80,7 @@ const EventItem: React.FC<{ event: AnalyticsEvent }> = ({ event }) => {
 
     return (
         <div className="relative pl-6">
-            <div className={`absolute left-0 top-1 w-3 h-3 rounded-full border-2 border-white shadow-sm ${getEventColor(event.type)}`} />
+            <div className={`absolute left-0 top-1 w-3 h-3 rounded-full border-2 border-white shadow-xs ${getEventColor(event.type)}`} />
             <div className="flex flex-col">
                 <span className="text-xs text-gray-400 mb-0.5">
                     {format(new Date(event.createdAt), 'HH:mm:ss')} • <span className="capitalize">{event.type.replace(/_/g, ' ')}</span>
@@ -116,7 +116,7 @@ const EventItem: React.FC<{ event: AnalyticsEvent }> = ({ event }) => {
                             </span>
                             {payload.quantity && <span className="text-xs ml-1">(×{payload.quantity})</span>}
                             {payload.price && (
-                                <span className="ml-2 text-xs bg-amber-50 text-amber-600 px-2 py-0.5 rounded">
+                                <span className="ml-2 text-xs bg-amber-50 text-amber-600 px-2 py-0.5 rounded-sm">
                                     ${payload.price}
                                 </span>
                             )}
@@ -129,7 +129,7 @@ const EventItem: React.FC<{ event: AnalyticsEvent }> = ({ event }) => {
                         <div>
                             <span className="font-medium text-orange-600">Started checkout</span>
                             {payload.total && (
-                                <span className="ml-2 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded">
+                                <span className="ml-2 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-sm">
                                     Cart: ${payload.total}
                                 </span>
                             )}
@@ -139,7 +139,7 @@ const EventItem: React.FC<{ event: AnalyticsEvent }> = ({ event }) => {
                         <div>
                             <span className="font-medium text-green-600">Purchase completed</span>
                             {payload.total && (
-                                <span className="ml-2 text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded font-semibold">
+                                <span className="ml-2 text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-sm font-semibold">
                                     ${payload.total} {payload.currency || ''}
                                 </span>
                             )}
@@ -277,7 +277,7 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
     };
 
     return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
                 {/* Header */}
@@ -302,7 +302,7 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors shadow-sm"
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors shadow-xs"
                         title="Close"
                     >
                         <X className="w-6 h-6 text-gray-600" />

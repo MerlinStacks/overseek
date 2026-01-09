@@ -79,7 +79,7 @@ export function NotificationSettings() {
 
     if (!isSupported) {
         return (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6">
                 <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
                         <BellOff className="w-5 h-5 text-gray-400" />
@@ -102,7 +102,7 @@ export function NotificationSettings() {
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
                 <h2 className="text-lg font-medium text-gray-900">Push Notifications</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -193,7 +193,7 @@ export function NotificationSettings() {
                                 type="checkbox"
                                 checked={preferences.notifyNewMessages}
                                 onChange={(e) => updatePreferences({ notifyNewMessages: e.target.checked })}
-                                className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                className="w-5 h-5 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                         </label>
 
@@ -212,7 +212,7 @@ export function NotificationSettings() {
                                 type="checkbox"
                                 checked={preferences.notifyNewOrders}
                                 onChange={(e) => updatePreferences({ notifyNewOrders: e.target.checked })}
-                                className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                className="w-5 h-5 rounded-sm border-gray-300 text-green-600 focus:ring-green-500"
                             />
                         </label>
                     </div>
@@ -270,7 +270,7 @@ export function NotificationSettings() {
                 {/* Mobile Tip */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
                     <div className="flex items-start gap-3">
-                        <Smartphone className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                        <Smartphone className="w-5 h-5 mt-0.5 shrink-0" />
                         <div>
                             <p className="font-medium mb-1">Mobile App Experience</p>
                             <p>

@@ -149,7 +149,7 @@ export const RecipeSelectorModal: React.FC<RecipeSelectorModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b">
@@ -165,7 +165,7 @@ export const RecipeSelectorModal: React.FC<RecipeSelectorModalProps> = ({
                                 placeholder="Search recipes..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                                className="pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 w-48"
                             />
                         </div>
                         <button
@@ -216,7 +216,7 @@ export const RecipeSelectorModal: React.FC<RecipeSelectorModalProps> = ({
                                         {recipe.description}
                                     </p>
                                     <div className="flex items-center gap-2 mt-2">
-                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-sm">
                                             {recipe.nodes.length} steps
                                         </span>
                                         <span className="text-xs text-gray-400">

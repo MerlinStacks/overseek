@@ -237,7 +237,7 @@ export function PoliciesPage() {
                                     placeholder="Enter title..."
                                     value={formTitle}
                                     onChange={e => setFormTitle(e.target.value)}
-                                    className="text-xl font-bold text-gray-900 bg-transparent border-none outline-none w-full"
+                                    className="text-xl font-bold text-gray-900 bg-transparent border-none outline-hidden w-full"
                                 />
                             ) : (
                                 <div>
@@ -316,7 +316,7 @@ export function PoliciesPage() {
                                         type="checkbox"
                                         checked={formIsPublished}
                                         onChange={e => setFormIsPublished(e.target.checked)}
-                                        className="rounded"
+                                        className="rounded-sm"
                                     />
                                     Published
                                 </label>
@@ -330,7 +330,7 @@ export function PoliciesPage() {
                                     placeholder="Write your policy content here... (Markdown supported)"
                                     value={formContent}
                                     onChange={e => setFormContent(e.target.value)}
-                                    className="w-full h-full min-h-[400px] p-4 bg-white border border-gray-200 rounded-lg text-sm font-mono resize-none outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full h-full min-h-[400px] p-4 bg-white border border-gray-200 rounded-lg text-sm font-mono resize-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                 />
                             ) : (
                                 <div className="bg-white rounded-lg border border-gray-200 p-6 prose max-w-none">

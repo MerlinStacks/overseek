@@ -132,7 +132,7 @@ export function LiveAnalyticsPage() {
                         <select
                             value={dateRange}
                             onChange={e => setDateRange(e.target.value)}
-                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-hidden"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -177,7 +177,7 @@ export function LiveAnalyticsPage() {
                     />
                 )}
                 {activeView === 'realtime' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                         <VisitorsTable data={visitors} />
                     </div>
                 )}

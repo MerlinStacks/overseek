@@ -166,7 +166,7 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
     }, 0);
 
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                 <div className="flex items-center gap-4">
                     <h3 className="font-semibold text-gray-900">BOM Configuration</h3>
@@ -178,7 +178,7 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
                             <select
                                 value={selectedScope}
                                 onChange={(e) => setSelectedScope(Number(e.target.value))}
-                                className="bg-transparent border-none outline-none text-gray-700 font-medium cursor-pointer min-w-[150px]"
+                                className="bg-transparent border-none outline-hidden text-gray-700 font-medium cursor-pointer min-w-[150px]"
                             >
                                 <option value={0}>Main Product</option>
                                 {variants.map(v => (
@@ -279,7 +279,7 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
                                                         newItems[idx].quantity = Number(e.target.value);
                                                         setBomItems(newItems);
                                                     }}
-                                                    className="w-full border rounded p-1 text-center text-sm"
+                                                    className="w-full border rounded-sm p-1 text-center text-sm"
                                                 />
                                             </td>
                                             <td className="p-3">
@@ -291,7 +291,7 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
                                                         newItems[idx].wasteFactor = Number(e.target.value);
                                                         setBomItems(newItems);
                                                     }}
-                                                    className="w-full border rounded p-1 text-center text-sm"
+                                                    className="w-full border rounded-sm p-1 text-center text-sm"
                                                 />
                                             </td>
                                             <td className="p-3 text-right text-sm">

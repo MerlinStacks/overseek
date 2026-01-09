@@ -158,7 +158,7 @@ export function EmailSettings() {
         <div className="space-y-6">
             {/* Sync Button & Status */}
             {!editingAccount && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="font-medium text-gray-900">Email Sync</h3>

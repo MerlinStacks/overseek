@@ -231,7 +231,7 @@ export function OrdersPage() {
                         <input
                             type="text"
                             placeholder="Search orders..."
-                            className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -280,7 +280,7 @@ export function OrdersPage() {
                                                         setSelectedTags(selectedTags.filter(t => t !== tag));
                                                     }
                                                 }}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
                                             <span className="text-sm text-gray-700">{tag}</span>
                                         </label>
@@ -302,7 +302,7 @@ export function OrdersPage() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[700px]">
                         <thead>
@@ -328,7 +328,7 @@ export function OrdersPage() {
                                         className="hover:bg-gray-50 transition-colors cursor-pointer"
                                         onClick={() => setSelectedOrderId(order.id)}
                                     >
-                                        <td className="px-3 md:px-6 py-3 md:py-4 font-medium text-blue-600 outline-none">#{order.id}</td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 font-medium text-blue-600 outline-hidden">#{order.id}</td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-gray-600 text-sm">{formatDate(order.date_created)}</td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
@@ -367,7 +367,7 @@ export function OrdersPage() {
                                                     return (
                                                         <span
                                                             key={tag}
-                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs"
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs"
                                                             style={{
                                                                 backgroundColor: bgColor,
                                                                 color: tagColors[tag] ? '#ffffff' : '#4B5563'

@@ -194,7 +194,7 @@ export function PurchaseOrderEditPage() {
             <div className="grid grid-cols-3 gap-6">
                 <div className="col-span-2 space-y-6">
                     {/* Items Panel */}
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold">Order Items</h2>
                             <button onClick={addItem} className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1">
@@ -212,7 +212,7 @@ export function PurchaseOrderEditPage() {
                                             value={item.name}
                                             onChange={(e) => updateItem(idx, 'name', e.target.value)}
                                             placeholder="Product Name"
-                                            className="w-full text-sm p-2 border border-gray-300 rounded"
+                                            className="w-full text-sm p-2 border border-gray-300 rounded-sm"
                                         />
                                     </div>
                                     <div className="w-24">
@@ -221,7 +221,7 @@ export function PurchaseOrderEditPage() {
                                             type="number"
                                             value={item.quantity}
                                             onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
-                                            className="w-full text-sm p-2 border border-gray-300 rounded"
+                                            className="w-full text-sm p-2 border border-gray-300 rounded-sm"
                                         />
                                     </div>
                                     <div className="w-28">
@@ -230,7 +230,7 @@ export function PurchaseOrderEditPage() {
                                             type="number"
                                             value={item.unitCost}
                                             onChange={(e) => updateItem(idx, 'unitCost', Number(e.target.value))}
-                                            className="w-full text-sm p-2 border border-gray-300 rounded"
+                                            className="w-full text-sm p-2 border border-gray-300 rounded-sm"
                                         />
                                     </div>
                                     <div className="w-24 text-right pb-2 font-medium">
@@ -242,7 +242,7 @@ export function PurchaseOrderEditPage() {
                                 </div>
                             ))}
                             {items.length === 0 && (
-                                <div className="text-center py-6 text-gray-400 text-sm bg-gray-50 rounded border border-dashed">
+                                <div className="text-center py-6 text-gray-400 text-sm bg-gray-50 rounded-sm border border-dashed">
                                     No items added.
                                 </div>
                             )}
@@ -259,7 +259,7 @@ export function PurchaseOrderEditPage() {
 
                 <div className="space-y-6">
                     {/* Settings Panel */}
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs space-y-4">
                         <h2 className="text-lg font-semibold">Order Details</h2>
 
                         <div>
@@ -274,7 +274,7 @@ export function PurchaseOrderEditPage() {
                                     }
                                 }}
                                 disabled={!isNew}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="">Select Supplier...</option>
                                 {suppliers.map(s => (
@@ -289,7 +289,7 @@ export function PurchaseOrderEditPage() {
                             <select
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="DRAFT">Draft</option>
                                 <option value="ORDERED">Ordered</option>
@@ -306,7 +306,7 @@ export function PurchaseOrderEditPage() {
                                     type="date"
                                     value={expectedDate}
                                     onChange={(e) => setExpectedDate(e.target.value)}
-                                    className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
                         </div>
@@ -317,7 +317,7 @@ export function PurchaseOrderEditPage() {
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
                                 rows={4}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 resize-none"
                             ></textarea>
                         </div>
                     </div>

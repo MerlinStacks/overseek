@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { PresenceUser } from '../../hooks/useCollaboration';
 
 interface PresenceAvatarsProps {
@@ -37,7 +37,7 @@ export const PresenceAvatars: React.FC<PresenceAvatarsProps> = ({ users, current
 
                     {/* Tooltip */}
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-50 whitespace-nowrap">
-                        <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-lg">
+                        <div className="bg-gray-900 text-white text-xs rounded-sm py-1 px-2 shadow-lg">
                             {user.name} {user.userId === currentUserId ? '(You)' : ''}
                         </div>
                     </div>

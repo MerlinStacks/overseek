@@ -158,7 +158,7 @@ export function SocialChannelsSettings() {
 
             {/* Connected Accounts */}
             {accounts.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                     <div className="p-4 border-b border-gray-200">
                         <h3 className="font-medium text-gray-900">Connected Channels</h3>
                     </div>
@@ -186,7 +186,7 @@ export function SocialChannelsSettings() {
             )}
 
             {/* Available Platforms */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <div className="p-4 border-b border-gray-200">
                     <h3 className="font-medium text-gray-900">Connect Messaging Channels</h3>
                     <p className="text-sm text-gray-500 mt-1">

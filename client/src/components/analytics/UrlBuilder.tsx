@@ -20,7 +20,7 @@ export const UrlBuilder = () => {
     };
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 max-w-2xl">
+        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200 max-w-2xl">
             <h3 className="text-lg font-bold text-gray-900 mb-6">Campaign URL Builder</h3>
             <div className="space-y-4">
                 <div>
@@ -46,7 +46,7 @@ export const UrlBuilder = () => {
                 {generated && (
                     <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Generated URL</label>
-                        <div className="break-all font-mono text-sm bg-white p-3 rounded border border-gray-200 select-all">{generated}</div>
+                        <div className="break-all font-mono text-sm bg-white p-3 rounded-sm border border-gray-200 select-all">{generated}</div>
                     </div>
                 )}
             </div>

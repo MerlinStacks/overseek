@@ -149,7 +149,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
     if (isLoading) return <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h3 className="text-lg font-bold text-gray-900">Sales Forecast</h3>

@@ -109,7 +109,7 @@ export function GeneralSettings() {
     if (!currentAccount) return <div>Loading...</div>;
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
                 <h2 className="text-lg font-medium text-gray-900">Store Configuration</h2>
                 <p className="text-sm text-gray-500 mt-1">Manage your store details and connection credentials.</p>
@@ -122,7 +122,7 @@ export function GeneralSettings() {
                         <input
                             type="text"
                             name="name"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                             value={formData.name}
                             onChange={handleChange}
                         />
@@ -132,7 +132,7 @@ export function GeneralSettings() {
                         <input
                             type="url"
                             name="domain"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                             value={formData.domain}
                             onChange={handleChange}
                         />
@@ -147,7 +147,7 @@ export function GeneralSettings() {
                             <input
                                 type="url"
                                 name="wooUrl"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                 placeholder="https://mystore.com"
                                 value={formData.wooUrl}
                                 onChange={handleChange}
@@ -158,7 +158,7 @@ export function GeneralSettings() {
                             <input
                                 type="text"
                                 name="wooConsumerKey"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono"
                                 placeholder="ck_..."
                                 value={formData.wooConsumerKey}
                                 onChange={handleChange}
@@ -169,7 +169,7 @@ export function GeneralSettings() {
                             <input
                                 type="password"
                                 name="wooConsumerSecret"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono"
                                 placeholder="Leave blank to keep unchanged"
                                 value={formData.wooConsumerSecret}
                                 onChange={handleChange}

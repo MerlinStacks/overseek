@@ -24,7 +24,7 @@ export function TypingIndicator({ name, isAgent = false }: TypingIndicatorProps)
         >
             {/* Avatar */}
             {!isAgent && (
-                <div className="w-7 h-7 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                <div className="w-7 h-7 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-medium shrink-0">
                     {name?.charAt(0).toUpperCase() || 'C'}
                 </div>
             )}
@@ -32,7 +32,7 @@ export function TypingIndicator({ name, isAgent = false }: TypingIndicatorProps)
             {/* Typing Bubble */}
             <div
                 className={cn(
-                    "rounded-2xl px-4 py-3 shadow-sm",
+                    "rounded-2xl px-4 py-3 shadow-xs",
                     isAgent
                         ? "bg-blue-600 rounded-br-md"
                         : "bg-white rounded-bl-md border border-gray-100"
@@ -65,7 +65,7 @@ export function TypingIndicator({ name, isAgent = false }: TypingIndicatorProps)
 
             {/* Agent Avatar */}
             {isAgent && (
-                <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium shrink-0">
                     ME
                 </div>
             )}

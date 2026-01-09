@@ -22,7 +22,7 @@ export function SeoAnalysisPanel({ score, tests, focusKeyword }: SeoAnalysisPane
     const progressBarColor = score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500';
 
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header / Score Card */}
             <div className="p-6 border-b border-gray-100 bg-white/50">
                 <div className="flex items-start justify-between mb-4">
@@ -62,7 +62,7 @@ export function SeoAnalysisPanel({ score, tests, focusKeyword }: SeoAnalysisPane
                         </h4>
                         <div className="space-y-3">
                             {failedTests.map((t, idx) => (
-                                <div key={idx} className="group bg-white border border-l-4 border-l-amber-500 border-gray-100 rounded-lg p-4 shadow-sm hover:shadow-md transition-all">
+                                <div key={idx} className="group bg-white border border-l-4 border-l-amber-500 border-gray-100 rounded-lg p-4 shadow-xs hover:shadow-md transition-all">
                                     <div className="flex items-start gap-4">
                                         <div className="bg-amber-50 p-2 rounded-full shrink-0 group-hover:bg-amber-100 transition-colors">
                                             <Lightbulb className="text-amber-600" size={18} />

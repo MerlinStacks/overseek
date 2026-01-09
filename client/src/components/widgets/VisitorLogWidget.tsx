@@ -188,7 +188,7 @@ const VisitorLogWidget: React.FC = () => {
     }
 
     return (
-        <div className="h-full overflow-hidden flex flex-col bg-white rounded-xl border border-gray-100 shadow-sm">
+        <div className="h-full overflow-hidden flex flex-col bg-white rounded-xl border border-gray-100 shadow-xs">
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                 <div className="flex items-center gap-2">
@@ -217,7 +217,7 @@ const VisitorLogWidget: React.FC = () => {
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2 min-w-0 flex-1">
                                         {/* Avatar */}
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center shrink-0 text-xs font-semibold shadow-sm">
+                                        <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center shrink-0 text-xs font-semibold shadow-xs">
                                             {v.email ? v.email.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
                                         </div>
                                         {/* Name & Location */}
@@ -335,7 +335,7 @@ const VisitorLogWidget: React.FC = () => {
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${iconClasses}`}
+                                                        className={`w-6 h-6 rounded-sm flex items-center justify-center transition-colors ${iconClasses}`}
                                                         title={`${tooltip}\n${formatDistanceToNowStrict(new Date(event.createdAt))} ago`}
                                                     >
                                                         <IconComponent className="w-3 h-3" />

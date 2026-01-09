@@ -42,7 +42,7 @@ export function AdminSidebar() {
         >
             <div className="flex flex-col px-3 pt-6 pb-4">
                 <div className={cn("flex items-center gap-3 px-2 mb-8", collapsed ? "justify-center" : "")}>
-                    <div className="h-8 w-8 rounded bg-blue-600 flex items-center justify-center text-white font-bold shrink-0">
+                    <div className="h-8 w-8 rounded-sm bg-blue-600 flex items-center justify-center text-white font-bold shrink-0">
                         A
                     </div>
                     {!collapsed && (
@@ -71,7 +71,7 @@ export function AdminSidebar() {
                         {!collapsed && <span>{item.label}</span>}
 
                         {collapsed && (
-                            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
+                            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
                                 {item.label}
                             </div>
                         )}
@@ -91,7 +91,7 @@ export function AdminSidebar() {
                     <Server size={22} strokeWidth={1.5} />
                     {!collapsed && <span>Queue Monitor</span>}
                     {collapsed && (
-                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none border border-slate-700">
                             Queue Monitor (Ext)
                         </div>
                     )}

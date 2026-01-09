@@ -73,7 +73,7 @@ export function MerchantCenterScoreBadge({ score, size = 'md', issues }: Merchan
                                                 Critical ({criticalIssues.length})
                                             </p>
                                             {criticalIssues.map((issue, i) => (
-                                                <div key={i} className="text-xs text-red-700 bg-red-50 px-2 py-1.5 rounded border border-red-100">
+                                                <div key={i} className="text-xs text-red-700 bg-red-50 px-2 py-1.5 rounded-sm border border-red-100">
                                                     {issue.attribute && <span className="font-medium">{issue.attribute}: </span>}
                                                     {issue.message}
                                                 </div>
@@ -87,7 +87,7 @@ export function MerchantCenterScoreBadge({ score, size = 'md', issues }: Merchan
                                                 Warnings ({warnings.length})
                                             </p>
                                             {warnings.map((issue, i) => (
-                                                <div key={i} className="text-xs text-yellow-700 bg-yellow-50 px-2 py-1.5 rounded border border-yellow-100">
+                                                <div key={i} className="text-xs text-yellow-700 bg-yellow-50 px-2 py-1.5 rounded-sm border border-yellow-100">
                                                     {issue.attribute && <span className="font-medium">{issue.attribute}: </span>}
                                                     {issue.message}
                                                 </div>

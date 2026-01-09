@@ -67,7 +67,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
 
             {/* Top Row - Funnel & Stats */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                             <TrendingDown className="w-4 h-4 text-green-500" />
@@ -79,7 +79,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                     </CardContent>
                 </Card>
 
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                             <BarChart3 className="w-4 h-4 text-purple-500" />
@@ -94,7 +94,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
 
             {/* Middle Row - Cart Abandonment */}
             {abandonment && (
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                             <ShoppingCart className="w-4 h-4 text-orange-500" />
@@ -127,7 +127,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
             {/* Bottom Row - Searches & Exits */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {searches && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="border-0 shadow-xs">
                         <CardHeader>
                             <CardTitle className="text-sm font-semibold flex items-center gap-2">
                                 <Search className="w-4 h-4 text-blue-500" />
@@ -152,7 +152,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                 )}
 
                 {exits && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="border-0 shadow-xs">
                         <CardHeader>
                             <CardTitle className="text-sm font-semibold flex items-center gap-2">
                                 <ArrowUpRight className="w-4 h-4 text-red-500" />

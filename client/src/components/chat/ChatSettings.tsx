@@ -73,7 +73,7 @@ export function ChatSettings() {
     };
 
     return (
-        <div className="bg-white rounded-xl shadow border border-gray-200 p-6 space-y-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-8">
             <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Widget Appearance</h3>
                 <div className="grid gap-6 md:grid-cols-2">
@@ -82,7 +82,7 @@ export function ChatSettings() {
                         <select
                             value={config.position || 'bottom-right'}
                             onChange={e => setConfig({ ...config, position: e.target.value })}
-                            className="w-full border rounded-lg px-3 py-2 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            className="w-full border rounded-lg px-3 py-2 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
                         >
                             <option value="bottom-right">Bottom Right</option>
                             <option value="bottom-left">Bottom Left</option>
@@ -95,7 +95,7 @@ export function ChatSettings() {
                                 type="checkbox"
                                 checked={config.showOnMobile ?? true}
                                 onChange={e => setConfig({ ...config, showOnMobile: e.target.checked })}
-                                className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                                className="w-5 h-5 text-blue-600 rounded-sm focus:ring-blue-500"
                             />
                             <span className="text-sm text-gray-600">Show on Mobile Devices</span>
                         </div>
@@ -118,7 +118,7 @@ export function ChatSettings() {
                     <textarea
                         value={config.autoReply.message}
                         onChange={e => setConfig({ ...config, autoReply: { ...config.autoReply, message: e.target.value } })}
-                        className="w-full border rounded p-2"
+                        className="w-full border rounded-sm p-2"
                         rows={3}
                     />
                 )}
@@ -158,13 +158,13 @@ export function ChatSettings() {
                                                 const newDays = { ...config.businessHours.days };
                                                 (newDays as any)[day].open = e.target.value;
                                                 setConfig({ ...config, businessHours: { ...config.businessHours, days: newDays } });
-                                            }} className="border rounded px-2" />
+                                            }} className="border rounded-sm px-2" />
                                             <span>to</span>
                                             <input type="time" value={schedule.close} onChange={e => {
                                                 const newDays = { ...config.businessHours.days };
                                                 (newDays as any)[day].close = e.target.value;
                                                 setConfig({ ...config, businessHours: { ...config.businessHours, days: newDays } });
-                                            }} className="border rounded px-2" />
+                                            }} className="border rounded-sm px-2" />
                                         </>
                                     ) : (
                                         <span className="text-gray-400 italic">Closed</span>
@@ -175,7 +175,7 @@ export function ChatSettings() {
 
                         <div>
                             <label className="block text-sm font-medium mb-1">Offline Message</label>
-                            <div className="border rounded p-3 bg-white">
+                            <div className="border rounded-sm p-3 bg-white">
                                 <InboxRichTextEditor
                                     value={config.businessHours.offlineMessage}
                                     onChange={(val) => setConfig({ ...config, businessHours: { ...config.businessHours, offlineMessage: val } })}
@@ -192,7 +192,7 @@ export function ChatSettings() {
                 <button
                     onClick={handleSave}
                     disabled={isLoading}
-                    className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-sm flex items-center gap-2"
                 >
                     {isLoading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                     Save Settings

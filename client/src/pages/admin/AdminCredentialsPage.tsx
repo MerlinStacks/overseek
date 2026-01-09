@@ -342,9 +342,9 @@ export function AdminCredentialsPage() {
             </div>
 
             {/* Active Tab Content */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
                 {/* Tab Header */}
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-linear-to-r from-slate-50 to-white">
                     <div>
                         <div className="flex items-center gap-3">
                             <currentPlatform.icon className="text-slate-600" size={24} />

@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Calendar } from 'lucide-react';
 
 interface DateRangeFilterProps {
@@ -24,7 +24,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ value, onChang
                     key={range.value}
                     onClick={() => onChange(range.value)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${value === range.value
-                        ? 'bg-white text-gray-900 shadow-sm'
+                        ? 'bg-white text-gray-900 shadow-xs'
                         : 'text-gray-500 hover:text-gray-700'
                         }`}
                 >

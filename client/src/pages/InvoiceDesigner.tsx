@@ -124,10 +124,10 @@ export function InvoiceDesigner() {
 
     if (isLoading) {
         return (
-            <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+            <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-linear-to-br from-slate-50 to-slate-100">
                 <div className="flex flex-col items-center gap-4">
                     <div className="relative">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg animate-pulse">
+                        <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg animate-pulse">
                             <FileText className="text-white" size={28} />
                         </div>
                     </div>
@@ -141,9 +141,9 @@ export function InvoiceDesigner() {
     }
 
     return (
-        <div className="h-[calc(100vh-64px)] flex flex-col bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
+        <div className="h-[calc(100vh-64px)] flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-slate-50">
             {/* Premium Header */}
-            <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 px-6 py-3 flex justify-between items-center shadow-sm">
+            <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 px-6 py-3 flex justify-between items-center shadow-xs">
                 <div className="flex items-center gap-4">
                     <button
                         type="button"
@@ -154,7 +154,7 @@ export function InvoiceDesigner() {
                     </button>
 
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
+                        <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
                             <FileText className="text-white" size={18} />
                         </div>
                         <div>
@@ -183,7 +183,7 @@ export function InvoiceDesigner() {
                         type="button"
                         onClick={saveTemplate}
                         disabled={isSaving}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-[1.02] transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-[1.02] transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
                     >
                         {isSaving ? (
                             <>

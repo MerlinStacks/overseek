@@ -64,7 +64,7 @@ export const AttributionPage: React.FC = () => {
             </div>
 
             {/* Summary */}
-            <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-purple-50">
+            <Card className="border-0 shadow-xs bg-linear-to-r from-blue-50 to-purple-50">
                 <CardContent className="p-6">
                     <div className="flex items-center justify-center gap-4">
                         <div className="text-center">
@@ -82,7 +82,7 @@ export const AttributionPage: React.FC = () => {
 
             {/* Comparison */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                             <GitBranch className="w-4 h-4 text-blue-500" />
@@ -118,7 +118,7 @@ export const AttributionPage: React.FC = () => {
                     </CardContent>
                 </Card>
 
-                <Card className="border-0 shadow-sm">
+                <Card className="border-0 shadow-xs">
                     <CardHeader>
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                             <GitBranch className="w-4 h-4 text-green-500 rotate-180" />
@@ -156,7 +156,7 @@ export const AttributionPage: React.FC = () => {
             </div>
 
             {/* Insight */}
-            <Card className="border-0 shadow-sm border-l-4 border-l-blue-500 bg-blue-50/50">
+            <Card className="border-0 shadow-xs border-l-4 border-l-blue-500 bg-blue-50/50">
                 <CardContent className="p-4">
                     <p className="text-sm text-blue-800">
                         <strong>Tip:</strong> If first-touch and last-touch differ significantly, your customers have a multi-step journey.

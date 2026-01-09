@@ -131,7 +131,7 @@ export function StockVelocityReport() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">Stock Velocity</h2>
@@ -176,7 +176,7 @@ export function StockVelocityReport() {
                                     <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
+                                                <div className="w-10 h-10 rounded-sm bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
                                                     {item.image ? (
                                                         <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                                                     ) : (

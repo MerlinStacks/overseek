@@ -43,7 +43,7 @@ export function VisitorCountWidget(_props: WidgetProps) {
     }, [fetchCount]);
 
     return (
-        <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-sm border border-gray-200/50 flex flex-col h-full justify-center items-center relative overflow-hidden">
+        <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 flex flex-col h-full justify-center items-center relative overflow-hidden">
             {/* Pulsing Indicator */}
             <div className="absolute top-4 right-4 flex items-center gap-2">
                 <span className="relative flex h-3 w-3">

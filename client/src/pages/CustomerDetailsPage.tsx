@@ -94,26 +94,26 @@ export function CustomerDetailsPage() {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Total Spent</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">${Number(customer.totalSpent).toFixed(2)}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Orders</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">{customer.ordersCount}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Average Order</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">${customer.ordersCount > 0 ? (Number(customer.totalSpent) / customer.ordersCount).toFixed(2) : '0.00'}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Last Active</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">{activity[0] ? new Date(activity[0].lastActiveAt).toLocaleDateString() : 'N/A'}</p>
                 </div>
             </div>
 
             {/* Content Tabs */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px]">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 min-h-[500px]">
                 <div className="border-b border-gray-200 px-6 flex gap-6">
                     {(['overview', 'orders', 'automations', 'activity'] as const).map(tab => (
                         <button

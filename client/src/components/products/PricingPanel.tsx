@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { DollarSign } from 'lucide-react';
 
 interface PricingPanelProps {
@@ -8,7 +8,7 @@ interface PricingPanelProps {
 
 export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }) => {
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
                 <DollarSign size={16} className="text-blue-600" />
                 Pricing
@@ -24,7 +24,7 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                             step="0.01"
                             value={formData.price}
                             onChange={(e) => onChange && onChange({ price: e.target.value })}
-                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                             placeholder="0.00"
                         />
                     </div>
@@ -38,7 +38,7 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                             step="0.01"
                             value={formData.salePrice}
                             onChange={(e) => onChange && onChange({ salePrice: e.target.value })}
-                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                             placeholder="0.00"
                         />
                     </div>
@@ -52,7 +52,7 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                             step="0.01"
                             value={formData.cogs}
                             onChange={(e) => onChange && onChange({ cogs: e.target.value })}
-                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                             placeholder="0.00"
                         />
                     </div>
@@ -80,8 +80,8 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                                         ${profitDollar.toFixed(2)}
                                     </span>
                                     <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${profitPercent >= 0
-                                            ? 'bg-green-50 text-green-700 border border-green-200'
-                                            : 'bg-red-50 text-red-700 border border-red-200'
+                                        ? 'bg-green-50 text-green-700 border border-green-200'
+                                        : 'bg-red-50 text-red-700 border border-red-200'
                                         }`}>
                                         {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
                                     </span>

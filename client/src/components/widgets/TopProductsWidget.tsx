@@ -29,7 +29,7 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
     }, [currentAccount, token, dateRange]);
 
     return (
-        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-xs border border-gray-200 overflow-hidden ${className}`}>
             <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold text-gray-900">Top Products</h3>
                 <Package size={18} className="text-gray-400" />
@@ -44,7 +44,7 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
                     products.map((product, idx) => (
                         <div key={idx} className="flex justify-between items-center text-sm p-2 hover:bg-gray-50 rounded-lg transition-colors">
                             <div className="flex gap-3 items-center overflow-hidden">
-                                <div className="w-6 h-6 rounded bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold shrink-0">
+                                <div className="w-6 h-6 rounded-sm bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold shrink-0">
                                     {idx + 1}
                                 </div>
                                 <p className="font-medium text-gray-900 truncate" title={product.name}>{product.name}</p>

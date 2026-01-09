@@ -140,7 +140,7 @@ export function SetupWizard() {
                                     name="name"
                                     required
                                     placeholder="My Awesome Store"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                     value={formData.name}
                                     onChange={handleChange}
                                 />
@@ -151,7 +151,7 @@ export function SetupWizard() {
                                     type="url"
                                     name="domain"
                                     placeholder="https://mystore.com"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                     value={formData.domain}
                                     onChange={handleChange}
                                 />
@@ -173,7 +173,7 @@ export function SetupWizard() {
                                         name="wooUrl"
                                         required
                                         placeholder="https://mystore.com"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                         value={formData.wooUrl}
                                         onChange={handleChange}
                                     />
@@ -185,7 +185,7 @@ export function SetupWizard() {
                                         name="wooConsumerKey"
                                         required
                                         placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxx"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono text-sm"
                                         value={formData.wooConsumerKey}
                                         onChange={handleChange}
                                     />
@@ -197,7 +197,7 @@ export function SetupWizard() {
                                         name="wooConsumerSecret"
                                         required
                                         placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxx"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono text-sm"
                                         value={formData.wooConsumerSecret}
                                         onChange={handleChange}
                                     />

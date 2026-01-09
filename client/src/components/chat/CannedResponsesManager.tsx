@@ -173,8 +173,8 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                         <div className="divide-y divide-gray-100">
                             {responses.map(response => (
                                 <div key={response.id} className="px-6 py-3 flex items-start gap-4 hover:bg-gray-50">
-                                    <div className="flex-shrink-0 pt-0.5">
-                                        <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded text-gray-600">
+                                    <div className="shrink-0 pt-0.5">
+                                        <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded-sm text-gray-600">
                                             /{response.shortcut}
                                         </span>
                                     </div>
@@ -183,7 +183,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                                     </div>
                                     <button
                                         onClick={() => handleDelete(response.id)}
-                                        className="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                        className="shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-sm transition-colors"
                                         title="Delete"
                                     >
                                         <Trash2 size={16} />
@@ -196,7 +196,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
 
                 {/* Footer */}
                 <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
-                    Type <code className="bg-gray-200 px-1 rounded">/shortcut</code> in the reply box to use a canned response
+                    Type <code className="bg-gray-200 px-1 rounded-sm">/shortcut</code> in the reply box to use a canned response
                 </div>
             </div>
         </div>

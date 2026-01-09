@@ -79,7 +79,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
 
     return (
         <div className="space-y-6">
-            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
                     <FileText size={16} className="text-blue-600" />
                     General Information
@@ -92,7 +92,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                             type="text"
                             value={formData.name}
                             onChange={(e) => onChange({ name: e.target.value })}
-                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                         />
                     </div>
 
@@ -103,7 +103,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                                 type="text"
                                 value={formData.sku}
                                 onChange={(e) => onChange({ sku: e.target.value })}
-                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-mono"
+                                className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all font-mono"
                             />
                         </div>
                         <div>
@@ -113,7 +113,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                                 <select
                                     value={formData.supplierId || ''}
                                     onChange={(e) => onChange({ supplierId: e.target.value })}
-                                    className="w-full pl-9 pr-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none"
+                                    className="w-full pl-9 pr-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all appearance-none"
                                 >
                                     <option value="">Select Supplier...</option>
                                     {suppliers.map(s => (
@@ -132,7 +132,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                                 <button
                                     onClick={handleAIRewrite}
                                     disabled={isRewriting}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-linear-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs"
                                     title="Rewrite description using AI"
                                 >
                                     {isRewriting ? (
@@ -147,13 +147,13 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                                 <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
                                     <button
                                         onClick={() => setViewMode('visual')}
-                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'visual' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'visual' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                                     >
                                         <Eye size={14} /> Visual
                                     </button>
                                     <button
                                         onClick={() => setViewMode('code')}
-                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'code' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2 ${viewMode === 'code' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                                     >
                                         <Code size={14} /> Code
                                     </button>
@@ -183,7 +183,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                             <textarea
                                 value={formData.description || ''}
                                 onChange={(e) => onChange({ description: e.target.value })}
-                                className="w-full h-80 px-4 py-3 bg-slate-900 text-blue-100 font-mono text-xs leading-relaxed rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none shadow-inner"
+                                className="w-full h-80 px-4 py-3 bg-slate-900 text-blue-100 font-mono text-xs leading-relaxed rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden resize-none shadow-inner"
                                 spellCheck={false}
                             />
                         )}

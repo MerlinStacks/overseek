@@ -56,7 +56,7 @@ export const AutomationSettingsModal: React.FC<AutomationSettingsModalProps> = (
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b bg-gray-50">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-lg bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                             <Settings size={20} className="text-white" />
                         </div>
                         <div>
@@ -139,7 +139,7 @@ export const AutomationSettingsModal: React.FC<AutomationSettingsModalProps> = (
                                         type="checkbox"
                                         checked={localSettings.allowReEntry}
                                         onChange={(e) => updateSetting('allowReEntry', e.target.checked)}
-                                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        className="w-5 h-5 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div>
@@ -212,7 +212,7 @@ export const AutomationSettingsModal: React.FC<AutomationSettingsModalProps> = (
                                         max="100"
                                         value={localSettings.batchSize || 10}
                                         onChange={(e) => updateSetting('batchSize', parseInt(e.target.value) || 10)}
-                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                        className="w-20 px-2 py-1 border rounded-sm text-sm"
                                     />
                                     <span className="text-xs text-gray-500">contacts per batch</span>
                                 </div>
@@ -224,7 +224,7 @@ export const AutomationSettingsModal: React.FC<AutomationSettingsModalProps> = (
                                         max="60"
                                         value={localSettings.batchInterval || 5}
                                         onChange={(e) => updateSetting('batchInterval', parseInt(e.target.value) || 5)}
-                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                        className="w-20 px-2 py-1 border rounded-sm text-sm"
                                     />
                                     <span className="text-xs text-gray-500">minutes between batches</span>
                                 </div>

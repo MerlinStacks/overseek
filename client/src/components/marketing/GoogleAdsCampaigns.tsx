@@ -211,7 +211,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
             )}
 
             {/* AI Suggestions Panel - at top for prominence */}
-            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 shadow-sm overflow-hidden">
+            <div className="bg-linear-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 shadow-xs overflow-hidden">
                 <button
                     onClick={() => setShowSuggestions(!showSuggestions)}
                     className="w-full p-4 flex items-center justify-between hover:bg-purple-100/50 transition-colors"
@@ -269,7 +269,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
 
             {/* Summary Stats */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <DollarSign size={14} />
                         Total Spend
@@ -278,7 +278,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                         {formatCurrency(totals.spend, campaigns[0]?.currency)}
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <Eye size={14} />
                         Impressions
@@ -287,7 +287,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                         {formatNumber(totals.impressions)}
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <MousePointerClick size={14} />
                         Clicks
@@ -296,7 +296,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                         {formatNumber(totals.clicks)}
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <Target size={14} />
                         Conversions
@@ -305,7 +305,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                         {formatNumber(totals.conversions)}
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <TrendingUp size={14} />
                         ROAS
@@ -317,7 +317,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
             </div>
 
             {/* Campaigns Table */}
-            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b">
@@ -405,7 +405,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
 
             {/* Daily Trend Chart (Simple Bar Chart) */}
             {trends.length > 0 && (
-                <div className="bg-white rounded-xl border shadow-sm p-6">
+                <div className="bg-white rounded-xl border shadow-xs p-6">
                     <h3 className="text-lg font-semibold mb-4">Daily Spend Trend</h3>
                     <div className="flex items-end gap-1 h-40">
                         {trends.map((day, i) => {
@@ -418,7 +418,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                                     style={{ height: `${height}%`, minHeight: day.spend > 0 ? '4px' : '0' }}
                                     title={`${day.date}: ${formatCurrency(day.spend, campaigns[0]?.currency)}`}
                                 >
-                                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
+                                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
                                         {day.date}<br />
                                         {formatCurrency(day.spend, campaigns[0]?.currency)}
                                     </div>

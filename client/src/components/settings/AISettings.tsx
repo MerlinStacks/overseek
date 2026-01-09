@@ -155,7 +155,7 @@ export function AISettings() {
                         type="password"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono text-sm"
                         placeholder="sk-or-v1-..."
                     />
                     <p className="text-xs text-gray-500 mt-1">
@@ -179,7 +179,7 @@ export function AISettings() {
                                 }}
                                 onFocus={() => setIsOpen(true)}
                                 disabled={isLoadingModels}
-                                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors pr-10 ${isOpen ? 'border-blue-500' : 'border-gray-300'
+                                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden transition-colors pr-10 ${isOpen ? 'border-blue-500' : 'border-gray-300'
                                     } ${isLoadingModels ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 placeholder="Select or search model..."
                             />
@@ -225,7 +225,7 @@ export function AISettings() {
                                                 <span className="font-medium truncate">{model.name}</span>
                                                 <span className="text-xs opacity-60 font-mono truncate">{model.id}</span>
                                             </div>
-                                            {selectedModel === model.id && <Check size={14} className="flex-shrink-0" />}
+                                            {selectedModel === model.id && <Check size={14} className="shrink-0" />}
                                         </div>
                                     ))}
 

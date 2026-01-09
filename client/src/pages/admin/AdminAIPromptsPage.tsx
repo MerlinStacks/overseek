@@ -250,12 +250,12 @@ export function AdminAIPromptsPage() {
                     return (
                         <div
                             key={config.id}
-                            className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                            className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden"
                         >
                             {/* Panel Header - Clickable to expand/collapse */}
                             <button
                                 onClick={() => togglePanel(config.id)}
-                                className="w-full p-5 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 transition-colors"
+                                className="w-full p-5 flex items-center justify-between bg-linear-to-r from-slate-50 to-white hover:from-slate-100 transition-colors"
                             >
                                 <div className="flex items-center gap-3">
                                     <Sparkles className="text-purple-500" size={20} />
@@ -351,7 +351,7 @@ export function AdminAIPromptsPage() {
                         <p className="font-medium mb-1">About AI Prompts</p>
                         <p>
                             These prompts serve as templates for AI-powered features. Use placeholders like
-                            <code className="mx-1 px-1 py-0.5 bg-amber-100 rounded">{'{{variable_name}}'}</code>
+                            <code className="mx-1 px-1 py-0.5 bg-amber-100 rounded-sm">{'{{variable_name}}'}</code>
                             which will be replaced with actual data when the prompt is used.
                         </p>
                     </div>

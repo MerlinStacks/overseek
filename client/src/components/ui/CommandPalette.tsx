@@ -136,7 +136,7 @@ export function CommandPalette() {
             onOpenChange={setOpen}
             label="Global Command Menu"
             shouldFilter={false}
-            className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/40 backdrop-blur-sm transition-all animate-in fade-in duration-200"
+            className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/40 backdrop-blur-xs transition-all animate-in fade-in duration-200"
             onClick={(e) => {
                 if (e.target === e.currentTarget) setOpen(false);
             }}
@@ -148,7 +148,7 @@ export function CommandPalette() {
                         value={query}
                         onValueChange={setQuery}
                         placeholder={semanticMode ? "Describe what you're looking for..." : "Type a command or search..."}
-                        className="flex-1 h-16 bg-transparent outline-none text-lg text-gray-900 placeholder:text-gray-400 font-medium w-full"
+                        className="flex-1 h-16 bg-transparent outline-hidden text-lg text-gray-900 placeholder:text-gray-400 font-medium w-full"
                     />
                     <div className="flex gap-2 items-center">
                         <button
@@ -163,7 +163,7 @@ export function CommandPalette() {
                             <Sparkles size={12} />
                             AI
                         </button>
-                        <kbd className="hidden sm:inline-flex h-6 select-none items-center gap-1 rounded border bg-gray-100 px-2 font-mono text-[10px] font-medium text-gray-500 pointer-events-none">
+                        <kbd className="hidden sm:inline-flex h-6 select-none items-center gap-1 rounded-sm border bg-gray-100 px-2 font-mono text-[10px] font-medium text-gray-500 pointer-events-none">
                             <span className="text-xs">
                                 {navigator.platform.indexOf('Mac') > -1 ? '⌘' : 'Ctrl'}
                             </span>K

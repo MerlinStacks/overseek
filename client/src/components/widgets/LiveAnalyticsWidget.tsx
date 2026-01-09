@@ -51,7 +51,7 @@ export function LiveAnalyticsWidget() {
     const totalCartValue = activeCarts.reduce((acc, curr) => acc + Number(curr.cartValue), 0);
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col h-full relative overflow-hidden">
+        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200 flex flex-col h-full relative overflow-hidden">
             {/* Header */}
             <div className="flex justify-between items-start mb-4 relative z-10">
                 <div>

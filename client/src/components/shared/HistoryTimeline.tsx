@@ -71,7 +71,7 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                         {/* Timeline Dot */}
                         <div className="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full bg-blue-100 border-2 border-blue-500"></div>
 
-                        <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
+                        <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-xs">
                             <div className="flex justify-between items-start mb-2">
                                 <div className="flex items-center gap-2">
                                     <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
@@ -90,7 +90,7 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
 
                             {/* Changes Diff */}
                             {log.details && Object.keys(log.details).length > 0 && (
-                                <div className="mt-3 bg-gray-50/50 rounded p-3 text-xs font-mono text-gray-600">
+                                <div className="mt-3 bg-gray-50/50 rounded-sm p-3 text-xs font-mono text-gray-600">
                                     {Object.entries(log.details).map(([key, value]) => (
                                         <div key={key} className="flex gap-2">
                                             <span className="font-semibold text-gray-700">{key}:</span>

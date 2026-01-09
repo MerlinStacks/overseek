@@ -207,7 +207,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                     // Only show default 'O' if no logo is provided
                     !logoUrl && (
                         <div
-                            className="h-10 w-10 rounded flex items-center justify-center text-white font-bold mx-auto mb-4"
+                            className="h-10 w-10 rounded-sm flex items-center justify-center text-white font-bold mx-auto mb-4"
                             style={{ backgroundColor: primaryColor }}
                         >
                             {appName.charAt(0)}
@@ -240,7 +240,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                                 </div>
                                 {(!collapsed || isMobile) && <span>{item.label}</span>}
                                 {collapsed && !isMobile && (
-                                    <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                                    <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                                         {item.label}
                                         {isInbox && hasUnread && <span className="ml-1 text-red-400">•</span>}
                                     </div>
@@ -330,7 +330,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                             {(!collapsed || isMobile) && <span>Super Admin</span>}
 
                             {collapsed && !isMobile && (
-                                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                                     Super Admin
                                 </div>
                             )}
@@ -353,7 +353,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                     <Settings size={22} strokeWidth={1.5} />
                     {(!collapsed || isMobile) && <span>Settings</span>}
                     {collapsed && !isMobile && (
-                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                             Settings
                         </div>
                     )}

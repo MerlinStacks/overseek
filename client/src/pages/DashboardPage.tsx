@@ -224,11 +224,11 @@ export function DashboardPage() {
 
                 <div className="flex flex-wrap items-center gap-2">
                     {/* Date Logic Controls */}
-                    <div className="flex bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div className="flex bg-white border border-gray-200 rounded-lg shadow-xs">
                         <select
                             value={dateOption}
                             onChange={(e) => setDateOption(e.target.value as DateRangeOption)}
-                            className="bg-transparent border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:bg-gray-50"
+                            className="bg-transparent border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 outline-hidden focus:bg-gray-50"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -241,7 +241,7 @@ export function DashboardPage() {
                         <select
                             value={comparisonOption}
                             onChange={(e) => setComparisonOption(e.target.value as ComparisonOption)}
-                            className="bg-transparent px-3 py-2 text-sm text-gray-500 outline-none focus:bg-gray-50"
+                            className="bg-transparent px-3 py-2 text-sm text-gray-500 outline-hidden focus:bg-gray-50"
                         >
                             <option value="none">No Comparison</option>
                             <option value="previous_period">vs Previous Period</option>
@@ -315,12 +315,12 @@ export function DashboardPage() {
                             <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
                                 <button
                                     onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }}
-                                    className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded hover:bg-red-50 hover:text-red-500 text-gray-400 pointer-events-auto shadow-sm"
+                                    className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-sm hover:bg-red-50 hover:text-red-500 text-gray-400 pointer-events-auto shadow-xs"
                                     title="Remove Widget"
                                 >
                                     <X size={14} />
                                 </button>
-                                <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded text-gray-500 pointer-events-auto shadow-sm hover:bg-white">
+                                <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-sm text-gray-500 pointer-events-auto shadow-xs hover:bg-white">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
                                 </div>
                             </div>

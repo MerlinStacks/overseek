@@ -219,7 +219,7 @@ export const MessageBubble = memo(function MessageBubble({
                 )}>
                     {/* Avatar */}
                     <div className={cn(
-                        "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0",
+                        "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0",
                         isMe ? "bg-blue-600" : "bg-gray-500",
                         message.isInternal && "bg-amber-600"
                     )}>
@@ -231,19 +231,19 @@ export const MessageBubble = memo(function MessageBubble({
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-gray-900">{senderName}</span>
                             {isMe && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-sm">
                                     <Send size={10} />
                                     Sent
                                 </span>
                             )}
                             {!isMe && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-sm">
                                     <CornerDownRight size={10} />
                                     Received
                                 </span>
                             )}
                             {message.isInternal && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-sm">
                                     🔒 Private Note
                                 </span>
                             )}
@@ -254,7 +254,7 @@ export const MessageBubble = memo(function MessageBubble({
                     </div>
 
                     {/* Status & Actions */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                         {isMe && !message.isInternal && (
                             <span className="flex items-center gap-1 text-xs text-gray-400" title={message.status === 'FAILED' ? 'Failed to send' : 'Sent'}>
                                 {message.status === 'FAILED' ? (
@@ -273,7 +273,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {isHovered && onQuoteReply && (
                             <button
                                 onClick={() => onQuoteReply(message)}
-                                className="p-1.5 rounded hover:bg-gray-200 text-gray-500 transition-colors"
+                                className="p-1.5 rounded-sm hover:bg-gray-200 text-gray-500 transition-colors"
                                 title="Reply"
                             >
                                 <Reply size={16} />

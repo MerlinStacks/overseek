@@ -1,5 +1,5 @@
 
-import React from 'react';
+import * as React from 'react';
 import { clsx } from 'clsx';
 // React Grid Layout for static display? Or just absolute positioning/grid css.
 // Since we used RGL in designer, we should probably use a static RGL layout or map to styles.

@@ -70,7 +70,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     const header = getPanelHeader();
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className={`flex items-center justify-between px-6 py-4 border-b`}>
@@ -214,7 +214,7 @@ const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }) => {
                             id="filterByValue"
                             checked={config.filterByValue || false}
                             onChange={(e) => onUpdate('filterByValue', e.target.checked)}
-                            className="rounded"
+                            className="rounded-sm"
                         />
                         <label htmlFor="filterByValue" className="text-sm text-gray-600">Filter by order value</label>
                     </div>
@@ -224,7 +224,7 @@ const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }) => {
                             <select
                                 value={config.filterOperator || 'gt'}
                                 onChange={(e) => onUpdate('filterOperator', e.target.value)}
-                                className="px-2 py-1 border rounded text-sm"
+                                className="px-2 py-1 border rounded-sm text-sm"
                             >
                                 <option value="gt">&gt;</option>
                                 <option value="gte">≥</option>
@@ -238,7 +238,7 @@ const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }) => {
                                 value={config.filterValue || ''}
                                 onChange={(e) => onUpdate('filterValue', e.target.value)}
                                 placeholder="100"
-                                className="w-20 px-2 py-1 border rounded text-sm"
+                                className="w-20 px-2 py-1 border rounded-sm text-sm"
                             />
                         </div>
                     )}
@@ -311,7 +311,7 @@ const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
                                 type="checkbox"
                                 checked={config.isTransactional || false}
                                 onChange={(e) => onUpdate('isTransactional', e.target.checked)}
-                                className="w-4 h-4 rounded text-yellow-600"
+                                className="w-4 h-4 rounded-sm text-yellow-600"
                             />
                             <div>
                                 <span className="text-sm font-medium text-yellow-800">Mark as Transactional</span>
@@ -342,7 +342,7 @@ const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
                                 type="checkbox"
                                 checked={config.isTransactional || false}
                                 onChange={(e) => onUpdate('isTransactional', e.target.checked)}
-                                className="w-4 h-4 rounded text-yellow-600"
+                                className="w-4 h-4 rounded-sm text-yellow-600"
                             />
                             <div>
                                 <span className="text-sm font-medium text-yellow-800">Mark as Transactional</span>
@@ -501,7 +501,7 @@ const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
                             type="checkbox"
                             checked={config.useContactTimezone || false}
                             onChange={(e) => onUpdate('useContactTimezone', e.target.checked)}
-                            className="rounded text-purple-600"
+                            className="rounded-sm text-purple-600"
                         />
                         <div>
                             <span className="text-sm font-medium text-purple-700">Use contact's timezone</span>
@@ -515,7 +515,7 @@ const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
                             type="checkbox"
                             checked={config.delayUntilTimeEnabled || false}
                             onChange={(e) => onUpdate('delayUntilTimeEnabled', e.target.checked)}
-                            className="rounded"
+                            className="rounded-sm"
                         />
                         <span className="text-sm text-gray-600">Delay until a specific time of day</span>
                     </label>
@@ -534,7 +534,7 @@ const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
                             type="checkbox"
                             checked={config.delayUntilDaysEnabled || false}
                             onChange={(e) => onUpdate('delayUntilDaysEnabled', e.target.checked)}
-                            className="rounded"
+                            className="rounded-sm"
                         />
                         <span className="text-sm text-gray-600">Delay until a specific day(s) of the week</span>
                     </label>
@@ -558,7 +558,7 @@ const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
 
                     {/* Summary pill */}
                     <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
-                        <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                        <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
                             <span className="text-white text-[10px] font-bold">i</span>
                         </div>
                         <span className="text-xs text-blue-700">
@@ -575,7 +575,7 @@ const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
                             type="checkbox"
                             checked={config.jumpIfPassed || false}
                             onChange={(e) => onUpdate('jumpIfPassed', e.target.checked)}
-                            className="rounded text-yellow-600"
+                            className="rounded-sm text-yellow-600"
                         />
                         <div>
                             <span className="text-sm font-medium text-yellow-700">Jump to next step if time has passed</span>
@@ -849,7 +849,7 @@ const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpdate }) =
                                 <select
                                     value={cond.operator}
                                     onChange={(e) => updateCondition(idx, 'operator', e.target.value)}
-                                    className="text-sm border border-gray-300 rounded px-2 py-1"
+                                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
                                 >
                                     {getOperatorsForField(cond.field).map(op => (
                                         <option key={op} value={op}>{OPERATOR_LABELS[op] || op}</option>
@@ -860,7 +860,7 @@ const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpdate }) =
                                     value={cond.value || ''}
                                     onChange={(e) => updateCondition(idx, 'value', e.target.value)}
                                     placeholder="Value..."
-                                    className="text-sm border border-gray-300 rounded px-2 py-1"
+                                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
                                 />
                             </div>
                             <button

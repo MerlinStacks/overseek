@@ -99,12 +99,12 @@ export function AIChatWidget() {
                 <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-200 font-sans">
 
                     {/* Header */}
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 flex justify-between items-center text-white shadow-md">
+                    <div className="bg-linear-to-r from-blue-600 to-indigo-600 p-4 flex justify-between items-center text-white shadow-md">
                         <div className="flex items-center gap-2">
                             <Bot size={20} />
                             <span className="font-semibold tracking-wide">OverSeek AI</span>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded transition-colors">
+                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-sm transition-colors">
                             <ChevronDown size={20} />
                         </button>
                     </div>
@@ -113,7 +113,7 @@ export function AIChatWidget() {
                     <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50/50">
                         {messages.map(msg => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] rounded-2xl px-5 py-3 shadow-sm ${msg.role === 'user'
+                                <div className={`max-w-[85%] rounded-2xl px-5 py-3 shadow-xs ${msg.role === 'user'
                                     ? 'bg-blue-600 text-white rounded-br-none'
                                     : 'bg-white border border-gray-100 text-slate-800 rounded-bl-none'
                                     }`}>
@@ -130,7 +130,7 @@ export function AIChatWidget() {
                                             <p className="text-[10px] uppercase font-bold opacity-50 mb-2">Analyzed Sources</p>
                                             <div className="flex flex-wrap gap-2">
                                                 {msg.sources.map((s: any, idx) => (
-                                                    <span key={idx} className="text-[10px] bg-black/5 px-2 py-1 rounded truncate max-w-[150px]" title={JSON.stringify(s)}>
+                                                    <span key={idx} className="text-[10px] bg-black/5 px-2 py-1 rounded-sm truncate max-w-[150px]" title={JSON.stringify(s)}>
                                                         {s.name || s.title || `Order #${s.order_count ? 'Aggregated' : s.id}`}
                                                     </span>
                                                 ))}
@@ -143,7 +143,7 @@ export function AIChatWidget() {
 
                         {isThinking && (
                             <div className="flex justify-start">
-                                <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-2">
+                                <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 shadow-xs flex items-center gap-2">
                                     <Loader2 size={16} className="animate-spin text-blue-600" />
                                     <span className="text-xs text-slate-500 font-medium">Analyzing data...</span>
                                 </div>
@@ -159,7 +159,7 @@ export function AIChatWidget() {
                                 <button
                                     key={idx}
                                     onClick={() => handleSend(undefined, action.query)}
-                                    className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors shadow-sm"
+                                    className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors shadow-xs"
                                 >
                                     {action.icon}
                                     {action.label}
@@ -174,7 +174,7 @@ export function AIChatWidget() {
                             <input
                                 type="text"
                                 placeholder="Ask about orders, products..."
-                                className="flex-1 px-4 py-2.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:bg-white transition-all text-slate-800 placeholder:text-slate-400"
+                                className="flex-1 px-4 py-2.5 bg-gray-100 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 focus:bg-white transition-all text-slate-800 placeholder:text-slate-400"
                                 value={input}
                                 onChange={e => setInput(e.target.value)}
                                 disabled={isThinking}

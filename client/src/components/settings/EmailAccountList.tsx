@@ -10,7 +10,7 @@ interface EmailAccountListProps {
 
 export function EmailAccountList({ accounts, onEdit, onDelete, onAdd }: EmailAccountListProps) {
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                 <div>
                     <h2 className="text-lg font-medium text-gray-900">Email Accounts</h2>
