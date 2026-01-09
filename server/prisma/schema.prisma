@@ -44,6 +44,7 @@ model User {
   pushSubscriptions     PushSubscription[]
   blockedContacts       BlockedContact[]
   todos                 Todo[]
+  messageReactions      MessageReaction[]
 }
 
 model RefreshToken {
@@ -668,8 +669,24 @@ model Message {
   emailMessageId String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reactions    MessageReaction[]
 
   createdAt DateTime @default(now())
+}
+
+model MessageReaction {
+  id        String @id @default(uuid())
+  messageId String
+  userId    String // Agent who reacted
+  emoji     String // e.g. "👍", "❤️", "😊"
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji]) // One reaction per emoji per user per message
+  @@index([messageId])
 }
 
 model CannedResponse {

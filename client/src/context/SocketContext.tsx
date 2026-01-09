@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { useAccount } from './AccountContext';
+import { Logger } from '../utils/logger';
 
 interface SocketContextType {
     socket: Socket | null;
@@ -48,13 +49,13 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         });
 
         newSocket.on('connect', () => {
-            console.log('Socket connected');
+            Logger.debug('Socket connected', { accountId: currentAccount.id });
             setIsConnected(true);
             newSocket.emit('join:account', currentAccount.id);
         });
 
         newSocket.on('disconnect', () => {
-            console.log('Socket disconnected');
+            Logger.debug('Socket disconnected');
             setIsConnected(false);
         });
 

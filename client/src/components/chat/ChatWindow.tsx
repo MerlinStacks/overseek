@@ -1,16 +1,21 @@
 
-import { useState, useEffect, useRef } from 'react';
-import { Send, Loader2, Zap, Paperclip, MoreHorizontal, ChevronDown, Clock, CheckCircle, RotateCcw, MoreVertical, Settings, FileSignature, Sparkles, Users, Merge, Ban, Check, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Send, Loader2, Zap, Paperclip, Settings, FileSignature, Sparkles, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { format } from 'date-fns';
+import { useSocket } from '../../context/SocketContext';
 import { CannedResponsesManager } from './CannedResponsesManager';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
 import { useDrafts } from '../../hooks/useDrafts';
 import { SnoozeModal } from './SnoozeModal';
 import { AssignModal } from './AssignModal';
 import { MergeModal } from './MergeModal';
+import { MessageBubble } from './MessageBubble';
+import { ImageLightbox } from './ImageLightbox';
+import { TypingIndicator } from './TypingIndicator';
+import { ChatHeader } from './ChatHeader';
+import { ChatSearchBar } from './ChatSearchBar';
 
 interface Message {
     id: string;
@@ -21,6 +26,7 @@ interface Message {
     senderId?: string;
     readAt?: string | null;
     status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+    reactions?: Record<string, Array<{ userId: string; userName: string | null }>>;
 }
 
 interface CannedResponse {
@@ -51,17 +57,16 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
     const [isSending, setIsSending] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-    const [showActionsMenu, setShowActionsMenu] = useState(false);
 
     // Modal states
     const [showSnoozeModal, setShowSnoozeModal] = useState(false);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [showMergeModal, setShowMergeModal] = useState(false);
-    const [showMoreMenu, setShowMoreMenu] = useState(false);
 
     // Canned Responses
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
+    const { socket } = useSocket();
     const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
     const [showCanned, setShowCanned] = useState(false);
     const [cannedFilter, setCannedFilter] = useState('');
@@ -73,6 +78,27 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
     // AI Draft generation state
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
 
+    // === NEW FEATURE STATES ===
+
+    // Message Search
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Image Lightbox
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+    // Quote Reply
+    const [quotedMessage, setQuotedMessage] = useState<{ id: string; content: string; senderType: string } | null>(null);
+
+    // Typing Indicator
+    const [isCustomerTyping, setIsCustomerTyping] = useState(false);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const lastTypingEmitRef = useRef<number>(0);
+
+    // Undo Send
+    const [pendingSend, setPendingSend] = useState<{ content: string; timeout: NodeJS.Timeout } | null>(null);
+    const UNDO_DELAY_MS = 5000;
+
     // Drafts management
     const { getDraft, saveDraft, clearDraft } = useDrafts();
 
@@ -81,6 +107,15 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
         if (conversationId) {
             const savedDraft = getDraft(conversationId);
             setInput(savedDraft);
+            // Reset search when changing conversations
+            setShowSearch(false);
+            setSearchQuery('');
+            setQuotedMessage(null);
+            // Cancel any pending send
+            if (pendingSend) {
+                clearTimeout(pendingSend.timeout);
+                setPendingSend(null);
+            }
         }
     }, [conversationId, getDraft]);
 
@@ -131,6 +166,76 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
         }
     }, [input]);
 
+    // === TYPING INDICATOR LOGIC ===
+
+    // Listen for customer typing events
+    useEffect(() => {
+        if (!socket || !conversationId) return;
+
+        const handleTypingStart = (data: { conversationId: string }) => {
+            if (data.conversationId === conversationId) {
+                setIsCustomerTyping(true);
+                // Auto-clear after 3 seconds if no stop event
+                if (typingTimeoutRef.current) {
+                    clearTimeout(typingTimeoutRef.current);
+                }
+                typingTimeoutRef.current = setTimeout(() => {
+                    setIsCustomerTyping(false);
+                }, 3000);
+            }
+        };
+
+        const handleTypingStop = (data: { conversationId: string }) => {
+            if (data.conversationId === conversationId) {
+                setIsCustomerTyping(false);
+                if (typingTimeoutRef.current) {
+                    clearTimeout(typingTimeoutRef.current);
+                }
+            }
+        };
+
+        socket.on('typing:start', handleTypingStart);
+        socket.on('typing:stop', handleTypingStop);
+
+        return () => {
+            socket.off('typing:start', handleTypingStart);
+            socket.off('typing:stop', handleTypingStop);
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+        };
+    }, [socket, conversationId]);
+
+    // Emit typing events when composing (debounced)
+    const emitTyping = useCallback(() => {
+        if (!socket || !conversationId) return;
+
+        const now = Date.now();
+        // Only emit every 500ms to avoid flooding
+        if (now - lastTypingEmitRef.current > 500) {
+            socket.emit('typing:start', { conversationId });
+            lastTypingEmitRef.current = now;
+        }
+    }, [socket, conversationId]);
+
+    // Call emitTyping when input changes
+    useEffect(() => {
+        if (input) {
+            emitTyping();
+        } else if (socket && conversationId) {
+            socket.emit('typing:stop', { conversationId });
+        }
+    }, [input, emitTyping, socket, conversationId]);
+
+    // === FILTERED MESSAGES FOR SEARCH ===
+    const filteredMessages = useMemo(() => {
+        if (!searchQuery.trim()) return messages;
+        const query = searchQuery.toLowerCase();
+        return messages.filter(msg =>
+            msg.content.toLowerCase().includes(query)
+        );
+    }, [messages, searchQuery]);
+
     const filteredCanned = cannedResponses.filter(r =>
         r.shortcut.toLowerCase().includes(cannedFilter) ||
         r.content.toLowerCase().includes(cannedFilter)
@@ -142,30 +247,84 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
         // Focus handled by ReactQuill editor
     };
 
+    // === UNDO SEND LOGIC ===
+    const cancelPendingSend = useCallback(() => {
+        if (pendingSend) {
+            clearTimeout(pendingSend.timeout);
+            setInput(pendingSend.content);
+            setPendingSend(null);
+        }
+    }, [pendingSend]);
+
+    // === REACTION TOGGLE HANDLER ===
+    const handleReactionToggle = useCallback(async (messageId: string, emoji: string) => {
+        if (!token || !currentAccount) return;
+
+        try {
+            const res = await fetch(`/api/chat/messages/${messageId}/reactions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({ emoji })
+            });
+
+            if (!res.ok) {
+                console.error('Failed to toggle reaction');
+            }
+            // Note: Parent component should refresh messages to get updated reactions
+            // Or implement optimistic update here
+        } catch (error) {
+            console.error('Reaction toggle error:', error);
+        }
+    }, [token, currentAccount]);
+
     const handleSend = async (e?: React.FormEvent) => {
         e?.preventDefault();
         // Strip HTML to check for actual content
         const plainText = input.replace(/<[^>]*>/g, '').trim();
-        if (!plainText || isSending) return;
+        if (!plainText || isSending || pendingSend) return;
 
-        setIsSending(true);
-        try {
-            // Append email signature for email replies (not internal notes, not live chat)
-            const shouldAppendSignature = signatureEnabled &&
-                user?.emailSignature &&
-                !isInternal &&
-                recipientEmail; // recipientEmail indicates this is an email conversation
+        // Prepare message content
+        let messageContent = input;
 
-            const messageContent = shouldAppendSignature
-                ? `${input}\n\n---\n${user!.emailSignature}`
-                : input;
+        // Prepend quoted message if present
+        if (quotedMessage) {
+            const quotedText = quotedMessage.content.replace(/<[^>]*>/g, '').substring(0, 100);
+            messageContent = `<blockquote style="border-left: 2px solid #ccc; margin: 0 0 10px 0; padding-left: 10px; color: #666;">${quotedText}${quotedText.length >= 100 ? '...' : ''}</blockquote>${messageContent}`;
+        }
 
-            await onSendMessage(messageContent, 'AGENT', isInternal);
-            setInput('');
-            // Clear draft after successful send
-            clearDraft(conversationId);
-        } finally {
-            setIsSending(false);
+        // Append email signature for email replies (not internal notes, not live chat)
+        const shouldAppendSignature = signatureEnabled &&
+            user?.emailSignature &&
+            !isInternal &&
+            recipientEmail; // recipientEmail indicates this is an email conversation
+
+        const finalContent = shouldAppendSignature
+            ? `${messageContent}\n\n---\n${user!.emailSignature}`
+            : messageContent;
+
+        // Store content and start undo timer
+        const timeout = setTimeout(async () => {
+            setIsSending(true);
+            try {
+                await onSendMessage(finalContent, 'AGENT', isInternal);
+                clearDraft(conversationId);
+            } finally {
+                setIsSending(false);
+                setPendingSend(null);
+            }
+        }, UNDO_DELAY_MS);
+
+        setPendingSend({ content: input, timeout });
+        setInput('');
+        setQuotedMessage(null);
+
+        // Emit typing stop
+        if (socket && conversationId) {
+            socket.emit('typing:stop', { conversationId });
         }
     };
 
@@ -202,17 +361,6 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                 fileInputRef.current.value = '';
             }
         }
-    };
-
-    // Parse email content (subject + body)
-    const parseEmailContent = (content: string) => {
-        if (content.startsWith('Subject:')) {
-            const lines = content.split('\n');
-            const subjectLine = lines[0].replace('Subject:', '').trim();
-            const body = lines.slice(2).join('\n').trim();
-            return { subject: subjectLine, body };
-        }
-        return { subject: null, body: content };
     };
 
     /**
@@ -258,234 +406,76 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
             await onStatusChange(newStatus);
         } finally {
             setIsUpdatingStatus(false);
-            setShowActionsMenu(false);
         }
     };
 
     const isOpen = status === 'OPEN';
 
     return (
-        <div className="flex flex-col h-full bg-white">
+        <div className="flex flex-col h-full bg-white relative">
             {/* Header Bar with Actions */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
-                {/* Left - Sender Info */}
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
-                        {recipientName ? recipientName.charAt(0).toUpperCase() : 'C'}
-                    </div>
-                    <div className="min-w-0">
-                        <div className="font-medium text-gray-900 text-sm truncate">
-                            {recipientName || recipientEmail || 'Customer'}
-                        </div>
-                        {recipientEmail && recipientName && (
-                            <div className="text-xs text-gray-500 truncate">{recipientEmail}</div>
-                        )}
-                    </div>
-                </div>
+            <ChatHeader
+                recipientName={recipientName}
+                recipientEmail={recipientEmail}
+                status={status}
+                isUpdatingStatus={isUpdatingStatus}
+                showSearch={showSearch}
+                onToggleSearch={() => setShowSearch(!showSearch)}
+                onStatusChange={handleStatusChange}
+                onShowSnooze={() => setShowSnoozeModal(true)}
+                onShowAssign={() => setShowAssignModal(true)}
+                onShowMerge={() => setShowMergeModal(true)}
+                onBlock={onBlock}
+            />
 
-                {/* Right - Actions */}
-                <div className="flex items-center gap-2">
-                    {/* Resolve/Reopen Button with Dropdown */}
-                    <div className="relative">
-                        <div className="flex">
-                            <button
-                                onClick={() => handleStatusChange(isOpen ? 'CLOSED' : 'OPEN')}
-                                disabled={isUpdatingStatus}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-l-lg text-sm font-medium transition-colors",
-                                    isOpen
-                                        ? "bg-green-600 text-white hover:bg-green-700"
-                                        : "bg-blue-600 text-white hover:bg-blue-700",
-                                    isUpdatingStatus && "opacity-50 cursor-not-allowed"
-                                )}
-                            >
-                                {isOpen ? <CheckCircle size={14} /> : <RotateCcw size={14} />}
-                                {isUpdatingStatus ? '...' : (isOpen ? 'Resolve' : 'Reopen')}
-                            </button>
-                            <button
-                                onClick={() => setShowActionsMenu(!showActionsMenu)}
-                                className={cn(
-                                    "px-2 py-1.5 rounded-r-lg border-l transition-colors",
-                                    isOpen
-                                        ? "bg-green-600 text-white hover:bg-green-700 border-green-700"
-                                        : "bg-blue-600 text-white hover:bg-blue-700 border-blue-700"
-                                )}
-                            >
-                                <ChevronDown size={14} />
-                            </button>
-                        </div>
+            {/* Search Bar */}
+            {showSearch && (
+                <ChatSearchBar
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    onClose={() => {
+                        setShowSearch(false);
+                        setSearchQuery('');
+                    }}
+                    matchCount={filteredMessages.length}
+                    totalCount={messages.length}
+                />
+            )}
 
-                        {/* Dropdown Menu */}
-                        {showActionsMenu && (
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-                                <button
-                                    onClick={() => {
-                                        setShowActionsMenu(false);
-                                        setShowSnoozeModal(true);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                    <Clock size={14} />
-                                    Snooze
-                                </button>
-                                <button
-                                    onClick={() => handleStatusChange('PENDING')}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                    <MoreHorizontal size={14} />
-                                    Mark as pending
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* More Options */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowMoreMenu(!showMoreMenu)}
-                            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
-                        >
-                            <MoreVertical size={16} />
-                        </button>
-
-                        {/* More Options Dropdown */}
-                        {showMoreMenu && (
-                            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-                                <button
-                                    onClick={() => {
-                                        setShowMoreMenu(false);
-                                        setShowAssignModal(true);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-t-lg"
-                                >
-                                    <Users size={14} />
-                                    Assign to team member
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setShowMoreMenu(false);
-                                        setShowMergeModal(true);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                    <Merge size={14} />
-                                    Merge with another conversation
-                                </button>
-                                {recipientEmail && onBlock && (
-                                    <button
-                                        onClick={async () => {
-                                            setShowMoreMenu(false);
-                                            if (confirm(`Block ${recipientEmail}? Their future messages will be auto-resolved without notifications.`)) {
-                                                await onBlock();
-                                            }
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-b-lg border-t border-gray-100"
-                                    >
-                                        <Ban size={14} />
-                                        Block customer
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Messages Area - Chat Bubble Style */}
+            {/* Messages Area - Using MessageBubble Component */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
-                {messages.map((msg) => {
-                    const isMe = msg.senderType === 'AGENT';
-                    const isSystem = msg.senderType === 'SYSTEM';
-                    const { subject, body } = parseEmailContent(msg.content);
+                {filteredMessages.map((msg) => (
+                    <MessageBubble
+                        key={msg.id}
+                        message={msg}
+                        recipientName={recipientName}
+                        onImageClick={(src) => setLightboxImage(src)}
+                        onQuoteReply={(msg) => setQuotedMessage(msg)}
+                        onReactionToggle={handleReactionToggle}
+                    />
+                ))}
 
-                    if (isSystem) {
-                        return (
-                            <div key={msg.id} className="flex justify-center">
-                                <span className="text-gray-500 text-xs italic bg-white px-3 py-1 rounded-full shadow-sm">
-                                    {msg.content}
-                                </span>
-                            </div>
-                        );
-                    }
+                {/* Typing Indicator */}
+                {isCustomerTyping && (
+                    <TypingIndicator name={recipientName} />
+                )}
 
-                    return (
-                        <div
-                            key={msg.id}
-                            className={cn(
-                                "flex gap-2",
-                                isMe ? "justify-end" : "justify-start"
-                            )}
-                        >
-                            {/* Customer Avatar - Left side */}
-                            {!isMe && (
-                                <div className="w-7 h-7 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                                    {(recipientName?.charAt(0) || 'C').toUpperCase()}
-                                </div>
-                            )}
-
-                            {/* Message Bubble */}
-                            <div
-                                className={cn(
-                                    "max-w-[70%] rounded-2xl px-3 py-2 shadow-sm",
-                                    isMe
-                                        ? "bg-blue-600 text-white rounded-br-md"
-                                        : "bg-white text-gray-800 rounded-bl-md border border-gray-100",
-                                    msg.isInternal && "bg-yellow-100 text-yellow-900 border-yellow-200"
-                                )}
-                            >
-                                {/* Private Note Badge */}
-                                {msg.isInternal && (
-                                    <div className="text-[10px] font-medium text-yellow-700 mb-1">
-                                        🔒 Private Note
-                                    </div>
-                                )}
-
-                                {/* Subject line for emails */}
-                                {subject && (
-                                    <div className={cn(
-                                        "text-xs font-semibold mb-1",
-                                        isMe ? "text-blue-100" : "text-gray-600"
-                                    )}>
-                                        {subject}
-                                    </div>
-                                )}
-
-                                {/* Message body */}
-                                <div
-                                    className="text-sm whitespace-pre-wrap break-words leading-relaxed"
-                                    dangerouslySetInnerHTML={{ __html: body }}
-                                />
-
-                                {/* Timestamp and Status */}
-                                <div className={cn(
-                                    "text-[10px] mt-1 flex items-center gap-1",
-                                    isMe ? "text-blue-200 justify-end" : "text-gray-400"
-                                )}>
-                                    <span>{format(new Date(msg.createdAt), 'h:mm a')}</span>
-                                    {/* Message status icons for agent messages */}
-                                    {isMe && !msg.isInternal && (
-                                        <span className="flex items-center" title={msg.status === 'FAILED' ? 'Failed to send' : 'Sent'}>
-                                            {msg.status === 'FAILED' ? (
-                                                <AlertCircle size={12} className="text-red-400" />
-                                            ) : (
-                                                <Check size={12} className="text-blue-300" />
-                                            )}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Agent Avatar - Right side */}
-                            {isMe && (
-                                <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                                    ME
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
                 <div ref={bottomRef} />
             </div>
+
+            {/* Undo Send Toast */}
+            {pendingSend && (
+                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 z-30">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span className="text-sm">Sending in {Math.ceil(UNDO_DELAY_MS / 1000)}s...</span>
+                    <button
+                        onClick={cancelPendingSend}
+                        className="text-sm font-medium text-blue-400 hover:text-blue-300"
+                    >
+                        Undo
+                    </button>
+                </div>
+            )}
 
             {/* Reply Composer - Chatwoot Style */}
             <div className="border-t border-gray-200 bg-white">
@@ -557,6 +547,27 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                     </button>
                 </div>
 
+                {/* Quote Reply Preview */}
+                {quotedMessage && (
+                    <div className="px-4 py-2 border-b border-gray-100 bg-blue-50 flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                            <div className="text-xs text-blue-600 font-medium mb-0.5">
+                                Replying to {quotedMessage.senderType === 'AGENT' ? 'yourself' : (recipientName || 'customer')}
+                            </div>
+                            <div className="text-sm text-gray-600 truncate">
+                                {quotedMessage.content.replace(/<[^>]*>/g, '').substring(0, 80)}
+                                {quotedMessage.content.length > 80 ? '...' : ''}
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setQuotedMessage(null)}
+                            className="p-1 rounded hover:bg-blue-100 text-blue-400"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+                )}
+
                 {/* To/CC Fields (for email replies) */}
                 {!isInternal && recipientEmail && (
                     <div className="px-4 py-2 border-b border-gray-100 text-sm">
@@ -599,6 +610,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                 disabled={isGeneratingDraft}
                                 className="p-2 rounded hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
                                 title="Generate AI Draft Reply"
+                                aria-label="Generate AI draft reply"
                             >
                                 {isGeneratingDraft ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                             </button>
@@ -607,6 +619,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                 onClick={() => setInput('/')}
                                 className="p-2 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                                 title="Canned Responses"
+                                aria-label="Insert canned response"
                             >
                                 <Zap size={18} />
                             </button>
@@ -623,6 +636,7 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                                 disabled={isUploading}
                                 className="p-2 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
                                 title="Attach File"
+                                aria-label="Attach file"
                             >
                                 {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
                             </button>
@@ -726,6 +740,14 @@ export function ChatWindow({ conversationId, messages, onSendMessage, recipientE
                 }}
                 currentConversationId={conversationId}
             />
+
+            {/* Image Lightbox */}
+            {lightboxImage && (
+                <ImageLightbox
+                    src={lightboxImage}
+                    onClose={() => setLightboxImage(null)}
+                />
+            )}
         </div>
     );
 }

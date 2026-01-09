@@ -63,6 +63,7 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
                                 alt={img.alt || ''}
                                 className="w-full h-full object-cover"
                                 referrerPolicy="no-referrer"
+                                loading="lazy"
                                 onError={() => handleImageError(img.id)}
                             />
                         )}

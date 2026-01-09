@@ -364,5 +364,71 @@ export const createChatRouter = (chatService: ChatService) => {
         }
     });
 
+    // === MESSAGE REACTIONS ===
+
+    // POST /api/chat/messages/:messageId/reactions - Add/toggle reaction
+    router.post('/messages/:messageId/reactions', async (req: any, res) => {
+        try {
+            const { messageId } = req.params;
+            const { emoji } = req.body;
+            const userId = req.user?.id;
+
+            if (!emoji) {
+                return res.status(400).json({ error: 'Emoji is required' });
+            }
+
+            // Check if reaction already exists (toggle behavior)
+            const existingReaction = await prisma.messageReaction.findUnique({
+                where: {
+                    messageId_userId_emoji: { messageId, userId, emoji }
+                }
+            });
+
+            if (existingReaction) {
+                // Remove reaction (toggle off)
+                await prisma.messageReaction.delete({
+                    where: { id: existingReaction.id }
+                });
+                res.json({ action: 'removed', emoji });
+            } else {
+                // Add reaction
+                const reaction = await prisma.messageReaction.create({
+                    data: { messageId, userId, emoji },
+                    include: { user: { select: { id: true, fullName: true } } }
+                });
+                res.json({ action: 'added', reaction });
+            }
+        } catch (error) {
+            Logger.error('Failed to toggle reaction', { error });
+            res.status(500).json({ error: 'Failed to toggle reaction' });
+        }
+    });
+
+    // GET /api/chat/messages/:messageId/reactions - Get reactions for a message
+    router.get('/messages/:messageId/reactions', async (req: any, res) => {
+        try {
+            const { messageId } = req.params;
+
+            const reactions = await prisma.messageReaction.findMany({
+                where: { messageId },
+                include: { user: { select: { id: true, fullName: true } } }
+            });
+
+            // Group by emoji
+            const grouped = reactions.reduce((acc, r) => {
+                if (!acc[r.emoji]) {
+                    acc[r.emoji] = [];
+                }
+                acc[r.emoji].push({ userId: r.user.id, userName: r.user.fullName });
+                return acc;
+            }, {} as Record<string, Array<{ userId: string; userName: string | null }>>);
+
+            res.json(grouped);
+        } catch (error) {
+            Logger.error('Failed to fetch reactions', { error });
+            res.status(500).json({ error: 'Failed to fetch reactions' });
+        }
+    });
+
     return router;
 };

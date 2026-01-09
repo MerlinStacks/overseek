@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { getDateRange } from '../utils/dateUtils';
+import { Logger } from '../utils/logger';
 
 import { ReportResult, ReportTemplate } from '../types/analytics';
 import { AnalyticsService } from '../services/AnalyticsService';
@@ -78,7 +79,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
         const range = getDateRange(dateRange);
 
         try {
-            console.log('Generating Report with Payload:', { metrics, dimension, startDate: range.startDate, endDate: range.endDate });
+            Logger.debug('Generating report', { metrics, dimension, startDate: range.startDate, endDate: range.endDate });
 
             const data = await AnalyticsService.generateReport(token, currentAccount.id, {
                 metrics,

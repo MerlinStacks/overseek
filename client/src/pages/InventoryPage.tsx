@@ -175,7 +175,7 @@ export function InventoryPage() {
                                                 <td className="px-6 py-4">
                                                     <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
                                                         {(product.mainImage || product.images?.[0]?.src) ? (
-                                                            <img src={product.mainImage || product.images?.[0]?.src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                            <img src={product.mainImage || product.images?.[0]?.src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-gray-400"><Package size={16} /></div>
                                                         )}

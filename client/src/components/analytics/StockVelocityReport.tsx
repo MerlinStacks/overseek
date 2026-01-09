@@ -178,7 +178,7 @@ export function StockVelocityReport() {
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 rounded bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
                                                     {item.image ? (
-                                                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                                                     ) : (
                                                         <Package size={16} className="text-gray-400" />
                                                     )}

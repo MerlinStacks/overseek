@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
+import { Logger } from '../utils/logger';
 
 export interface PresenceUser {
     userId: string;
@@ -21,7 +22,7 @@ export const useCollaboration = (documentId: string) => {
     useEffect(() => {
         if (!socket || !isConnected || !documentId || !user) return;
 
-        console.log(`[Collaboration] Joining document: ${documentId}`);
+        Logger.debug('Joining document', { documentId });
 
         // Generate a random color for this session if not present
         const sessionColor = '#' + Math.floor(Math.random() * 16777215).toString(16);
@@ -45,7 +46,7 @@ export const useCollaboration = (documentId: string) => {
         socket.on('presence:sync', handlePresenceSync);
 
         return () => {
-            console.log(`[Collaboration] Leaving document: ${documentId}`);
+            Logger.debug('Leaving document', { documentId });
             socket.emit('leave:document', { docId: documentId });
             socket.off('presence:sync', handlePresenceSync);
             joinedRef.current = false;

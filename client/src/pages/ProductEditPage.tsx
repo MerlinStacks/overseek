@@ -18,6 +18,7 @@ import { Tabs } from '../components/ui/Tabs';
 import { ImageGallery } from '../components/products/ImageGallery';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
 import { ProductSalesHistory } from '../components/products/ProductSalesHistory';
+import { Logger } from '../utils/logger';
 
 // Services
 import { ProductService } from '../services/ProductService';
@@ -147,7 +148,7 @@ export function ProductEditPage() {
         setIsLoading(true);
         try {
             const data = await ProductService.getProduct(id, token, currentAccount.id);
-            console.log('Product Data Loaded:', data);
+            Logger.debug('Product data loaded', { productId: id, wooId: data.wooId });
             setProduct(data);
             setMainImageFailed(false); // Reset image error state for new product
             setFormData({
@@ -244,7 +245,7 @@ export function ProductEditPage() {
         setIsSyncing(true);
         try {
             const updated = await ProductService.syncProduct(id, token, currentAccount.id);
-            console.log('Product Synced:', updated);
+            Logger.debug('Product synced', { productId: id, wooId: updated?.wooId });
             await fetchProduct();
             alert('Product synced successfully from WooCommerce.');
         } catch (error: any) {

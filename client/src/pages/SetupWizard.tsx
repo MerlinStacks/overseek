@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Store, ArrowRight, SkipForward } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { Logger } from '../utils/logger';
 
 export function SetupWizard() {
     const [formData, setFormData] = useState({
@@ -28,9 +29,9 @@ export function SetupWizard() {
 
     // Redirect to dashboard if user already has accounts (unless adding new)
     useEffect(() => {
-        console.log('[SetupWizard] Redirect check:', { isLoading, accountsLength: accounts.length, isAddingNew });
+        Logger.debug('SetupWizard redirect check', { isLoading, accountsLength: accounts.length, isAddingNew });
         if (!isLoading && accounts.length > 0 && !isAddingNew) {
-            console.log('[SetupWizard] Redirecting to dashboard');
+            Logger.debug('SetupWizard redirecting to dashboard');
             navigate('/');
         }
     }, [accounts, isLoading, navigate, isAddingNew]);

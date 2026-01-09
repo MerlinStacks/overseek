@@ -73,7 +73,7 @@ export function InventoryRiskWidget() {
                 {products.slice(0, 5).map(p => (
                     <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
                         {p.image ? (
-                            <img src={p.image} alt="" className="w-10 h-10 rounded-md object-cover border border-gray-200" />
+                            <img src={p.image} alt="" className="w-10 h-10 rounded-md object-cover border border-gray-200" loading="lazy" />
                         ) : (
                             <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center text-gray-400">
                                 <span className="text-xs">IMG</span>

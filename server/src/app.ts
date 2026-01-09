@@ -288,6 +288,15 @@ io.on('connection', (socket) => {
         socket.leave(`conversation:${convId}`);
     });
 
+    // Typing Indicators - Broadcast to other participants in the conversation
+    socket.on('typing:start', ({ conversationId }) => {
+        socket.to(`conversation:${conversationId}`).emit('typing:start', { conversationId });
+    });
+
+    socket.on('typing:stop', ({ conversationId }) => {
+        socket.to(`conversation:${conversationId}`).emit('typing:stop', { conversationId });
+    });
+
     // Collaboration Events
     socket.on('join:document', async ({ docId, user }) => {
         // console.log(`Socket ${socket.id} joining doc ${docId}`);

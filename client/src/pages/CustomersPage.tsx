@@ -123,8 +123,7 @@ export function CustomersPage() {
                             ) : (
                                 customers.map((customer) => (
                                     <tr key={customer.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => {
-                                        console.log('Navigating to customer:', customer.id);
-                                        navigate(`/customers/${encodeURIComponent(customer.id)}`);
+                                        navigate(`/customers/${encodeURIComponent(customer.id)}`)
                                     }}>
 
                                         <td className="px-6 py-4">
