@@ -304,7 +304,7 @@ export function DashboardPage() {
                 onBreakpointChange={onBreakpointChange}
                 isDraggable={!isLayoutLocked}
                 isResizable={!isLayoutLocked}
-                draggableHandle=".drag-handle"
+                draggableHandle={!isLayoutLocked ? ".drag-handle" : undefined}
                 compactType={null}
                 preventCollision={true}
             >

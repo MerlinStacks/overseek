@@ -13,7 +13,8 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import {
     Mail, Clock, Split, Zap, MessageSquare, Tag, Link, ShoppingCart,
     CheckCircle, Star, User, Eye, UserPlus, CreditCard, XCircle,
-    MousePointer, Settings, Plus, Target, ArrowUpDown, LogOut
+    MousePointer, Settings, Plus, Target, ArrowUpDown, LogOut,
+    MoreVertical, Copy, Move, Trash2
 } from 'lucide-react';
 
 // Node statistics interface for enrollment counts
@@ -64,6 +65,84 @@ const AddStepButton: React.FC<AddStepButtonProps> = ({ nodeId, onAddStep }) => {
     );
 };
 
+// Node action callbacks
+type OnCopyNodeCallback = (nodeId: string) => void;
+type OnMoveNodeCallback = (nodeId: string) => void;
+type OnDeleteNodeCallback = (nodeId: string) => void;
+
+// Node Action Menu - 3-dot dropdown for copy/move/delete
+interface NodeActionMenuProps {
+    nodeId: string;
+    onCopy?: OnCopyNodeCallback;
+    onMove?: OnMoveNodeCallback;
+    onDelete?: OnDeleteNodeCallback;
+}
+
+const NodeActionMenu: React.FC<NodeActionMenuProps> = ({ nodeId, onCopy, onMove, onDelete }) => {
+    const [isOpen, setIsOpen] = React.useState(false);
+    const menuRef = React.useRef<HTMLDivElement>(null);
+
+    // Close menu when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        if (isOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen]);
+
+    const handleAction = (action: () => void) => {
+        setIsOpen(false);
+        action();
+    };
+
+    return (
+        <div className="relative" ref={menuRef}>
+            <button
+                onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+            >
+                <MoreVertical size={14} className="text-gray-400" />
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
+                    {onCopy && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleAction(() => onCopy(nodeId)); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            <Copy size={14} />
+                            Copy
+                        </button>
+                    )}
+                    {onMove && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleAction(() => onMove(nodeId)); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            <Move size={14} />
+                            Move
+                        </button>
+                    )}
+                    {onDelete && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleAction(() => onDelete(nodeId)); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                            <Trash2 size={14} />
+                            Delete
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // Base wrapper for consistent node styling with stats support
 interface NodeWrapperProps {
     children: React.ReactNode;
@@ -79,6 +158,9 @@ interface NodeWrapperProps {
     nodeId?: string;
     onAddStep?: OnAddStepCallback;
     showAddButton?: boolean;
+    onCopy?: OnCopyNodeCallback;
+    onMove?: OnMoveNodeCallback;
+    onDelete?: OnDeleteNodeCallback;
 }
 
 const NodeWrapper: React.FC<NodeWrapperProps> = ({
@@ -95,6 +177,9 @@ const NodeWrapper: React.FC<NodeWrapperProps> = ({
     nodeId,
     onAddStep,
     showAddButton = true,
+    onCopy,
+    onMove,
+    onDelete,
 }) => (
     <div className="relative pb-8">
         <div className={`shadow-lg rounded-xl border-2 ${borderColor} ${bgColor} min-w-[200px] max-w-[260px] overflow-hidden`}>
@@ -127,6 +212,15 @@ const NodeWrapper: React.FC<NodeWrapperProps> = ({
                     >
                         <Settings size={14} className="text-gray-400" />
                     </button>
+                )}
+                {/* Action menu (copy/move/delete) */}
+                {nodeId && (onCopy || onMove || onDelete) && (
+                    <NodeActionMenu
+                        nodeId={nodeId}
+                        onCopy={onCopy}
+                        onMove={onMove}
+                        onDelete={onDelete}
+                    />
                 )}
             </div>
 
@@ -162,6 +256,15 @@ const NodeWrapper: React.FC<NodeWrapperProps> = ({
                             <span className="text-green-600 font-medium">Completed</span>
                             <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">
                                 {stats.completed.toLocaleString()}
+                            </span>
+                        </div>
+                    )}
+                    {stats.failed && stats.failed > 0 && (
+                        <div className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            <span className="text-red-600 font-medium">Failed</span>
+                            <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">
+                                {stats.failed.toLocaleString()}
                             </span>
                         </div>
                     )}
@@ -296,6 +399,8 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
+    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
+    const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
 
     return (
         <NodeWrapper
@@ -310,6 +415,8 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
             onSettingsClick={data.onSettingsClick as (() => void) | undefined}
             nodeId={id}
             onAddStep={onAddStep}
+            onCopy={onCopy}
+            onDelete={onDelete}
         >
             <div className="font-semibold text-gray-900">{data.label as string}</div>
             <div className="text-xs text-gray-500 mt-1">Starts the automation</div>
@@ -331,6 +438,8 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
+    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
+    const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
 
     // Exit nodes shouldn't have add button
     const isExitNode = config?.actionType === 'EXIT';
@@ -348,6 +457,8 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
             nodeId={id}
             onAddStep={onAddStep}
             showAddButton={!isExitNode}
+            onCopy={onCopy}
+            onDelete={onDelete}
         >
             <Handle
                 type="target"
@@ -385,6 +496,8 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
+    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
+    const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
 
     const duration = config?.duration || 1;
     const unit = config?.unit || 'hours';
@@ -410,6 +523,8 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
             stats={stats}
             nodeId={id}
             onAddStep={onAddStep}
+            onCopy={onCopy}
+            onDelete={onDelete}
         >
             <Handle
                 type="target"
@@ -441,6 +556,8 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
+    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
+    const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
 
     // Build condition preview
     const conditionPreview = config?.field && config?.operator && config?.value
@@ -459,7 +576,9 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
             stats={stats}
             nodeId={id}
             onAddStep={onAddStep}
-            showAddButton={false} // Condition nodes have special branch handling
+            showAddButton={false}
+            onCopy={onCopy}
+            onDelete={onDelete}
         >
             <Handle
                 type="target"

@@ -491,25 +491,25 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                             <div>
                                                 <p className="text-xs text-gray-500 uppercase">Spend (30d)</p>
                                                 <p className="text-xl font-bold text-gray-900">
-                                                    {ins ? new Intl.NumberFormat('en-US', { style: 'currency', currency: ins.currency || 'USD' }).format(ins.spend) : '...'}
+                                                    {ins?.spend != null ? new Intl.NumberFormat('en-US', { style: 'currency', currency: ins.currency || 'USD' }).format(ins.spend) : '...'}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-gray-500 uppercase">ROAS</p>
                                                 <p className="text-xl font-bold text-gray-900">
-                                                    {ins ? ins.roas.toFixed(2) + 'x' : '...'}
+                                                    {ins?.roas != null ? ins.roas.toFixed(2) + 'x' : '...'}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-gray-500 uppercase">Impressions</p>
                                                 <p className="font-medium text-gray-700">
-                                                    {ins ? new Intl.NumberFormat('en-US', { notation: "compact" }).format(ins.impressions) : '...'}
+                                                    {ins?.impressions != null ? new Intl.NumberFormat('en-US', { notation: "compact" }).format(ins.impressions) : '...'}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-gray-500 uppercase">Clicks</p>
                                                 <p className="font-medium text-gray-700">
-                                                    {ins ? new Intl.NumberFormat('en-US').format(ins.clicks) : '...'}
+                                                    {ins?.clicks != null ? new Intl.NumberFormat('en-US').format(ins.clicks) : '...'}
                                                 </p>
                                             </div>
                                         </div>

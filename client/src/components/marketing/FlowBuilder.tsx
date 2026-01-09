@@ -86,6 +86,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     const [stepPopupPosition, setStepPopupPosition] = useState({ x: 0, y: 0 });
     const [pendingNodeParent, setPendingNodeParent] = useState<string | null>(null);
 
+    // Stable callback refs for node operations (to avoid circular deps in node data)
+    const copyNodeRef = useRef<(nodeId: string) => void>(() => { });
+    const deleteNodeRef = useRef<(nodeId: string) => void>(() => { });
+
     // Load initial flow - start with empty canvas if no existing flow
     useEffect(() => {
         if (initialFlow && initialFlow.nodes && initialFlow.nodes.length > 0) {
@@ -134,6 +138,37 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
         setSelectedNode(null);
     }, [setNodes, setEdges]);
 
+    // --- Node Copy/Move Operations ---
+    const [clipboard, setClipboard] = useState<Node | null>(null);
+
+    const handleCopyNode = useCallback((nodeId: string) => {
+        const nodeToCopy = nodes.find(n => n.id === nodeId);
+        if (nodeToCopy) {
+            // Deep clone the node with a new ID
+            setClipboard({
+                ...nodeToCopy,
+                id: getId(),
+                data: { ...nodeToCopy.data }
+            });
+        }
+    }, [nodes]);
+
+    const handleDeleteNode = useCallback((nodeId: string) => {
+        if (confirm('Delete this node?')) {
+            deleteNode(nodeId);
+        }
+    }, [deleteNode]);
+
+    // Keep refs in sync with callbacks
+    useEffect(() => {
+        copyNodeRef.current = handleCopyNode;
+        deleteNodeRef.current = handleDeleteNode;
+    }, [handleCopyNode, handleDeleteNode]);
+
+    // Wrapper functions that use refs (stable references for node data)
+    const onNodeCopy = useCallback((nodeId: string) => copyNodeRef.current(nodeId), []);
+    const onNodeDelete = useCallback((nodeId: string) => deleteNodeRef.current(nodeId), []);
+
     // --- Event (Trigger) Selection ---
     const handleEventSelect = useCallback((event: { triggerType: string; label: string }) => {
         const viewport = getViewport();
@@ -144,7 +179,9 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
             data: {
                 label: event.label,
                 config: { triggerType: event.triggerType },
-                onAddStep: handleOpenStepPopup, // Pass callback for + button
+                onAddStep: handleOpenStepPopup,
+                onCopy: onNodeCopy,
+                onDelete: onNodeDelete,
             },
         };
         setNodes([newNode]);
@@ -183,6 +220,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                     label: 'Delay',
                     config: { duration: 1, unit: 'hours' },
                     onAddStep: handleOpenStepPopup,
+                    onCopy: onNodeCopy,
+                    onDelete: onNodeDelete,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -196,6 +235,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                     label: 'Condition',
                     config: {},
                     onAddStep: handleOpenStepPopup,
+                    onCopy: onNodeCopy,
+                    onDelete: onNodeDelete,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -209,6 +250,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                     label: 'Goal',
                     config: { actionType: 'GOAL', goalName: 'Conversion' },
                     onAddStep: handleOpenStepPopup,
+                    onCopy: onNodeCopy,
+                    onDelete: onNodeDelete,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -222,6 +265,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                     label: 'Jump',
                     config: { actionType: 'JUMP', targetNodeId: '' },
                     onAddStep: handleOpenStepPopup,
+                    onCopy: onNodeCopy,
+                    onDelete: onNodeDelete,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -234,6 +279,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                 data: {
                     label: 'Exit',
                     config: { actionType: 'EXIT' },
+                    onCopy: onNodeCopy,
+                    onDelete: onNodeDelete,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -258,6 +305,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                 label: action.label,
                 config: { actionType: action.actionType },
                 onAddStep: handleOpenStepPopup,
+                onCopy: onNodeCopy,
+                onDelete: onNodeDelete,
             },
         };
         addNodeAndConnect(newNode, pendingNodeParent);
@@ -284,7 +333,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     const isEmptyCanvas = nodes.length === 0;
 
     return (
-        <div className="flex h-full w-full relative">
+        <div className="h-full w-full relative">
             {/* Canvas */}
             <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
                 <ReactFlow
