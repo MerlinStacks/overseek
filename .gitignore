@@ -38,9 +38,18 @@ Thumbs.db
 
 logs.txt
 
-# Agent & Debug
+# Agent & Debug (development artifacts)
+.agent/
 debug_logs.txt
 bugs.md
 task.md
 implementation_plan.md
 walkthrough.md
+
+# Sensitive files
+*.local
+*.key
+*.pem
+*.crt
+secrets/
+credentials/
