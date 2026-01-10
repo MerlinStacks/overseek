@@ -33,7 +33,7 @@ InventoryService.setupListeners();
 
 // Create Fastify instance
 const fastify = Fastify({
-    logger: fastifyLoggerConfig, // Shared Pino instance - prevents duplicate loggers
+    logger: fastifyLoggerConfig, // Disabled - using our own Logger wrapper to prevent duplicates
     disableRequestLogging: true, // Disable default logging to avoid double-logging with our custom hook
     trustProxy: true, // Trust Docker/Nginx proxy for Rate Limiting
 });

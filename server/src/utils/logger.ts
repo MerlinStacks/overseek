@@ -21,7 +21,7 @@ const productionDestination: DestinationStream = pino.destination({
     sync: true, // Synchronous writes to prevent corruption
 });
 
-// Create the raw pino logger - SINGLE INSTANCE for both manual logging and Fastify
+// Create the raw pino logger for our Logger wrapper
 const createPinoLogger = () => {
     return pino({
         level,
@@ -41,9 +41,10 @@ const pinoInstance = createPinoLogger();
 // Export the pino instance for direct usage (Logger wrapper)
 export const pinoLogger = pinoInstance;
 
-// Export the SAME Pino instance for Fastify to use
-// This prevents duplicate loggers writing to stdout
-export const fastifyLoggerConfig = pinoInstance;
+// Fastify 5.x requires a config object, not a Pino instance
+// Disable Fastify's internal request logging - we use our own Logger wrapper
+// Setting to false disables Fastify's logger entirely (preventing duplicates)
+export const fastifyLoggerConfig = false;
 
 /**
  * Winston-compatible Logger wrapper.
