@@ -6,6 +6,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
+import { EmailService } from '../services/EmailService';
 import { InboxAIService } from '../services/InboxAIService';
 import { BlockedContactService } from '../services/BlockedContactService';
 import { requireAuthFastify } from '../middleware/auth';
@@ -43,6 +44,84 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             const { accountId, wooCustomerId, visitorToken } = request.body as any;
             const conv = await chatService.createConversation(accountId, wooCustomerId, visitorToken);
             return conv;
+        });
+
+        // GET /email-accounts - List configured email accounts for sending
+        fastify.get('/email-accounts', async (request, reply) => {
+            try {
+                const accountId = request.headers['x-account-id'] as string;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+                const accounts = await prisma.emailAccount.findMany({
+                    where: { accountId, type: 'SMTP' },
+                    select: { id: true, name: true, email: true }
+                });
+                return accounts;
+            } catch (error) {
+                Logger.error('Failed to fetch email accounts', { error });
+                return reply.code(500).send({ error: 'Failed to fetch email accounts' });
+            }
+        });
+
+        // POST /compose - Create conversation and send new email
+        fastify.post('/compose', async (request, reply) => {
+            try {
+                const accountId = request.headers['x-account-id'] as string;
+                const userId = request.user?.id;
+                const { to, cc, subject, body, emailAccountId } = request.body as any;
+
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!to || !subject || !body || !emailAccountId) {
+                    return reply.code(400).send({ error: 'Missing required fields: to, subject, body, emailAccountId' });
+                }
+
+                // 1. Find existing WooCustomer by email
+                let wooCustomerId: string | null = null;
+                const existingCustomer = await prisma.wooCustomer.findFirst({
+                    where: { accountId, email: to }
+                });
+                if (existingCustomer) wooCustomerId = existingCustomer.id;
+
+                // 2. Create conversation with EMAIL channel
+                const conversation = await prisma.conversation.create({
+                    data: {
+                        accountId,
+                        channel: 'EMAIL',
+                        status: 'OPEN',
+                        guestEmail: to,
+                        wooCustomerId,
+                        assignedTo: userId
+                    }
+                });
+
+                // 3. Add message to conversation (store full content with subject)
+                const fullContent = `Subject: ${subject}\n\n${body}`;
+                await chatService.addMessage(conversation.id, fullContent, 'AGENT', userId, false);
+
+                // 4. Send email via EmailService
+                const emailService = new EmailService();
+                await emailService.sendEmail(accountId, emailAccountId, to, subject, body, undefined, {
+                    source: 'INBOX',
+                    sourceId: conversation.id
+                });
+
+                // 5. Send to CC recipients if provided
+                if (cc && cc.trim()) {
+                    const ccRecipients = cc.split(',').map((e: string) => e.trim()).filter(Boolean);
+                    for (const ccEmail of ccRecipients) {
+                        await emailService.sendEmail(accountId, emailAccountId, ccEmail, subject, body, undefined, {
+                            source: 'INBOX',
+                            sourceId: conversation.id
+                        });
+                    }
+                }
+
+                Logger.info('Composed and sent new email', { conversationId: conversation.id, to });
+                return { success: true, conversationId: conversation.id };
+            } catch (error: any) {
+                Logger.error('Failed to compose email', { error: error.message });
+                return reply.code(500).send({ error: error.message || 'Failed to send email' });
+            }
         });
 
         // GET /unread-count

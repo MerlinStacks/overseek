@@ -14,6 +14,9 @@ export class CustomerSync extends BaseSync {
         let hasMore = true;
         let totalProcessed = 0;
 
+        // Collect all WooCommerce customer IDs for reconciliation
+        const wooCustomerIds = new Set<number>();
+
         while (hasMore) {
             const { data: customers, totalPages } = await woo.getCustomers({ page, after, per_page: 50 });
             if (!customers.length) {
@@ -22,6 +25,8 @@ export class CustomerSync extends BaseSync {
             }
 
             for (const c of customers) {
+                wooCustomerIds.add(c.id);
+
                 await prisma.wooCustomer.upsert({
                     where: { accountId_wooId: { accountId, wooId: c.id } },
                     update: {
@@ -62,6 +67,29 @@ export class CustomerSync extends BaseSync {
             }
 
             page++;
+        }
+
+        // --- Reconciliation: Remove deleted customers ---
+        // Only run on full sync (non-incremental) to ensure we have all WooCommerce IDs
+        if (!incremental && wooCustomerIds.size > 0) {
+            const localCustomers = await prisma.wooCustomer.findMany({
+                where: { accountId },
+                select: { id: true, wooId: true }
+            });
+
+            let deletedCount = 0;
+            for (const local of localCustomers) {
+                if (!wooCustomerIds.has(local.wooId)) {
+                    // Customer exists locally but not in WooCommerce - delete it
+                    await prisma.wooCustomer.delete({ where: { id: local.id } });
+                    await IndexingService.deleteCustomer(accountId, local.wooId);
+                    deletedCount++;
+                }
+            }
+
+            if (deletedCount > 0) {
+                Logger.info(`Reconciliation: Deleted ${deletedCount} orphaned customers`, { accountId });
+            }
         }
 
         Logger.info(`Customer Sync Complete. Total: ${totalProcessed}`, { accountId });

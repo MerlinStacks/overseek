@@ -6,6 +6,7 @@ import { useAccount } from '../context/AccountContext';
 import { ConversationList } from '../components/chat/ConversationList';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ContactPanel } from '../components/chat/ContactPanel';
+import { NewEmailModal } from '../components/chat/NewEmailModal';
 import { MessageSquare } from 'lucide-react';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
 
@@ -18,6 +19,7 @@ export function InboxPage() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [availableChannels, setAvailableChannels] = useState<Array<{ channel: ConversationChannel; identifier: string; available: boolean }>>([]);
 
     const activeConversation = conversations.find(c => c.id === selectedId);
@@ -212,6 +214,7 @@ export function InboxPage() {
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 currentUserId={user?.id}
+                onCompose={() => setIsComposeOpen(true)}
             />
 
             {/* Main Chat Area */}
@@ -329,6 +332,28 @@ export function InboxPage() {
             {selectedId && (
                 <ContactPanel
                     conversation={activeConversation}
+                />
+            )}
+
+            {/* Compose New Email Modal */}
+            {isComposeOpen && (
+                <NewEmailModal
+                    onClose={() => setIsComposeOpen(false)}
+                    onSent={async (conversationId) => {
+                        setIsComposeOpen(false);
+                        setSelectedId(conversationId);
+                        // Refresh conversations list
+                        const res = await fetch('/api/chat/conversations', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'x-account-id': currentAccount?.id || ''
+                            }
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            setConversations(data);
+                        }
+                    }}
                 />
             )}
         </div>

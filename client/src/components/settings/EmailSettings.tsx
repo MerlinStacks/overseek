@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { EmailAccountForm, type EmailAccount } from './EmailAccountForm';
 import { EmailAccountList } from './EmailAccountList';
+import { EmailLogPanel } from './EmailLogPanel';
 import { RefreshCw } from 'lucide-react';
 
 export function EmailSettings() {
@@ -191,6 +192,11 @@ export function EmailSettings() {
                     onDelete={handleDelete}
                     onAdd={() => setEditingAccount({ type: 'SMTP', port: 587, isSecure: true })}
                 />
+            )}
+
+            {/* Email Logs - shown when not editing */}
+            {!editingAccount && (
+                <EmailLogPanel />
             )}
 
             {editingAccount && (

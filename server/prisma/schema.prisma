@@ -100,6 +100,7 @@ model Account {
   features      AccountFeature[]
   dashboards    DashboardLayout[]
   emailAccounts EmailAccount[]
+  emailLogs     EmailLog[]
   SyncState     SyncState[]
   SyncLog       SyncLog[]
   WooOrder      WooOrder[]
@@ -1040,11 +1041,39 @@ model EmailAccount {
   isDefault Boolean @default(false)
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  logs    EmailLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([accountId])
+}
+
+model EmailLog {
+  id             String   @id @default(uuid())
+  accountId      String
+  emailAccountId String
+  
+  to             String
+  subject        String
+  
+  status         String   // SUCCESS, FAILED
+  errorMessage   String?  @db.Text
+  errorCode      String?  // SMTP error code if available
+  
+  // Context (what triggered this email)
+  source         String?  // "AUTOMATION", "REPORT", "INVENTORY_ALERT", "MANUAL"
+  sourceId       String?  // e.g. automationId, reportScheduleId
+  
+  messageId      String?  // SMTP message ID on success
+  
+  createdAt      DateTime @default(now())
+  
+  account        Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  
+  @@index([accountId, createdAt])
+  @@index([emailAccountId])
 }
 
 model CustomerSegment {

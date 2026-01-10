@@ -20,6 +20,9 @@ export class ProductSync extends BaseSync {
         let hasMore = true;
         let totalProcessed = 0;
 
+        // Collect all WooCommerce product IDs for reconciliation
+        const wooProductIds = new Set<number>();
+
         while (hasMore) {
             const { data: products, totalPages } = await woo.getProducts({ page, after, per_page: 50 });
             if (!products.length) {
@@ -28,6 +31,8 @@ export class ProductSync extends BaseSync {
             }
 
             for (const p of products) {
+                wooProductIds.add(p.id);
+
                 await prisma.wooProduct.upsert({
                     where: { accountId_wooId: { accountId, wooId: p.id } },
                     update: {
@@ -117,6 +122,29 @@ export class ProductSync extends BaseSync {
             }
 
             page++;
+        }
+
+        // --- Reconciliation: Remove deleted products ---
+        // Only run on full sync (non-incremental) to ensure we have all WooCommerce IDs
+        if (!incremental && wooProductIds.size > 0) {
+            const localProducts = await prisma.wooProduct.findMany({
+                where: { accountId },
+                select: { id: true, wooId: true }
+            });
+
+            let deletedCount = 0;
+            for (const local of localProducts) {
+                if (!wooProductIds.has(local.wooId)) {
+                    // Product exists locally but not in WooCommerce - delete it
+                    await prisma.wooProduct.delete({ where: { id: local.id } });
+                    await IndexingService.deleteProduct(accountId, local.wooId);
+                    deletedCount++;
+                }
+            }
+
+            if (deletedCount > 0) {
+                Logger.info(`Reconciliation: Deleted ${deletedCount} orphaned products`, { accountId });
+            }
         }
 
         Logger.info(`Product Sync Complete. Total: ${totalProcessed}`, { accountId });

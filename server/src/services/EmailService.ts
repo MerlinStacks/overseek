@@ -37,25 +37,82 @@ export class EmailService {
         });
     }
 
-    async sendEmail(accountId: string, emailAccountId: string, to: string, subject: string, html: string, attachments?: any[]) {
+    async sendEmail(
+        accountId: string,
+        emailAccountId: string,
+        to: string,
+        subject: string,
+        html: string,
+        attachments?: any[],
+        options?: { source?: string; sourceId?: string }
+    ) {
         const emailAccount = await prisma.emailAccount.findFirst({
             where: { id: emailAccountId, accountId }
         });
 
-        if (!emailAccount) throw new Error("Email account not found");
+        if (!emailAccount) {
+            // Log failure for missing account
+            await prisma.emailLog.create({
+                data: {
+                    accountId,
+                    emailAccountId,
+                    to,
+                    subject,
+                    status: 'FAILED',
+                    errorMessage: 'Email account not found',
+                    source: options?.source,
+                    sourceId: options?.sourceId
+                }
+            });
+            throw new Error("Email account not found");
+        }
 
-        const transporter = await this.createTransporter(emailAccount);
+        try {
+            const transporter = await this.createTransporter(emailAccount);
 
-        const info = await transporter.sendMail({
-            from: `"${emailAccount.name}" <${emailAccount.email}>`,
-            to,
-            subject,
-            html,
-            attachments
-        });
+            const info = await transporter.sendMail({
+                from: `"${emailAccount.name}" <${emailAccount.email}>`,
+                to,
+                subject,
+                html,
+                attachments
+            });
 
-        Logger.info(`Sent email`, { messageId: info.messageId, to });
-        return info;
+            // Log success
+            await prisma.emailLog.create({
+                data: {
+                    accountId,
+                    emailAccountId,
+                    to,
+                    subject,
+                    status: 'SUCCESS',
+                    messageId: info.messageId,
+                    source: options?.source,
+                    sourceId: options?.sourceId
+                }
+            });
+
+            Logger.info(`Sent email`, { messageId: info.messageId, to });
+            return info;
+        } catch (error: any) {
+            // Log failure
+            await prisma.emailLog.create({
+                data: {
+                    accountId,
+                    emailAccountId,
+                    to,
+                    subject,
+                    status: 'FAILED',
+                    errorMessage: error.message,
+                    errorCode: error.code || error.responseCode,
+                    source: options?.source,
+                    sourceId: options?.sourceId
+                }
+            });
+
+            Logger.error(`Failed to send email`, { to, error: error.message });
+            throw error; // Re-throw so callers can handle
+        }
     }
 
     async verifyConnection(account: EmailAccount): Promise<boolean> {

@@ -253,7 +253,7 @@ export class IndexingService {
                 status: order.status,
                 total: parseFloat(order.total),
                 currency: order.currency,
-                date_created: order.date_created,
+                date_created: order.date_created_gmt || order.date_created,
                 tags: tags || [],
                 billing: order.billing,
                 line_items: order.line_items?.map((item: any) => ({
@@ -306,6 +306,61 @@ export class IndexingService {
             },
             refresh: true
         });
+    }
+
+    /**
+     * Delete a single customer from the index
+     */
+    static async deleteCustomer(accountId: string, wooId: number) {
+        try {
+            await esClient.delete({
+                index: 'customers',
+                id: `${accountId}_${wooId}`,
+                refresh: true
+            });
+            Logger.info(`Deleted customer from ES`, { accountId, wooId });
+        } catch (error: any) {
+            // Ignore 404 errors (already deleted)
+            if (error.meta?.statusCode !== 404) {
+                Logger.warn(`Failed to delete customer from ES`, { accountId, wooId, error: error.message });
+            }
+        }
+    }
+
+    /**
+     * Delete a single product from the index
+     */
+    static async deleteProduct(accountId: string, wooId: number) {
+        try {
+            await esClient.delete({
+                index: 'products',
+                id: `${accountId}_${wooId}`,
+                refresh: true
+            });
+            Logger.info(`Deleted product from ES`, { accountId, wooId });
+        } catch (error: any) {
+            if (error.meta?.statusCode !== 404) {
+                Logger.warn(`Failed to delete product from ES`, { accountId, wooId, error: error.message });
+            }
+        }
+    }
+
+    /**
+     * Delete a single order from the index
+     */
+    static async deleteOrder(accountId: string, wooId: number) {
+        try {
+            await esClient.delete({
+                index: 'orders',
+                id: `${accountId}_${wooId}`,
+                refresh: true
+            });
+            Logger.info(`Deleted order from ES`, { accountId, wooId });
+        } catch (error: any) {
+            if (error.meta?.statusCode !== 404) {
+                Logger.warn(`Failed to delete order from ES`, { accountId, wooId, error: error.message });
+            }
+        }
     }
 
     static async deleteAccountData(accountId: string) {

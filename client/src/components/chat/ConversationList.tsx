@@ -1,6 +1,6 @@
 
 import { formatDistanceToNow } from 'date-fns';
-import { Mail, User, MessageSquare, Filter, ChevronDown, Pencil, Eye, EyeOff } from 'lucide-react';
+import { Mail, User, MessageSquare, Filter, ChevronDown, Pencil, Eye, EyeOff, Plus } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useState } from 'react';
 import { useDrafts } from '../../hooks/useDrafts';
@@ -31,11 +31,12 @@ interface ConversationListProps {
     selectedId: string | null;
     onSelect: (id: string) => void;
     currentUserId?: string;
+    onCompose?: () => void;
 }
 
 type FilterType = 'all' | 'mine' | 'unassigned';
 
-export function ConversationList({ conversations, selectedId, onSelect, currentUserId }: ConversationListProps) {
+export function ConversationList({ conversations, selectedId, onSelect, currentUserId, onCompose }: ConversationListProps) {
     const [filter, setFilter] = useState<FilterType>('all');
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [showResolved, setShowResolved] = useState(false);
@@ -103,13 +104,24 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
             <div className="p-3 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-3">
                     <h2 className="font-semibold text-gray-800 text-lg">Conversations</h2>
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowFilterMenu(!showFilterMenu)}
-                            className="p-1.5 rounded-sm hover:bg-gray-100 text-gray-500"
-                        >
-                            <Filter size={16} />
-                        </button>
+                    <div className="flex items-center gap-1">
+                        {onCompose && (
+                            <button
+                                onClick={onCompose}
+                                className="p-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                title="Compose new email"
+                            >
+                                <Plus size={16} />
+                            </button>
+                        )}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowFilterMenu(!showFilterMenu)}
+                                className="p-1.5 rounded-sm hover:bg-gray-100 text-gray-500"
+                            >
+                                <Filter size={16} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 

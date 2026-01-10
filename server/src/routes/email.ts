@@ -209,6 +209,37 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to sync emails' });
         }
     });
+
+    // Get Email Logs
+    fastify.get<{ Querystring: { limit?: string; offset?: string } }>('/logs', async (request, reply) => {
+        try {
+            const accountId = request.user?.accountId || request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const limit = Math.min(parseInt(request.query.limit || '50'), 100);
+            const offset = parseInt(request.query.offset || '0');
+
+            const [logs, total] = await Promise.all([
+                prisma.emailLog.findMany({
+                    where: { accountId },
+                    orderBy: { createdAt: 'desc' },
+                    take: limit,
+                    skip: offset,
+                    include: {
+                        emailAccount: {
+                            select: { name: true, email: true }
+                        }
+                    }
+                }),
+                prisma.emailLog.count({ where: { accountId } })
+            ]);
+
+            return { logs, total, limit, offset };
+        } catch (error: any) {
+            Logger.error('Failed to fetch email logs', { error });
+            return reply.code(500).send({ error: 'Failed to fetch email logs' });
+        }
+    });
 };
 
 export default emailRoutes;
