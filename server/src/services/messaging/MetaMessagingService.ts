@@ -366,7 +366,12 @@ export class MetaMessagingService {
             }
 
             const data = await response.json();
-            return data.data || [];
+            // Map snake_case from API to camelCase for our code
+            return (data.data || []).map((page: any) => ({
+                id: page.id,
+                name: page.name,
+                accessToken: page.access_token,
+            }));
         } catch (error: any) {
             Logger.error('[MetaMessaging] Failed to list user pages', {
                 error: error.message,
