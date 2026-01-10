@@ -2,12 +2,6 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 
-// Ensure logs directory exists
-const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
-}
-
 // Custom levels matching Winston's original config
 const customLevels = {
     error: 50,
@@ -18,27 +12,10 @@ const customLevels = {
 };
 
 const level = process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
-
-// Multi-stream destination for file logging
-const streams: pino.StreamEntry[] = [
-    // Console (stdout) - always
-    { stream: process.stdout },
-];
-
-// Add file streams
-if (process.env.NODE_ENV !== 'development') {
-    streams.push(
-        // Error log
-        { level: 'error', stream: fs.createWriteStream(path.join(logsDir, 'error.log'), { flags: 'a' }) },
-        // All logs
-        { stream: fs.createWriteStream(path.join(logsDir, 'all.log'), { flags: 'a' }) }
-    );
-}
+const isDev = process.env.NODE_ENV === 'development';
 
 // Create the raw pino logger
 const createPinoLogger = () => {
-    const isDev = process.env.NODE_ENV === 'development';
-
     if (isDev) {
         // Development: Use pino-pretty for colored console output
         return pino({
@@ -56,16 +33,19 @@ const createPinoLogger = () => {
         });
     }
 
-    // Production: JSON output to multiple streams
-    return pino(
-        {
-            level,
-            customLevels,
-            useOnlyCustomLevels: false,
-            timestamp: pino.stdTimeFunctions.isoTime,
+    // Production: Single clean JSON output to stdout only
+    // Docker/container orchestration handles log collection
+    // File logging can be done via external log aggregators (e.g., Loki, Elasticsearch)
+    return pino({
+        level,
+        customLevels,
+        useOnlyCustomLevels: false,
+        timestamp: pino.stdTimeFunctions.isoTime,
+        // Ensure clean single-line JSON output
+        formatters: {
+            level: (label) => ({ level: label }),
         },
-        pino.multistream(streams)
-    );
+    });
 };
 
 const pinoInstance = createPinoLogger();
@@ -74,25 +54,29 @@ const pinoInstance = createPinoLogger();
 export const pinoLogger = pinoInstance;
 
 // Export Fastify-compatible logger config (Fastify 5.x requires a config object, not an instance)
-export const fastifyLoggerConfig = {
-    level,
-    customLevels,
-    useOnlyCustomLevels: false,
-    ...(process.env.NODE_ENV === 'development'
-        ? {
-            transport: {
-                target: 'pino-pretty',
-                options: {
-                    colorize: true,
-                    translateTime: 'yyyy-mm-dd HH:MM:ss:l',
-                    ignore: 'pid,hostname',
-                },
+export const fastifyLoggerConfig = isDev
+    ? {
+        level,
+        customLevels,
+        useOnlyCustomLevels: false,
+        transport: {
+            target: 'pino-pretty',
+            options: {
+                colorize: true,
+                translateTime: 'yyyy-mm-dd HH:MM:ss:l',
+                ignore: 'pid,hostname',
             },
-        }
-        : {
-            timestamp: pino.stdTimeFunctions.isoTime,
-        }),
-};
+        },
+    }
+    : {
+        level,
+        customLevels,
+        useOnlyCustomLevels: false,
+        timestamp: pino.stdTimeFunctions.isoTime,
+        formatters: {
+            level: (label: string) => ({ level: label }),
+        },
+    };
 
 /**
  * Winston-compatible Logger wrapper.

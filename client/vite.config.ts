@@ -1,8 +1,24 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { createRequire } from 'module'
 
 // Force restart
+
+// Helper to resolve React paths that works in both npm workspaces and Docker
+const resolveReactPath = (pkg: string): string => {
+    try {
+        // Use createRequire for ESM-compatible resolution
+        const require = createRequire(import.meta.url)
+        return path.dirname(require.resolve(`${pkg}/package.json`))
+    } catch {
+        // Fallback for workspace setup (local dev)
+        const workspacePath = path.resolve(__dirname, '../node_modules', pkg)
+        const localPath = path.resolve(__dirname, 'node_modules', pkg)
+        // Prefer workspace path if running locally, otherwise use local
+        return require('fs').existsSync(workspacePath) ? workspacePath : localPath
+    }
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -11,9 +27,9 @@ export default defineConfig(({ mode }) => {
         plugins: [react()],
         resolve: {
             alias: {
-                // Force all React imports to resolve from root node_modules (npm workspace hoists React there)
-                'react': path.resolve(__dirname, '../node_modules/react'),
-                'react-dom': path.resolve(__dirname, '../node_modules/react-dom'),
+                // Use dynamic resolution that works in both npm workspaces and Docker
+                'react': resolveReactPath('react'),
+                'react-dom': resolveReactPath('react-dom'),
             }
         },
         server: {
@@ -45,7 +61,8 @@ export default defineConfig(({ mode }) => {
             }
         },
         optimizeDeps: {
-            include: ['react-grid-layout', 'cookie', 'react-router', 'react-router-dom', 'react', 'react-dom'],
+            // Don't include react/react-dom - React 19 is ESM-native and doesn't need pre-bundling
+            include: ['react-grid-layout', 'cookie', 'react-router', 'react-router-dom'],
         },
         build: {
             commonjsOptions: {
