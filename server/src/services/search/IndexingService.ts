@@ -250,7 +250,7 @@ export class IndexingService {
             document: {
                 accountId,
                 id: order.id,
-                status: order.status,
+                status: order.status.toLowerCase(),
                 total: parseFloat(order.total),
                 currency: order.currency,
                 date_created: order.date_created_gmt || order.date_created,

@@ -64,7 +64,7 @@ export class OrderSync extends BaseSync {
                 return prisma.wooOrder.upsert({
                     where: { accountId_wooId: { accountId, wooId: order.id } },
                     update: {
-                        status: order.status,
+                        status: order.status.toLowerCase(),
                         total: order.total === '' ? '0' : order.total,
                         currency: order.currency,
                         dateModified: new Date(order.date_modified || new Date()),
@@ -74,7 +74,7 @@ export class OrderSync extends BaseSync {
                         accountId,
                         wooId: order.id,
                         number: order.number,
-                        status: order.status,
+                        status: order.status.toLowerCase(),
                         total: order.total === '' ? '0' : order.total,
                         currency: order.currency,
                         dateCreated: new Date(order.date_created || new Date()),
@@ -101,7 +101,7 @@ export class OrderSync extends BaseSync {
                     EventBus.emit(EVENTS.ORDER.CREATED, { accountId, order });
                 }
 
-                if (order.status === 'completed' && (isNew || isStatusChanged)) {
+                if (order.status.toLowerCase() === 'completed' && (isNew || isStatusChanged)) {
                     EventBus.emit('order:completed', { accountId, order });
                 }
 

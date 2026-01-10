@@ -2,6 +2,7 @@ import { esClient } from '../../utils/elastic';
 import { Logger } from '../../utils/logger';
 import { SalesForecastService } from './SalesForecast';
 import { CustomReportService, CustomReportConfig } from './CustomReport';
+import { REVENUE_STATUSES } from '../../constants/orderStatus';
 
 /**
  * Sales Analytics Service
@@ -18,7 +19,7 @@ export class SalesAnalytics {
         try {
             const must: any[] = [
                 { term: { accountId } },
-                { terms: { 'status': ['completed', 'processing', 'on-hold'] } }
+                { terms: { 'status': REVENUE_STATUSES } }
             ];
 
             if (startDate || endDate) {
@@ -74,7 +75,7 @@ export class SalesAnalytics {
     static async getSalesOverTime(accountId: string, startDate?: string, endDate?: string, interval: 'day' | 'week' | 'month' = 'day', timezone: string = 'UTC') {
         const must: any[] = [
             { term: { accountId } },
-            { terms: { 'status': ['completed', 'processing', 'on-hold'] } }
+            { terms: { 'status': REVENUE_STATUSES } }
         ];
 
         if (startDate || endDate) {
@@ -134,7 +135,7 @@ export class SalesAnalytics {
         try {
             const must: any[] = [
                 { term: { accountId } },
-                { terms: { 'status': ['completed', 'processing', 'on-hold'] } }
+                { terms: { 'status': REVENUE_STATUSES } }
             ];
 
             if (startDate || endDate) {

@@ -2,6 +2,7 @@ import { WooService } from './woo';
 import { EventBus, EVENTS } from './events';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { REVENUE_STATUSES } from '../constants/orderStatus';
 
 export class InventoryService {
     static async setupListeners() {
@@ -145,7 +146,7 @@ export class InventoryService {
             where: {
                 accountId,
                 dateCreated: { gte: thirtyDaysAgo },
-                status: { in: ['completed', 'processing', 'on-hold'] }
+                status: { in: REVENUE_STATUSES }
             },
             select: { rawData: true }
         });

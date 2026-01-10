@@ -14,6 +14,7 @@ import { IndexingService } from '../services/search/IndexingService';
 import { esClient } from '../utils/elastic';
 import { marked } from 'marked';
 import { z } from 'zod';
+import { REVENUE_STATUSES } from '../constants/orderStatus';
 
 const searchQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -212,7 +213,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                             }
                         ],
                         filter: [
-                            { terms: { status: ['completed', 'processing', 'on-hold', 'pending'] } }
+                            { terms: { status: REVENUE_STATUSES } }
                         ]
                     }
                 },
