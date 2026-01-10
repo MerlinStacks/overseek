@@ -6,6 +6,14 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { requireAuthFastify } from '../middleware/auth';
+import { z } from 'zod';
+
+const orderIdParamSchema = z.object({
+    id: z.union([
+        z.string().uuid(),
+        z.string().regex(/^\d+$/, "ID must be a UUID or a numeric string")
+    ])
+});
 
 const ordersRoutes: FastifyPluginAsync = async (fastify) => {
     // Protect all order routes
@@ -13,7 +21,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get Order by ID (Internal ID or WooID)
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-        const { id } = request.params;
+        const { id } = orderIdParamSchema.parse(request.params);
         const accountId = request.user?.accountId;
 
         if (!accountId) {

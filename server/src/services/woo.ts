@@ -8,14 +8,10 @@ interface WooCredentials {
     url: string;
     consumerKey: string;
     consumerSecret: string;
-}
-
-interface WooCredentials {
-    url: string;
-    consumerKey: string;
-    consumerSecret: string;
     accountId?: string; // Added for Audit Logging context
 }
+
+
 
 export class WooService {
     private api: WooCommerceRestApi;
@@ -231,7 +227,6 @@ export class WooService {
             url: this.url,
             consumerKey: this.consumerKey,
             consumerSecret: this.consumerSecret,
-            // @ts-ignore
             version: "overseek/v1" as any, // Target our custom namespace
             queryStringAuth: true,
             axiosConfig: this.axiosConfig

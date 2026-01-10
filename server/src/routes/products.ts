@@ -13,6 +13,43 @@ import { MerchantCenterService } from '../services/MerchantCenterService';
 import { IndexingService } from '../services/search/IndexingService';
 import { esClient } from '../utils/elastic';
 import { marked } from 'marked';
+import { z } from 'zod';
+
+const searchQuerySchema = z.object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(20),
+    q: z.string().optional().default('')
+});
+
+const productIdParamSchema = z.object({
+    id: z.coerce.number().int().positive()
+});
+
+const updateProductBodySchema = z.object({
+    binLocation: z.string().optional(),
+    name: z.string().optional(),
+    stockStatus: z.string().optional(),
+    isGoldPriceApplied: z.boolean().optional(),
+    sku: z.string().optional(),
+    price: z.union([z.string(), z.number()]).transform(val => String(val)).optional(),
+    salePrice: z.union([z.string(), z.number()]).transform(val => String(val)).optional(),
+    weight: z.union([z.string(), z.number()]).optional(),
+    length: z.union([z.string(), z.number()]).optional(),
+    width: z.union([z.string(), z.number()]).optional(),
+    height: z.union([z.string(), z.number()]).optional(),
+    description: z.string().optional(),
+    short_description: z.string().optional(),
+    cogs: z.number().optional(),
+    supplierId: z.string().optional(),
+    images: z.array(z.any()).optional()
+});
+
+const rewriteDescriptionBodySchema = z.object({
+    currentDescription: z.string().optional(),
+    productName: z.string().optional(),
+    categories: z.string().optional(),
+    shortDescription: z.string().optional()
+});
 
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -21,10 +58,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const query = request.query as { page?: string; limit?: string; q?: string };
-            const page = parseInt(query.page || '1');
-            const limit = parseInt(query.limit || '20');
-            const q = query.q || '';
+            const { page, limit, q } = searchQuerySchema.parse(request.query);
 
             const result = await ProductsService.searchProducts(accountId, q, page, limit);
             return result;
@@ -38,8 +72,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const wooId = parseInt(request.params.id);
-            if (isNaN(wooId)) return reply.code(400).send({ error: 'Invalid product ID' });
+            const { id: wooId } = productIdParamSchema.parse(request.params);
 
             const product = await ProductsService.getProductByWooId(accountId, wooId);
             if (!product) return reply.code(404).send({ error: 'Product not found' });
@@ -55,8 +88,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/:id/sync', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const wooId = parseInt(request.params.id);
-            if (isNaN(wooId)) return reply.code(400).send({ error: 'Invalid product ID' });
+            const { id: wooId } = productIdParamSchema.parse(request.params);
 
             const woo = await WooService.forAccount(accountId);
             const p = await woo.getProduct(wooId);
@@ -140,10 +172,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const wooId = parseInt(request.params.id);
-            if (isNaN(wooId)) return reply.code(400).send({ error: 'Invalid product ID' });
-
-            const { binLocation, name, stockStatus, isGoldPriceApplied, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images } = request.body as any;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+            const { binLocation, name, stockStatus, isGoldPriceApplied, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images } = updateProductBodySchema.parse(request.body);
 
             const product = await ProductsService.updateProduct(accountId, wooId, {
                 binLocation, name, stockStatus, isGoldPriceApplied,
@@ -161,12 +191,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { id: string } }>('/:id/sales-history', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const wooId = parseInt(request.params.id);
-            if (isNaN(wooId)) return reply.code(400).send({ error: 'Invalid product ID' });
-
-            const query = request.query as { page?: string; limit?: string };
-            const page = parseInt(query.page || '1');
-            const limit = parseInt(query.limit || '20');
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+            const { page, limit } = searchQuerySchema.parse(request.query);
             const from = (page - 1) * limit;
 
             const response = await esClient.search({
@@ -243,10 +269,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/:id/rewrite-description', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const wooId = parseInt(request.params.id);
-            if (isNaN(wooId)) return reply.code(400).send({ error: 'Invalid product ID' });
-
-            const { currentDescription, productName, categories, shortDescription } = request.body as any;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+            const { currentDescription, productName, categories, shortDescription } = rewriteDescriptionBodySchema.parse(request.body);
 
             const account = await prisma.account.findUnique({
                 where: { id: accountId },
