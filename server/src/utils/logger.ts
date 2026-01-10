@@ -1,4 +1,4 @@
-import pino from 'pino';
+import pino, { DestinationStream } from 'pino';
 import fs from 'fs';
 import path from 'path';
 
@@ -13,6 +13,12 @@ const customLevels = {
 
 const level = process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
 const isDev = process.env.NODE_ENV === 'development';
+
+// Production: Create a synchronous destination to prevent interleaved output
+const productionDestination: DestinationStream = pino.destination({
+    dest: 1, // stdout file descriptor
+    sync: true, // Synchronous writes to prevent corruption
+});
 
 // Create the raw pino logger
 const createPinoLogger = () => {
@@ -33,19 +39,14 @@ const createPinoLogger = () => {
         });
     }
 
-    // Production: Single clean JSON output to stdout only
-    // Docker/container orchestration handles log collection
-    // File logging can be done via external log aggregators (e.g., Loki, Elasticsearch)
+    // Production: Synchronous JSON output to prevent corruption
+    // Using sync destination ensures logs don't interleave when multiple
+    // async operations write simultaneously
     return pino({
         level,
         customLevels,
         useOnlyCustomLevels: false,
-        timestamp: pino.stdTimeFunctions.isoTime,
-        // Ensure clean single-line JSON output
-        formatters: {
-            level: (label) => ({ level: label }),
-        },
-    });
+    }, productionDestination);
 };
 
 const pinoInstance = createPinoLogger();
@@ -54,6 +55,7 @@ const pinoInstance = createPinoLogger();
 export const pinoLogger = pinoInstance;
 
 // Export Fastify-compatible logger config (Fastify 5.x requires a config object, not an instance)
+// In production, we pass the SAME pino instance to Fastify to avoid duplicate loggers
 export const fastifyLoggerConfig = isDev
     ? {
         level,
@@ -68,15 +70,7 @@ export const fastifyLoggerConfig = isDev
             },
         },
     }
-    : {
-        level,
-        customLevels,
-        useOnlyCustomLevels: false,
-        timestamp: pino.stdTimeFunctions.isoTime,
-        formatters: {
-            level: (label: string) => ({ level: label }),
-        },
-    };
+    : pinoInstance; // In production, share the same logger instance to prevent duplicate output
 
 /**
  * Winston-compatible Logger wrapper.

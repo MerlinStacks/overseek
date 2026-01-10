@@ -1,4 +1,4 @@
-// @ts-ignore
+// @ts-ignore - Responsive import has type issues with ESM
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';

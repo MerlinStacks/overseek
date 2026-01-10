@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ShoppingCart, Clock, User as UserIcon, Loader2, Package, Flame } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
@@ -42,7 +42,7 @@ function getIntentLevel(score: number): { label: string; color: string; bgColor:
     return { label: 'Cold', color: 'text-blue-500', bgColor: 'bg-blue-100' };
 }
 
-const LiveCartsWidget: React.FC<WidgetProps> = ({ className }) => {
+const LiveCartsWidget = ({ className }: WidgetProps) => {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [carts, setCarts] = useState<CartSession[]>([]);

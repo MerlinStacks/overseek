@@ -48,7 +48,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
     // Calculate percentage change
     let percentChange = 0;
     let isPositive = false;
-    let hasComparison = comparisonSales !== null;
+    const hasComparison = comparisonSales !== null;
 
     if (hasComparison && comparisonSales !== 0 && sales !== null) {
         percentChange = ((sales - comparisonSales!) / comparisonSales!) * 100;

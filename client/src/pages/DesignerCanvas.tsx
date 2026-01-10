@@ -121,14 +121,14 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIvPjwvc3ZnPg==')]" />
 
                 {/* Grid Layout */}
-                {/* @ts-ignore */}
+                {/* @ts-ignore - ResponsiveGridLayout has prop type mismatch */}
                 <ResponsiveGridLayout
                     className="layout"
                     layouts={{ lg: layout }}
                     breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                     cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                     rowHeight={30}
-                    // @ts-ignore
+                    // @ts-ignore - width prop type mismatch
                     width={794}
                     onLayoutChange={onLayoutChange}
                     isDroppable={true}
@@ -142,8 +142,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                             <div
                                 key={l.i}
                                 className={`bg-white border-2 rounded-lg group relative transition-all duration-150 ${isSelected
-                                        ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg z-10'
-                                        : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                                    ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg z-10'
+                                    : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
                                     }`}
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -152,8 +152,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                             >
                                 {/* Drag Handle */}
                                 <div className={`absolute -top-px -left-px p-1.5 rounded-br-lg cursor-move z-10 transition-all ${isSelected
-                                        ? 'bg-indigo-500 opacity-100'
-                                        : 'bg-slate-300 opacity-0 group-hover:opacity-100'
+                                    ? 'bg-indigo-500 opacity-100'
+                                    : 'bg-slate-300 opacity-0 group-hover:opacity-100'
                                     }`}>
                                     <GripVertical size={12} className={isSelected ? 'text-white' : 'text-slate-600'} />
                                 </div>

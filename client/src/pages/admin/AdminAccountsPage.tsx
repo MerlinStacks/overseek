@@ -130,7 +130,7 @@ export function AdminAccountsPage() {
                     if (acc.id !== accountId) return acc;
 
                     const existingFeatureIndex = acc.features.findIndex(f => f.featureKey === featureKey);
-                    let newFeatures = [...acc.features];
+                    const newFeatures = [...acc.features];
 
                     if (existingFeatureIndex >= 0) {
                         newFeatures[existingFeatureIndex].isEnabled = !currentValue;

@@ -33,7 +33,6 @@
 |---------|---------|---------|
 | `axios` | ^1.13.2 | HTTP client |
 | `date-fns` | ^4.1.0 | Date utilities |
-| `lodash` | ^4.17.21 | Utility functions |
 | `clsx` | ^2.1.1 | Classname utility |
 | `tailwind-merge` | ^3.4.0 | Tailwind class merging |
 | `dompurify` | ^3.3.1 | HTML sanitization |
@@ -123,7 +122,7 @@
 | Package | Location | Version | Purpose |
 |---------|----------|---------|----------|
 | `vite` | Client | ^7.3.1 | Build tool |
-| `typescript` | Both | ^5.2.2 | Type checking |
+| `typescript` | Both | ^5.8.3 | Type checking |
 | `tailwindcss` | Client | ^4.1.18 | CSS framework (v4 with CSS-first config) |
 | `@tailwindcss/postcss` | Client | ^4.1.18 | PostCSS plugin for TailwindCSS 4 |
 | `eslint` | Client | ^9.39.0 | Linting (flat config) |

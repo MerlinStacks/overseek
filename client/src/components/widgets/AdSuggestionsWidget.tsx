@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Lightbulb, TrendingUp, AlertTriangle, CheckCircle, ExternalLink } from 'lucide-react';
+import { Lightbulb, TrendingUp, CheckCircle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useNavigate } from 'react-router-dom';
@@ -61,7 +61,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
      */
     const getSuggestionIcon = (suggestion: string) => {
         if (suggestion.includes('🔴') || suggestion.includes('Underperforming')) {
-            return <AlertTriangle size={16} className="text-red-500 shrink-0" />;
+            return <TrendingUp size={16} className="text-red-500 shrink-0" />;
         }
         if (suggestion.includes('🟢') || suggestion.includes('High Performer')) {
             return <TrendingUp size={16} className="text-green-500 shrink-0" />;
@@ -77,7 +77,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
      */
     const cleanSuggestion = (text: string) => {
         return text
-            .replace(/[🔴🟢📊💰🚀📁✅🛒🔍⭐]/g, '')
+            .replace(/[\u{1F534}\u{1F7E2}\u{1F4CA}\u{1F4B0}\u{1F680}\u{1F4C1}\u{2705}\u{1F6D2}\u{1F50D}\u{2B50}]/gu, '')
             .replace(/\*\*/g, '')
             .trim();
     };

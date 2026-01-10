@@ -2,7 +2,7 @@
  * VisitorLogWidget - Real-time visitor activity stream (Matomo-style)
  * Shows visitors with their recent actions as clickable icons
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Users, Clock, MapPin, FileText, Search, ShoppingCart, Eye, ExternalLink, User, RefreshCw, Globe, Link2, Flag, DollarSign } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
@@ -148,7 +148,7 @@ function deduplicateEvents(events: VisitorEvent[]): VisitorEvent[] {
     });
 }
 
-const VisitorLogWidget: React.FC = () => {
+const VisitorLogWidget = (_props: { settings?: any }) => {
     const [visitors, setVisitors] = useState<VisitorSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedVisitor, setSelectedVisitor] = useState<string | null>(null);
@@ -156,7 +156,7 @@ const VisitorLogWidget: React.FC = () => {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
-    const fetchLog = async () => {
+    const fetchLog = useCallback(async () => {
         if (!token || !currentAccount) return;
 
         try {
@@ -175,13 +175,13 @@ const VisitorLogWidget: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [token, currentAccount]);
 
     useEffect(() => {
         fetchLog();
         const interval = setInterval(fetchLog, 15000);
         return () => clearInterval(interval);
-    }, [token, currentAccount]);
+    }, [fetchLog]);
 
     if (loading && visitors.length === 0) {
         return <div className="p-4 text-xs text-gray-500">Loading log...</div>;

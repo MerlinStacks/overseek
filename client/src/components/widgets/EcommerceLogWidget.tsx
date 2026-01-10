@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ShoppingCart, CreditCard, LogOut, CheckCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -20,14 +20,14 @@ interface AnalyticsEvent {
     };
 }
 
-const EcommerceLogWidget: React.FC = () => {
+const EcommerceLogWidget = () => {
     const [events, setEvents] = useState<AnalyticsEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
-    const fetchLog = async () => {
+    const fetchLog = useCallback(async () => {
         if (!token || !currentAccount) return;
 
         try {
@@ -46,13 +46,13 @@ const EcommerceLogWidget: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [token, currentAccount]);
 
     useEffect(() => {
         fetchLog();
         const interval = setInterval(fetchLog, 15000);
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchLog]);
 
     const getIcon = (type: string) => {
         switch (type) {

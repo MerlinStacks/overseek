@@ -24,7 +24,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 });
                 const currentRaw = await currentRes.json();
 
-                let processedData: any[] = [];
+                const processedData: any[] = [];
                 const currentArr = Array.isArray(currentRaw) ? currentRaw : [];
 
                 // Fetch Comparison if needed
