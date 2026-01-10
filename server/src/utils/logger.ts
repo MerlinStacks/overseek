@@ -22,30 +22,13 @@ const productionDestination: DestinationStream = pino.destination({
 
 // Create the raw pino logger
 const createPinoLogger = () => {
-    if (isDev) {
-        // Development: Use pino-pretty for colored console output
-        return pino({
-            level,
-            customLevels,
-            useOnlyCustomLevels: false,
-            transport: {
-                target: 'pino-pretty',
-                options: {
-                    colorize: true,
-                    translateTime: 'yyyy-mm-dd HH:MM:ss:l',
-                    ignore: 'pid,hostname',
-                },
-            },
-        });
-    }
-
-    // Production: Synchronous JSON output to prevent corruption
-    // Using sync destination ensures logs don't interleave when multiple
-    // async operations write simultaneously
+    // Always use JSON output (best for Prod & Dev via pipe)
+    // Synchronous writing avoids buffer interleaving issues
     return pino({
         level,
         customLevels,
         useOnlyCustomLevels: false,
+        // Remove 'transport' entirely - let the shell handle pretty printing
     }, productionDestination);
 };
 
@@ -54,22 +37,12 @@ const pinoInstance = createPinoLogger();
 // Export the pino instance for direct usage (Logger wrapper)
 export const pinoLogger = pinoInstance;
 
-// Export Fastify-compatible logger config (Fastify 5.x requires a config object, not an instance)
-// In production, we pass the SAME pino instance to Fastify to avoid duplicate loggers
+// Export Fastify-compatible logger config
 export const fastifyLoggerConfig = {
     level,
-    customLevels,
+    customLevels, // Pass custom levels to Fastify so it knows about them
     useOnlyCustomLevels: false,
-    ...(isDev && {
-        transport: {
-            target: 'pino-pretty',
-            options: {
-                colorize: true,
-                translateTime: 'yyyy-mm-dd HH:MM:ss:l',
-                ignore: 'pid,hostname',
-            },
-        },
-    }),
+    // No transport here either
 };
 
 /**

@@ -169,7 +169,7 @@ export function DashboardPage() {
      */
     const responsiveLayouts = useMemo(() => {
         const breakpointCols = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 };
-        const layouts: { [key: string]: { i: string; x: number; y: number; w: number; h: number }[] } = {};
+        const layouts: { [key: string]: { i: string; x: number; y: number; w: number; h: number, static?: boolean }[] } = {};
 
         for (const [bp, cols] of Object.entries(breakpointCols)) {
             layouts[bp] = widgets.map(widget => {
@@ -182,12 +182,13 @@ export function DashboardPage() {
                     x,
                     y: widget.position.y,
                     w,
-                    h: widget.position.h
+                    h: widget.position.h,
+                    static: isLayoutLocked
                 };
             });
         }
         return layouts;
-    }, [widgets]);
+    }, [widgets, isLayoutLocked]);
 
     const addWidget = (key: string) => {
         const entry = WidgetRegistry[key];

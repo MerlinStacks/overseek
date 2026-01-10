@@ -35,6 +35,7 @@ InventoryService.setupListeners();
 // Create Fastify instance
 const fastify = Fastify({
     logger: fastifyLoggerConfig, // Fastify 5.x requires config object, not a Pino instance
+    disableRequestLogging: true, // Disable default logging to avoid double-logging with our custom hook
     trustProxy: true, // Trust Docker/Nginx proxy for Rate Limiting
 });
 
@@ -81,6 +82,10 @@ async function build() {
     });
 
     // Static file serving for uploads
+    const uploadDir = path.join(__dirname, '../uploads');
+    if (!require('fs').existsSync(uploadDir)) {
+        require('fs').mkdirSync(uploadDir, { recursive: true });
+    }
     await fastify.register(fastifyStatic, {
         root: path.join(__dirname, '../uploads'),
         prefix: '/uploads/',
@@ -204,6 +209,11 @@ async function build() {
     await fastify.register(analyticsRoutes, { prefix: '/api/analytics' });
     const trackingRoutes = (await import('./routes/tracking')).default;
     await fastify.register(trackingRoutes, { prefix: '/api/tracking' });
+
+    // Alias for short tracking URL used by WooCommerce plugin (OverSeek Integration)
+    // The plugin sends events to /api/t/e which maps to /api/t prefix + /e route
+    const trackingIngestionRoutes = (await import('./routes/trackingIngestion')).default;
+    await fastify.register(trackingIngestionRoutes, { prefix: '/api/t' });
 
     // =====================================================
     // ALL ROUTES NOW NATIVE FASTIFY ✓

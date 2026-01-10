@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "dev": "nodemon -r ts-node/register src/index.ts",
+        "dev": "nodemon -r ts-node/register src/index.ts | pino-pretty",
         "build": "node --stack-size=8192 --max-old-space-size=8192 ../node_modules/typescript/bin/tsc",
         "start": "node dist/index.js",
         "test": "echo \"Error: no test specified\" && exit 1",

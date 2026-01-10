@@ -13,6 +13,7 @@ import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { pipeline } from 'stream/promises';
 
 // Schemas
 const registerSchema = z.object({
@@ -174,7 +175,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/upload-avatar', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
             const userId = request.user!.id;
-            const data = await (request as any).file();
+            const data = await request.file();
             if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
             const allowedTypes = /jpeg|jpg|png|webp|gif/;
@@ -186,12 +187,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
             const filename = 'avatar-' + uniqueSuffix + ext;
             const filePath = path.join(uploadDir, filename);
-            const writeStream = fs.createWriteStream(filePath);
 
-            for await (const chunk of data.file) {
-                writeStream.write(chunk);
-            }
-            writeStream.end();
+            await pipeline(data.file, fs.createWriteStream(filePath));
 
             const avatarUrl = `/uploads/${filename}`;
             await prisma.user.update({ where: { id: userId }, data: { avatarUrl } });
