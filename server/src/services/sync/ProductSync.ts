@@ -24,7 +24,7 @@ export class ProductSync extends BaseSync {
         const wooProductIds = new Set<number>();
 
         while (hasMore) {
-            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 50 });
+            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 25 });
             if (!rawProducts.length) {
                 hasMore = false;
                 break;
@@ -86,6 +86,7 @@ export class ProductSync extends BaseSync {
                 });
             });
 
+            // Execute batch transaction - pool size increased in prisma.ts to handle concurrency
             await prisma.$transaction(upsertOperations);
 
             // Process scoring and indexing
@@ -144,7 +145,7 @@ export class ProductSync extends BaseSync {
             totalProcessed += products.length;
 
             Logger.info(`Synced batch of ${products.length} products`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
-            if (products.length < 50) hasMore = false;
+            if (products.length < 25) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;

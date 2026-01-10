@@ -199,7 +199,41 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
 
             return { logs, state };
         } catch (error) {
+            Logger.error('Failed to fetch status', { error });
             return reply.code(500).send({ error: 'Failed to fetch status' });
+        }
+    });
+
+    // Emergency Repair Endpoint
+    fastify.post('/repair-index', async (request, reply) => {
+        try {
+            let { accountId } = request.body as any;
+            if (!accountId) {
+                const acc = await prisma.account.findFirst();
+                if (acc) accountId = acc.id;
+            }
+            if (!accountId) return reply.code(400).send({ error: 'No account found' });
+
+            const { IndexingService } = await import('../services/search/IndexingService');
+
+            const orders = await prisma.wooOrder.findMany({
+                where: { accountId },
+                orderBy: { dateCreated: 'desc' },
+                take: 100,
+                select: { rawData: true }
+            });
+
+            let count = 0;
+            for (const o of orders) {
+                const raw: any = o.rawData;
+                await IndexingService.indexOrder(accountId, raw, []);
+                count++;
+            }
+
+            return { message: `Re-indexed ${count} orders`, status: 'SUCCESS' };
+        } catch (error: any) {
+            Logger.error('Repair failed', { error });
+            return reply.code(500).send({ error: error.message });
         }
     });
 };

@@ -253,7 +253,7 @@ export class IndexingService {
                 status: order.status.toLowerCase(),
                 total: parseFloat(order.total),
                 currency: order.currency,
-                date_created: order.date_created_gmt || order.date_created,
+                date_created: IndexingService.formatDateToUTC(order.date_created_gmt || order.date_created),
                 tags: tags || [],
                 billing: order.billing,
                 line_items: order.line_items?.map((item: any) => ({
@@ -407,5 +407,13 @@ export class IndexingService {
         if (remainingDocs === 0) {
             Logger.info(`Successfully verified deletion of all ES data for account ${accountId}.`);
         }
+    }
+
+    private static formatDateToUTC(dateString: string): string {
+        if (!dateString) return new Date().toISOString();
+        // If it already ends in Z, assume it's UTC
+        if (dateString.endsWith('Z')) return dateString;
+        // Otherwise, append Z to force UTC interpretation for GMT strings
+        return `${dateString}Z`;
     }
 }

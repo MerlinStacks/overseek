@@ -76,6 +76,18 @@ export function DashboardPage() {
 
     useEffect(() => {
         fetchLayout();
+
+        // TEMP: Repair Index for Revenue Widget Bug
+        if (currentAccount && token) {
+            fetch('/api/sync/repair-index', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ accountId: currentAccount.id })
+            }).then(r => r.json()).then(d => console.log('Repair Result:', d)).catch(console.error);
+        }
     }, [currentAccount, token]);
 
     async function fetchLayout() {

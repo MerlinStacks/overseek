@@ -70,7 +70,7 @@ export class ReviewSync extends BaseSync {
         const wooReviewIds = new Set<number>();
 
         while (hasMore) {
-            const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 50 });
+            const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 25 });
             if (!rawReviews.length) {
                 hasMore = false;
                 break;
@@ -272,7 +272,7 @@ export class ReviewSync extends BaseSync {
             await Promise.allSettled(indexPromises);
 
             Logger.info(`Synced batch of ${reviews.length} reviews`, { accountId, syncId, page, totalPages });
-            if (reviews.length < 50) hasMore = false;
+            if (reviews.length < 25) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;

@@ -14,9 +14,18 @@ import { PrismaClient } from '@prisma/client';
 // Re-export types from @prisma/client for consumers
 export * from '@prisma/client';
 
-// Create PostgreSQL connection pool
+// Create PostgreSQL connection pool with optimized settings for batch syncs
 const connectionString = process.env.DATABASE_URL;
-const pool = new Pool({ connectionString });
+const pool = new Pool({
+    connectionString,
+    // Increase pool size to handle concurrent sync operations
+    // Default is 10, which is too low for parallel batch transactions
+    max: parseInt(process.env.DATABASE_POOL_SIZE || '25', 10),
+    // Connection idle timeout (10 seconds)
+    idleTimeoutMillis: 10000,
+    // Connection timeout (30 seconds - matches Prisma's default transaction timeout)
+    connectionTimeoutMillis: 30000,
+});
 
 // Create Prisma adapter
 const adapter = new PrismaPg(pool);

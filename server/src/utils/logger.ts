@@ -11,7 +11,9 @@ const customLevels = {
 };
 
 const level = process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
-const isDev = process.env.NODE_ENV === 'development';
+
+// Human-readable timestamp function (ISO format for JSON logs)
+const timestampFn = () => `,"time":"${new Date().toISOString()}"`;
 
 // Production: Create a synchronous destination to prevent interleaved output
 const productionDestination: DestinationStream = pino.destination({
@@ -19,15 +21,18 @@ const productionDestination: DestinationStream = pino.destination({
     sync: true, // Synchronous writes to prevent corruption
 });
 
-// Create the raw pino logger
+// Create the raw pino logger - SINGLE INSTANCE for both manual logging and Fastify
 const createPinoLogger = () => {
-    // Always use JSON output (best for Prod & Dev via pipe)
-    // Synchronous writing avoids buffer interleaving issues
     return pino({
         level,
         customLevels,
         useOnlyCustomLevels: false,
-        // Remove 'transport' entirely - let the shell handle pretty printing
+        timestamp: timestampFn,
+        // Base bindings for all log entries
+        base: {
+            pid: process.pid,
+            hostname: require('os').hostname(),
+        },
     }, productionDestination);
 };
 
@@ -36,13 +41,9 @@ const pinoInstance = createPinoLogger();
 // Export the pino instance for direct usage (Logger wrapper)
 export const pinoLogger = pinoInstance;
 
-// Export Fastify-compatible logger config
-export const fastifyLoggerConfig = {
-    level,
-    customLevels, // Pass custom levels to Fastify so it knows about them
-    useOnlyCustomLevels: false,
-    // No transport here either
-};
+// Export the SAME Pino instance for Fastify to use
+// This prevents duplicate loggers writing to stdout
+export const fastifyLoggerConfig = pinoInstance;
 
 /**
  * Winston-compatible Logger wrapper.

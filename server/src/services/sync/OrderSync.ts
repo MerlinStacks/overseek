@@ -22,7 +22,7 @@ export class OrderSync extends BaseSync {
         const wooOrderIds = new Set<number>();
 
         while (hasMore) {
-            const { data: rawOrders, totalPages } = await woo.getOrders({ page, after, per_page: 50 });
+            const { data: rawOrders, totalPages } = await woo.getOrders({ page, after, per_page: 25 });
             if (!rawOrders.length) {
                 hasMore = false;
                 break;
@@ -84,6 +84,7 @@ export class OrderSync extends BaseSync {
                 });
             });
 
+            // Execute batch transaction - pool size increased in prisma.ts to handle concurrency
             await prisma.$transaction(upsertOperations);
 
             // Process events and indexing
@@ -121,7 +122,7 @@ export class OrderSync extends BaseSync {
             totalProcessed += orders.length;
 
             Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
-            if (orders.length < 50) hasMore = false;
+            if (orders.length < 25) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
