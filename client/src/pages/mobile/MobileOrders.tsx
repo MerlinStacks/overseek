@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Search,
-    Filter,
     ChevronRight,
     Package,
     Truck,
@@ -11,8 +10,8 @@ import {
     Clock,
     RefreshCw
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import api from '../../services/api';
 
 /**
  * MobileOrders - Order management optimized for mobile.
@@ -48,6 +47,7 @@ const FILTER_OPTIONS = ['All', 'Pending', 'Processing', 'Shipped', 'Completed'];
 
 export function MobileOrders() {
     const navigate = useNavigate();
+    const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -58,9 +58,11 @@ export function MobileOrders() {
 
     useEffect(() => {
         fetchOrders(true);
-    }, [currentAccount, activeFilter]);
+    }, [currentAccount, activeFilter, token]);
 
     const fetchOrders = async (reset = false) => {
+        if (!currentAccount || !token) return;
+
         try {
             if (reset) {
                 setLoading(true);
@@ -68,28 +70,32 @@ export function MobileOrders() {
             }
 
             const currentPage = reset ? 1 : page;
-            const status = activeFilter === 'All' ? '' : activeFilter.toLowerCase();
+            const params = new URLSearchParams();
+            params.append('page', currentPage.toString());
+            params.append('limit', '20');
+            if (activeFilter !== 'All') params.append('status', activeFilter.toLowerCase());
+            if (searchQuery) params.append('q', searchQuery);
 
-            const response = await api.get('/orders', {
-                params: {
-                    page: currentPage,
-                    limit: 20,
-                    status: status || undefined,
-                    search: searchQuery || undefined,
-                    sort: 'createdAt:desc'
+            const res = await fetch(`/api/sync/orders/search?${params}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
                 }
             });
 
-            const newOrders = (response.data.orders || []).map((o: any) => ({
+            if (!res.ok) throw new Error('Failed to fetch orders');
+
+            const data = await res.json();
+            const newOrders = (data.orders || data || []).map((o: any) => ({
                 id: o.id,
-                orderNumber: o.orderNumber || `#${o.id.slice(-6).toUpperCase()}`,
-                customerName: o.billing?.firstName
-                    ? `${o.billing.firstName} ${o.billing.lastName || ''}`.trim()
-                    : o.customerEmail || 'Guest',
+                orderNumber: o.orderNumber || `#${String(o.id).slice(-6).toUpperCase()}`,
+                customerName: o.billing?.first_name
+                    ? `${o.billing.first_name} ${o.billing.last_name || ''}`.trim()
+                    : o.billing?.email || 'Guest',
                 total: o.total || 0,
                 status: o.status || 'pending',
-                createdAt: o.createdAt,
-                itemCount: o.lineItems?.length || 0
+                createdAt: o.date_created || o.createdAt,
+                itemCount: o.line_items?.length || 0
             }));
 
             if (reset) {

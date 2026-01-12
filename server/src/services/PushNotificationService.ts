@@ -323,7 +323,14 @@ export class PushNotificationService {
         Logger.warn('[PushNotificationService] Test subscription lookup', {
             userId,
             accountId,
-            foundCount: subscriptions.length
+            foundCount: subscriptions.length,
+            // Diagnostic: show what's actually stored to debug order notification issues
+            subscriptionDetails: subscriptions.map(s => ({
+                id: s.id,
+                notifyNewOrders: s.notifyNewOrders,
+                notifyNewMessages: s.notifyNewMessages,
+                endpointShort: s.endpoint.substring(0, 50) + '...'
+            }))
         });
 
         if (subscriptions.length === 0) {
