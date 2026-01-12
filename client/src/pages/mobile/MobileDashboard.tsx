@@ -134,7 +134,7 @@ export function MobileDashboard() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-slide-up">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
@@ -149,22 +149,22 @@ export function MobileDashboard() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-                <div className="bg-blue-50 rounded-xl p-4">
+                <div className="bg-blue-50 rounded-xl p-4 animate-fade-slide-up" style={{ animationDelay: '50ms' }}>
                     <ShoppingCart size={20} className="text-blue-600 mb-2" />
                     <p className="text-2xl font-bold text-blue-600">{stats?.todayOrders || 0}</p>
                     <p className="text-xs text-gray-600">Today's Orders</p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4">
+                <div className="bg-green-50 rounded-xl p-4 animate-fade-slide-up" style={{ animationDelay: '100ms' }}>
                     <DollarSign size={20} className="text-green-600 mb-2" />
                     <p className="text-2xl font-bold text-green-600">{formatCurrency(stats?.todayRevenue || 0)}</p>
                     <p className="text-xs text-gray-600">Today's Revenue</p>
                 </div>
-                <div className="bg-purple-50 rounded-xl p-4">
+                <div className="bg-purple-50 rounded-xl p-4 animate-fade-slide-up" style={{ animationDelay: '150ms' }}>
                     <MessageSquare size={20} className="text-purple-600 mb-2" />
                     <p className="text-2xl font-bold text-purple-600">{stats?.pendingMessages || 0}</p>
                     <p className="text-xs text-gray-600">Messages</p>
                 </div>
-                <div className="bg-orange-50 rounded-xl p-4">
+                <div className="bg-orange-50 rounded-xl p-4 animate-fade-slide-up" style={{ animationDelay: '200ms' }}>
                     <Package size={20} className="text-orange-600 mb-2" />
                     <p className="text-2xl font-bold text-orange-600">{stats?.lowStockItems || 0}</p>
                     <p className="text-xs text-gray-600">Low Stock</p>
