@@ -14,6 +14,7 @@ const sessionsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/', async (request, reply) => {
         try {
             const userId = request.user?.id;
+            const currentSessionId = request.user?.sessionId;
             if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
             const sessions = await prisma.refreshToken.findMany({
@@ -32,9 +33,10 @@ const sessionsRoutes: FastifyPluginAsync = async (fastify) => {
                 orderBy: { createdAt: 'desc' }
             });
 
+            // Mark the current session based on sessionId from JWT
             const sessionsWithCurrent = sessions.map(s => ({
                 ...s,
-                isCurrent: false
+                isCurrent: s.id === currentSessionId
             }));
 
             return sessionsWithCurrent;
@@ -77,17 +79,20 @@ const sessionsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.delete('/', async (request, reply) => {
         try {
             const userId = request.user?.id;
+            const currentSessionId = request.user?.sessionId;
             if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
+            // Exclude the current session from revocation to prevent self-logout
             const result = await prisma.refreshToken.updateMany({
                 where: {
                     userId,
-                    revokedAt: null
+                    revokedAt: null,
+                    ...(currentSessionId ? { id: { not: currentSessionId } } : {})
                 },
                 data: { revokedAt: new Date() }
             });
 
-            Logger.info('All sessions revoked', { userId, count: result.count });
+            Logger.info('All other sessions revoked', { userId, currentSessionId, count: result.count });
             return { success: true, revokedCount: result.count };
         } catch (error) {
             Logger.error('Failed to revoke all sessions', { error });

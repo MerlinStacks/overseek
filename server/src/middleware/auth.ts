@@ -9,6 +9,7 @@ import { Logger } from '../utils/logger';
 
 interface JwtPayload {
     userId: string;
+    sessionId?: string; // Refresh token ID for current session identification
     iat: number;
     exp: number;
 }
@@ -18,6 +19,7 @@ declare module 'fastify' {
     interface FastifyRequest {
         user?: {
             id: string;
+            sessionId?: string;
             accountId?: string;
             isSuperAdmin?: boolean;
         };
@@ -65,6 +67,7 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
 
         request.user = {
             id: decoded.userId,
+            sessionId: decoded.sessionId,
             accountId: accountId
         };
         request.accountId = accountId;

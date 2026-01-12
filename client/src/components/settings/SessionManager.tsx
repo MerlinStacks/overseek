@@ -109,11 +109,14 @@ export const SessionManager: React.FC = () => {
                     <div className="no-sessions">No active sessions found</div>
                 ) : (
                     sessions.map(session => (
-                        <div key={session.id} className="session-item">
+                        <div key={session.id} className={`session-item ${session.isCurrent ? 'session-current' : ''}`}>
                             <div className="session-info">
                                 <div className="session-device">
                                     <span className="device-icon">💻</span>
                                     <span className="device-name">{parseUserAgent(session.userAgent)}</span>
+                                    {session.isCurrent && (
+                                        <span className="current-badge">Current Session</span>
+                                    )}
                                 </div>
                                 <div className="session-details">
                                     <span className="session-ip">
@@ -127,13 +130,15 @@ export const SessionManager: React.FC = () => {
                                     </span>
                                 </div>
                             </div>
-                            <button
-                                className="btn-revoke"
-                                onClick={() => revokeSession(session.id)}
-                                disabled={revoking === session.id}
-                            >
-                                {revoking === session.id ? 'Revoking...' : 'Revoke'}
-                            </button>
+                            {!session.isCurrent && (
+                                <button
+                                    className="btn-revoke"
+                                    onClick={() => revokeSession(session.id)}
+                                    disabled={revoking === session.id}
+                                >
+                                    {revoking === session.id ? 'Revoking...' : 'Revoke'}
+                                </button>
+                            )}
                         </div>
                     ))
                 )}

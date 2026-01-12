@@ -60,20 +60,12 @@ export class SecurityService {
     // -------------------
 
     static async createSession(userId: string, ipAddress?: string, userAgent?: string) {
-        // Create Access Token
-        const accessToken = generateToken({ userId });
-
-        // Log JWT fingerprint for debugging multi-container secret mismatches
-        const secret = process.env.JWT_SECRET || '';
-        const fingerprint = crypto.createHash('sha256').update(secret.substring(0, 8)).digest('hex').substring(0, 12);
-        Logger.warn('[SecurityService] Token generated', { userId, jwtFingerprint: fingerprint });
-
-        // Create Refresh Token - client gets plaintext, DB stores hash
+        // Create Refresh Token first to get the session ID
         const refreshTokenPlain = crypto.randomBytes(40).toString('hex');
         const refreshTokenHash = this.hashToken(refreshTokenPlain);
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-        await prisma.refreshToken.create({
+        const refreshTokenRecord = await prisma.refreshToken.create({
             data: {
                 token: refreshTokenHash, // Store hash, not plaintext
                 userId,
@@ -82,6 +74,14 @@ export class SecurityService {
                 userAgent
             }
         });
+
+        // Create Access Token with sessionId for current session identification
+        const accessToken = generateToken({ userId, sessionId: refreshTokenRecord.id });
+
+        // Log JWT fingerprint for debugging multi-container secret mismatches
+        const secret = process.env.JWT_SECRET || '';
+        const fingerprint = crypto.createHash('sha256').update(secret.substring(0, 8)).digest('hex').substring(0, 12);
+        Logger.warn('[SecurityService] Token generated', { userId, sessionId: refreshTokenRecord.id, jwtFingerprint: fingerprint });
 
         return { accessToken, refreshToken: refreshTokenPlain }; // Return plaintext to client
     }
@@ -109,24 +109,24 @@ export class SecurityService {
         const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
         // Revoke old, create new
-        // Transaction to ensure atomicity
-        await prisma.$transaction([
-            prisma.refreshToken.update({
-                where: { id: refreshToken.id },
-                data: { revokedAt: new Date() }
-            }),
-            prisma.refreshToken.create({
-                data: {
-                    token: newRefreshTokenHash, // Store hash
-                    userId: refreshToken.userId,
-                    expiresAt: newExpiresAt,
-                    ipAddress,
-                    userAgent
-                }
-            })
-        ]);
+        // Transaction to ensure atomicity - using separate operations to get new ID
+        await prisma.refreshToken.update({
+            where: { id: refreshToken.id },
+            data: { revokedAt: new Date() }
+        });
 
-        const newAccessToken = generateToken({ userId: refreshToken.userId });
+        const newRefreshTokenRecord = await prisma.refreshToken.create({
+            data: {
+                token: newRefreshTokenHash, // Store hash
+                userId: refreshToken.userId,
+                expiresAt: newExpiresAt,
+                ipAddress,
+                userAgent
+            }
+        });
+
+        // Include new sessionId in access token
+        const newAccessToken = generateToken({ userId: refreshToken.userId, sessionId: newRefreshTokenRecord.id });
 
         return { accessToken: newAccessToken, refreshToken: newRefreshTokenPlain }; // Return plaintext
     }
