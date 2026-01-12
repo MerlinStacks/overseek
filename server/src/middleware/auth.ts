@@ -81,7 +81,7 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
         if (err.name === 'TokenExpiredError') {
             return reply.code(401).send({ error: 'Token expired' });
         }
-        Logger.warn('Auth failed', { error: err.message });
+        Logger.warn('Auth failed', { error: err.message, url: request.url });
         return reply.code(401).send({ error: 'Invalid token' });
     }
 };
