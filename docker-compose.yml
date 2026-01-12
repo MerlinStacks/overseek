@@ -79,6 +79,8 @@ services:
     container_name: overseekv2-api-1
     ports:
       - "3000:3000"
+    env_file:
+      - stack.env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://admin:password@postgres:5432/overseek}
       ELASTICSEARCH_URL: http://elasticsearch:9200
