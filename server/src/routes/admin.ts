@@ -236,12 +236,47 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Generate VAPID Keys
+    // Generate VAPID Keys and save to database
     fastify.post('/generate-vapid-keys', async (request, reply) => {
         try {
+            // Check if keys already exist
+            const existing = await prisma.platformCredentials.findUnique({
+                where: { platform: 'WEB_PUSH_VAPID' }
+            });
+
+            if (existing) {
+                const existingKeys = existing.credentials as { publicKey: string; privateKey: string };
+                Logger.warn('[Admin] VAPID keys already exist, returning existing public key');
+                return {
+                    publicKey: existingKeys.publicKey,
+                    alreadyExists: true,
+                    message: 'VAPID keys already configured. Delete existing keys first to regenerate.'
+                };
+            }
+
+            // Generate new keys
             const keys = webpush.generateVAPIDKeys();
-            return { publicKey: keys.publicKey, privateKey: keys.privateKey };
+
+            // Save to database
+            await prisma.platformCredentials.create({
+                data: {
+                    platform: 'WEB_PUSH_VAPID',
+                    credentials: {
+                        publicKey: keys.publicKey,
+                        privateKey: keys.privateKey
+                    },
+                    notes: `Generated via Admin UI on ${new Date().toISOString()}`
+                }
+            });
+
+            Logger.warn('[Admin] Generated and saved new VAPID keys');
+            return {
+                publicKey: keys.publicKey,
+                alreadyExists: false,
+                message: 'VAPID keys generated and saved successfully!'
+            };
         } catch (e: any) {
+            Logger.error('[Admin] Failed to generate VAPID keys', { error: e });
             return reply.code(500).send({ error: e.message || 'Failed to generate VAPID keys' });
         }
     });
