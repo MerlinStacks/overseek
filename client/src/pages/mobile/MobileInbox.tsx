@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, Mail } from 'lucide-react';
+import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Filter } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
@@ -13,13 +13,15 @@ interface Conversation {
     updatedAt: string;
 }
 
-const CHANNEL_COLORS: Record<string, string> = {
-    email: 'bg-blue-500',
-    facebook: 'bg-blue-600',
-    instagram: 'bg-gradient-to-br from-purple-500 to-pink-500',
-    tiktok: 'bg-black',
-    default: 'bg-gray-500'
+const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: string }> = {
+    email: { icon: Mail, color: 'text-blue-600', bg: 'bg-blue-100' },
+    facebook: { icon: Facebook, color: 'text-blue-700', bg: 'bg-blue-100' },
+    instagram: { icon: Instagram, color: 'text-pink-600', bg: 'bg-pink-100' },
+    tiktok: { icon: Music2, color: 'text-gray-900', bg: 'bg-gray-100' },
+    default: { icon: MessageSquare, color: 'text-gray-600', bg: 'bg-gray-100' }
 };
+
+const FILTER_OPTIONS = ['All', 'Unread', 'Email', 'Social'];
 
 export function MobileInbox() {
     const navigate = useNavigate();
@@ -27,6 +29,9 @@ export function MobileInbox() {
     const { currentAccount } = useAccount();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeFilter, setActiveFilter] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
 
     useEffect(() => {
         fetchConversations();
@@ -74,22 +79,44 @@ export function MobileInbox() {
         if (diff < 60) return 'Now';
         if (diff < 3600) return `${Math.floor(diff / 60)}m`;
         if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+        if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
         return then.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
     };
 
-    const getChannelColor = (channel: string) => CHANNEL_COLORS[channel.toLowerCase()] || CHANNEL_COLORS.default;
-    const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    const getChannelConfig = (channel: string) =>
+        CHANNEL_CONFIG[channel.toLowerCase()] || CHANNEL_CONFIG.default;
+
+    const getInitials = (name: string) =>
+        name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+    const filteredConversations = conversations.filter(c => {
+        if (activeFilter === 'Unread' && !c.unread) return false;
+        if (activeFilter === 'Email' && c.channel !== 'email') return false;
+        if (activeFilter === 'Social' && c.channel === 'email') return false;
+        if (searchQuery && !c.customerName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        return true;
+    });
+
+    const unreadCount = conversations.filter(c => c.unread).length;
 
     if (loading) {
         return (
             <div className="space-y-3 animate-pulse">
-                <div className="h-8 bg-gray-200 rounded w-1/3" />
+                <div className="flex items-center justify-between">
+                    <div className="h-8 bg-gray-200 rounded w-24" />
+                    <div className="h-6 w-8 bg-gray-200 rounded-full" />
+                </div>
+                <div className="flex gap-2">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-9 w-20 bg-gray-200 rounded-full flex-shrink-0" />
+                    ))}
+                </div>
                 {[...Array(6)].map((_, i) => (
-                    <div key={i} className="flex gap-3 p-3">
-                        <div className="w-12 h-12 bg-gray-200 rounded-full" />
+                    <div key={i} className="flex gap-4 p-4 bg-white rounded-2xl">
+                        <div className="w-14 h-14 bg-gray-200 rounded-full flex-shrink-0" />
                         <div className="flex-1 space-y-2">
-                            <div className="h-4 bg-gray-200 rounded w-1/2" />
-                            <div className="h-3 bg-gray-200 rounded w-3/4" />
+                            <div className="h-5 bg-gray-200 rounded w-2/3" />
+                            <div className="h-4 bg-gray-200 rounded w-full" />
                         </div>
                     </div>
                 ))}
@@ -99,44 +126,134 @@ export function MobileInbox() {
 
     return (
         <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-gray-900">Inbox</h1>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-100">
-                {conversations.length === 0 ? (
-                    <div className="text-center py-12">
-                        <MessageSquare className="mx-auto text-gray-300 mb-4" size={48} />
-                        <p className="text-gray-500">No conversations yet</p>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold text-gray-900">Inbox</h1>
+                    {unreadCount > 0 && (
+                        <span className="px-2.5 py-0.5 bg-indigo-600 text-white text-sm font-semibold rounded-full">
+                            {unreadCount}
+                        </span>
+                    )}
+                </div>
+                <button
+                    onClick={() => setShowSearch(!showSearch)}
+                    className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                >
+                    <Search size={22} className="text-gray-600" />
+                </button>
+            </div>
+
+            {/* Search Bar (Expandable) */}
+            {showSearch && (
+                <div className="relative animate-in slide-in-from-top-2 duration-200">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <input
+                        type="text"
+                        placeholder="Search conversations..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        autoFocus
+                        className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-base"
+                    />
+                </div>
+            )}
+
+            {/* Filter Chips */}
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+                {FILTER_OPTIONS.map((filter) => (
+                    <button
+                        key={filter}
+                        onClick={() => setActiveFilter(filter)}
+                        className={`
+                            px-4 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all
+                            ${activeFilter === filter
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                : 'bg-white text-gray-700 border border-gray-200 active:bg-gray-50'
+                            }
+                        `}
+                    >
+                        {filter}
+                        {filter === 'Unread' && unreadCount > 0 && (
+                            <span className={`ml-1.5 ${activeFilter === filter ? 'text-indigo-200' : 'text-gray-400'}`}>
+                                ({unreadCount})
+                            </span>
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {/* Conversation List */}
+            <div className="space-y-2">
+                {filteredConversations.length === 0 ? (
+                    <div className="text-center py-16">
+                        <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                            <MessageSquare className="text-gray-400" size={36} />
+                        </div>
+                        <p className="text-gray-900 font-semibold mb-1">No conversations</p>
+                        <p className="text-gray-500 text-sm">Messages will appear here</p>
                     </div>
                 ) : (
-                    conversations.map((convo) => (
-                        <button
-                            key={convo.id}
-                            onClick={() => navigate(`/m/inbox/${convo.id}`)}
-                            className="w-full flex items-center gap-3 p-4 text-left active:bg-gray-50"
-                        >
-                            <div className="relative flex-shrink-0">
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                                    {getInitials(convo.customerName)}
+                    filteredConversations.map((convo) => {
+                        const channelConfig = getChannelConfig(convo.channel);
+                        const ChannelIcon = channelConfig.icon;
+
+                        return (
+                            <button
+                                key={convo.id}
+                                onClick={() => navigate(`/m/inbox/${convo.id}`)}
+                                className={`
+                                    w-full flex items-center gap-4 p-4 rounded-2xl text-left
+                                    transition-all active:scale-[0.98]
+                                    ${convo.unread
+                                        ? 'bg-white shadow-sm border border-gray-100'
+                                        : 'bg-gray-50/50 hover:bg-gray-100/50'
+                                    }
+                                `}
+                            >
+                                {/* Avatar */}
+                                <div className="relative flex-shrink-0">
+                                    <div className={`
+                                        w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg
+                                        ${convo.unread
+                                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
+                                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                                        }
+                                    `}>
+                                        {getInitials(convo.customerName)}
+                                    </div>
+                                    {/* Channel Badge */}
+                                    <div className={`
+                                        absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full 
+                                        ${channelConfig.bg} 
+                                        flex items-center justify-center ring-2 ring-white
+                                    `}>
+                                        <ChannelIcon size={12} className={channelConfig.color} />
+                                    </div>
                                 </div>
-                                <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${getChannelColor(convo.channel)} flex items-center justify-center ring-2 ring-white`}>
-                                    <Mail size={10} className="text-white" />
+
+                                {/* Content */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className={`text-base truncate ${convo.unread ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
+                                            {convo.customerName}
+                                        </span>
+                                        <span className="text-xs text-gray-500 flex-shrink-0 ml-3">
+                                            {formatTimeAgo(convo.updatedAt)}
+                                        </span>
+                                    </div>
+                                    <p className={`text-sm line-clamp-2 ${convo.unread ? 'text-gray-700' : 'text-gray-500'}`}>
+                                        {convo.lastMessage}
+                                    </p>
                                 </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className={`font-semibold truncate ${convo.unread ? 'text-gray-900' : 'text-gray-700'}`}>
-                                        {convo.customerName}
-                                    </span>
-                                    <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
-                                        {formatTimeAgo(convo.updatedAt)}
-                                    </span>
-                                </div>
-                                <p className={`text-sm truncate ${convo.unread ? 'text-gray-800 font-medium' : 'text-gray-500'}`}>
-                                    {convo.lastMessage}
-                                </p>
-                            </div>
-                            {convo.unread && <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full flex-shrink-0" />}
-                        </button>
-                    ))
+
+                                {/* Unread Indicator */}
+                                {convo.unread && (
+                                    <div className="w-3 h-3 bg-indigo-600 rounded-full flex-shrink-0 animate-pulse" />
+                                )}
+                            </button>
+                        );
+                    })
                 )}
             </div>
         </div>
