@@ -1,7 +1,6 @@
-import { ReactNode, useState, useEffect } from 'react';
-import { useLocation, useNavigate, Outlet } from 'react-router-dom';
+import { ReactNode, useState } from 'react';
+import { useLocation, Outlet } from 'react-router-dom';
 import { MobileNav } from './MobileNav';
-import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 /**
  * MobileLayout - Touch-optimized layout for the PWA companion app.
@@ -19,13 +18,11 @@ interface MobileLayoutProps {
 
 export function MobileLayout({ children }: MobileLayoutProps) {
     const location = useLocation();
-    const navigate = useNavigate();
     const [refreshing, setRefreshing] = useState(false);
     const [startY, setStartY] = useState(0);
     const [pullDistance, setPullDistance] = useState(0);
 
-    // Initialize push notifications for PWA
-    usePushNotifications();
+    // Note: usePushNotifications moved to individual pages to prevent blocking initial render
 
     // Pull-to-refresh handler
     const handleTouchStart = (e: React.TouchEvent) => {
