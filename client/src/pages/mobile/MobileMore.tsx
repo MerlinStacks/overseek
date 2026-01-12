@@ -51,6 +51,7 @@ export function MobileMore() {
             title: 'Store',
             items: [
                 { id: 'inventory', label: 'Inventory', icon: Package, path: '/m/inventory' },
+                { id: 'customers', label: 'Customers', icon: User, path: '/m/customers' },
             ]
         },
         {
@@ -64,7 +65,7 @@ export function MobileMore() {
         {
             title: 'Support',
             items: [
-                { id: 'help', label: 'Help Center', icon: HelpCircle, path: '/help' },
+                { id: 'help', label: 'Help Center', icon: HelpCircle, action: () => window.open('https://help.overseek.io', '_blank') },
             ]
         },
         {

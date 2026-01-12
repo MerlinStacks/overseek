@@ -72,6 +72,9 @@ const MobileInventory = lazy(() => import('./pages/mobile/MobileInventory').then
 const MobileMore = lazy(() => import('./pages/mobile/MobileMore').then(m => ({ default: m.MobileMore })));
 const MobileNotifications = lazy(() => import('./pages/mobile/MobileNotifications').then(m => ({ default: m.MobileNotifications })));
 const MobileLiveVisitors = lazy(() => import('./pages/mobile/MobileLiveVisitors').then(m => ({ default: m.MobileLiveVisitors })));
+const MobileProfile = lazy(() => import('./pages/mobile/MobileProfile').then(m => ({ default: m.MobileProfile })));
+const MobileSettings = lazy(() => import('./pages/mobile/MobileSettings').then(m => ({ default: m.MobileSettings })));
+const MobileCustomers = lazy(() => import('./pages/mobile/MobileCustomers').then(m => ({ default: m.MobileCustomers })));
 
 // Loading fallback for lazy routes
 function PageLoader() {
@@ -232,8 +235,9 @@ function App() {
                                                 <Route path="/m/analytics" element={<AccountGuard><MobileAnalytics /></AccountGuard>} />
                                                 <Route path="/m/inventory" element={<AccountGuard><MobileInventory /></AccountGuard>} />
                                                 <Route path="/m/more" element={<AccountGuard><MobileMore /></AccountGuard>} />
-                                                <Route path="/m/profile" element={<AccountGuard><UserProfilePage /></AccountGuard>} />
-                                                <Route path="/m/settings" element={<AccountGuard><SettingsPage /></AccountGuard>} />
+                                                <Route path="/m/profile" element={<AccountGuard><MobileProfile /></AccountGuard>} />
+                                                <Route path="/m/settings" element={<AccountGuard><MobileSettings /></AccountGuard>} />
+                                                <Route path="/m/customers" element={<AccountGuard><MobileCustomers /></AccountGuard>} />
                                                 <Route path="/m/notifications" element={<AccountGuard><MobileNotifications /></AccountGuard>} />
                                                 <Route path="/m/live-visitors" element={<AccountGuard><MobileLiveVisitors /></AccountGuard>} />
                                                 <Route path="/m" element={<Navigate to="/m/dashboard" replace />} />

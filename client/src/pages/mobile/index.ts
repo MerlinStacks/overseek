@@ -9,3 +9,6 @@ export { MobileInventory } from './MobileInventory';
 export { MobileMore } from './MobileMore';
 export { MobileNotifications } from './MobileNotifications';
 export { MobileLiveVisitors } from './MobileLiveVisitors';
+export { MobileProfile } from './MobileProfile';
+export { MobileSettings } from './MobileSettings';
+export { MobileCustomers } from './MobileCustomers';
