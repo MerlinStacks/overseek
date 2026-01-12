@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LayoutDashboard, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -7,13 +7,24 @@ export function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [info, setInfo] = useState('');
     const [loading, setLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
 
+    // Check for session expired message from global auth error handler
+    useEffect(() => {
+        const authError = sessionStorage.getItem('authError');
+        if (authError) {
+            setInfo(authError);
+            sessionStorage.removeItem('authError');
+        }
+    }, []);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setInfo('');
         setLoading(true);
 
         try {
@@ -61,6 +72,12 @@ export function LoginPage() {
                         {error && (
                             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
                                 {error}
+                            </div>
+                        )}
+
+                        {info && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-md text-sm">
+                                {info}
                             </div>
                         )}
 

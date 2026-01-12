@@ -12,13 +12,48 @@ class ApiError extends Error {
     }
 }
 
+/**
+ * Global handler for auth failures (401).
+ * Clears stored credentials and redirects to login.
+ * Uses a debounce to avoid multiple simultaneous redirects.
+ */
+let isHandlingAuthError = false;
+function handleAuthError(message: string) {
+    if (isHandlingAuthError) return;
+    isHandlingAuthError = true;
+
+    // Clear stored auth data
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('refreshToken');
+
+    // Show notification (if toast system exists, it will pick this up)
+    const errorMessages = ['Invalid token', 'invalid signature', 'Token expired', 'jwt expired'];
+    const isSignatureError = errorMessages.some(msg => message.toLowerCase().includes(msg.toLowerCase()));
+
+    // Store message for login page to show
+    if (isSignatureError) {
+        sessionStorage.setItem('authError', 'Your session has expired. Please log in again.');
+    }
+
+    // Redirect to login (avoid if already on login page)
+    if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+    }
+
+    // Reset debounce after redirect
+    setTimeout(() => { isHandlingAuthError = false; }, 2000);
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { token, accountId, headers, ...customConfig } = options;
+    const { token, accountId, headers, body, ...customConfig } = options;
 
     const config: RequestInit = {
         ...customConfig,
+        body,
         headers: {
-            'Content-Type': 'application/json',
+            // Only set Content-Type for requests with a body
+            ...(body ? { 'Content-Type': 'application/json' } : {}),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(accountId ? { 'X-Account-ID': accountId } : {}),
             ...headers,
@@ -36,6 +71,12 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             // Only use status text if JSON parsing fails
             errorMessage = response.statusText;
         }
+
+        // Handle auth errors globally - auto logout and redirect
+        if (response.status === 401) {
+            handleAuthError(errorMessage);
+        }
+
         throw new ApiError(response.status, errorMessage);
     }
 
