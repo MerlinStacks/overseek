@@ -266,8 +266,11 @@ export class PushNotificationService {
         userId: string,
         accountId: string
     ): Promise<{ success: boolean; sent: number; failed: number; error?: string }> {
+        Logger.warn('[PushNotificationService] sendTestNotification called', { userId, accountId });
+
         const keys = await this.getVapidKeys();
         if (!keys) {
+            Logger.warn('[PushNotificationService] Test failed - no VAPID keys');
             return { success: false, sent: 0, failed: 0, error: 'VAPID keys not configured' };
         }
 
@@ -279,6 +282,12 @@ export class PushNotificationService {
 
         const subscriptions = await prisma.pushSubscription.findMany({
             where: { userId, accountId }
+        });
+
+        Logger.warn('[PushNotificationService] Test subscription lookup', {
+            userId,
+            accountId,
+            foundCount: subscriptions.length
         });
 
         if (subscriptions.length === 0) {

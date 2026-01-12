@@ -197,7 +197,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.headers['x-account-id'] as string;
             const userId = request.user?.id;
-            Logger.info('[notifications] Test notification request', { userId, accountId });
+            Logger.warn('[notifications] Test notification request', { userId, accountId });
 
             if (!accountId || !userId) {
                 Logger.warn('[notifications] Test missing IDs', { accountId, userId });
@@ -205,7 +205,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const result = await PushNotificationService.sendTestNotification(userId, accountId);
-            Logger.info('[notifications] Test notification result', { result });
+            Logger.warn('[notifications] Test notification result', { result });
 
             if (!result.success) {
                 return reply.code(400).send({ error: result.error || 'Failed to send test notification' });
