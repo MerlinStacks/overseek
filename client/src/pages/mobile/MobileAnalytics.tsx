@@ -100,7 +100,10 @@ export function MobileAnalytics() {
 
             if (liveRes.ok) {
                 const liveData = await liveRes.json();
+                console.log('[MobileAnalytics] Live visitors API response:', liveData);
                 setLiveCount(liveData.total || 0);
+            } else {
+                console.error('[MobileAnalytics] Live visitors API failed:', liveRes.status);
             }
 
             // Calculate AOV

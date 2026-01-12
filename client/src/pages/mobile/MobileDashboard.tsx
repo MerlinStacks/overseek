@@ -73,8 +73,11 @@ export function MobileDashboard() {
 
             if (salesRes.ok) {
                 const data = await salesRes.json();
+                console.log('[MobileDashboard] Sales API response:', data);
                 todayRevenue = data.total || 0;
                 todayOrders = data.count || 0;
+            } else {
+                console.error('[MobileDashboard] Sales API failed:', salesRes.status);
             }
 
             if (messagesRes.ok) {
