@@ -10,6 +10,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [sales, setSales] = useState<number | null>(null);
+    const [orderCount, setOrderCount] = useState<number | null>(null);
     const [comparisonSales, setComparisonSales] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [hasRealtimeUpdate, setHasRealtimeUpdate] = useState(false);
@@ -24,6 +25,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
             });
             const currentData = await currentRes.json();
             setSales(currentData.total || 0);
+            setOrderCount(currentData.count || 0);
 
             if (comparison) {
                 const compRes = await fetch(`/api/analytics/sales?startDate=${comparison.startDate}&endDate=${comparison.endDate}`, {
@@ -49,6 +51,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
     useWidgetSocket<{ total?: number }>('order:new', (data) => {
         if (data.total && sales !== null) {
             setSales(prev => (prev || 0) + data.total!);
+            setOrderCount(prev => (prev || 0) + 1);
             setHasRealtimeUpdate(true);
             // Clear the indicator after 3 seconds
             setTimeout(() => setHasRealtimeUpdate(false), 3000);
@@ -80,6 +83,11 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
                         <p className="text-3xl font-bold text-gray-900 mt-2">
                             {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sales || 0)}
                         </p>
+                        {orderCount !== null && (
+                        <p className="text-xs text-gray-400 mt-1">
+                            {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''}
+                        </p>
+                    )}
                     )}
                 </div>
                 <div className="p-3 bg-green-100 rounded-lg text-green-600">

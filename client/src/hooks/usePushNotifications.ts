@@ -64,9 +64,11 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                 // Register service worker
                 const registration = await navigator.serviceWorker.register('/push-sw.js');
                 setSwRegistration(registration);
+                console.log('[usePushNotifications] Service worker registered');
 
-                // Check existing subscription
+                // Check existing subscription from browser
                 const subscription = await registration.pushManager.getSubscription();
+                console.log('[usePushNotifications] Browser subscription:', subscription ? 'exists' : 'none');
                 if (subscription) {
                     setCurrentEndpoint(subscription.endpoint);
                     setIsSubscribed(true);
@@ -82,10 +84,18 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
                 if (res.ok) {
                     const data = await res.json();
+                    console.log('[usePushNotifications] Backend status:', data);
                     setIsSubscribed(data.isSubscribed);
                     if (data.preferences) {
                         setPreferences(data.preferences);
                     }
+                    // Sync endpoint from backend if browser subscription wasn't found
+                    // This handles cases where the backend has the subscription but the browser doesn't
+                    if (data.isSubscribed && data.endpoint) {
+                        setCurrentEndpoint(data.endpoint);
+                    }
+                } else {
+                    console.error('[usePushNotifications] Backend status check failed:', res.status);
                 }
             } catch (error) {
                 console.error('[usePushNotifications] Init failed:', error);
@@ -157,10 +167,15 @@ export function usePushNotifications(): UsePushNotificationsReturn {
             });
 
             if (subRes.ok) {
+                const subData = await subRes.json();
+                console.log('[usePushNotifications] Subscription saved:', subData);
                 setCurrentEndpoint(subscription.endpoint);
                 setIsSubscribed(true);
                 setIsLoading(false);
                 return true;
+            } else {
+                const errorData = await subRes.json().catch(() => ({}));
+                console.error('[usePushNotifications] Subscribe request failed:', subRes.status, errorData);
             }
         } catch (error) {
             console.error('[usePushNotifications] Subscribe failed:', error);

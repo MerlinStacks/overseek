@@ -143,6 +143,7 @@ export class PushNotificationService {
      */
     static async getSubscription(userId: string, accountId: string): Promise<{
         isSubscribed: boolean;
+        endpoint?: string;
         preferences?: { notifyNewMessages: boolean; notifyNewOrders: boolean };
     }> {
         try {
@@ -157,6 +158,7 @@ export class PushNotificationService {
 
             return {
                 isSubscribed: true,
+                endpoint: sub.endpoint,
                 preferences: {
                     notifyNewMessages: sub.notifyNewMessages,
                     notifyNewOrders: sub.notifyNewOrders

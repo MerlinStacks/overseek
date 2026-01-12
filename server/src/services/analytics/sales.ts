@@ -42,12 +42,19 @@ export class SalesAnalytics {
                 index: 'orders',
                 size: 0,
                 query: { bool: { must } },
-                aggs: { total_sales: { sum: { field: 'total' } } }
+                aggs: {
+                    total_sales: { sum: { field: 'total' } },
+                    order_count: { value_count: { field: 'id' } }
+                }
             });
-            return (response.aggregations as any)?.total_sales?.value || 0;
+            const aggs = response.aggregations as any;
+            return {
+                total: aggs?.total_sales?.value || 0,
+                count: aggs?.order_count?.value || 0
+            };
         } catch (error) {
             Logger.error('Analytics Total Sales Error', { error });
-            return 0;
+            return { total: 0, count: 0 };
         }
     }
 

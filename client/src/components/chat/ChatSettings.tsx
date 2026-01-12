@@ -2,25 +2,45 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, MessageSquare } from 'lucide-react';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
 
+/**
+ * Adjusts hex color brightness for gradient generation.
+ * @param hex - Hex color string (e.g., '#2563eb')
+ * @param amount - Amount to adjust (-30 for darker, +30 for lighter)
+ */
+function adjustColor(hex: string, amount: number): string {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return hex;
+    const r = Math.max(0, Math.min(255, parseInt(result[1], 16) + amount));
+    const g = Math.max(0, Math.min(255, parseInt(result[2], 16) + amount));
+    const b = Math.max(0, Math.min(255, parseInt(result[3], 16) + amount));
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * ChatSettings - Manages live chat widget configuration including appearance customization.
+ * Settings are stored in AccountFeature with key 'CHAT_SETTINGS'.
+ */
 export function ChatSettings() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [isLoading, setIsLoading] = useState(false);
 
-    // Default config
+    // Default config with new appearance settings
     const [config, setConfig] = useState({
         position: 'bottom-right',
         showOnMobile: true,
+        primaryColor: '#2563eb',
+        headerText: 'Live Chat',
+        welcomeMessage: 'Hello! How can we help you today?',
         autoReply: {
             enabled: false,
             message: "Thanks for your message! We'll get back to you shortly."
         },
         businessHours: {
             enabled: false,
-            // ... (rest of business hours unchanged)
             days: {
                 mon: { open: '09:00', close: '17:00', isOpen: true },
                 tue: { open: '09:00', close: '17:00', isOpen: true },
@@ -74,30 +94,158 @@ export function ChatSettings() {
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-8">
+            {/* Widget Appearance with Live Preview */}
             <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Widget Appearance</h3>
-                <div className="grid gap-6 md:grid-cols-2">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
-                        <select
-                            value={config.position || 'bottom-right'}
-                            onChange={e => setConfig({ ...config, position: e.target.value })}
-                            className="w-full border rounded-lg px-3 py-2 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
-                        >
-                            <option value="bottom-right">Bottom Right</option>
-                            <option value="bottom-left">Bottom Left</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Mobile Visibility</label>
-                        <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
+                <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Settings Column */}
+                    <div className="space-y-5">
+                        {/* Primary Color */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    type="color"
+                                    value={config.primaryColor || '#2563eb'}
+                                    onChange={e => setConfig({ ...config, primaryColor: e.target.value })}
+                                    className="h-10 w-16 p-1 border border-gray-300 rounded cursor-pointer"
+                                />
+                                <input
+                                    type="text"
+                                    value={config.primaryColor || '#2563eb'}
+                                    onChange={e => setConfig({ ...config, primaryColor: e.target.value })}
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono uppercase text-sm"
+                                    placeholder="#2563eb"
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Used for the button, header, and user messages.</p>
+                        </div>
+
+                        {/* Header Text */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Header Text</label>
                             <input
-                                type="checkbox"
-                                checked={config.showOnMobile ?? true}
-                                onChange={e => setConfig({ ...config, showOnMobile: e.target.checked })}
-                                className="w-5 h-5 text-blue-600 rounded-sm focus:ring-blue-500"
+                                type="text"
+                                value={config.headerText || 'Live Chat'}
+                                onChange={e => setConfig({ ...config, headerText: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
+                                placeholder="Live Chat"
+                                maxLength={30}
                             />
-                            <span className="text-sm text-gray-600">Show on Mobile Devices</span>
+                            <p className="text-xs text-gray-500 mt-1">Displayed at the top of the chat window.</p>
+                        </div>
+
+                        {/* Welcome Message */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Welcome Message</label>
+                            <textarea
+                                value={config.welcomeMessage || 'Hello! How can we help you today?'}
+                                onChange={e => setConfig({ ...config, welcomeMessage: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden resize-none"
+                                placeholder="Hello! How can we help you today?"
+                                rows={2}
+                                maxLength={200}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">First message visitors see when opening the widget.</p>
+                        </div>
+
+                        {/* Position & Mobile */}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
+                                <select
+                                    value={config.position || 'bottom-right'}
+                                    onChange={e => setConfig({ ...config, position: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
+                                >
+                                    <option value="bottom-right">Bottom Right</option>
+                                    <option value="bottom-left">Bottom Left</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Mobile Visibility</label>
+                                <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100 h-[42px]">
+                                    <input
+                                        type="checkbox"
+                                        checked={config.showOnMobile ?? true}
+                                        onChange={e => setConfig({ ...config, showOnMobile: e.target.checked })}
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-600">Show on Mobile</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Live Preview Column - 2026 Modern Design */}
+                    <div className="flex flex-col">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Live Preview</label>
+                        <div className="flex-1 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl p-4 relative min-h-[400px] flex items-end justify-end">
+                            {/* Mini Widget Preview */}
+                            <div className="w-[300px]">
+                                {/* Chat Window - Glassmorphism */}
+                                <div className="bg-white/95 backdrop-blur-xl rounded-[20px] shadow-2xl overflow-hidden border border-white/20 mb-3">
+                                    {/* Header - Gradient */}
+                                    <div
+                                        className="px-5 py-4 text-white flex justify-between items-center relative overflow-hidden"
+                                        style={{
+                                            background: `linear-gradient(135deg, ${config.primaryColor || '#2563eb'}, ${adjustColor(config.primaryColor || '#2563eb', -30)})`
+                                        }}
+                                    >
+                                        <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent" />
+                                        <span className="font-semibold text-[15px] flex items-center gap-2.5 relative z-10">
+                                            <span className="w-2.5 h-2.5 bg-green-400 rounded-full shadow-[0_0_8px_#22c55e] animate-pulse" />
+                                            {config.headerText || 'Live Chat'}
+                                        </span>
+                                        <span className="text-white/80 text-xl cursor-pointer hover:text-white relative z-10 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">×</span>
+                                    </div>
+                                    {/* Messages */}
+                                    <div className="p-4 bg-slate-50 min-h-[130px] space-y-3">
+                                        <div className="bg-white border border-slate-200 rounded-[18px] rounded-bl-sm px-4 py-3 text-sm text-slate-700 max-w-[88%] shadow-sm">
+                                            {config.welcomeMessage || 'Hello! How can we help you today?'}
+                                        </div>
+                                        {/* Typing Indicator */}
+                                        <div className="bg-white border border-slate-200 rounded-[18px] rounded-bl-sm px-4 py-3 max-w-[60px] flex gap-1">
+                                            <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                            <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                            <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                        </div>
+                                    </div>
+                                    {/* Input Area */}
+                                    <div className="px-4 py-3 border-t border-slate-200 flex gap-3 bg-white">
+                                        <input
+                                            type="text"
+                                            placeholder="Type a message..."
+                                            className="flex-1 border-2 border-slate-200 rounded-full px-4 py-2.5 text-sm bg-slate-50"
+                                            disabled
+                                        />
+                                        <button
+                                            className="w-11 h-11 rounded-full text-white flex items-center justify-center shadow-lg"
+                                            style={{
+                                                background: `linear-gradient(135deg, ${config.primaryColor || '#2563eb'}, ${adjustColor(config.primaryColor || '#2563eb', -30)})`
+                                            }}
+                                            disabled
+                                        >
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <line x1="22" y1="2" x2="11" y2="13" />
+                                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                {/* Toggle Button */}
+                                <div className="flex justify-end">
+                                    <div
+                                        className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl cursor-pointer transition-transform hover:scale-105 relative overflow-hidden"
+                                        style={{
+                                            background: `linear-gradient(135deg, ${config.primaryColor || '#2563eb'}, ${adjustColor(config.primaryColor || '#2563eb', -30)})`
+                                        }}
+                                    >
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent" />
+                                        <MessageSquare size={28} className="text-white relative z-10" />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

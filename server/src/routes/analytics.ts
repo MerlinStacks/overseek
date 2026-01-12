@@ -73,9 +73,9 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { startDate?: string; endDate?: string };
-            const total = await SalesAnalytics.getTotalSales(accountId, query.startDate, query.endDate);
+            const { total, count } = await SalesAnalytics.getTotalSales(accountId, query.startDate, query.endDate);
             const account = await prisma.account.findUnique({ where: { id: accountId } });
-            return { total, currency: account?.currency || 'USD' };
+            return { total, count, currency: account?.currency || 'USD' };
         } catch (err: any) { Logger.error('Error', { error: err }); return reply.code(500).send({ error: err.message }); }
     });
 

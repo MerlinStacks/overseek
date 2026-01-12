@@ -177,7 +177,14 @@ export function OrderDetailPage() {
                                         </td>
                                     </tr>
                                     <tr>
-                                        <td colSpan={3} className="px-6 py-2 text-right text-sm text-gray-500">Shipping</td>
+                                        <td colSpan={3} className="px-6 py-2 text-right text-sm text-gray-500">
+                                            Shipping
+                                            {order.shipping_lines?.[0]?.method_title && (
+                                                <span className="ml-1 text-xs text-gray-400">
+                                                    ({order.shipping_lines[0].method_title})
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-2 text-right font-medium text-gray-800">
                                             {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.shipping_total)}
                                         </td>
