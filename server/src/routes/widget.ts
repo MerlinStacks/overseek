@@ -79,6 +79,25 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
         if (match) return match[2];
     }
 
+    function setCookie(name, value, days) {
+        var expires = '';
+        if (days) {
+            var date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            expires = '; expires=' + date.toUTCString();
+        }
+        document.cookie = name + '=' + value + expires + '; path=/; SameSite=Lax';
+    }
+
+    function generateVisitorToken() {
+        return 'os_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + '_' + Date.now().toString(36);
+    }
+
+    // Ensure visitor token exists
+    if (!getCookie('_os_vid')) {
+        setCookie('_os_vid', generateVisitorToken(), 365);
+    }
+
     function hexToRgb(hex) {
         const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
         return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 37, g: 99, b: 235 };
