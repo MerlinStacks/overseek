@@ -10,17 +10,65 @@ import { Logger } from '../../utils/logger';
 import { GoogleAdsTools } from './GoogleAdsTools';
 import { MetaAdsTools } from './MetaAdsTools';
 import { AdsService } from '../ads';
+import { isBrandCampaign, getSeasonalContext, getCampaignType, getExpectedRoasThreshold, SeasonalContext } from './AdContext';
 
 export interface AdOptimizerOptions {
     userContext?: string;
     includeInventory?: boolean;
 }
 
+/**
+ * Prioritized suggestion with urgency level.
+ * Priority: 1=urgent, 2=important, 3=info
+ */
+export interface PrioritizedSuggestion {
+    text: string;
+    priority: 1 | 2 | 3;
+    category: 'stock' | 'performance' | 'budget' | 'creative' | 'seasonal' | 'info';
+}
+
 export class AdOptimizer {
+
+    /**
+     * Infer priority from suggestion text based on emoji and keywords.
+     */
+    private static inferPriority(text: string): PrioritizedSuggestion {
+        // Urgent (priority 1): Stock alerts, performance drops, seasonal peaks
+        if (text.includes('🚫') || text.includes('Stock Alert') ||
+            text.includes('📉') || text.includes('Performance Drop') ||
+            (text.includes('📅') && text.includes('Peak'))) {
+            return {
+                text,
+                priority: 1,
+                category: text.includes('Stock') ? 'stock' : text.includes('📅') ? 'seasonal' : 'performance'
+            };
+        }
+
+        // Important (priority 2): Underperformers, budget opportunities, warnings
+        if (text.includes('🔴') || text.includes('Underperforming') ||
+            text.includes('💰') || text.includes('Budget') ||
+            text.includes('⚠️') || text.includes('Warning') ||
+            text.includes('🛒') || text.includes('🎨')) {
+            return {
+                text,
+                priority: 2,
+                category: text.includes('Budget') ? 'budget' : text.includes('🎨') ? 'creative' : 'performance'
+            };
+        }
+
+        // Info (priority 3): Everything else
+        return {
+            text,
+            priority: 3,
+            category: text.includes('ℹ️') || text.includes('Brand') ? 'info' :
+                text.includes('🟢') || text.includes('⭐') ? 'performance' : 'info'
+        };
+    }
 
     /**
      * Get AI-powered optimization suggestions for all ad campaigns.
      * Analyzes both Google and Meta Ads and provides actionable recommendations.
+     * Returns suggestions sorted by priority (urgent first).
      */
     static async getAdOptimizationSuggestions(accountId: string, options?: AdOptimizerOptions) {
         try {
@@ -31,11 +79,18 @@ export class AdOptimizer {
             const hasMeta = typeof metaAnalysis !== 'string';
 
             if (!hasGoogle && !hasMeta) {
-                return "No ad accounts connected. Connect your Google or Meta Ads account in Marketing > Ad Accounts.";
+                return { message: "No ad accounts connected. Connect your Google or Meta Ads account in Marketing > Ad Accounts." };
             }
 
             const suggestions: string[] = [];
             let combinedSummary: any = {};
+
+            // Add seasonal context
+            const seasonalContext = getSeasonalContext();
+            if (seasonalContext) {
+                combinedSummary.seasonal = seasonalContext;
+                this.processSeasonalContext(seasonalContext, suggestions);
+            }
 
             // Process inventory suggestions first (highest priority)
             if (options?.includeInventory !== false) {
@@ -87,17 +142,26 @@ export class AdOptimizer {
                 );
             }
 
+            // Convert to prioritized format and sort
+            const prioritized = suggestions.map(s => this.inferPriority(s));
+            prioritized.sort((a, b) => a.priority - b.priority);
+
+            // Legacy format uses sorted order
+            const sortedSuggestions = prioritized.map(s => s.text);
+
             return {
-                suggestions,
+                suggestions: sortedSuggestions,
+                prioritized,
                 summary: combinedSummary,
-                action_items: suggestions.length > 1
-                    ? suggestions.slice(0, 3).map((s, i) => `${i + 1}. ${s.split(':')[0].replace(/[🔴🟢📊💰🚀📁✅🛒🔍⭐🚫⚠️📝📉📈🎨👥💵]/gu, '').trim()}`)
-                    : ['Monitor campaign performance', 'Review conversion tracking', 'Test new ad variations']
+                action_items: prioritized
+                    .filter(s => s.priority <= 2)
+                    .slice(0, 3)
+                    .map((s, i) => `${i + 1}. ${s.text.split(':')[0].replace(/[🔴🟢📊💰🚀📁✅🛒🔍⭐🚫⚠️📝📉📈🎨👥💵ℹ️📅]/gu, '').trim()}`)
             };
 
         } catch (error) {
             Logger.error('Tool Error (getAdOptimizationSuggestions)', { error });
-            return "Failed to generate optimization suggestions.";
+            return { message: "Failed to generate optimization suggestions." };
         }
     }
 
@@ -472,16 +536,55 @@ export class AdOptimizer {
         );
     }
 
+    /**
+     * Add seasonal context and tips to suggestions.
+     */
+    private static processSeasonalContext(seasonal: SeasonalContext, suggestions: string[]) {
+        if (seasonal.isPeakSeason) {
+            suggestions.unshift(
+                `📅 **${seasonal.period}**: Peak advertising season is active. ` +
+                `CPMs may be ~${seasonal.expectedCpmIncrease}% higher than normal. ${seasonal.notes}`
+            );
+        } else {
+            suggestions.push(
+                `📅 **Seasonal Note**: ${seasonal.period} period. ${seasonal.notes}`
+            );
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────
     // STANDARD CAMPAIGN ANALYSIS
     // ─────────────────────────────────────────────────────────────
 
     private static processGoogleSuggestions(analysis: any, suggestions: string[], summary: any) {
+        const seasonalContext = getSeasonalContext();
+
         if (analysis.underperformers?.length > 0) {
-            suggestions.push(
-                `🔴 **Google Ads - Underperforming Campaigns**: ${analysis.underperformers.length} campaign(s) have ROAS below 1x. ` +
-                `Consider pausing or reducing budget for: ${analysis.underperformers.map((c: any) => c.campaign).join(', ')}.`
+            // Filter out brand campaigns from underperformers
+            const nonBrandUnderperformers = analysis.underperformers.filter(
+                (c: any) => !isBrandCampaign(c.campaign)
             );
+            const brandUnderperformers = analysis.underperformers.filter(
+                (c: any) => isBrandCampaign(c.campaign)
+            );
+
+            if (nonBrandUnderperformers.length > 0) {
+                // Adjust message during peak seasons
+                const note = seasonalContext?.isPeakSeason
+                    ? ' (Note: CPMs are elevated during ' + seasonalContext.period + ')'
+                    : '';
+                suggestions.push(
+                    `🔴 **Google Ads - Underperforming Campaigns**: ${nonBrandUnderperformers.length} campaign(s) have ROAS below 1x${note}. ` +
+                    `Consider pausing or reducing budget for: ${nonBrandUnderperformers.map((c: any) => c.campaign).join(', ')}.`
+                );
+            }
+
+            if (brandUnderperformers.length > 0) {
+                suggestions.push(
+                    `ℹ️ **Google Ads - Brand Campaigns**: ${brandUnderperformers.length} brand campaign(s) have low ROAS - ` +
+                    `this is expected as brand campaigns prioritize visibility over direct returns.`
+                );
+            }
         }
         if (analysis.high_performers?.length > 0) {
             suggestions.push(
@@ -530,11 +633,31 @@ export class AdOptimizer {
     }
 
     private static processMetaSuggestions(analysis: any, suggestions: string[], summary: any) {
+        const seasonalContext = getSeasonalContext();
+
         if (analysis.underperformers?.length > 0) {
-            suggestions.push(
-                `🔴 **Meta Ads - Underperforming Campaigns**: ${analysis.underperformers.length} campaign(s) have ROAS below 1x. ` +
-                `Consider pausing or reducing budget for: ${analysis.underperformers.map((c: any) => c.campaign).join(', ')}.`
+            // Filter out brand/awareness campaigns from underperformers
+            const directResponseUnderperformers = analysis.underperformers.filter(
+                (c: any) => !isBrandCampaign(c.campaign) && getCampaignType(c.campaign) !== 'awareness'
             );
+            const brandOrAwarenessCount = analysis.underperformers.length - directResponseUnderperformers.length;
+
+            if (directResponseUnderperformers.length > 0) {
+                const note = seasonalContext?.isPeakSeason
+                    ? ' (Note: CPMs are elevated during ' + seasonalContext.period + ')'
+                    : '';
+                suggestions.push(
+                    `🔴 **Meta Ads - Underperforming Campaigns**: ${directResponseUnderperformers.length} campaign(s) have ROAS below 1x${note}. ` +
+                    `Consider pausing or reducing budget for: ${directResponseUnderperformers.map((c: any) => c.campaign).join(', ')}.`
+                );
+            }
+
+            if (brandOrAwarenessCount > 0) {
+                suggestions.push(
+                    `ℹ️ **Meta Ads - Brand/Awareness Campaigns**: ${brandOrAwarenessCount} campaign(s) have low ROAS - ` +
+                    `this is expected for brand awareness campaigns which prioritize reach over conversions.`
+                );
+            }
         }
         if (analysis.high_performers?.length > 0) {
             suggestions.push(

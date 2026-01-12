@@ -35,9 +35,81 @@ export class AIService {
         }
     }
 
-    static async generateResponse(query: string, accountId: string): Promise<AIResponse> {
+    static async generateResponse(query: string, accountId: string, context?: { path?: string }): Promise<AIResponse> {
         let contextData: any[] = [];
-        const systemPrompt = `You are OverSeek's AI Analyst, a helpful assistant for WooCommerce store owners.
+        let contextSummary = "";
+
+        // 0. Pre-fetch Context Data based on Path
+        if (context?.path) {
+            try {
+                // Order Details: /orders/123 or /orders/123/edit
+                const orderMatch = context.path.match(/\/orders\/(\d+)/) || context.path.match(/\/orders\/(\w+)/); // Support number or string id
+                if (orderMatch && orderMatch[1]) {
+                    // Check if it's "new" which isn't an ID
+                    if (orderMatch[1] !== 'new') {
+                        const orderId = orderMatch[1];
+                        // We use the tool directly to get summary
+                        // Note: In real app, might want a specific service call, but re-using tool logic is efficient here
+                        // We can't easily call OrderTools.getRecentOrders for a specific ID, let's just query Prisma briefly
+                        // Safe query for ID vs Number
+                        let whereClause: any = { accountId };
+                        if (/^\d+$/.test(orderId)) {
+                            whereClause.id = Number(orderId);
+                        } else {
+                            whereClause.number = String(orderId);
+                        }
+
+                        const order = await prisma.wooOrder.findFirst({
+                            where: whereClause,
+                            select: { number: true, status: true, total: true, currency: true, billing: true }
+                        });
+                        if (order) {
+                            contextSummary += `\n\n**CURRENTLY VIEWING:** Order #${order.number} (Status: ${order.status}, Total: ${order.currency} ${order.total}, Customer: ${order.billing?.first_name} ${order.billing?.last_name}). Answer questions relative to this order if implied (e.g., "Is THIS profitable?").`;
+                        }
+                    }
+                }
+
+                // Product Details: /inventory/product/123
+                const productMatch = context.path.match(/\/inventory\/product\/(\d+)/);
+                if (productMatch && productMatch[1]) {
+                    const pid = Number(productMatch[1]);
+                    const product = await prisma.wooProduct.findFirst({
+                        where: { accountId, wooId: pid },
+                        select: { name: true, stockStatus: true, price: true, sku: true }
+                    });
+                    if (product) {
+                        contextSummary += `\n\n**CURRENTLY VIEWING:** Product "${product.name}" (SKU: ${product.sku}, Stock: ${product.stockStatus}, Price: ${product.price}). Answer questions relative to this product.`;
+                    }
+                }
+
+                // Customer Details: /customers/123
+                const customerMatch = context.path.match(/\/customers\/(\d+)/);
+                if (customerMatch && customerMatch[1]) {
+                    const cid = Number(customerMatch[1]);
+                    const customer = await prisma.wooCustomer.findFirst({
+                        where: { accountId, wooId: cid },
+                        select: { firstName: true, email: true, totalSpent: true, ordersCount: true }
+                    });
+                    if (customer) {
+                        contextSummary += `\n\n**CURRENTLY VIEWING:** Customer ${customer.firstName} (${customer.email}) - Lifetime Spend: ${customer.totalSpent}, Orders: ${customer.ordersCount}.`;
+                    }
+                }
+
+            } catch (err) {
+                Logger.warn("Failed to inject context", { error: err });
+            }
+        }
+
+        const systemPrompt = `You are OverSeek's AI Analyst, an intelligent assistant for WooCommerce.
+
+**NEW COMPETENCIES:**
+- **Forecasting:** You can predict next week's sales.
+- **Profitability:** You can calculate real margins using COGS (Cost of Goods Sold).
+- **Live Traffic:** You can see who is actively browsing the store.
+- **Search Insights:** You can see what users are searching for.
+- **Customer Segmentation:** You can identify "Whales" (top spenders) and "At Risk" customers.
+
+${contextSummary}
 
 You have access to tools that let you query real store data. ALWAYS use tools to fetch data when answering questions about:
 

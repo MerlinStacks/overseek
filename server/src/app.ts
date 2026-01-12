@@ -201,6 +201,8 @@ async function build() {
     await fastify.register(webhookRoutes, { prefix: '/api/webhooks' });
     const adminRoutes = (await import('./routes/admin')).default;
     await fastify.register(adminRoutes, { prefix: '/api/admin' });
+    const rolesRoutes = (await import('./routes/roles')).default;
+    await fastify.register(rolesRoutes, { prefix: '/api/roles' });
     const authRoutes = (await import('./routes/auth')).default;
     await fastify.register(authRoutes, { prefix: '/api/auth' });
     const accountRoutes = (await import('./routes/account')).default;

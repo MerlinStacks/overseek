@@ -223,7 +223,7 @@ export class NodeExecutor {
                 return;
             }
 
-            const pdfUrl = await this.invoiceService.generateInvoicePdf(
+            const { relativeUrl, absolutePath } = await this.invoiceService.generateInvoicePdf(
                 enrollment.automation.accountId,
                 String(orderId),
                 config.templateId
@@ -232,10 +232,10 @@ export class NodeExecutor {
             // Update context with invoice attachment
             const newContext = {
                 ...enrollment.contextData,
-                invoicePdfUrl: pdfUrl,
+                invoicePdfUrl: relativeUrl,
                 attachments: [
                     ...(enrollment.contextData?.attachments || []),
-                    { filename: 'Invoice.pdf', path: pdfUrl }
+                    { filename: 'Invoice.pdf', path: absolutePath }
                 ]
             };
 

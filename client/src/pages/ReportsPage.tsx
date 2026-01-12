@@ -8,6 +8,7 @@ import { ReportBuilder } from '../components/ReportBuilder';
 
 import { ReportsSidebar } from '../components/analytics/ReportsSidebar';
 import { StockVelocityReport } from '../components/analytics/StockVelocityReport';
+import { ProfitabilityReport } from '../components/analytics/ProfitabilityReport';
 import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 import { ReportTemplate } from '../types/analytics';
 
@@ -42,7 +43,7 @@ export function ReportsPage() {
     const [customerGrowth, setCustomerGrowth] = useState<CustomerGrowth[]>([]);
 
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'forecast' | 'stock_velocity' | 'premade' | 'custom'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'forecast' | 'stock_velocity' | 'profitability' | 'premade' | 'custom'>('overview');
 
     // Template State
     const [templates, setTemplates] = useState<ReportTemplate[]>([]);
@@ -151,6 +152,12 @@ export function ReportsPage() {
                         Stock Velocity
                     </button>
                     <button
+                        onClick={() => setActiveTab('profitability')}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'profitability' ? 'bg-linear-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                    >
+                        Profitability
+                    </button> //
+                    <button
                         onClick={() => setActiveTab('premade')}
                         className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'premade' ? 'bg-linear-to-r from-purple-500 to-purple-600 text-white shadow-md shadow-purple-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                     >
@@ -177,7 +184,7 @@ export function ReportsPage() {
             </div>
 
             {/* Date Range Selector (for applicable tabs) */}
-            {(activeTab === 'overview' || activeTab === 'forecast' || activeTab === 'premade') && (
+            {(activeTab === 'overview' || activeTab === 'forecast' || activeTab === 'profitability' || activeTab === 'premade') && (
                 <div className="flex justify-end">
                     <div className="flex bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden">
                         <select
@@ -304,6 +311,15 @@ export function ReportsPage() {
             {
                 activeTab === 'stock_velocity' && (
                     <StockVelocityReport />
+                )
+            }
+
+            {
+                activeTab === 'profitability' && (
+                    <ProfitabilityReport
+                        startDate={getDateRange(dateOption).startDate}
+                        endDate={getDateRange(dateOption).endDate}
+                    />
                 )
             }
 

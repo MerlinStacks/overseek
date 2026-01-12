@@ -1,0 +1,27 @@
+﻿node.exe : npm warn 
+config ignoring 
+workspace config at C:
+\Users\ratte\Desktop\O
+verSeekv2\client/.npmr
+c
+At C:\Program Files\no
+dejs\npx.ps1:29 char:3
++   & $NODE_EXE 
+$NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo    
+          : 
+NotSpecified    : 
+(npm warn config.    
+..2\client/.npmrc:S   
+ tring) [], RemoteEx  
+  ception
+    + 
+FullyQualifiedErr    
+orId : NativeComman   
+ dError
+ 
+src/pages/mobile/MobileNotifications.tsx(10,5): error TS2305: Module '"lucide-react"' has no exported member 'Toggle'.
+src/pages/mobile/MobileProfile.tsx(190,80): error TS2339: Property 'role' does not exist on type 'User'.
+src/pages/mobile/MobileSettings.tsx(77,50): error TS2339: Property 'website' does not exist on type 'Account'.

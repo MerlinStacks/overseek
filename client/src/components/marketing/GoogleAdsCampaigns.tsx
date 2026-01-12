@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import {
@@ -6,6 +6,7 @@ import {
     TrendingDown,
     Loader2,
     ChevronLeft,
+    ChevronRight,
     DollarSign,
     MousePointerClick,
     Eye,
@@ -17,6 +18,7 @@ import {
     MessageCirclePlus
 } from 'lucide-react';
 import { AdContextModal } from './AdContextModal';
+import { CampaignProductsPanel } from './CampaignProductsPanel';
 
 interface CampaignInsight {
     campaignId: string;
@@ -68,6 +70,9 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(true);
     const [showContextModal, setShowContextModal] = useState(false);
+
+    // Expanded campaigns for product view
+    const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         fetchData();
@@ -348,6 +353,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b">
                             <tr>
+                                <th className="w-8"></th>
                                 {[
                                     { key: 'campaignName', label: 'Campaign' },
                                     { key: 'status', label: 'Status' },
@@ -377,53 +383,86 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                         <tbody className="divide-y divide-gray-200">
                             {sortedCampaigns.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                                    <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
                                         No campaigns found for this period
                                     </td>
                                 </tr>
-                            ) : sortedCampaigns.map(campaign => (
-                                <tr key={campaign.campaignId} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3">
-                                        <div className="font-medium text-gray-900 truncate max-w-xs" title={campaign.campaignName}>
-                                            {campaign.campaignName}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 text-xs rounded-full ${campaign.status === 'ENABLED'
-                                            ? 'bg-green-100 text-green-800'
-                                            : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                            {campaign.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 font-medium">
-                                        {formatCurrency(campaign.spend, campaign.currency)}
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                        {formatNumber(campaign.impressions)}
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                        {formatNumber(campaign.clicks)}
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                        {(campaign.ctr || 0).toFixed(2)}%
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                        {formatCurrency(campaign.cpc || 0, campaign.currency)}
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                        {(campaign.conversions || 0).toFixed(0)}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`font-medium ${(campaign.roas || 0) >= 3 ? 'text-green-600' :
-                                            (campaign.roas || 0) >= 1 ? 'text-yellow-600' :
-                                                'text-red-600'
-                                            }`}>
-                                            {(campaign.roas || 0).toFixed(2)}x
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
+                            ) : sortedCampaigns.map(campaign => {
+                                const isExpanded = expandedCampaigns.has(campaign.campaignId);
+                                return (
+                                    <React.Fragment key={campaign.campaignId}>
+                                        <tr
+                                            className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-blue-50' : ''}`}
+                                            onClick={() => {
+                                                const newExpanded = new Set(expandedCampaigns);
+                                                if (isExpanded) {
+                                                    newExpanded.delete(campaign.campaignId);
+                                                } else {
+                                                    newExpanded.add(campaign.campaignId);
+                                                }
+                                                setExpandedCampaigns(newExpanded);
+                                            }}
+                                        >
+                                            <td className="px-2 py-3 text-gray-400">
+                                                <ChevronRight
+                                                    size={16}
+                                                    className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="font-medium text-gray-900 truncate max-w-xs" title={campaign.campaignName}>
+                                                    {campaign.campaignName}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 py-1 text-xs rounded-full ${campaign.status === 'ENABLED'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : 'bg-gray-100 text-gray-600'
+                                                    }`}>
+                                                    {campaign.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 font-medium">
+                                                {formatCurrency(campaign.spend, campaign.currency)}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600">
+                                                {formatNumber(campaign.impressions)}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600">
+                                                {formatNumber(campaign.clicks)}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600">
+                                                {(campaign.ctr || 0).toFixed(2)}%
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600">
+                                                {formatCurrency(campaign.cpc || 0, campaign.currency)}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600">
+                                                {(campaign.conversions || 0).toFixed(0)}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`font-medium ${(campaign.roas || 0) >= 3 ? 'text-green-600' :
+                                                    (campaign.roas || 0) >= 1 ? 'text-yellow-600' :
+                                                        'text-red-600'
+                                                    }`}>
+                                                    {(campaign.roas || 0).toFixed(2)}x
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {isExpanded && (
+                                            <tr key={`${campaign.campaignId}-products`}>
+                                                <td colSpan={10} className="p-0">
+                                                    <CampaignProductsPanel
+                                                        adAccountId={adAccountId}
+                                                        campaignId={campaign.campaignId}
+                                                        days={days}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

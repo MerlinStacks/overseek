@@ -165,6 +165,9 @@ model Account {
   
   // Email Unsubscribes
   emailUnsubscribes   EmailUnsubscribe[]
+
+  // Roles
+  roles               AccountRole[]
 }
 
 /// Per-account SMS/Twilio configuration.
@@ -229,7 +232,28 @@ model AccountUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  roleId String?
+  maxRole AccountRole? @relation(fields: [roleId], references: [id])
+
   @@unique([userId, accountId])
+}
+
+model AccountRole {
+  id        String   @id @default(uuid())
+  accountId String
+  name      String   // e.g. "Packing & QA", "Production"
+  
+  // JSON object defining granular capabilities
+  // e.g. { "view_finance": false, "view_products": true, "edit_orders": false, "edit_order_tags": true }
+  permissions Json   @default("{}")
+
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  users     AccountUser[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
 }
 
 // --------------------------------------
@@ -425,11 +449,37 @@ model WooProduct {
   updatedAt DateTime @updatedAt
 
   boms BOM[]
+  variations ProductVariation[]
 
   usedInBOMItems     BOMItem[]           @relation("ProductAsBOMComponent")
   purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([accountId, wooId])
+}
+
+model ProductVariation {
+  id        String @id @default(uuid())
+  productId String // Link to internal WooProduct
+  wooId     Int    // ID of the variation in WooCommerce
+
+  sku         String?
+  price       Decimal? @db.Decimal(10, 2)
+  salePrice   Decimal? @db.Decimal(10, 2)
+  stockStatus String? // "instock", "outofstock"
+  
+  // Custom Fields
+  cogs        Decimal? @db.Decimal(10, 2)
+  binLocation String?
+  
+  images      Json? @default("[]") // Local overrides or cached images
+  rawData     Json? // Store full Woo response
+
+  product     WooProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, wooId])
 }
 
 // --------------------------------------

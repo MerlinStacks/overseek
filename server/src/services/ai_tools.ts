@@ -5,6 +5,7 @@ import { ProductTools } from './tools/ProductTools';
 import { CustomerTools } from './tools/CustomerTools';
 import { AdsTools } from './tools/AdsTools';
 import { WooCommerceTools } from './tools/WooCommerceTools';
+import { AnalyticsTools } from './tools/AnalyticsTools';
 import { Logger } from '../utils/logger';
 
 export interface ToolDefinition {
@@ -199,6 +200,47 @@ export class AIToolsService {
                     properties: {},
                     required: []
                 }
+            },
+
+            // ─────────────────────────────────────────────────────────
+            // Advanced Analytics (New)
+            // ─────────────────────────────────────────────────────────
+            {
+                name: "get_visitor_traffic",
+                description: "Get real-time visitor traffic. Shows who is on the site right now, their location, and what they are viewing.",
+                parameters: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_search_insights",
+                description: "Get top search terms customers are using on the site.",
+                parameters: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_profitability",
+                description: "Calculate store profitability and margins based on COGS.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        period: { type: "string", description: "Time period (e.g., 'this_month', 'last_30_days')", enum: ["this_month", "last_30_days"] }
+                    },
+                    required: ["period"]
+                }
+            },
+            {
+                name: "forecast_sales",
+                description: "Forecast sales revenue for the next 7 days based on recent trends.",
+                parameters: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "analyze_customer_segment",
+                description: "Analyze specific customer segments like 'whales' (top spenders) or 'at_risk' (churning high value).",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        segment: { type: "string", enum: ["at_risk", "whales"] }
+                    },
+                    required: ["segment"]
+                }
             }
         ];
     }
@@ -235,6 +277,7 @@ export class AIToolsService {
             case 'get_store_overview':
                 return WooCommerceTools.getStoreOverview(accountId);
 
+
             // Advertising
             case 'get_ad_performance':
                 return AdsTools.getAdPerformance(accountId, args.platform);
@@ -246,6 +289,18 @@ export class AIToolsService {
                 return AdsTools.analyzeMetaAdsCampaigns(accountId, args.days || 30);
             case 'get_ad_optimization_suggestions':
                 return AdsTools.getAdOptimizationSuggestions(accountId);
+
+            // Advanced Analytics
+            case 'get_visitor_traffic':
+                return AnalyticsTools.getVisitorTraffic(accountId);
+            case 'get_search_insights':
+                return AnalyticsTools.getSearchInsights(accountId);
+            case 'get_profitability':
+                return AnalyticsTools.getProfitability(accountId, args.period);
+            case 'forecast_sales':
+                return AnalyticsTools.forecastSales(accountId);
+            case 'analyze_customer_segment':
+                return AnalyticsTools.analyzeCustomerSegments(accountId, args.segment);
 
             default:
                 throw new Error(`Unknown tool: ${name}`);

@@ -274,4 +274,145 @@ export class AnalyticsService {
             { ttl: CacheTTL.MEDIUM, namespace: CacheNamespace.ANALYTICS }
         );
     }
+
+    /**
+     * Get Profitability Report
+     * Calculates Gross Profit based on COGS
+     */
+    static async getProfitabilityReport(accountId: string, startDate: Date, endDate: Date) {
+        // 1. Fetch Orders in range
+        const orders = await prisma.wooOrder.findMany({
+            where: {
+                accountId,
+                dateCreated: {
+                    gte: startDate,
+                    lte: endDate
+                },
+                status: {
+                    in: ['completed', 'processing'] // Only counted confirmed sales
+                }
+            },
+            select: {
+                id: true,
+                wooId: true,
+                number: true,
+                dateCreated: true,
+                rawData: true
+            }
+        });
+
+        // 2. Collect IDs to batch fetch COGS
+        const productIds = new Set<number>();
+        const variationIds = new Set<number>();
+
+        const lineItemsMap: Array<{
+            orderId: string;
+            orderNumber: string;
+            date: Date;
+            productId: number;
+            variationId: number;
+            name: string;
+            quantity: number;
+            revenue: number; // Line total (excl tax usually, or what Woo provides)
+        }> = [];
+
+        for (const order of orders) {
+            const raw = order.rawData as any;
+            if (!raw.line_items) continue;
+
+            for (const item of raw.line_items) {
+                const pid = item.product_id;
+                const vid = item.variation_id || 0;
+
+                if (pid) productIds.add(pid);
+                if (vid) variationIds.add(vid);
+
+                // Revenue: Use 'total' (line total after discounts, usually excl tax)
+                const revenue = parseFloat(item.total || '0');
+
+                lineItemsMap.push({
+                    orderId: order.id,
+                    orderNumber: order.number,
+                    date: order.dateCreated,
+                    productId: pid,
+                    variationId: vid,
+                    name: item.name,
+                    quantity: item.quantity,
+                    revenue
+                });
+            }
+        }
+
+        // 3. Batch fetch COGS
+        // Products
+        const products = await prisma.wooProduct.findMany({
+            where: { accountId, wooId: { in: Array.from(productIds) } },
+            select: { wooId: true, cogs: true, name: true, sku: true }
+        });
+        const productMap = new Map(products.map(p => [p.wooId, p]));
+
+        // Variations
+        const variations = await prisma.productVariation.findMany({
+            where: {
+                // product: { accountId }, // safe enough for now
+                wooId: { in: Array.from(variationIds) }
+            },
+            select: { wooId: true, cogs: true, sku: true }
+        });
+        const variationMap = new Map(variations.map(v => [v.wooId, v]));
+
+        // 4. Match & Calculate
+        let totalRevenue = 0;
+        let totalCost = 0;
+        const breakdown: any[] = [];
+
+        for (const line of lineItemsMap) {
+            let cogsUnit = 0;
+            let sku = '';
+
+            // Try Variation first
+            if (line.variationId && variationMap.has(line.variationId)) {
+                const v = variationMap.get(line.variationId)!;
+                cogsUnit = v.cogs ? Number(v.cogs) : 0;
+                sku = v.sku || '';
+            }
+            // Fallback to Product
+            else if (productMap.has(line.productId)) {
+                const p = productMap.get(line.productId)!;
+                if (cogsUnit === 0) {
+                    cogsUnit = p.cogs ? Number(p.cogs) : 0;
+                    if (!sku) sku = p.sku || '';
+                }
+            }
+
+            const cost = cogsUnit * line.quantity;
+            const profit = line.revenue - cost;
+            const margin = line.revenue > 0 ? (profit / line.revenue) * 100 : 0;
+
+            totalRevenue += line.revenue;
+            totalCost += cost;
+
+            breakdown.push({
+                ...line,
+                sku,
+                cogsUnit,
+                cost,
+                profit,
+                margin
+            });
+        }
+
+        const totalProfit = totalRevenue - totalCost;
+        const totalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+        return {
+            summary: {
+                revenue: totalRevenue,
+                cost: totalCost,
+                profit: totalProfit,
+                margin: totalMargin
+            },
+            breakdown: breakdown.sort((a, b) => b.date.getTime() - a.date.getTime()) // Newest first
+        };
+    }
 }

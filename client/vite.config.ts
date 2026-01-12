@@ -41,20 +41,20 @@ export default defineConfig(({ mode }) => {
             },
             proxy: {
                 '/uploads': {
-                    target: 'http://api:3000',
+                    target: env.VITE_API_URL || 'http://localhost:3000',
                     changeOrigin: true
                 },
                 '/api': {
-                    target: 'http://api:3000',
+                    target: env.VITE_API_URL || 'http://localhost:3000',
                     changeOrigin: true,
                     // rewrite: (path) => path.replace(/^\/api/, '') // Don't strip /api, server expects it
                 },
                 '/admin/queues': {
-                    target: 'http://api:3000',
+                    target: env.VITE_API_URL || 'http://localhost:3000',
                     changeOrigin: true
                 },
                 '/socket.io': {
-                    target: 'http://api:3000',
+                    target: env.VITE_API_URL || 'http://localhost:3000',
                     ws: true,
                     changeOrigin: true
                 }

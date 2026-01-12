@@ -34,7 +34,7 @@ interface AccountContextType {
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-    const { token, isLoading: authLoading, logout } = useAuth();
+    const { token, isLoading: authLoading, logout, updateUser } = useAuth();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -86,8 +86,23 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (currentAccount?.id) {
             localStorage.setItem('selectedAccountId', currentAccount.id);
+
+            // Fetch updated user permissions for this account context
+            fetch('/api/auth/me', {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            })
+                .then(res => res.ok ? res.json() : null)
+                .then(userData => {
+                    if (userData) {
+                        updateUser(userData);
+                    }
+                })
+                .catch(console.error);
         }
-    }, [currentAccount?.id]);
+    }, [currentAccount?.id, token]);
 
     useEffect(() => {
         // Don't fetch accounts until auth has finished loading

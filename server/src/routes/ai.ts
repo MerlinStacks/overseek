@@ -34,15 +34,15 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.post<{ Body: { message: string } }>('/chat', async (request, reply) => {
+    fastify.post<{ Body: { message: string, context?: any } }>('/chat', async (request, reply) => {
         try {
-            const { message } = request.body;
+            const { message, context } = request.body;
             const accountId = request.headers['x-account-id'] as string;
 
             if (!message) return reply.code(400).send({ error: 'Message required' });
             if (!accountId) return reply.code(400).send({ error: 'Account ID required header' });
 
-            const response = await AIService.generateResponse(message, accountId);
+            const response = await AIService.generateResponse(message, accountId, context);
             return response;
         } catch (error) {
             Logger.error('AI Error', { error });

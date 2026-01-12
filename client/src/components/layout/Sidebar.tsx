@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
     LayoutDashboard,
     ShoppingCart,
@@ -90,7 +91,39 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     const { currentAccount } = useAccount();
     const { user, token } = useAuth();
     const { socket } = useSocket();
+    const { hasPermission } = usePermissions(); // Permission hook
     const location = useLocation();
+
+    // Filter Navigation Items based on permissions
+    const filteredNavItems = navItems.filter(item => {
+        if (item.label === 'Commerce') {
+            const hasChild = item.children?.some(child => {
+                if (child.path === '/orders') return hasPermission('view_orders');
+                if (child.path === '/inventory') return hasPermission('view_products');
+                if (child.path === '/customers') return hasPermission('view_orders');
+                return true;
+            });
+            return hasChild;
+        }
+        if (item.label === 'Analytics') return hasPermission('view_finance');
+        if (item.label === 'Growth') return hasPermission('view_marketing');
+        return true;
+    }).map(item => {
+        if (item.children) {
+            return {
+                ...item,
+                children: item.children.filter(child => {
+                    if (child.path === '/orders') return hasPermission('view_orders');
+                    if (child.path === '/inventory') return hasPermission('view_products');
+                    if (child.path === '/customers') return hasPermission('view_orders');
+                    if (item.label === 'Analytics') return hasPermission('view_finance');
+                    if (item.label === 'Growth') return hasPermission('view_marketing');
+                    return true;
+                })
+            };
+        }
+        return item;
+    });
 
     // State for expanded groups
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -192,7 +225,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
 
     // Shared sidebar content - extracted to avoid duplication
     const sidebarContent = (
-        <>
+                            <>
             <div className="flex-col px-3 pt-4 pb-2">
                 {/* Whitelabel Logo */}
                 {logoUrl && (
@@ -218,166 +251,167 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
             </div>
 
             <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 no-scrollbar">
-                {navItems.map((item, index) => {
-                    if (item.type === 'link') {
-                        const isInbox = item.label === 'Inbox';
-                        return (
-                            <NavLink
-                                key={item.path}
-                                to={item.path!}
-                                className={({ isActive }) => cn(
-                                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
-                                    isActive
-                                        ? "bg-blue-50 text-blue-600 font-medium"
-                                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                                )}
-                            >
-                                <div className="relative">
-                                    <item.icon size={22} strokeWidth={1.5} />
-                                    {/* Notification dot for Inbox */}
-                                    {isInbox && hasUnread && (
-                                        <span className="absolute -top-1 -right-1 h-2.5 w-2.5 bg-red-500 rounded-full ring-2 ring-white" />
+                <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 no-scrollbar">
+                    {filteredNavItems.map((item, index) => {
+                        if (item.type === 'link') {
+                            const isInbox = item.label === 'Inbox';
+                            return (
+                                <NavLink
+                                    key={item.path}
+                                    to={item.path!}
+                                    className={({ isActive }) => cn(
+                                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
+                                        isActive
+                                            ? "bg-blue-50 text-blue-600 font-medium"
+                                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
                                     )}
-                                </div>
-                                {(!collapsed || isMobile) && <span>{item.label}</span>}
-                                {collapsed && !isMobile && (
-                                    <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
-                                        {item.label}
-                                        {isInbox && hasUnread && <span className="ml-1 text-red-400">•</span>}
+                                >
+                                    <div className="relative">
+                                        <item.icon size={22} strokeWidth={1.5} />
+                                        {/* Notification dot for Inbox */}
+                                        {isInbox && hasUnread && (
+                                            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 bg-red-500 rounded-full ring-2 ring-white" />
+                                        )}
                                     </div>
-                                )}
-                            </NavLink>
-                        );
-                    }
+                                    {(!collapsed || isMobile) && <span>{item.label}</span>}
+                                    {collapsed && !isMobile && (
+                                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                                            {item.label}
+                                            {isInbox && hasUnread && <span className="ml-1 text-red-400">•</span>}
+                                        </div>
+                                    )}
+                                </NavLink>
+                            );
+                        }
 
 
-                    // Group Item
-                    const isExpanded = expandedGroups.includes(item.label);
-                    const isActiveGroup = item.children?.some(child => location.pathname.startsWith(child.path));
+                        // Group Item
+                        const isExpanded = expandedGroups.includes(item.label);
+                        const isActiveGroup = item.children?.some(child => location.pathname.startsWith(child.path));
 
-                    return (
-                        <div key={item.label} className="mb-1">
-                            <button
-                                onClick={() => toggleGroup(item.label)}
-                                className={cn(
-                                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
-                                    isActiveGroup && !isExpanded
-                                        ? "bg-blue-50/50 text-blue-600"
-                                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                                )}
-                            >
-                                <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-blue-600" : "")} />
-                                {(!collapsed || isMobile) && (
-                                    <>
-                                        <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
-                                        <ChevronDown
-                                            size={16}
-                                            className={cn("transition-transform duration-200", isExpanded ? "transform rotate-180" : "")}
-                                        />
-                                    </>
-                                )}
+                        return (
+                            <div key={item.label} className="mb-1">
+                                <button
+                                    onClick={() => toggleGroup(item.label)}
+                                    className={cn(
+                                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
+                                        isActiveGroup && !isExpanded
+                                            ? "bg-blue-50/50 text-blue-600"
+                                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                                    )}
+                                >
+                                    <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-blue-600" : "")} />
+                                    {(!collapsed || isMobile) && (
+                                        <>
+                                            <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
+                                            <ChevronDown
+                                                size={16}
+                                                className={cn("transition-transform duration-200", isExpanded ? "transform rotate-180" : "")}
+                                            />
+                                        </>
+                                    )}
 
-                                {/* Collapsed Tooltip/Popover preview */}
-                                {collapsed && !isMobile && (
-                                    <div className="absolute left-full ml-2 top-0 bg-white border border-gray-200 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
-                                        <div className="font-semibold text-xs text-gray-400 mb-2 px-2 uppercase">{item.label}</div>
+                                    {/* Collapsed Tooltip/Popover preview */}
+                                    {collapsed && !isMobile && (
+                                        <div className="absolute left-full ml-2 top-0 bg-white border border-gray-200 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
+                                            <div className="font-semibold text-xs text-gray-400 mb-2 px-2 uppercase">{item.label}</div>
+                                            {item.children?.map(child => (
+                                                <div key={child.path} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600">
+                                                    <child.icon size={16} />
+                                                    <span>{child.label}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </button>
+
+                                {/* Expanded Children (Only when not collapsed or on mobile) */}
+                                {(!collapsed || isMobile) && isExpanded && (
+                                    <div className="mt-1 ml-4 border-l-2 border-gray-100 pl-2 space-y-1">
                                         {item.children?.map(child => (
-                                            <div key={child.path} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600">
-                                                <child.icon size={16} />
+                                            <NavLink
+                                                key={child.path}
+                                                to={child.path}
+                                                end
+                                                className={({ isActive }) => cn(
+                                                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm",
+                                                    isActive
+                                                        ? "bg-blue-50 text-blue-600 font-medium"
+                                                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                                                )}
+                                            >
+                                                <child.icon size={18} strokeWidth={1.5} />
                                                 <span>{child.label}</span>
-                                            </div>
+                                            </NavLink>
                                         ))}
                                     </div>
                                 )}
-                            </button>
+                            </div>
+                        );
+                    })}
 
-                            {/* Expanded Children (Only when not collapsed or on mobile) */}
-                            {(!collapsed || isMobile) && isExpanded && (
-                                <div className="mt-1 ml-4 border-l-2 border-gray-100 pl-2 space-y-1">
-                                    {item.children?.map(child => (
-                                        <NavLink
-                                            key={child.path}
-                                            to={child.path}
-                                            end
-                                            className={({ isActive }) => cn(
-                                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm",
-                                                isActive
-                                                    ? "bg-blue-50 text-blue-600 font-medium"
-                                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                                            )}
-                                        >
-                                            <child.icon size={18} strokeWidth={1.5} />
-                                            <span>{child.label}</span>
-                                        </NavLink>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
+                    {user?.isSuperAdmin && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                            <NavLink
+                                to="/admin"
+                                className={({ isActive }) => cn(
+                                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
+                                    isActive
+                                        ? "bg-slate-800 text-white font-medium"
+                                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                )}
+                            >
+                                <ShieldAlert size={22} strokeWidth={1.5} />
+                                {(!collapsed || isMobile) && <span>Super Admin</span>}
 
-                {user?.isSuperAdmin && (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                        <NavLink
-                            to="/admin"
-                            className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
-                                isActive
-                                    ? "bg-slate-800 text-white font-medium"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                            )}
-                        >
-                            <ShieldAlert size={22} strokeWidth={1.5} />
-                            {(!collapsed || isMobile) && <span>Super Admin</span>}
-
-                            {collapsed && !isMobile && (
-                                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
-                                    Super Admin
-                                </div>
-                            )}
-                        </NavLink>
-                    </div>
-                )}
-            </div>
-
-            <div className="mt-auto px-3 pb-3 space-y-2">
-                {/* Settings Link (Pinned Bottom) */}
-                <NavLink
-                    to="/settings"
-                    className={({ isActive }) => cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative mb-2",
-                        isActive
-                            ? "bg-blue-50 text-blue-600 font-medium"
-                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                    )}
-                >
-                    <Settings size={22} strokeWidth={1.5} />
-                    {(!collapsed || isMobile) && <span>Settings</span>}
-                    {collapsed && !isMobile && (
-                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
-                            Settings
+                                {collapsed && !isMobile && (
+                                    <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                                        Super Admin
+                                    </div>
+                                )}
+                            </NavLink>
                         </div>
                     )}
-                </NavLink>
+                </div>
 
-                <SidebarSyncStatus collapsed={collapsed && !isMobile} />
-
-                {/* Collapse button (desktop only) */}
-                {!isMobile && (
-                    <button
-                        onClick={() => setCollapsed(!collapsed)}
-                        className="w-full flex items-center justify-center gap-2 p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-lg transition-colors text-sm"
+                <div className="mt-auto px-3 pb-3 space-y-2">
+                    {/* Settings Link (Pinned Bottom) */}
+                    <NavLink
+                        to="/settings"
+                        className={({ isActive }) => cn(
+                            "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative mb-2",
+                            isActive
+                                ? "bg-blue-50 text-blue-600 font-medium"
+                                : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                        )}
                     >
-                        {collapsed ? <ChevronRight size={18} /> : <><ChevronLeft size={18} /><span>Collapse</span></>}
-                    </button>
-                )}
-            </div>
-        </>
-    );
+                        <Settings size={22} strokeWidth={1.5} />
+                        {(!collapsed || isMobile) && <span>Settings</span>}
+                        {collapsed && !isMobile && (
+                            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                                Settings
+                            </div>
+                        )}
+                    </NavLink>
 
-    // Mobile: render as fixed overlay drawer
-    if (isMobile) {
-        return (
+                    <SidebarSyncStatus collapsed={collapsed && !isMobile} />
+
+                    {/* Collapse button (desktop only) */}
+                    {!isMobile && (
+                        <button
+                            onClick={() => setCollapsed(!collapsed)}
+                            className="w-full flex items-center justify-center gap-2 p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-lg transition-colors text-sm"
+                        >
+                            {collapsed ? <ChevronRight size={18} /> : <><ChevronLeft size={18} /><span>Collapse</span></>}
+                        </button>
+                    )}
+                </div>
+            </>
+            );
+
+            // Mobile: render as fixed overlay drawer
+            if (isMobile) {
+                            return (
             <>
                 {/* Backdrop */}
                 {isOpen && (
@@ -402,19 +436,19 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                     {sidebarContent}
                 </aside>
             </>
-        );
-    }
+            );
+                        }
 
-    // Desktop: render as sticky sidebar (CSS hides on mobile via hidden lg:flex)
-    return (
-        <aside
-            className={cn(
-                "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex-col z-50",
-                "hidden lg:flex", // Critical: CSS-hide on mobile
-                collapsed ? "w-20" : "w-64"
-            )}
-        >
-            {sidebarContent}
-        </aside>
-    );
-}
+            // Desktop: render as sticky sidebar (CSS hides on mobile via hidden lg:flex)
+            return (
+            <aside
+                className={cn(
+                    "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex-col z-50",
+                    "hidden lg:flex", // Critical: CSS-hide on mobile
+                    collapsed ? "w-20" : "w-64"
+                )}
+            >
+                {sidebarContent}
+            </aside>
+            );
+                    }

@@ -142,6 +142,9 @@ export class PicklistService {
                             }
                         }
                     }
+                },
+                variations: {
+                    where: { wooId: variationId !== 0 ? variationId : undefined }
                 }
             }
         });
@@ -209,12 +212,23 @@ export class PicklistService {
         } else {
             // No BOM, it's a leaf product.
             const raw = product.rawData as any;
+
+            // Resolve Variation Logic
+            let finalBinLocation = product.binLocation;
+            // If we have a variation ID and we fetched variations, check if we have a match
+            if (variationId !== 0 && product.variations && product.variations.length > 0) {
+                const variant = product.variations[0]; // We filtered by wooId in the query
+                if (variant.binLocation) {
+                    finalBinLocation = variant.binLocation;
+                }
+            }
+
             callback({
-                productId: product.wooId,
-                sku: product.sku || '',
+                productId: variationId !== 0 ? variationId : product.wooId,
+                sku: (variationId !== 0 && product.variations?.[0]?.sku) ? product.variations[0].sku! : (product.sku || ''),
                 name: product.name,
                 quantity,
-                binLocation: product.binLocation,
+                binLocation: finalBinLocation,
                 stockStatus: product.stockStatus,
                 image: product.images ? (product.images as any)[0] : null,
                 manageStock: raw?.manage_stock === true

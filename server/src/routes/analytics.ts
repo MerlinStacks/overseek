@@ -114,6 +114,15 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (e) { Logger.error('Forecast Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
+    fastify.get('/profitability', async (request, reply) => {
+        try {
+            const query = request.query as { startDate?: string; endDate?: string };
+            const startDate = query.startDate ? new Date(query.startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const endDate = query.endDate ? new Date(query.endDate) : new Date();
+            return await AnalyticsService.getProfitabilityReport(request.accountId!, startDate, endDate);
+        } catch (e) { Logger.error('Profitability Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+    });
+
     fastify.post('/custom-report', async (request, reply) => {
         try { return await SalesAnalytics.getCustomReport(request.accountId!, request.body as any); }
         catch (e) { Logger.error('Custom Report Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }

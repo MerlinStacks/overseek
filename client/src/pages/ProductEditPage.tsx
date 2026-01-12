@@ -119,7 +119,7 @@ export function ProductEditPage() {
         images: [] as any[]
     });
 
-    const [variants, setVariants] = useState<ProductVariant[]>([]);
+    const [variants, setVariants] = useState<any[]>([]); // Changed to any for flexibility with new fields
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [isLoadingVariants, setIsLoadingVariants] = useState(false);
     const [mainImageFailed, setMainImageFailed] = useState(false);
@@ -171,9 +171,15 @@ export function ProductEditPage() {
                 images: data.images || []
             });
 
-            // Load variants if variable
-            if (data.type === 'variable' && data.variations?.length) {
-                fetchVariants(data.variations);
+            // Load variants if present
+            if (data.variations && data.variations.length > 0) {
+                // Check if it's full objects or just IDs
+                if (typeof data.variations[0] === 'object') {
+                    setVariants(data.variations);
+                } else {
+                    // Fallback dummy (shouldn't happen with new backend)
+                    fetchVariants(data.variations);
+                }
             }
         } catch (error) {
             console.error('Failed to load product', error);
@@ -192,6 +198,7 @@ export function ProductEditPage() {
         }
     };
 
+    // Simplified fallback if needed, but backend request now returns full objects
     const fetchVariants = async (variantIds: number[]) => {
         setIsLoadingVariants(true);
         try {
@@ -228,7 +235,12 @@ export function ProductEditPage() {
                 description: formData.description,
                 cogs: formData.cogs,
                 supplierId: formData.supplierId,
+                supplierId: formData.supplierId,
                 images: formData.images,
+                supplierId: formData.supplierId,
+                images: formData.images,
+                variations: variants, // Include variations in save
+                focusKeyword: formData.focusKeyword
             }, token, currentAccount.id);
 
             fetchProduct(); // Reload
@@ -379,7 +391,7 @@ export function ProductEditPage() {
                     <VariationsPanel
                         product={product}
                         variants={variants}
-                        onManage={() => window.open(`${currentAccount?.wooUrl}/wp-admin/post.php?post=${product.wooId}&action=edit`, '_blank')}
+                        onUpdate={(updated) => setVariants(updated)}
                     />
                 </div>
             )

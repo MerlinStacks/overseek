@@ -192,7 +192,17 @@ export class IndexingService {
                 images: { type: 'nested', properties: { src: { type: 'keyword' } } },
                 categories: { type: 'nested', properties: { name: { type: 'keyword' } } },
                 seoScore: { type: 'integer' },
-                merchantCenterScore: { type: 'integer' }
+                merchantCenterScore: { type: 'integer' },
+                variations: {
+                    type: 'nested',
+                    properties: {
+                        id: { type: 'integer' },
+                        stock_status: { type: 'keyword' },
+                        stock_quantity: { type: 'integer' },
+                        price: { type: 'float' },
+                        sku: { type: 'keyword' }
+                    }
+                }
             }
         });
 
@@ -213,7 +223,14 @@ export class IndexingService {
                 images: product.images?.map((img: any) => ({ src: img.src })) || [],
                 categories: product.categories?.map((cat: any) => ({ name: cat.name })) || [],
                 seoScore: product.seoScore || 0,
-                merchantCenterScore: product.merchantCenterScore || 0
+                merchantCenterScore: product.merchantCenterScore || 0,
+                variations: product.variations?.map((v: any) => ({
+                    id: v.id,
+                    stock_status: v.stock_status,
+                    stock_quantity: v.stock_quantity ?? v.manage_stock ? (v.stock_quantity ?? 0) : null,
+                    price: parseFloat(v.price || '0'),
+                    sku: v.sku
+                })) || []
             },
             refresh: true
         });

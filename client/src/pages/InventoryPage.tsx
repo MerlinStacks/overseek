@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Package, Loader2, Layers, Truck, Calculator } from 'lucide-react';
+import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box } from 'lucide-react';
 import { SuppliersList } from '../components/inventory/SuppliersList';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
@@ -30,7 +30,16 @@ interface Product {
     merchantCenterScore?: number;
     seoData?: any;
     merchantCenterIssues?: any;
+    variations?: Array<{
+        id: number;
+        stock_quantity: number | null;
+        stock_status: string;
+        price: string;
+        sku: string;
+    }>;
 }
+
+import { ProductService } from '../services/ProductService';
 
 export function InventoryPage() {
     const navigate = useNavigate();
@@ -41,6 +50,7 @@ export function InventoryPage() {
     // Catalog State
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCreating, setIsCreating] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
@@ -98,6 +108,23 @@ export function InventoryPage() {
         }
     }
 
+    async function handleCreateProduct() {
+        if (!currentAccount || !token) return;
+        const name = prompt('Enter new product name:');
+        if (!name) return;
+
+        setIsCreating(true);
+        try {
+            const newProduct = await ProductService.createProduct({ name }, token, currentAccount.id);
+            navigate(`/inventory/product/${newProduct.id}`);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to create product');
+        } finally {
+            setIsCreating(false);
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-end border-b pb-4">
@@ -107,6 +134,14 @@ export function InventoryPage() {
                 </div>
 
                 <div className="flex gap-4">
+                    <button
+                        onClick={handleCreateProduct}
+                        disabled={isCreating}
+                        className="flex items-center gap-2 pb-2 -mb-4 px-2 font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                    >
+                        {isCreating ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                        New Product
+                    </button>
                     <button
                         onClick={() => setActiveTab('catalog')}
                         className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'catalog' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
@@ -183,22 +218,50 @@ export function InventoryPage() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 font-medium text-gray-900">{product.name}</td>
+                                                <td className="px-6 py-4 font-medium text-gray-900">
+                                                    <Link to={`/inventory/product/${product.id}`} className="hover:text-blue-600 transition-colors">
+                                                        {product.name}
+                                                    </Link>
+                                                </td>
                                                 <td className="px-6 py-4 text-sm font-mono text-gray-500">{product.sku || '-'}</td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-col gap-1">
-                                                        {product.stock_quantity !== undefined && product.stock_quantity !== null && (
-                                                            <span className={`text-lg font-bold ${product.stock_quantity === 0 ? 'text-red-600' :
-                                                                    (product.low_stock_amount && product.stock_quantity <= product.low_stock_amount) ? 'text-amber-600' :
-                                                                        'text-gray-900'
-                                                                }`}>
-                                                                {product.stock_quantity}
-                                                            </span>
+                                                        {product.variations && product.variations.length > 0 ? (
+                                                            // Variable Product Stock Logic
+                                                            (() => {
+                                                                const totalStock = product.variations.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
+                                                                const breakdown = product.variations.map(v => v.stock_quantity || 0).join(', ');
+                                                                return (
+                                                                    <div className="flex flex-col">
+                                                                        <span className={`text-lg font-bold text-gray-900`}>
+                                                                            {totalStock}
+                                                                        </span>
+                                                                        <span className="text-xs text-gray-500 font-mono">
+                                                                            ({breakdown})
+                                                                        </span>
+                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 mt-1 w-fit">
+                                                                            Variable
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })()
+                                                        ) : (
+                                                            // Simple Product Logic
+                                                            <>
+                                                                {product.stock_quantity !== undefined && product.stock_quantity !== null && (
+                                                                    <span className={`text-lg font-bold ${product.stock_quantity === 0 ? 'text-red-600' :
+                                                                        (product.low_stock_amount && product.stock_quantity <= product.low_stock_amount) ? 'text-amber-600' :
+                                                                            'text-gray-900'
+                                                                        }`}>
+                                                                        {product.stock_quantity}
+                                                                    </span>
+                                                                )}
+                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize w-fit
+                                                                ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                    {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
+                                                                </span>
+                                                            </>
                                                         )}
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize
-                                                        ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                            {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
-                                                        </span>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm font-medium text-gray-900">

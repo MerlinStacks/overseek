@@ -9,6 +9,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { SecurityService } from '../services/SecurityService';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { PermissionService } from '../services/PermissionService';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
@@ -148,7 +149,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             });
             if (!user) return reply.code(404).send({ error: 'User not found' });
             const { passwordHash, ...safeUser } = user;
-            return safeUser;
+
+            // If valid account context, resolve permissions
+            const accountId = request.accountId;
+            let permissions = {};
+            if (accountId) {
+                permissions = await PermissionService.resolvePermissions(userId, accountId);
+            }
+
+            return { ...safeUser, permissions };
         } catch (error) {
             return reply.code(500).send({ error: 'Internal server error' });
         }

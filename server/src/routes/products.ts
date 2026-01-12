@@ -42,7 +42,12 @@ const updateProductBodySchema = z.object({
     short_description: z.string().optional(),
     cogs: z.number().optional(),
     supplierId: z.string().optional(),
-    images: z.array(z.any()).optional()
+    images: z.array(z.any()).optional(),
+    focusKeyword: z.string().optional()
+});
+
+const createProductBodySchema = z.object({
+    name: z.string().min(1)
 });
 
 const rewriteDescriptionBodySchema = z.object({
@@ -66,6 +71,31 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch products' });
+        }
+    });
+    // POST / - Create product
+    fastify.post('/', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const body = createProductBodySchema.parse(request.body);
+
+            const product = await ProductsService.createProduct(accountId, body);
+
+            // Initial Index
+            try {
+                // Fetch full structure for indexing
+                const fullProduct = await ProductsService.getProductByWooId(accountId, product.wooId);
+                if (fullProduct) {
+                    await IndexingService.indexProduct(accountId, fullProduct);
+                }
+            } catch (err) {
+                Logger.warn("Failed to index new product", { error: err });
+            }
+
+            return product;
+        } catch (error: any) {
+            Logger.error('Error creating product', { error });
+            return reply.code(500).send({ error: 'Failed to create product' });
         }
     });
 
@@ -174,13 +204,56 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
-            const { binLocation, name, stockStatus, isGoldPriceApplied, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images } = updateProductBodySchema.parse(request.body);
+            const { binLocation, name, stockStatus, isGoldPriceApplied, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword } = updateProductBodySchema.parse(request.body);
 
-            const product = await ProductsService.updateProduct(accountId, wooId, {
+            let product = await ProductsService.updateProduct(accountId, wooId, {
                 binLocation, name, stockStatus, isGoldPriceApplied,
                 sku, price, salePrice, weight, length, width, height, description, short_description,
                 cogs, supplierId, images
             });
+
+            // Recalculate SEO if needed
+            // We use the updated product data plus the focus keyword from body (or existing)
+            // Ideally we need to fetch the fresh product to get everything
+            const freshProduct = await ProductsService.getProductByWooId(accountId, wooId);
+
+            if (freshProduct) {
+                // If focusKeyword is passed, we might want to save it somewhere? 
+                // Currently it seems to be in seoData json blob in prisma.
+                // We should update that first if it changed.
+
+                const currentSeoData = (product.seoData as any) || {};
+                const kw = focusKeyword !== undefined ? focusKeyword : (currentSeoData.focusKeyword || '');
+
+                const seoResult = SeoScoringService.calculateScore(freshProduct, kw);
+                const mcResult = MerchantCenterService.validateCompliance(freshProduct);
+
+                // Update scores in DB
+                await prisma.wooProduct.update({
+                    where: { id: product.id },
+                    data: {
+                        seoScore: seoResult.score,
+                        seoData: { ...currentSeoData, focusKeyword: kw, analysis: seoResult.tests },
+                        merchantCenterScore: mcResult.score,
+                        merchantCenterIssues: mcResult.issues as any
+                    }
+                });
+
+                // Re-fetch to return with new scores
+                product = (await ProductsService.getProductByWooId(accountId, wooId))!;
+
+                // Re-index
+                try {
+                    await IndexingService.indexProduct(accountId, {
+                        ...product,
+                        seoScore: seoResult.score,
+                        merchantCenterScore: mcResult.score
+                    });
+                } catch (err) {
+                    Logger.warn("Failed to re-index product after update", { error: err });
+                }
+            }
+
             return product;
         } catch (error: any) {
             Logger.error('Error', { error });
@@ -288,13 +361,20 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { promptId: 'product_description' }
             });
 
-            if (!promptConfig?.content) {
-                return reply.code(400).send({
-                    error: 'Product description AI prompt not configured. Contact your administrator.'
-                });
-            }
 
-            let prompt = promptConfig.content
+            const defaultPrompt = `Rewrite the following product description to be more engaging, SEO-friendly, and persuasive. 
+            Product Name: {{product_name}}
+            Current Categories: {{category}}
+            Short Description: {{short_description}}
+            
+            Current Description:
+            {{current_description}}
+            
+            Return ONLY the rewritten description in Markdown format. Do not include any conversational preamble.`;
+
+            let promptContent = promptConfig?.content || defaultPrompt;
+
+            let prompt = promptContent
                 .replace(/\{\{product_name\}\}/g, productName || '')
                 .replace(/\{\{current_description\}\}/g, currentDescription || '')
                 .replace(/\{\{short_description\}\}/g, shortDescription || '')

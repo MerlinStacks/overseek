@@ -2,6 +2,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { formatDate } from '../utils/format';
 import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
@@ -15,6 +16,11 @@ export function OrderDetailPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
+
+    if (!hasPermission('view_orders') && !isLoading) {
+        return <div className="p-10 text-center text-red-500">Access Denied</div>;
+    }
 
     const [order, setOrder] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);

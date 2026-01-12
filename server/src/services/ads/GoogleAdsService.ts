@@ -223,6 +223,15 @@ export class GoogleAdsService {
         }
     }
 
+    /**
+     * Fetch products for a specific campaign.
+     * Filters shopping products by campaign ID.
+     */
+    static async getCampaignProducts(adAccountId: string, campaignId: string, days: number = 30): Promise<ShoppingProductInsight[]> {
+        const allProducts = await this.getShoppingProducts(adAccountId, days, 500);
+        return allProducts.filter(p => p.campaignId === campaignId);
+    }
+
     // Delegated auth methods for backward compatibility
     static exchangeCode = GoogleAdsAuth.exchangeCode;
     static getAuthUrl = GoogleAdsAuth.getAuthUrl;

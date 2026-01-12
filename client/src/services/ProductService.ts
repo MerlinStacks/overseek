@@ -9,6 +9,10 @@ export const ProductService = {
         return api.patch<any>(`/api/products/${id}`, data, token, accountId);
     },
 
+    createProduct: async (data: any, token: string, accountId: string): Promise<any> => {
+        return api.post<any>('/api/products', data, token, accountId);
+    },
+
     syncProduct: async (id: string, token: string, accountId: string): Promise<any> => {
         return api.post<any>(`/api/products/${id}/sync`, {}, token, accountId);
     }

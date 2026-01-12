@@ -249,6 +249,33 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // GET /api/ads/:adAccountId/campaigns/:campaignId/products - Fetch products for a specific campaign
+    fastify.get<{ Params: { adAccountId: string; campaignId: string } }>('/:adAccountId/campaigns/:campaignId/products', async (request, reply) => {
+        try {
+            const { adAccountId, campaignId } = request.params;
+            const { days } = request.query as { days?: string };
+            const daysNum = parseInt(days || '30');
+            const accountId = request.accountId!;
+
+            const accounts = await AdsService.getAdAccounts(accountId);
+            const adAccount = accounts.find(a => a.id === adAccountId);
+
+            if (!adAccount) {
+                return reply.code(404).send({ error: 'Ad account not found' });
+            }
+
+            if (adAccount.platform !== 'GOOGLE') {
+                return reply.code(400).send({ error: 'Campaign products are only available for Google Ads accounts' });
+            }
+
+            const products = await AdsService.getGoogleCampaignProducts(adAccountId, campaignId, daysNum);
+            return products;
+        } catch (error: any) {
+            Logger.error('Failed to fetch campaign products', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
     // GET /api/ads/:adAccountId/analysis
     fastify.get<{ Params: { adAccountId: string } }>('/:adAccountId/analysis', async (request, reply) => {
         try {

@@ -89,7 +89,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
     };
 
     const handleNavigate = () => {
-        navigate('/marketing?tab=ads');
+        navigate('/marketing/ai');
     };
 
     // Loading state

@@ -86,10 +86,9 @@ export class InvoiceService {
 
     /**
      * Generates a PDF for an order based on a template.
-     * Creates an HTML file that can be converted to PDF or served directly.
-     * For full PDF generation, install pdfkit: npm install pdfkit @types/pdfkit
+     * Uses pdfkit to generate a professional PDF invoice.
      */
-    async generateInvoicePdf(accountId: string, orderId: string, templateId: string): Promise<string> {
+    async generateInvoicePdf(accountId: string, orderId: string, templateId: string): Promise<{ relativeUrl: string, absolutePath: string }> {
         // 1. Fetch Order Data with raw JSON
         const order = await prisma.wooOrder.findUnique({
             where: { id: orderId }
@@ -111,131 +110,130 @@ export class InvoiceService {
         const billing = rawData.billing || {};
         const lineItems = rawData.line_items || [];
 
-        // 4. Generate HTML invoice
-        const html = this.generateInvoiceHtml(order, billing, lineItems, template);
-
-        // 5. Save as HTML file (can be printed to PDF by browser or converted)
-        const fileName = `invoice-${order.number}-${Date.now()}.html`;
+        // 4. Generate PDF invoice
+        const fileName = `invoice-${order.number}-${Date.now()}.pdf`;
         const filePath = path.join(INVOICE_DIR, fileName);
-        fs.writeFileSync(filePath, html, 'utf-8');
 
-        Logger.info(`Invoice HTML saved`, { filePath });
+        await this.createPdf(filePath, order, billing, lineItems, template);
 
-        // Return relative URL to the file
-        return `/uploads/invoices/${fileName}`;
+        Logger.info(`Invoice PDF saved`, { filePath });
+
+        // Return relative URL and absolute path
+        return {
+            relativeUrl: `/uploads/invoices/${fileName}`,
+            absolutePath: filePath
+        };
     }
 
     /**
-     * Generate HTML invoice from order data and template
+     * Create PDF file using PDFKit
      */
-    private generateInvoiceHtml(order: any, billing: any, lineItems: any[], template: any): string {
-        const formatCurrency = (val: any) => `$${parseFloat(val || 0).toFixed(2)}`;
-        const formatDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    private createPdf(filePath: string, order: any, billing: any, lineItems: any[], template: any): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const PDFDocument = require('pdfkit');
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+            const stream = fs.createWriteStream(filePath);
 
-        const itemRows = lineItems.map((item: any) => `
-            <tr>
-                <td>${item.name || 'Product'}</td>
-                <td style="text-align: center;">${item.quantity || 1}</td>
-                <td style="text-align: right;">${formatCurrency(item.price)}</td>
-                <td style="text-align: right;">${formatCurrency(item.total)}</td>
-            </tr>
-        `).join('');
+            doc.pipe(stream);
 
-        return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Invoice #${order.number}</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; color: #333; }
-        .invoice-header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-        .invoice-title { font-size: 28px; font-weight: bold; color: #1a1a1a; }
-        .invoice-number { color: #666; margin-top: 5px; }
-        .company-info { text-align: right; }
-        .section { margin-bottom: 30px; }
-        .section-title { font-size: 14px; color: #666; text-transform: uppercase; margin-bottom: 10px; }
-        .bill-to { background: #f8f9fa; padding: 20px; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #f0f0f0; padding: 12px; text-align: left; font-weight: 600; }
-        td { padding: 12px; border-bottom: 1px solid #eee; }
-        .totals { margin-top: 20px; text-align: right; }
-        .totals-row { display: flex; justify-content: flex-end; gap: 40px; padding: 8px 0; }
-        .totals-label { color: #666; }
-        .totals-value { font-weight: 600; min-width: 100px; }
-        .grand-total { font-size: 20px; border-top: 2px solid #333; padding-top: 15px; margin-top: 10px; }
-        .footer { margin-top: 60px; text-align: center; color: #999; font-size: 12px; }
-        @media print { body { padding: 20px; } }
-    </style>
-</head>
-<body>
-    <div class="invoice-header">
-        <div>
-            <div class="invoice-title">INVOICE</div>
-            <div class="invoice-number">#${order.number}</div>
-            <div style="margin-top: 10px; color: #666;">Date: ${formatDate(order.createdAt)}</div>
-        </div>
-        <div class="company-info">
-            <div style="font-weight: bold; font-size: 18px;">${template.name || 'Your Company'}</div>
-        </div>
-    </div>
+            // Helpers
+            const formatCurrency = (val: any) => `$${parseFloat(val || 0).toFixed(2)}`;
+            const formatDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    <div class="section">
-        <div class="section-title">Bill To</div>
-        <div class="bill-to">
-            <div style="font-weight: 600;">${billing.first_name || ''} ${billing.last_name || ''}</div>
-            <div>${billing.address_1 || ''}</div>
-            ${billing.address_2 ? `<div>${billing.address_2}</div>` : ''}
-            <div>${billing.city || ''}, ${billing.state || ''} ${billing.postcode || ''}</div>
-            <div>${billing.country || ''}</div>
-            <div style="margin-top: 10px;">${billing.email || ''}</div>
-        </div>
-    </div>
+            // --- Header ---
+            doc.fontSize(20).text('INVOICE', { align: 'right' });
+            doc.fontSize(10).text(`#${order.number}`, { align: 'right' });
+            doc.text(`Date: ${formatDate(order.createdAt)}`, { align: 'right' });
+            doc.moveDown();
 
-    <div class="section">
-        <div class="section-title">Order Items</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Item</th>
-                    <th style="text-align: center;">Qty</th>
-                    <th style="text-align: right;">Price</th>
-                    <th style="text-align: right;">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${itemRows}
-            </tbody>
-        </table>
-    </div>
+            // Company Name
+            doc.fontSize(16).text(template.name || 'Your Company', 50, 50);
+            doc.moveDown();
 
-    <div class="totals">
-        <div class="totals-row">
-            <span class="totals-label">Subtotal:</span>
-            <span class="totals-value">${formatCurrency(order.subtotal)}</span>
-        </div>
-        <div class="totals-row">
-            <span class="totals-label">Shipping:</span>
-            <span class="totals-value">${formatCurrency(order.shippingTotal)}</span>
-        </div>
-        <div class="totals-row">
-            <span class="totals-label">Tax:</span>
-            <span class="totals-value">${formatCurrency(order.taxTotal)}</span>
-        </div>
-        <div class="totals-row grand-total">
-            <span class="totals-label">Total:</span>
-            <span class="totals-value">${formatCurrency(order.total)}</span>
-        </div>
-    </div>
+            // --- Bill To ---
+            const startY = 150;
+            doc.fontSize(12).text('Bill To:', 50, startY);
+            doc.fontSize(10)
+                .text(`${billing.first_name || ''} ${billing.last_name || ''}`, 50, startY + 20)
+                .text(billing.address_1 || '', 50, startY + 35)
+                .text(billing.address_2 || '', 50, startY + 50)
+                .text(`${billing.city || ''}, ${billing.state || ''} ${billing.postcode || ''}`, 50, startY + 65)
+                .text(billing.country || '', 50, startY + 80)
+                .text(billing.email || '', 50, startY + 95);
 
-    <div class="footer">
-        <p>Thank you for your business!</p>
-        <p>Generated by Overseek</p>
-    </div>
-</body>
-</html>
-        `.trim();
+            // --- Items Table Header ---
+            const tableTop = 300;
+            const itemX = 50;
+            const qtyX = 300;
+            const priceX = 370;
+            const totalX = 450;
+
+            doc.fontSize(10).font('Helvetica-Bold');
+            doc.text('Item', itemX, tableTop);
+            doc.text('Qty', qtyX, tableTop);
+            doc.text('Price', priceX, tableTop, { width: 70, align: 'right' });
+            doc.text('Total', totalX, tableTop, { width: 70, align: 'right' });
+
+            doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+
+            // --- Items ---
+            let y = tableTop + 25;
+            doc.font('Helvetica');
+
+            lineItems.forEach((item: any) => {
+                const name = item.name || 'Product';
+                const qty = item.quantity || 1;
+                const price = formatCurrency(item.price);
+                const total = formatCurrency(item.total);
+
+                // Check for page break
+                if (y > 700) {
+                    doc.addPage();
+                    y = 50;
+                }
+
+                doc.text(name, itemX, y, { width: 240 });
+                doc.text(String(qty), qtyX, y);
+                doc.text(price, priceX, y, { width: 70, align: 'right' });
+                doc.text(total, totalX, y, { width: 70, align: 'right' });
+
+                y += 20;
+            });
+
+            doc.moveTo(50, y + 10).lineTo(550, y + 10).stroke();
+
+            // --- Totals ---
+            y += 20;
+            const totalLabelX = 350;
+            const totalValueX = 450;
+
+            doc.font('Helvetica-Bold');
+
+            doc.text('Subtotal:', totalLabelX, y, { width: 90, align: 'right' });
+            doc.text(formatCurrency(order.subtotal), totalValueX, y, { width: 70, align: 'right' });
+            y += 20;
+
+            doc.text('Shipping:', totalLabelX, y, { width: 90, align: 'right' });
+            doc.text(formatCurrency(order.shippingTotal), totalValueX, y, { width: 70, align: 'right' });
+            y += 20;
+
+            doc.text('Tax:', totalLabelX, y, { width: 90, align: 'right' });
+            doc.text(formatCurrency(order.taxTotal), totalValueX, y, { width: 70, align: 'right' });
+            y += 25;
+
+            doc.fontSize(12);
+            doc.text('Total:', totalLabelX, y, { width: 90, align: 'right' });
+            doc.text(formatCurrency(order.total), totalValueX, y, { width: 70, align: 'right' });
+
+            // --- Footer ---
+            const bottom = doc.page.height - 50;
+            doc.fontSize(10).text('Thank you for your business!', 50, bottom, { align: 'center', width: 500 });
+
+            doc.end();
+
+            stream.on('finish', resolve);
+            stream.on('error', reject);
+        });
     }
 }
 

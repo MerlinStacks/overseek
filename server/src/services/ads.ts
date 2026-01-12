@@ -62,6 +62,9 @@ export class AdsService {
     /** @see GoogleAdsService.getShoppingProducts */
     static getGoogleShoppingProducts = GoogleAdsService.getShoppingProducts;
 
+    /** @see GoogleAdsService.getCampaignProducts */
+    static getGoogleCampaignProducts = GoogleAdsService.getCampaignProducts;
+
     // ──────────────────────────────────────────────────────────────
     // COMMON ACCOUNT MANAGEMENT
     // ──────────────────────────────────────────────────────────────
