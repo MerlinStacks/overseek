@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Search,
-    ChevronRight,
     Package,
     Truck,
     CheckCircle,
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { SwipeableRow } from '../../components/ui/SwipeableRow';
 
 interface Order {
     id: string;
@@ -24,10 +24,10 @@ interface Order {
     itemCount: number;
 }
 
-const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; label: string }> = {
-    pending: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', label: 'Pending' },
-    processing: { icon: Package, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Processing' },
-    shipped: { icon: Truck, color: 'text-purple-600', bg: 'bg-purple-100', label: 'Shipped' },
+const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; label: string; next?: string }> = {
+    pending: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', label: 'Pending', next: 'processing' },
+    processing: { icon: Package, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Processing', next: 'shipped' },
+    shipped: { icon: Truck, color: 'text-purple-600', bg: 'bg-purple-100', label: 'Shipped', next: 'completed' },
     delivered: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100', label: 'Delivered' },
     completed: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100', label: 'Completed' },
     cancelled: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-100', label: 'Cancelled' },
@@ -49,6 +49,10 @@ export function MobileOrders() {
 
     useEffect(() => {
         fetchOrders(true);
+        // Listen for refresh events from pull-to-refresh
+        const handleRefresh = () => fetchOrders(true);
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [currentAccount, activeFilter, token]);
 
     const fetchOrders = async (reset = false) => {
@@ -136,6 +140,31 @@ export function MobileOrders() {
         return STATUS_CONFIG[status.toLowerCase()] || STATUS_CONFIG.pending;
     };
 
+    const advanceStatus = async (orderId: string, currentStatus: string) => {
+        const config = getStatusConfig(currentStatus);
+        if (!config.next) return; // No next status available
+
+        // Optimistically update
+        setOrders(prev => prev.map(o =>
+            o.id === orderId ? { ...o, status: config.next! } : o
+        ));
+
+        try {
+            await fetch(`/api/sync/orders/${orderId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount!.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ status: config.next })
+            });
+        } catch (error) {
+            console.error('[MobileOrders] Status update failed:', error);
+            fetchOrders(true); // Reload on failure
+        }
+    };
+
     if (loading && orders.length === 0) {
         return (
             <div className="space-y-4 animate-pulse">
@@ -210,37 +239,47 @@ export function MobileOrders() {
                     orders.map((order) => {
                         const config = getStatusConfig(order.status);
                         const StatusIcon = config.icon;
+                        const nextConfig = config.next ? getStatusConfig(config.next) : null;
+                        const NextIcon = nextConfig?.icon;
 
                         return (
-                            <button
+                            <SwipeableRow
                                 key={order.id}
-                                onClick={() => navigate(`/m/orders/${order.id}`)}
-                                className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 active:scale-[0.98] transition-all"
+                                leftAction={config.next && NextIcon ? {
+                                    icon: <NextIcon size={24} className="text-white" />,
+                                    color: nextConfig?.bg.replace('bg-', 'bg-') || 'bg-indigo-500',
+                                    onAction: () => advanceStatus(order.id, order.status)
+                                } : undefined}
                             >
-                                <div className="flex items-start justify-between mb-3">
-                                    <div>
-                                        <p className="text-lg font-bold text-gray-900">{order.orderNumber}</p>
-                                        <p className="text-sm text-gray-500">{order.customerName}</p>
+                                <button
+                                    onClick={() => navigate(`/m/orders/${order.id}`)}
+                                    className="w-full bg-white p-4 active:bg-gray-50 transition-all"
+                                >
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div>
+                                            <p className="text-lg font-bold text-gray-900">{order.orderNumber}</p>
+                                            <p className="text-sm text-gray-500">{order.customerName}</p>
+                                        </div>
+                                        <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
                                     </div>
-                                    <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
-                                </div>
 
-                                <div className="flex items-center justify-between">
-                                    <p className="text-xl font-bold text-gray-900">{formatCurrency(order.total)}</p>
-                                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${config.bg}`}>
-                                        <StatusIcon size={14} className={config.color} />
-                                        <span className={`text-sm font-semibold ${config.color}`}>
-                                            {config.label}
-                                        </span>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xl font-bold text-gray-900">{formatCurrency(order.total)}</p>
+                                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${config.bg}`}>
+                                            <StatusIcon size={14} className={config.color} />
+                                            <span className={`text-sm font-semibold ${config.color}`}>
+                                                {config.label}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
 
-                                {order.itemCount > 0 && (
-                                    <p className="text-xs text-gray-500 mt-2">
-                                        {order.itemCount} item{order.itemCount > 1 ? 's' : ''}
-                                    </p>
-                                )}
-                            </button>
+                                    {order.itemCount > 0 && (
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            {order.itemCount} item{order.itemCount > 1 ? 's' : ''}
+                                        </p>
+                                    )}
+                                </button>
+                            </SwipeableRow>
                         );
                     })
                 )}

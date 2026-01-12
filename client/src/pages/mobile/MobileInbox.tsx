@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Filter } from 'lucide-react';
+import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { SwipeableRow } from '../../components/ui/SwipeableRow';
 
 interface Conversation {
     id: string;
@@ -35,6 +36,10 @@ export function MobileInbox() {
 
     useEffect(() => {
         fetchConversations();
+        // Listen for refresh events from pull-to-refresh
+        const handleRefresh = () => fetchConversations();
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [currentAccount, token]);
 
     const fetchConversations = async () => {
@@ -68,6 +73,45 @@ export function MobileInbox() {
             console.error('[MobileInbox] Error:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleArchive = async (id: string) => {
+        // Optimistically remove from list
+        setConversations(prev => prev.filter(c => c.id !== id));
+
+        try {
+            await fetch(`/api/conversations/${id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount!.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ status: 'closed' })
+            });
+        } catch (error) {
+            console.error('[MobileInbox] Archive failed:', error);
+            fetchConversations(); // Reload if failed
+        }
+    };
+
+    const handleMarkRead = async (id: string) => {
+        // Optimistically update
+        setConversations(prev => prev.map(c =>
+            c.id === id ? { ...c, unread: false } : c
+        ));
+
+        try {
+            await fetch(`/api/conversations/${id}/read`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount!.id
+                }
+            });
+        } catch (error) {
+            console.error('[MobileInbox] Mark read failed:', error);
         }
     };
 
@@ -159,6 +203,13 @@ export function MobileInbox() {
                 </div>
             )}
 
+            {/* Swipe Hint */}
+            {filteredConversations.length > 0 && (
+                <p className="text-xs text-gray-400 text-center">
+                    ← Swipe left to archive • Swipe right to mark read →
+                </p>
+            )}
+
             {/* Filter Chips */}
             <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
                 {FILTER_OPTIONS.map((filter) => (
@@ -199,59 +250,71 @@ export function MobileInbox() {
                         const ChannelIcon = channelConfig.icon;
 
                         return (
-                            <button
+                            <SwipeableRow
                                 key={convo.id}
-                                onClick={() => navigate(`/m/inbox/${convo.id}`)}
-                                className={`
-                                    w-full flex items-center gap-4 p-4 rounded-2xl text-left
-                                    transition-all active:scale-[0.98]
-                                    ${convo.unread
-                                        ? 'bg-white shadow-sm border border-gray-100'
-                                        : 'bg-gray-50/50 hover:bg-gray-100/50'
-                                    }
-                                `}
+                                leftAction={convo.unread ? {
+                                    icon: <CheckCheck size={24} className="text-white" />,
+                                    color: 'bg-emerald-500',
+                                    onAction: () => handleMarkRead(convo.id)
+                                } : undefined}
+                                rightAction={{
+                                    icon: <Archive size={24} className="text-white" />,
+                                    color: 'bg-gray-700',
+                                    onAction: () => handleArchive(convo.id)
+                                }}
                             >
-                                {/* Avatar */}
-                                <div className="relative flex-shrink-0">
-                                    <div className={`
-                                        w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg
+                                <button
+                                    onClick={() => navigate(`/m/inbox/${convo.id}`)}
+                                    className={`
+                                        w-full flex items-center gap-4 p-4 text-left
                                         ${convo.unread
-                                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
-                                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                                            ? 'bg-white'
+                                            : 'bg-gray-50/80'
                                         }
-                                    `}>
-                                        {getInitials(convo.customerName)}
+                                    `}
+                                >
+                                    {/* Avatar */}
+                                    <div className="relative flex-shrink-0">
+                                        <div className={`
+                                            w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg
+                                            ${convo.unread
+                                                ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
+                                                : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                                            }
+                                        `}>
+                                            {getInitials(convo.customerName)}
+                                        </div>
+                                        {/* Channel Badge */}
+                                        <div className={`
+                                            absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full 
+                                            ${channelConfig.bg} 
+                                            flex items-center justify-center ring-2 ring-white
+                                        `}>
+                                            <ChannelIcon size={12} className={channelConfig.color} />
+                                        </div>
                                     </div>
-                                    {/* Channel Badge */}
-                                    <div className={`
-                                        absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full 
-                                        ${channelConfig.bg} 
-                                        flex items-center justify-center ring-2 ring-white
-                                    `}>
-                                        <ChannelIcon size={12} className={channelConfig.color} />
-                                    </div>
-                                </div>
 
-                                {/* Content */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className={`text-base truncate ${convo.unread ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
-                                            {convo.customerName}
-                                        </span>
-                                        <span className="text-xs text-gray-500 flex-shrink-0 ml-3">
-                                            {formatTimeAgo(convo.updatedAt)}
-                                        </span>
+                                    {/* Content */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className={`text-base truncate ${convo.unread ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
+                                                {convo.customerName}
+                                            </span>
+                                            <span className="text-xs text-gray-500 flex-shrink-0 ml-3">
+                                                {formatTimeAgo(convo.updatedAt)}
+                                            </span>
+                                        </div>
+                                        <p className={`text-sm line-clamp-2 ${convo.unread ? 'text-gray-700' : 'text-gray-500'}`}>
+                                            {convo.lastMessage}
+                                        </p>
                                     </div>
-                                    <p className={`text-sm line-clamp-2 ${convo.unread ? 'text-gray-700' : 'text-gray-500'}`}>
-                                        {convo.lastMessage}
-                                    </p>
-                                </div>
 
-                                {/* Unread Indicator */}
-                                {convo.unread && (
-                                    <div className="w-3 h-3 bg-indigo-600 rounded-full flex-shrink-0 animate-pulse" />
-                                )}
-                            </button>
+                                    {/* Unread Indicator */}
+                                    {convo.unread && (
+                                        <div className="w-3 h-3 bg-indigo-600 rounded-full flex-shrink-0 animate-pulse" />
+                                    )}
+                                </button>
+                            </SwipeableRow>
                         );
                     })
                 )}
