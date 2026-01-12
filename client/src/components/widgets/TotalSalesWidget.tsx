@@ -80,14 +80,16 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
                     {loading ? (
                         <div className="flex items-center gap-2 mt-2 text-gray-400"><Loader2 className="animate-spin" size={20} /></div>
                     ) : (
-                        <p className="text-3xl font-bold text-gray-900 mt-2">
-                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sales || 0)}
-                        </p>
-                        {orderCount !== null && (
-                        <p className="text-xs text-gray-400 mt-1">
-                            {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''}
-                        </p>
-                    )}
+                        <>
+                            <p className="text-3xl font-bold text-gray-900 mt-2">
+                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sales || 0)}
+                            </p>
+                            {orderCount !== null && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''}
+                                </p>
+                            )}
+                        </>
                     )}
                 </div>
                 <div className="p-3 bg-green-100 rounded-lg text-green-600">
