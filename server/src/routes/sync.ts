@@ -124,7 +124,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.headers['x-account-id'] as string || query.accountId;
         const page = parseInt(query.page) || 1;
         const limit = parseInt(query.limit) || 50;
-        const { q, tags: tagsParam } = query;
+        const { q, tags: tagsParam, status } = query;
 
         let tags: string[] | undefined;
         if (tagsParam) {
@@ -140,7 +140,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            const results = await SearchQueryService.searchOrders(accountId, q, page, limit, tags);
+            const results = await SearchQueryService.searchOrders(accountId, q, page, limit, tags, status);
             return results;
         } catch (error) {
             Logger.error('Search failed', { error });

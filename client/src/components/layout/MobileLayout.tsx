@@ -44,10 +44,10 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
         try {
             // Fetch unread conversation count
-            const convRes = await fetch('/api/conversations?limit=1&status=open', { headers });
+            const convRes = await fetch('/api/chat/unread-count', { headers });
             if (convRes.ok) {
                 const data = await convRes.json();
-                setInboxBadge(data.totalUnread || data.conversations?.filter((c: any) => c.status === 'open')?.length || 0);
+                setInboxBadge(data.count || 0);
             }
 
             // Fetch pending orders count

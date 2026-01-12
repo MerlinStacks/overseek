@@ -31,7 +31,58 @@ export function MobileAnalytics() {
 
         try {
             setLoading(true);
-            // Set default data - real analytics endpoint may vary
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'X-Account-ID': currentAccount.id
+            };
+
+            // Calculate date range based on period
+            const now = new Date();
+            let startDate: string;
+            if (period === 'today') {
+                startDate = now.toISOString().split('T')[0];
+            } else if (period === 'week') {
+                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                startDate = weekAgo.toISOString().split('T')[0];
+            } else {
+                const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                startDate = monthAgo.toISOString().split('T')[0];
+            }
+            const endDate = now.toISOString().split('T')[0];
+
+            // Fetch multiple analytics endpoints in parallel
+            const [salesRes, customerRes] = await Promise.all([
+                fetch(`/api/analytics/sales?startDate=${startDate}&endDate=${endDate}`, { headers }),
+                fetch(`/api/analytics/customer-growth?startDate=${startDate}&endDate=${endDate}`, { headers })
+            ]);
+
+            let revenue = 0, orderCount = 0, customerCount = 0;
+
+            if (salesRes.ok) {
+                const salesData = await salesRes.json();
+                revenue = salesData.total || 0;
+                orderCount = salesData.count || 0;
+            }
+
+            if (customerRes.ok) {
+                const customerData = await customerRes.json();
+                customerCount = customerData.newCustomers || customerData.total || 0;
+            }
+
+            // Calculate AOV
+            const aov = orderCount > 0 ? revenue / orderCount : 0;
+
+            setData({
+                revenue: { value: revenue, change: 0 },
+                orders: { value: orderCount, change: 0 },
+                visitors: { value: 0, change: 0 }, // Requires GA4 integration
+                customers: { value: customerCount, change: 0 },
+                conversionRate: { value: 0, change: 0 }, // Requires visitor data
+                avgOrderValue: { value: aov, change: 0 }
+            });
+        } catch (error) {
+            console.error('[MobileAnalytics] Error:', error);
+            // Set fallback data on error
             setData({
                 revenue: { value: 0, change: 0 },
                 orders: { value: 0, change: 0 },
@@ -40,8 +91,6 @@ export function MobileAnalytics() {
                 conversionRate: { value: 0, change: 0 },
                 avgOrderValue: { value: 0, change: 0 }
             });
-        } catch (error) {
-            console.error('[MobileAnalytics] Error:', error);
         } finally {
             setLoading(false);
         }

@@ -50,7 +50,7 @@ export function MobileInbox() {
 
         try {
             setLoading(true);
-            const response = await fetch('/api/conversations?limit=50', {
+            const response = await fetch('/api/chat/conversations?limit=50', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
@@ -81,7 +81,7 @@ export function MobileInbox() {
         setConversations(prev => prev.filter(c => c.id !== id));
 
         try {
-            await fetch(`/api/conversations/${id}`, {
+            await fetch(`/api/chat/${id}`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -103,7 +103,7 @@ export function MobileInbox() {
         ));
 
         try {
-            await fetch(`/api/conversations/${id}/read`, {
+            await fetch(`/api/chat/${id}/read`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,

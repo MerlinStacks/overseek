@@ -76,9 +76,14 @@ export class SearchQueryService {
         }
     }
 
-    static async searchOrders(accountId: string, query?: string, page: number = 1, limit: number = 50, tags?: string[]) {
+    static async searchOrders(accountId: string, query?: string, page: number = 1, limit: number = 50, tags?: string[], status?: string) {
         try {
             const must: any[] = [{ term: { accountId } }];
+
+            // Status filter
+            if (status && status.toLowerCase() !== 'all') {
+                must.push({ term: { status: status.toLowerCase() } });
+            }
 
             // Tag filter
             if (tags && tags.length > 0) {
