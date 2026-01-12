@@ -69,7 +69,7 @@ export class CustomerSync extends BaseSync {
                 });
             });
 
-            // Execute batch transaction - pool size increased in prisma.ts to handle concurrency
+            // Execute batch transaction
             await prisma.$transaction(upsertOperations);
 
             // Index customers in parallel

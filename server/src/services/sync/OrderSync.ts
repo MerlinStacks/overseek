@@ -84,7 +84,7 @@ export class OrderSync extends BaseSync {
                 });
             });
 
-            // Execute batch transaction - pool size increased in prisma.ts to handle concurrency
+            // Execute batch transaction
             await prisma.$transaction(upsertOperations);
 
             // Process events and indexing

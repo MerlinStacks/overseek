@@ -86,7 +86,7 @@ export class ProductSync extends BaseSync {
                 });
             });
 
-            // Execute batch transaction - pool size increased in prisma.ts to handle concurrency
+            // Execute batch transaction
             await prisma.$transaction(upsertOperations);
 
             // Batch-fetch all upserted products once (avoids N+1 queries)
@@ -134,7 +134,6 @@ export class ProductSync extends BaseSync {
                 }
             }
 
-            // Execute all score updates in a single batch transaction
             if (scoreUpdateOperations.length > 0) {
                 await prisma.$transaction(scoreUpdateOperations);
             }
