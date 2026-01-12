@@ -37,24 +37,10 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
             const headerText = config.headerText || 'Live Chat';
             const welcomeMessage = config.welcomeMessage || 'Hello! How can we help you today?';
 
-            // Check Business Hours
-            if (config.businessHours?.enabled) {
-                const now = new Date();
-                const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-                const dayName = days[now.getDay()];
-                const schedule = config.businessHours.days?.[dayName];
-                if (!schedule || !schedule.isOpen) {
-                    reply.header('Content-Type', 'application/javascript');
-                    return 'console.log("OverSeek Chat: Currently Closed (Day)");';
-                }
-                const nowTime = now.getHours() * 60 + now.getMinutes();
-                const [openH, openM] = schedule.open.split(':').map(Number);
-                const [closeH, closeM] = schedule.close.split(':').map(Number);
-                if (nowTime < openH * 60 + openM || nowTime > closeH * 60 + closeM) {
-                    reply.header('Content-Type', 'application/javascript');
-                    return 'console.log("OverSeek Chat: Currently Closed (Time)");';
-                }
-            }
+            // Business hours config - passed to client for timezone-aware checking
+            // Default to Australia/Sydney if no timezone configured
+            const businessHours = config.businessHours || { enabled: false };
+            const businessTimezone = config.businessTimezone || 'Australia/Sydney';
 
             const rightPos = position === 'bottom-right' ? '20px' : 'auto';
             const leftPos = position === 'bottom-left' ? '20px' : 'auto';
@@ -67,9 +53,37 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
     const PRIMARY_COLOR = '${primaryColor}';
     const HEADER_TEXT = '${headerText}';
     const WELCOME_MSG = '${welcomeMessage}';
+    const BUSINESS_HOURS = ${JSON.stringify(businessHours)};
+    const BUSINESS_TIMEZONE = '${businessTimezone}';
 
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const isMobile = window.innerWidth <= 640;
+
+    // Check if currently within business hours (uses BUSINESS timezone, not visitor's)
+    function isWithinBusinessHours() {
+        if (!BUSINESS_HOURS.enabled) return true;
+        try {
+            // Get current time in the business's timezone
+            const now = new Date();
+            const options = { timeZone: BUSINESS_TIMEZONE, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
+            const formatter = new Intl.DateTimeFormat('en-US', options);
+            const parts = formatter.formatToParts(now);
+            const weekday = parts.find(p => p.type === 'weekday').value.toLowerCase().slice(0, 3);
+            const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+            const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
+            
+            const schedule = BUSINESS_HOURS.days && BUSINESS_HOURS.days[weekday];
+            if (!schedule || !schedule.isOpen) return false;
+            
+            const nowTime = hour * 60 + minute;
+            const [openH, openM] = schedule.open.split(':').map(Number);
+            const [closeH, closeM] = schedule.close.split(':').map(Number);
+            return nowTime >= openH * 60 + openM && nowTime <= closeH * 60 + closeM;
+        } catch (e) {
+            console.warn('Business hours check failed:', e);
+            return true; // Fail open if timezone not supported
+        }
+    }
 
     // Common emojis for picker
     const EMOJIS = ['😀','😂','😍','🥰','😊','👍','👏','❤️','🔥','✨','🎉','💯','🙏','😎','🤔','👀','💪','🙌','😅','🥳'];

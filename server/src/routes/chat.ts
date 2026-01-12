@@ -341,8 +341,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.post('/settings', async (request, reply) => {
             const accountId = request.headers['x-account-id'] as string;
             if (!accountId) return {};
-            const { businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage } = request.body as any;
-            const config = { businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage };
+            const { businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;
+            const config = { businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone };
 
             await prisma.accountFeature.upsert({
                 where: { accountId_featureKey: { accountId, featureKey: 'CHAT_SETTINGS' } },
