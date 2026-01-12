@@ -18,6 +18,8 @@ interface Product {
     name: string;
     sku: string;
     stock_status: string;
+    stock_quantity?: number;
+    low_stock_amount?: number;
     price: string;
     mainImage?: string;
     images?: Array<{ src: string }>;
@@ -184,10 +186,20 @@ export function InventoryPage() {
                                                 <td className="px-6 py-4 font-medium text-gray-900">{product.name}</td>
                                                 <td className="px-6 py-4 text-sm font-mono text-gray-500">{product.sku || '-'}</td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-                                                    ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                        {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
-                                                    </span>
+                                                    <div className="flex flex-col gap-1">
+                                                        {product.stock_quantity !== undefined && product.stock_quantity !== null && (
+                                                            <span className={`text-lg font-bold ${product.stock_quantity === 0 ? 'text-red-600' :
+                                                                    (product.low_stock_amount && product.stock_quantity <= product.low_stock_amount) ? 'text-amber-600' :
+                                                                        'text-gray-900'
+                                                                }`}>
+                                                                {product.stock_quantity}
+                                                            </span>
+                                                        )}
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize
+                                                        ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                            {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
+                                                        </span>
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                                     {product.price ? `$${product.price}` : '-'}
