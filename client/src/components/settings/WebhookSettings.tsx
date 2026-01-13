@@ -82,7 +82,7 @@ export function WebhookSettings() {
         setSaveMessage(null);
 
         try {
-            const response = await fetch(`/api/account/${currentAccount.id}`, {
+            const response = await fetch(`/api/accounts/${currentAccount.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
