@@ -100,6 +100,28 @@ export async function processWebhookPayload(
 }
 
 const webhookRoutes: FastifyPluginAsync = async (fastify) => {
+    // WooCommerce may send webhooks with non-standard content types
+    // Add parser to handle text/plain and other variations
+    fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (req, body, done) => {
+        try {
+            const json = JSON.parse(body as string);
+            done(null, json);
+        } catch (err) {
+            done(err as Error, undefined);
+        }
+    });
+
+    // Also handle cases where content-type might be missing or unusual
+    fastify.addContentTypeParser('*', { parseAs: 'string' }, (req, body, done) => {
+        try {
+            const json = JSON.parse(body as string);
+            done(null, json);
+        } catch (err) {
+            // If it's not JSON, just pass the raw string
+            done(null, body);
+        }
+    });
+
     // Webhook Endpoint - no auth required (uses signature verification)
     fastify.post<{ Params: { accountId: string } }>('/:accountId', async (request, reply) => {
         const { accountId } = request.params;
