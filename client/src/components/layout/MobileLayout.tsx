@@ -6,6 +6,7 @@ import { MobileErrorBoundary } from '../mobile/MobileErrorBoundary';
 import { OrderNotifications } from '../notifications/OrderNotifications';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { Logger } from '../../utils/logger';
 
 /**
  * MobileLayout - Touch-optimized layout for the PWA companion app.
@@ -91,7 +92,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     // PWA update available listener
     useEffect(() => {
         const handleUpdateAvailable = () => {
-            console.log('[MobileLayout] PWA update available');
+            Logger.debug('[MobileLayout] PWA update available');
             setUpdateAvailable(true);
         };
         window.addEventListener('pwa-update-available', handleUpdateAvailable);

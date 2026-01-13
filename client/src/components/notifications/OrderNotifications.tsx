@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useSocket } from '../../context/SocketContext';
+import { Logger } from '../../utils/logger';
 
 /**
  * Headless component to handle browser notifications for new orders.
@@ -24,7 +25,7 @@ export function OrderNotifications() {
             total: string;
             customerName: string;
         }) => {
-            console.log('[OrderNotifications] Received order:new event:', order);
+            Logger.debug('[OrderNotifications] Received order:new event', { order });
             // Show browser notification if permission granted
             if (Notification.permission === 'granted') {
                 const notification = new Notification('🛒 New Order Received!', {

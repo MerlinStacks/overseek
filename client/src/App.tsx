@@ -16,9 +16,11 @@ import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
 import { SetupWizard } from './pages/SetupWizard';
-import { DashboardPage } from './pages/DashboardPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+
+// Lazy-loaded core pages (moved from static imports for bundle optimization)
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 // ... (inside App function)
 

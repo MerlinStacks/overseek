@@ -2,13 +2,15 @@
  * MarketingPage - Campaigns, Ad Performance, and Ad Accounts management.
  * Flows/Automations moved to dedicated FlowsPage.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
 import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
 import { CampaignsList } from '../components/marketing/CampaignsList';
-import { EmailDesignEditor } from '../components/marketing/EmailDesignEditor';
 import { Mail, Megaphone, BarChart2 } from 'lucide-react';
+
+// Lazy-load EmailDesignEditor to prevent react-email-editor from polluting React singleton
+const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
@@ -93,11 +95,13 @@ export function MarketingPage() {
 
     if (editorMode === 'email') {
         return (
-            <EmailDesignEditor
-                initialDesign={undefined} // Could fetch and pass existing design
-                onSave={handleSaveEmail}
-                onCancel={handleCloseEditor}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-gray-500">Loading email editor...</div></div>}>
+                <EmailDesignEditor
+                    initialDesign={undefined} // Could fetch and pass existing design
+                    onSave={handleSaveEmail}
+                    onCancel={handleCloseEditor}
+                />
+            </Suspense>
         );
     }
 

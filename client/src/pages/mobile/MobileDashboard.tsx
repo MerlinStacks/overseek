@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import {
     ShoppingCart,
@@ -82,11 +83,11 @@ export function MobileDashboard() {
 
             if (salesRes.ok) {
                 const data = await salesRes.json();
-                console.log('[MobileDashboard] Sales API response:', data);
+                Logger.debug('[MobileDashboard] Sales API response', { data });
                 todayRevenue = data.total || 0;
                 todayOrders = data.count || 0;
             } else {
-                console.error('[MobileDashboard] Sales API failed:', salesRes.status);
+                Logger.error('[MobileDashboard] Sales API failed', { status: salesRes.status });
             }
 
             if (messagesRes.ok) {
@@ -123,7 +124,7 @@ export function MobileDashboard() {
                 setActivities(recentActivities);
             }
         } catch (error) {
-            console.error('[MobileDashboard] Error fetching data:', error);
+            Logger.error('[MobileDashboard] Error fetching data', { error });
         } finally {
             setLoading(false);
         }

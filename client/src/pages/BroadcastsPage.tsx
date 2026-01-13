@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { CampaignsList } from '../components/marketing/CampaignsList';
-import { EmailDesignEditor } from '../components/marketing/EmailDesignEditor';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+
+// Lazy-load EmailDesignEditor to prevent react-email-editor from polluting React singleton
+const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
 
 type EditorMode = 'email' | null;
 
@@ -51,11 +53,13 @@ export function BroadcastsPage() {
 
     if (editorMode === 'email') {
         return (
-            <EmailDesignEditor
-                initialDesign={undefined}
-                onSave={handleSaveEmail}
-                onCancel={handleCloseEditor}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-gray-500">Loading email editor...</div></div>}>
+                <EmailDesignEditor
+                    initialDesign={undefined}
+                    onSave={handleSaveEmail}
+                    onCancel={handleCloseEditor}
+                />
+            </Suspense>
         );
     }
 

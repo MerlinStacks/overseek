@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { Logger } from '../utils/logger';
 
 interface PushPreferences {
     notifyNewMessages: boolean;
@@ -70,15 +71,15 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                     updateViaCache: 'none' // Force fetch SW on each check
                 });
                 setSwRegistration(registration);
-                console.log('[usePushNotifications] Service worker registered');
+                Logger.debug('[usePushNotifications] Service worker registered');
 
                 // Check for updates periodically and on refresh
-                registration.update().catch(err => console.warn('[usePushNotifications] SW update check failed:', err));
+                registration.update().catch(err => Logger.warn('[usePushNotifications] SW update check failed', { err }));
 
                 // Listen for SW update messages
                 navigator.serviceWorker.addEventListener('message', (event) => {
                     if (event.data?.type === 'SW_UPDATED') {
-                        console.log('[usePushNotifications] New SW version available:', event.data.version);
+                        Logger.debug('[usePushNotifications] New SW version available', { version: event.data.version });
                         // Dispatch custom event for UI to handle
                         window.dispatchEvent(new CustomEvent('pwa-update-available', {
                             detail: { version: event.data.version }
@@ -89,7 +90,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                 // Check existing subscription from browser
                 const subscription = await registration.pushManager.getSubscription();
                 const browserEndpoint = subscription?.endpoint || null;
-                console.log('[usePushNotifications] Browser subscription:', browserEndpoint ? 'exists' : 'none');
+                Logger.debug('[usePushNotifications] Browser subscription', { exists: !!browserEndpoint });
 
                 if (browserEndpoint) {
                     setCurrentEndpoint(browserEndpoint);
@@ -109,7 +110,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
                 if (res.ok) {
                     const data = await res.json();
-                    console.log('[usePushNotifications] Backend status:', data);
+                    Logger.debug('[usePushNotifications] Backend status', { data });
 
                     // If we have a browser subscription, check if backend knows about THIS device
                     if (browserEndpoint) {
@@ -122,10 +123,10 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                         setIsSubscribed(false);
                     }
                 } else {
-                    console.error('[usePushNotifications] Backend status check failed:', res.status);
+                    Logger.error('[usePushNotifications] Backend status check failed', { status: res.status });
                 }
             } catch (error) {
-                console.error('[usePushNotifications] Init failed:', error);
+                Logger.error('[usePushNotifications] Init failed', { error });
             } finally {
                 setIsLoading(false);
             }
@@ -160,7 +161,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
             });
 
             if (!keyRes.ok) {
-                console.error('[usePushNotifications] Failed to get VAPID key');
+                Logger.error('[usePushNotifications] Failed to get VAPID key');
                 setIsLoading(false);
                 return false;
             }
@@ -195,17 +196,17 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
             if (subRes.ok) {
                 const subData = await subRes.json();
-                console.log('[usePushNotifications] Subscription saved:', subData);
+                Logger.debug('[usePushNotifications] Subscription saved', { subData });
                 setCurrentEndpoint(subscription.endpoint);
                 setIsSubscribed(true);
                 setIsLoading(false);
                 return true;
             } else {
                 const errorData = await subRes.json().catch(() => ({}));
-                console.error('[usePushNotifications] Subscribe request failed:', subRes.status, errorData);
+                Logger.error('[usePushNotifications] Subscribe request failed', { status: subRes.status, errorData });
             }
         } catch (error) {
-            console.error('[usePushNotifications] Subscribe failed:', error);
+            Logger.error('[usePushNotifications] Subscribe failed', { error });
         }
 
         setIsLoading(false);
@@ -244,7 +245,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
             setIsLoading(false);
             return true;
         } catch (error) {
-            console.error('[usePushNotifications] Unsubscribe failed:', error);
+            Logger.error('[usePushNotifications] Unsubscribe failed', { error });
         }
 
         setIsLoading(false);
@@ -279,7 +280,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                 return true;
             }
         } catch (error) {
-            console.error('[usePushNotifications] Update preferences failed:', error);
+            Logger.error('[usePushNotifications] Update preferences failed', { error });
         }
 
         return false;

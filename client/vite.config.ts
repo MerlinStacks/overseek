@@ -56,7 +56,7 @@ export default defineConfig(({ mode }) => {
         },
         optimizeDeps: {
             // Don't include react/react-dom - React 19 is ESM-native and doesn't need pre-bundling
-            include: ['react-grid-layout', 'cookie', 'react-router', 'react-router-dom'],
+            include: ['react-grid-layout', 'cookie', 'react-router', 'react-router-dom', 'react-email-editor'],
         },
         build: {
             commonjsOptions: {
