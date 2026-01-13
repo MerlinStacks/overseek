@@ -6,9 +6,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ## Implemented
 
-- [x] **Revenue Anomaly Alerts (PWA)** — Real-time detection when revenue is ±25% from 7-day baseline
-  - Green banner for positive spikes, amber for dips
-  - Integrated into mobile dashboard
 
 ---
 
@@ -28,18 +25,9 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ---
 
-### Backend & Infrastructure
-
-- [ ] **Webhook Event Replay** — Replay failed webhook deliveries from admin panel
-- [ ] **Multi-tenant Rate Limiting** — Per-account API rate limiting with BullMQ
-- [ ] **Database Read Replicas** — Horizontal scaling for analytics queries
-
----
-
 ### AI & Intelligence
 
 - [ ] **Smart Reorder Suggestions** — Predict optimal reorder quantities from sales velocity
 - [ ] **Sentiment Analysis (Reviews)** — Auto-categorize review sentiment for prioritization
 
 ---
-PWA App

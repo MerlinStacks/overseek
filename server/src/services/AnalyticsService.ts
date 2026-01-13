@@ -1,8 +1,14 @@
 
 import { prisma } from '../utils/prisma';
+import { prismaReplica, isReplicaConfigured } from '../utils/prismaReplica';
 import { cacheAside, CacheTTL, CacheNamespace } from '../utils/cache';
+import { Logger } from '../utils/logger';
+
+// Use replica for heavy read queries, primary for writes
+const readDb = prismaReplica;
 
 export class AnalyticsService {
+
 
     /**
      * Get Visitor Log (Real-time Traffic)

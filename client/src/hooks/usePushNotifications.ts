@@ -65,10 +65,26 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
         const init = async () => {
             try {
-                // Register service worker
-                const registration = await navigator.serviceWorker.register('/push-sw.js');
+                // Register service worker with cache bypass
+                const registration = await navigator.serviceWorker.register('/push-sw.js', {
+                    updateViaCache: 'none' // Force fetch SW on each check
+                });
                 setSwRegistration(registration);
                 console.log('[usePushNotifications] Service worker registered');
+
+                // Check for updates periodically and on refresh
+                registration.update().catch(err => console.warn('[usePushNotifications] SW update check failed:', err));
+
+                // Listen for SW update messages
+                navigator.serviceWorker.addEventListener('message', (event) => {
+                    if (event.data?.type === 'SW_UPDATED') {
+                        console.log('[usePushNotifications] New SW version available:', event.data.version);
+                        // Dispatch custom event for UI to handle
+                        window.dispatchEvent(new CustomEvent('pwa-update-available', {
+                            detail: { version: event.data.version }
+                        }));
+                    }
+                });
 
                 // Check existing subscription from browser
                 const subscription = await registration.pushManager.getSubscription();

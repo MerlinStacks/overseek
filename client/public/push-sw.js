@@ -2,9 +2,13 @@
  * PWA Service Worker - OverSeek Companion
  * 
  * Handles push notifications and offline caching for the PWA.
+ * 
+ * IMPORTANT: Update CACHE_VERSION on each deployment to bust caches.
  */
 
-const CACHE_NAME = 'overseek-v1';
+// Cache version - UPDATE THIS ON EVERY DEPLOYMENT
+const CACHE_VERSION = '2026-01-13-v2';
+const CACHE_NAME = `overseek-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache for offline app shell
@@ -18,28 +22,38 @@ const PRECACHE_ASSETS = [
 
 // Install event - cache app shell
 self.addEventListener('install', (event) => {
+    console.log('[SW] Installing version:', CACHE_VERSION);
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
             console.log('[SW] Precaching app shell');
             return cache.addAll(PRECACHE_ASSETS);
         }).then(() => {
-            // Activate immediately
+            // Activate immediately - skip waiting for old SW to stop
             return self.skipWaiting();
         })
     );
 });
 
-// Activate event - clean old caches
+// Activate event - clean ALL old caches and take control
 self.addEventListener('activate', (event) => {
+    console.log('[SW] Activating version:', CACHE_VERSION);
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
-                cacheNames.filter((name) => name !== CACHE_NAME)
+                cacheNames
+                    .filter((name) => name.startsWith('overseek-') && name !== CACHE_NAME)
                     .map((name) => {
                         console.log('[SW] Deleting old cache:', name);
                         return caches.delete(name);
                     })
             );
+        }).then(() => {
+            // Notify all open clients about the update
+            return self.clients.matchAll({ type: 'window' }).then((clients) => {
+                clients.forEach((client) => {
+                    client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION });
+                });
+            });
         }).then(() => {
             // Take control immediately
             return self.clients.claim();

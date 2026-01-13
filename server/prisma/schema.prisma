@@ -168,9 +168,72 @@ model Account {
 
   // Roles
   roles               AccountRole[]
+  
+  // Webhook Deliveries (for replay)
+  webhookDeliveries   WebhookDelivery[]
+  
+  // Rate Limiting
+  rateLimit           AccountRateLimit?
+}
+
+// --------------------------------------
+// Webhook Delivery Logging
+// --------------------------------------
+
+/// Stores all incoming webhook deliveries for auditing and replay.
+model WebhookDelivery {
+  id        String   @id @default(uuid())
+  accountId String
+
+  /// Webhook topic: "order.created", "product.updated", etc.
+  topic     String
+  /// Source platform: WOOCOMMERCE, META, TIKTOK
+  source    String   @default("WOOCOMMERCE")
+  /// Full webhook payload for replay
+  payload   Json
+  
+  /// Delivery status: RECEIVED, PROCESSED, FAILED
+  status    String   @default("RECEIVED")
+  /// Number of processing attempts
+  attempts  Int      @default(1)
+  /// Error message if failed
+  lastError String?  @db.Text
+  
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  @@index([accountId, status])
+  @@index([accountId, receivedAt])
+  @@index([status, receivedAt])
+}
+
+// --------------------------------------
+// Per-Account Rate Limiting
+// --------------------------------------
+
+/// Configurable per-account API rate limits.
+model AccountRateLimit {
+  id        String @id @default(uuid())
+  accountId String @unique
+  
+  /// Maximum requests per window
+  maxRequests   Int @default(1000)
+  /// Window size in seconds (default 15 minutes)
+  windowSeconds Int @default(900)
+  
+  /// Tier for different limit profiles
+  tier String @default("STANDARD") // STANDARD, PREMIUM, ENTERPRISE
+  
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// Per-account SMS/Twilio configuration.
+
 model SmsSettings {
   id        String @id @default(uuid())
   accountId String @unique

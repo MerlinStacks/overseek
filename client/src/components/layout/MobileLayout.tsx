@@ -37,6 +37,9 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     // Network status
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+    // PWA update available
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+
     // Fetch badge counts
     const fetchBadgeCounts = useCallback(async () => {
         if (!token || !currentAccount) return;
@@ -83,6 +86,23 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             window.removeEventListener('offline', handleOffline);
         };
     }, []);
+
+    // PWA update available listener
+    useEffect(() => {
+        const handleUpdateAvailable = () => {
+            console.log('[MobileLayout] PWA update available');
+            setUpdateAvailable(true);
+        };
+        window.addEventListener('pwa-update-available', handleUpdateAvailable);
+        return () => {
+            window.removeEventListener('pwa-update-available', handleUpdateAvailable);
+        };
+    }, []);
+
+    // Handle update tap - force reload to activate new SW
+    const handleUpdateTap = () => {
+        window.location.reload();
+    };
 
     // Pull-to-refresh handlers
     const handleTouchStart = (e: React.TouchEvent) => {
@@ -142,6 +162,17 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     <WifiOff size={16} />
                     You're offline - some features may be unavailable
                 </div>
+            )}
+
+            {/* PWA Update Available Banner */}
+            {updateAvailable && isOnline && (
+                <button
+                    onClick={handleUpdateTap}
+                    className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-center py-3 px-4 flex items-center justify-center gap-2 text-sm font-medium hover:from-blue-600 hover:to-indigo-700 active:scale-[0.99] transition-all"
+                >
+                    <RefreshCw size={16} className="animate-spin" />
+                    New version available — tap to update
+                </button>
             )}
             {/* Pull-to-refresh indicator */}
             <div
