@@ -6,6 +6,7 @@ WORKDIR /app
 # Install system dependencies (build tools for native modules)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
+    curl \
     python3 \
     make \
     g++ \
