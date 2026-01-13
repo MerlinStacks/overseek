@@ -101,7 +101,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
                 })
                 .catch(console.error);
         }
-    }, [currentAccount?.id, token, updateUser]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     useEffect(() => {
         // Don't fetch accounts until auth has finished loading
