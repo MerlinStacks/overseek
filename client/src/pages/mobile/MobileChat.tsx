@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Paperclip, MoreVertical, Phone, Mail, Instagram, Facebook, Music2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import DOMPurify from 'dompurify';
 
 interface Message {
     id: string;
@@ -116,7 +117,7 @@ export function MobileChat() {
         }
 
         try {
-            const res = await fetch(`/api/conversations/${id}/messages`, {
+            const res = await fetch(`/api/chat/${id}/messages`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -257,7 +258,20 @@ export function MobileChat() {
                                             : 'bg-white text-gray-900 rounded-bl-md shadow-sm border border-gray-100'
                                             }`}
                                     >
-                                        <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                                        {/* Render HTML content or plain text */}
+                                        {/<[a-z][\s\S]*>/i.test(msg.body) ? (
+                                            <div
+                                                className="text-sm [&_a]:text-indigo-300 [&_a]:underline [&_img]:max-w-full [&_img]:rounded"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: DOMPurify.sanitize(msg.body, {
+                                                        ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'div', 'span'],
+                                                        ALLOWED_ATTR: ['href', 'target', 'rel']
+                                                    })
+                                                }}
+                                            />
+                                        ) : (
+                                            <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                                        )}
                                         <p className={`text-xs mt-1 ${msg.direction === 'outbound' ? 'text-indigo-200' : 'text-gray-400'
                                             }`}>
                                             {formatTime(msg.createdAt)}

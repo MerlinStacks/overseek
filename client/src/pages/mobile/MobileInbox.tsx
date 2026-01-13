@@ -50,7 +50,7 @@ export function MobileInbox() {
 
         try {
             setLoading(true);
-            const response = await fetch('/api/chat/conversations?limit=50', {
+            const response = await fetch('/api/chat/conversations?status=open&limit=50', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id

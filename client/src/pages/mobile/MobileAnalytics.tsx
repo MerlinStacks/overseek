@@ -104,12 +104,15 @@ export function MobileAnalytics() {
             // Calculate AOV
             const aov = orderCount > 0 ? revenue / orderCount : 0;
 
+            // Use liveCount for visitors - represents unique visitors tracked
+            const visitorCount = liveCount;
+
             setData({
                 revenue: { value: revenue, change: 0 },
                 orders: { value: orderCount, change: 0 },
-                visitors: { value: 0, change: 0 }, // Requires GA4 integration
+                visitors: { value: visitorCount, change: 0 },
                 customers: { value: customerCount, change: 0 },
-                conversionRate: { value: 0, change: 0 }, // Requires visitor data
+                conversionRate: { value: visitorCount > 0 ? (orderCount / visitorCount) * 100 : 0, change: 0 },
                 avgOrderValue: { value: aov, change: 0 }
             });
         } catch (error) {

@@ -134,9 +134,10 @@ export function MobileLiveVisitors() {
                     </div>
                 ) : (
                     visitors.map((visitor) => (
-                        <div
+                        <button
                             key={visitor.id}
-                            className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm"
+                            onClick={() => navigate(`/m/visitor/${visitor.visitorId}`)}
+                            className="w-full bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-left hover:border-indigo-200 hover:shadow-md transition-all active:scale-[0.98]"
                         >
                             <div className="flex items-start justify-between mb-2">
                                 <div className="flex items-center gap-2">
@@ -215,7 +216,7 @@ export function MobileLiveVisitors() {
                                     })}
                                 </div>
                             )}
-                        </div>
+                        </button>
                     ))
                 )}
             </div>

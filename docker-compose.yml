@@ -2,7 +2,7 @@ services:
   # Postgres Database
   postgres:
     image: postgres:16-alpine
-    container_name: overseekv2-postgres-1
+
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Allow override, default to password
@@ -26,7 +26,6 @@ services:
   # Elasticsearch
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
-    container_name: overseekv2-elasticsearch-1
     environment:
       - discovery.type=single-node
       - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
@@ -51,7 +50,6 @@ services:
   # Redis (Queue & Cache)
   redis:
     image: redis:alpine
-    container_name: overseekv2-redis-1
     # Ports removed to prevent external access
     # ports:
     #   - "6379:6379"
@@ -76,7 +74,6 @@ services:
       args:
         DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
     pull_policy: build
-    container_name: overseekv2-api-1
     ports:
       - "3000:3000"
     env_file:
