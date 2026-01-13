@@ -11,6 +11,10 @@
         "test": "vitest",
         "test:run": "vitest run"
     },
+    "overrides": {
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0"
+    },
     "dependencies": {
         "@lexical/html": "^0.39.0",
         "@lexical/link": "^0.39.0",

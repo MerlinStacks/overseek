@@ -186,7 +186,9 @@ export class GoogleAdsTools {
                 conversions: p.conversions.toFixed(0),
                 issue: 'High traffic but no sales - check landing page, price, or stock'
             })),
-            campaigns_with_products: Object.keys(productsByCampaign).length
+            campaigns_with_products: Object.keys(productsByCampaign).length,
+            // Return raw set of active product IDs (SKUs or IDs depending on feed setup)
+            active_ad_product_ids: Array.from(new Set(allProducts.map(p => p.productId ? String(p.productId) : '')))
         };
     }
 }

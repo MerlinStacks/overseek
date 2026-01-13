@@ -6,6 +6,7 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { LabelService } from '../services/LabelService';
+import { requireAuthFastify } from '../middleware/auth';
 import { z } from 'zod';
 
 const labelService = new LabelService();
@@ -22,6 +23,8 @@ const updateLabelSchema = z.object({
 });
 
 const labelsRoutes: FastifyPluginAsync = async (fastify) => {
+    fastify.addHook('preHandler', requireAuthFastify);
+
     /**
      * GET /labels - List all labels for the current account
      */

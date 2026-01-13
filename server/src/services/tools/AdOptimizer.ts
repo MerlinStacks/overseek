@@ -93,8 +93,10 @@ export class AdOptimizer {
             }
 
             // Process inventory suggestions first (highest priority)
+            const activeAdProductIds = googleAnalysis?.shopping_products?.active_ad_product_ids;
+
             if (options?.includeInventory !== false) {
-                await this.processInventorySuggestions(accountId, suggestions, combinedSummary);
+                await this.processInventorySuggestions(accountId, suggestions, combinedSummary, activeAdProductIds);
             }
 
             // Budget optimization suggestions
@@ -477,8 +479,9 @@ export class AdOptimizer {
 
     /**
      * Process inventory data to generate stock-related suggestions.
+     * @param activeAdProductIds Optional list of product IDs currently in ads (skus or IDs)
      */
-    private static async processInventorySuggestions(accountId: string, suggestions: string[], summary: any) {
+    private static async processInventorySuggestions(accountId: string, suggestions: string[], summary: any, activeAdProductIds?: string[]) {
         try {
             const outOfStockProducts = await prisma.wooProduct.findMany({
                 where: { accountId, stockStatus: 'outofstock' },
@@ -498,20 +501,38 @@ export class AdOptimizer {
             }).slice(0, 5);
 
             const totalProducts = await prisma.wooProduct.count({ where: { accountId } });
-            const outOfStockCount = outOfStockProducts.length;
+
+            // Filter out of stock alerts to ONLY those being advertised
+            // If we have ad data, we shouldn't warn about products not in ads
+            let relevantOutOfStock = outOfStockProducts;
+
+            if (activeAdProductIds && activeAdProductIds.length > 0) {
+                const activeIdsSet = new Set(activeAdProductIds.map(id => id.toLowerCase().trim()));
+
+                relevantOutOfStock = outOfStockProducts.filter((p: any) => {
+                    const sku = (p.sku || '').toLowerCase().trim();
+                    const wooId = (p.wooId || '').toString();
+
+                    // Match against SKU or ID (Google Merchant Center usually uses one of these)
+                    return activeIdsSet.has(sku) || activeIdsSet.has(wooId);
+                });
+            }
+
+            const outOfStockCount = relevantOutOfStock.length;
 
             summary.inventory = {
                 total_products: totalProducts,
-                out_of_stock_count: outOfStockCount,
+                out_of_stock_count: outOfStockProducts.length, // Keep real count in summary
+                relevant_out_of_stock: outOfStockCount,
                 low_stock_count: trulyLowStock.length
             };
 
             if (outOfStockCount > 0) {
-                const productNames = outOfStockProducts.slice(0, 3).map((p: any) => `"${p.name}"`).join(', ');
+                const productNames = relevantOutOfStock.slice(0, 3).map((p: any) => `"${p.name}"`).join(', ');
                 const moreText = outOfStockCount > 3 ? ` and ${outOfStockCount - 3} more` : '';
                 suggestions.unshift(
-                    `🚫 **Stock Alert**: ${outOfStockCount} product(s) are out of stock: ${productNames}${moreText}. ` +
-                    `If you're advertising these, consider pausing those ads to avoid wasted spend.`
+                    `🚫 **Stock Alert**: ${outOfStockCount} advertised product(s) are out of stock: ${productNames}${moreText}. ` +
+                    `You are paying for ads on these out-of-stock items. Pause them to save budget.`
                 );
             }
 

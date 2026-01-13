@@ -2,16 +2,16 @@ import React, { useState } from 'react';
 import { Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { BOMPanel } from './BOMPanel';
 
-// ... (ProductVariant and interface remain same)
-id: number;
-sku: string;
-price: string;
-salePrice ?: string;
-cogs ?: string; // Cost of Goods Sold
-binLocation ?: string;
-stockStatus ?: string;
-images ?: any[];
-attributes: any[];
+interface ProductVariant {
+    id: number;
+    sku: string;
+    price: string;
+    salePrice?: string;
+    cogs?: string; // Cost of Goods Sold
+    binLocation?: string;
+    stockStatus?: string;
+    images?: any[];
+    attributes: any[];
 }
 
 interface VariationsPanelProps {
