@@ -67,7 +67,7 @@ export function WebhookSettings() {
     const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
     // Construct the webhook URL
-    const webhookUrl = `${apiUrl}/api/webhook/${currentAccount?.id || '{accountId}'}`;
+    const webhookUrl = `${apiUrl}/api/webhooks/${currentAccount?.id || '{accountId}'}`;
 
     const handleCopy = (text: string, field: string) => {
         navigator.clipboard.writeText(text);
