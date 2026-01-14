@@ -253,6 +253,17 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
 
             Logger.info('[notifications] Test order notification result', { result });
 
+            // Return helpful message if no notifications sent
+            if (result.sent === 0) {
+                return {
+                    success: false,
+                    sent: 0,
+                    failed: result.failed,
+                    orderNumber: mockOrderNumber,
+                    message: 'No devices with push enabled for orders. Try disabling and re-enabling push notifications.'
+                };
+            }
+
             return {
                 success: true,
                 sent: result.sent,
@@ -264,6 +275,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to send test order notification' });
         }
     });
+
 };
 
 
