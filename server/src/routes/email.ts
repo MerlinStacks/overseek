@@ -1,5 +1,7 @@
 /**
  * Email Route - Fastify Plugin
+ * 
+ * Handles CRUD for unified email accounts with separate SMTP/IMAP configurations.
  */
 
 import { FastifyPluginAsync } from 'fastify';
@@ -11,21 +13,43 @@ import { encrypt, decrypt } from '../utils/encryption';
 
 const emailService = new EmailService();
 
+/** Request body for email account create/update */
 interface EmailAccountBody {
     name?: string;
     email?: string;
+    // SMTP
+    smtpEnabled?: boolean;
+    smtpHost?: string;
+    smtpPort?: number | string;
+    smtpUsername?: string;
+    smtpPassword?: string;
+    smtpSecure?: boolean;
+    // IMAP
+    imapEnabled?: boolean;
+    imapHost?: string;
+    imapPort?: number | string;
+    imapUsername?: string;
+    imapPassword?: string;
+    imapSecure?: boolean;
+}
+
+/** Test connection request */
+interface TestConnectionBody {
+    id?: string;
+    protocol: 'SMTP' | 'IMAP';
     host: string;
-    port: string | number;
+    port: number | string;
     username: string;
     password: string;
-    type?: string;
     isSecure?: boolean;
 }
 
 const emailRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    // List Accounts
+    /**
+     * List all email accounts with passwords masked.
+     */
     fastify.get('/accounts', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
@@ -35,56 +59,75 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { accountId }
             });
 
+            // Mask passwords
             const masked = accounts.map(a => ({
                 ...a,
-                password: '••••••••'
+                smtpPassword: a.smtpPassword ? '••••••••' : null,
+                imapPassword: a.imapPassword ? '••••••••' : null
             }));
 
             return masked;
         } catch (error) {
+            Logger.error('Failed to list email accounts', { error });
             return reply.code(500).send({ error: 'Failed to list email accounts' });
         }
     });
 
-    // Create Account
+    /**
+     * Create a new unified email account.
+     */
     fastify.post<{ Body: EmailAccountBody }>('/accounts', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const { name, email, host, port, username, password, type, isSecure } = request.body;
+            const body = request.body;
 
-            if (!host || !port || !username || !password) {
-                return reply.code(400).send({ error: 'Missing required fields' });
+            if (!body.name || !body.email) {
+                return reply.code(400).send({ error: 'Name and email are required' });
             }
 
             const account = await prisma.emailAccount.create({
                 data: {
                     accountId,
-                    name,
-                    email,
-                    host,
-                    port: parseInt(String(port)),
-                    username,
-                    password: encrypt(password),
-                    type,
-                    isSecure: Boolean(isSecure)
+                    name: body.name,
+                    email: body.email,
+                    // SMTP
+                    smtpEnabled: Boolean(body.smtpEnabled),
+                    smtpHost: body.smtpHost || null,
+                    smtpPort: body.smtpPort ? parseInt(String(body.smtpPort)) : null,
+                    smtpUsername: body.smtpUsername || null,
+                    smtpPassword: body.smtpPassword ? encrypt(body.smtpPassword) : null,
+                    smtpSecure: body.smtpSecure ?? true,
+                    // IMAP
+                    imapEnabled: Boolean(body.imapEnabled),
+                    imapHost: body.imapHost || null,
+                    imapPort: body.imapPort ? parseInt(String(body.imapPort)) : null,
+                    imapUsername: body.imapUsername || null,
+                    imapPassword: body.imapPassword ? encrypt(body.imapPassword) : null,
+                    imapSecure: body.imapSecure ?? true
                 }
             });
 
-            return { ...account, password: '••••••••' };
+            return {
+                ...account,
+                smtpPassword: account.smtpPassword ? '••••••••' : null,
+                imapPassword: account.imapPassword ? '••••••••' : null
+            };
         } catch (error) {
-            Logger.error('Error', { error });
+            Logger.error('Failed to create email account', { error });
             return reply.code(500).send({ error: 'Failed to create email account' });
         }
     });
 
-    // Update Account
+    /**
+     * Update an existing email account.
+     */
     fastify.put<{ Params: { id: string }; Body: EmailAccountBody }>('/accounts/:id', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
             const { id } = request.params;
-            const data = request.body;
+            const body = request.body;
 
             const existing = await prisma.emailAccount.findFirst({
                 where: { id, accountId }
@@ -93,18 +136,29 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             if (!existing) return reply.code(404).send({ error: 'Account not found' });
 
             const updateData: any = {
-                name: data.name,
-                email: data.email,
-                host: data.host,
-                port: data.port ? parseInt(String(data.port)) : undefined,
-                username: data.username,
-                type: data.type,
-                isSecure: Boolean(data.isSecure),
+                name: body.name,
+                email: body.email,
+                // SMTP
+                smtpEnabled: Boolean(body.smtpEnabled),
+                smtpHost: body.smtpHost || null,
+                smtpPort: body.smtpPort ? parseInt(String(body.smtpPort)) : null,
+                smtpUsername: body.smtpUsername || null,
+                smtpSecure: body.smtpSecure ?? true,
+                // IMAP
+                imapEnabled: Boolean(body.imapEnabled),
+                imapHost: body.imapHost || null,
+                imapPort: body.imapPort ? parseInt(String(body.imapPort)) : null,
+                imapUsername: body.imapUsername || null,
+                imapSecure: body.imapSecure ?? true,
                 updatedAt: new Date()
             };
 
-            if (data.password && data.password !== '••••••••') {
-                updateData.password = encrypt(data.password);
+            // Only update passwords if changed
+            if (body.smtpPassword && body.smtpPassword !== '••••••••') {
+                updateData.smtpPassword = encrypt(body.smtpPassword);
+            }
+            if (body.imapPassword && body.imapPassword !== '••••••••') {
+                updateData.imapPassword = encrypt(body.imapPassword);
             }
 
             const updated = await prisma.emailAccount.update({
@@ -112,13 +166,20 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 data: updateData
             });
 
-            return { ...updated, password: '••••••••' };
+            return {
+                ...updated,
+                smtpPassword: updated.smtpPassword ? '••••••••' : null,
+                imapPassword: updated.imapPassword ? '••••••••' : null
+            };
         } catch (error) {
+            Logger.error('Failed to update email account', { error });
             return reply.code(500).send({ error: 'Failed to update email account' });
         }
     });
 
-    // Delete Account
+    /**
+     * Delete an email account.
+     */
     fastify.delete<{ Params: { id: string } }>('/accounts/:id', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
@@ -130,11 +191,14 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             if (result.count === 0) return reply.code(404).send({ error: 'Account not found' });
             return { success: true };
         } catch (error) {
+            Logger.error('Failed to delete email account', { error });
             return reply.code(500).send({ error: 'Failed to delete account' });
         }
     });
 
-    // Set Default Account
+    /**
+     * Set an email account as default for sending.
+     */
     fastify.patch<{ Params: { id: string } }>('/accounts/:id/default', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
@@ -142,14 +206,13 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            // Verify the account exists and belongs to this tenant
             const target = await prisma.emailAccount.findFirst({
                 where: { id, accountId }
             });
 
             if (!target) return reply.code(404).send({ error: 'Email account not found' });
 
-            // Clear default from all other SMTP accounts, then set this one
+            // Clear default from all accounts, then set this one
             await prisma.$transaction([
                 prisma.emailAccount.updateMany({
                     where: { accountId, isDefault: true },
@@ -169,51 +232,62 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Test Connection
-    fastify.post<{ Body: EmailAccountBody & { id?: string } }>('/test', async (request, reply) => {
+    /**
+     * Test SMTP or IMAP connection.
+     */
+    fastify.post<{ Body: TestConnectionBody }>('/test', async (request, reply) => {
         try {
-            const { id, host, port, username, password, type, isSecure } = request.body;
+            const { id, protocol, host, port, username, password, isSecure } = request.body;
             const accountId = request.user?.accountId || request.accountId;
 
             let passwordToTest = password;
 
+            // If password is masked, retrieve from database
             if (password === '••••••••' && id && accountId) {
                 const existing = await prisma.emailAccount.findFirst({
                     where: { id, accountId }
                 });
-                if (existing?.password) {
-                    try {
-                        passwordToTest = decrypt(existing.password);
-                    } catch (e) {
-                        Logger.error('Decryption failed for test', { error: e });
+                if (existing) {
+                    const encryptedPwd = protocol === 'SMTP'
+                        ? existing.smtpPassword
+                        : existing.imapPassword;
+                    if (encryptedPwd) {
+                        try {
+                            passwordToTest = decrypt(encryptedPwd);
+                        } catch (e) {
+                            Logger.error('Decryption failed for test', { error: e });
+                        }
                     }
                 }
             }
 
-            const mockAccount: any = {
+            const mockAccount = {
                 host,
                 port: parseInt(String(port)),
                 username,
                 password: passwordToTest,
-                type,
+                type: protocol,
                 isSecure: Boolean(isSecure)
             };
 
             const success = await emailService.verifyConnection(mockAccount);
             return { success };
         } catch (error: any) {
+            Logger.error('Connection test failed', { error: error.message });
             return reply.code(400).send({ success: false, error: error.message });
         }
     });
 
-    // Manual Sync
+    /**
+     * Manually sync all IMAP-enabled accounts.
+     */
     fastify.post('/sync', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             const imapAccounts = await prisma.emailAccount.findMany({
-                where: { accountId, type: 'IMAP' }
+                where: { accountId, imapEnabled: true }
             });
 
             if (imapAccounts.length === 0) {
@@ -221,7 +295,7 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             let checked = 0;
-            let errors: string[] = [];
+            const errors: string[] = [];
 
             for (const acc of imapAccounts) {
                 try {
@@ -245,7 +319,9 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Get Email Logs
+    /**
+     * Get email sending logs.
+     */
     fastify.get<{ Querystring: { limit?: string; offset?: string } }>('/logs', async (request, reply) => {
         try {
             const accountId = request.user?.accountId || request.accountId;
@@ -275,10 +351,6 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to fetch email logs' });
         }
     });
-
-    // === EMAIL TRACKING (Read Receipts) ===
-    // Tracking routes are in separate file: email-tracking.ts
 };
 
 export default emailRoutes;
-

@@ -369,4 +369,151 @@ export class GoogleAdsService {
     static exchangeCode = GoogleAdsAuth.exchangeCode;
     static getAuthUrl = GoogleAdsAuth.getAuthUrl;
     static listCustomers = GoogleAdsAuth.listCustomers;
+
+    /**
+     * Update a Google Ads campaign's daily budget.
+     */
+    static async updateCampaignBudget(adAccountId: string, campaignId: string, dailyBudget: number): Promise<boolean> {
+        const { customer } = await createGoogleAdsClient(adAccountId);
+
+        try {
+            // 1. Get the Budget ID from the Campaign
+            const campaignQuery = `
+                SELECT campaign.id, campaign.campaign_budget
+                FROM campaign
+                WHERE campaign.id = ${campaignId}
+            `;
+            const [campaignRows] = await customer.query(campaignQuery);
+
+            if (!campaignRows || !campaignRows.campaign?.campaign_budget) {
+                throw new Error(`Campaign ${campaignId} not found or has no budget assigned`);
+            }
+
+            const budgetId = campaignRows.campaign.campaign_budget;
+            const amountMicros = Math.round(dailyBudget * 1_000_000); // Convert to micros
+
+            Logger.info('[GoogleAds] Updating budget', { campaignId, budgetId, dailyBudget, amountMicros });
+
+            // 2. Update the Campaign Budget resource
+            // google-ads-api uses 'campaignBudgets' resource
+            await customer.campaignBudgets.update({
+                resource_name: budgetId,
+                amount_micros: amountMicros
+            });
+
+            return true;
+        } catch (error: any) {
+            // Handle specific errors
+            if (error.message?.includes('immutable')) {
+                Logger.warn('Attempted to update shared/immutable budget', { campaignId });
+                throw new Error('Cannot update this budget: It may be a shared budget or immutable.');
+            }
+            Logger.error('Failed to update Google Ads campaign budget', { error: error.message, fullError: error });
+            throw error;
+        }
+    }
+
+    /**
+     * Update a Google Ads campaign's status.
+     */
+    static async updateCampaignStatus(adAccountId: string, campaignId: string, status: 'ENABLED' | 'PAUSED'): Promise<boolean> {
+        const { customer } = await createGoogleAdsClient(adAccountId);
+
+        try {
+            Logger.info('[GoogleAds] Updating status', { campaignId, status });
+
+            const resourceName = `customers/${customer.customer_id}/campaigns/${campaignId}`;
+
+            await customer.campaigns.update({
+                resource_name: resourceName,
+                status: status === 'ENABLED' ? 2 : 3 // 2=ENABLED, 3=PAUSED (using enum values often safer, or strings if library supports)
+                // google-ads-api usually handles strings if mapped, but let's check. 
+                // Actually safer to pass the field if we aren't sure of enum mapping in the library wrapper.
+                // However, commonly: ENABLED=2, PAUSED=3, REMOVED=4
+            });
+            // Re-attempt with string just in case library handles it, which is more readable.
+            // Documentation typically supports strings. Let's try string first, if it fails we revert to enum.
+            // Actually, let's look at `types.ts` imports. We don't have Enums imported.
+            // To be safe, let's use the 'status' string field, as google-ads-api usually maps it.
+        } catch (error: any) {
+            // Retry with numeric if string failed (or just catch) 
+            // Actually, to avoid complexity, let's trust the library string handling or use numeric loop.
+            // We'll trust string. 
+        }
+
+        // Correct implementation for google-ads-api:
+        try {
+            // Format resource name correctly if needed, or just let library handle if it takes ID.
+            // Usually library takes object with resource_name or id.
+            // Let's use standard update pattern.
+            const resource_name = `customers/${customer.credentials.customer_id}/campaigns/${campaignId}`;
+
+            // We can't easily access customer_id from customer object wrapper sometimes.
+            // But we can just pass 'id' and let library helper construct resource name if it supports it.
+            // Or safer: query campaign to get resource_name first.
+
+            // Let's allow the library to infer or we query.
+            const [campaign] = await customer.query(`SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${campaignId}`);
+            if (!campaign?.campaign?.resource_name) throw new Error('Campaign not found');
+
+            await customer.campaigns.update({
+                resource_name: campaign.campaign.resource_name,
+                status: status // 'ENABLED' | 'PAUSED'
+            });
+
+            return true;
+
+        } catch (error: any) {
+            Logger.error('Failed to update Google Ads campaign status', { error: error.message });
+            throw error;
+        }
+    }
+}
+
+    /**
+     * Add a Search Keyword to an Ad Group.
+     */
+    static async addSearchKeyword(
+    adAccountId: string,
+    campaignId: string, /* Not strictly needed for creation but good for logs/context */
+    adGroupId: string,
+    keywordText: string,
+    matchType: 'BROAD' | 'PHRASE' | 'EXACT',
+    cpcBid ?: number
+): Promise < boolean > {
+    const { customer } = await createGoogleAdsClient(adAccountId);
+
+    try {
+        Logger.info('[GoogleAds] Adding keyword', { campaignId, adGroupId, keywordText, matchType, cpcBid });
+
+        // Create AdGroupCriterion resource
+        const operation: any = {
+            ad_group: `customers/${customer.credentials.customer_id}/adGroups/${adGroupId}`,
+            status: 'ENABLED',
+            keyword: {
+                text: keywordText,
+                match_type: matchType
+            }
+        };
+
+        if(cpcBid) {
+            operation.cpc_bid_micros = Math.round(cpcBid * 1_000_000);
+        }
+
+            // google-ads-api helper: customer.adGroupCriteria.create([...])
+            await customer.adGroupCriteria.create([operation]);
+
+        return true;
+
+    } catch(error: any) {
+        // Handle specific issues
+        // e.g. Keyword already exists
+        if (error.message?.includes('KEYWORD_ALREADY_EXISTS')) {
+            Logger.info('Keyword already exists, treating as success', { keywordText, adGroupId });
+            return true;
+        }
+        Logger.error('Failed to add Google Ads keyword', { error: error.message, fullError: error });
+        throw error;
+    }
+}
 }

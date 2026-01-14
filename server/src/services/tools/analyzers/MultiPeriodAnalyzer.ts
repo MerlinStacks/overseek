@@ -11,6 +11,7 @@ import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 import { AdsService } from '../../ads';
 import { PeriodMetrics, testRoasChange, calculateAnomalyScore, ConfidenceResult } from '../utils/StatisticalUtils';
+import { ActionableRecommendation, BudgetAction, createBudgetHeadline } from '../types/ActionableTypes';
 
 // =============================================================================
 // TYPES
@@ -49,6 +50,7 @@ export interface MultiPeriodAnalysis {
         message: string;
     }>;
     suggestions: string[];
+    actionableRecommendations: ActionableRecommendation[];
 }
 
 // =============================================================================
@@ -156,7 +158,8 @@ export class MultiPeriodAnalyzer {
                 performance_trajectory: 'stable'
             },
             anomalies: [],
-            suggestions: []
+            suggestions: [],
+            actionableRecommendations: []
         };
 
         try {
@@ -392,6 +395,48 @@ export class MultiPeriodAnalyzer {
                 `(${combined['7d'].roas.toFixed(2)}x vs ${combined['30d'].roas.toFixed(2)}x). ` +
                 `Consider scaling budget on top performers.`
             );
+
+            // Add actionable recommendation
+            const currentDailySpend = combined['7d'].spend / 7;
+            const increaseAmount = Math.max(5, Math.round((currentDailySpend * 0.2) / 5) * 5); // 20% increase, rounded to $5
+            const newBudget = currentDailySpend + increaseAmount;
+
+            const action: BudgetAction = {
+                actionType: 'budget_increase',
+                campaignId: result.google?.adAccountId || result.meta?.adAccountId || 'all_campaigns',
+                campaignName: 'Top Performing Campaigns', // Ideally would identify specific campaign
+                platform: result.google ? 'google' : 'meta',
+                currentBudget: currentDailySpend,
+                suggestedBudget: newBudget,
+                changeAmount: increaseAmount,
+                changePercent: 20,
+                reason: 'performance_improving'
+            };
+
+            result.actionableRecommendations.push({
+                id: 'budget_scaling_opportunity',
+                priority: 2,
+                category: 'budget',
+                headline: `📈 ${createBudgetHeadline(action)}`,
+                explanation: `ROAS is up ${trends.roas_7d_vs_30d.change.toFixed(0)}% this week (${combined['7d'].roas.toFixed(2)}x). ` +
+                    `Scaling budget by 20% can capture more high-value conversions.`,
+                dataPoints: [
+                    `Current 7d ROAS: ${combined['7d'].roas.toFixed(2)}x`,
+                    `Previous 30d ROAS: ${combined['30d'].roas.toFixed(2)}x`,
+                    `Current Daily Spend: $${currentDailySpend.toFixed(0)}`
+                ],
+                action,
+                confidence: 75,
+                estimatedImpact: {
+                    revenueChange: combined['7d'].revenue / 7 * 0.2, // Est 20% revenue lift
+                    spendChange: increaseAmount,
+                    timeframe: '7d'
+                },
+                platform: result.google ? 'google' : 'meta', // Simplified
+                source: 'MultiPeriodAnalyzer',
+                tags: ['budget', 'scaling', 'performance']
+            });
+
         }
 
         // Priority 3: Spend trajectory + performance cross-analysis
@@ -400,6 +445,42 @@ export class MultiPeriodAnalyzer {
                 `⚠️ **Scaling Warning**: Spend is increasing but performance is declining. ` +
                 `You may be hitting diminishing returns. Review audience expansion and bidding strategy.`
             );
+
+            // Add actionable recommendation to pull back
+            const currentDailySpend = combined['7d'].spend / 7;
+            const decreaseAmount = Math.max(5, Math.round((currentDailySpend * 0.15) / 5) * 5); // 15% decrease
+            const newBudget = currentDailySpend - decreaseAmount;
+
+            const action: BudgetAction = {
+                actionType: 'budget_decrease',
+                campaignId: result.google?.adAccountId || 'all_campaigns',
+                campaignName: 'All Campaigns',
+                platform: result.google ? 'google' : 'meta',
+                currentBudget: currentDailySpend,
+                suggestedBudget: newBudget,
+                changeAmount: -decreaseAmount,
+                changePercent: -15,
+                reason: 'diminishing_returns'
+            };
+
+            result.actionableRecommendations.push({
+                id: 'budget_pullback_warning',
+                priority: 2,
+                category: 'budget',
+                headline: `⚠️ ${createBudgetHeadline(action)}`,
+                explanation: `Spend increased but ROAS declined to ${combined['7d'].roas.toFixed(2)}x. ` +
+                    `You may be hitting diminishing returns. Recommend pulling back budget by 15%.`,
+                dataPoints: [
+                    `Spend Trend: Increasing`,
+                    `Performance: Declining`,
+                    `Current ROAS: ${combined['7d'].roas.toFixed(2)}x`
+                ],
+                action,
+                confidence: 70,
+                platform: result.google ? 'google' : 'meta',
+                source: 'MultiPeriodAnalyzer',
+                tags: ['budget', 'efficiency', 'warning']
+            });
         } else if (trends.spend_trajectory === 'decreasing' && trends.performance_trajectory === 'improving') {
             result.suggestions.push(
                 `💡 **Opportunity**: Performance is improving while spend is decreasing. ` +

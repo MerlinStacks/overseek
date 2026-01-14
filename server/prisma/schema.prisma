@@ -1422,18 +1422,26 @@ model AnalyticsVisit {
 model EmailAccount {
   id        String @id @default(uuid())
   accountId String
-  name      String // e.g. "Support IP"
+  name      String // e.g. "Support Inbox"
   email     String // e.g. "support@myapp.com"
 
-  // Connection Settings
-  host     String
-  port     Int
-  username String
-  password String // Encrypt in real app!
-  isSecure Boolean @default(true)
+  // SMTP (Outgoing) Configuration
+  smtpEnabled  Boolean @default(false)
+  smtpHost     String?
+  smtpPort     Int?
+  smtpUsername String?
+  smtpPassword String? // Encrypted at app level
+  smtpSecure   Boolean @default(true)
 
-  type      String  @default("SMTP") // SMTP, IMAP
-  isDefault Boolean @default(false)
+  // IMAP (Incoming) Configuration
+  imapEnabled  Boolean @default(false)
+  imapHost     String?
+  imapPort     Int?
+  imapUsername String?
+  imapPassword String? // Encrypted at app level
+  imapSecure   Boolean @default(true)
+
+  isDefault Boolean @default(false) // Default for sending
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   logs    EmailLog[]

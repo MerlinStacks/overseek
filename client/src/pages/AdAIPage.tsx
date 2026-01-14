@@ -2,7 +2,7 @@
  * AI Ad Management Page
  * 
  * Dedicated page for AI-powered ad optimization with priority-sorted suggestions.
- * Shows urgent alerts prominently and provides full detail view of all recommendations.
+ * Features glassmorphism UI and actionable recommendation cards.
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -10,8 +10,6 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import {
     AlertTriangle,
-    TrendingUp,
-    TrendingDown,
     Lightbulb,
     RefreshCw,
     ArrowLeft,
@@ -19,83 +17,30 @@ import {
     AlertCircle,
     Info,
     MessageCirclePlus,
-    DollarSign,
-    Package,
-    Palette,
-    Calendar
+    Sparkles,
+    Zap
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AdContextModal } from '../components/marketing/AdContextModal';
+import { ActionableRecommendationCard } from '../components/marketing/ActionableRecommendationCard';
+import { ActionableRecommendation } from '../types/ActionableTypes';
+import { AddKeywordModal } from '../components/marketing/AddKeywordModal';
+
+import { CampaignWizard } from '../components/marketing/CampaignWizard/CampaignWizard';
 
 interface PrioritizedSuggestion {
     text: string;
     priority: 1 | 2 | 3;
-    category: 'stock' | 'performance' | 'budget' | 'creative' | 'seasonal' | 'info';
+    category: string;
 }
 
 interface SuggestionsData {
-    suggestions: string[];
-    prioritized: PrioritizedSuggestion[];
+    suggestions: string[]; // Legacy
+    prioritized: PrioritizedSuggestion[]; // Legacy
+    actionableRecommendations?: ActionableRecommendation[]; // New structured data
     summary?: any;
     action_items?: string[];
     message?: string;
-}
-
-/**
- * Returns icon and colors based on suggestion category and priority.
- */
-function getSuggestionStyle(suggestion: PrioritizedSuggestion) {
-    const { priority, category } = suggestion;
-
-    if (priority === 1) {
-        return {
-            icon: <AlertTriangle className="w-5 h-5" />,
-            bg: 'bg-red-50 border-red-200',
-            iconColor: 'text-red-600',
-            badge: 'bg-red-100 text-red-800',
-            badgeText: 'Urgent'
-        };
-    }
-
-    if (priority === 2) {
-        const iconMap: Record<string, React.ReactNode> = {
-            budget: <DollarSign className="w-5 h-5" />,
-            creative: <Palette className="w-5 h-5" />,
-            performance: <TrendingDown className="w-5 h-5" />,
-            stock: <Package className="w-5 h-5" />,
-        };
-        return {
-            icon: iconMap[category] || <AlertCircle className="w-5 h-5" />,
-            bg: 'bg-amber-50 border-amber-200',
-            iconColor: 'text-amber-600',
-            badge: 'bg-amber-100 text-amber-800',
-            badgeText: 'Important'
-        };
-    }
-
-    // Priority 3 - Info
-    const iconMap: Record<string, React.ReactNode> = {
-        seasonal: <Calendar className="w-5 h-5" />,
-        info: <Info className="w-5 h-5" />,
-        performance: <TrendingUp className="w-5 h-5" />,
-    };
-    return {
-        icon: iconMap[category] || <Lightbulb className="w-5 h-5" />,
-        bg: 'bg-blue-50 border-blue-200',
-        iconColor: 'text-blue-600',
-        badge: 'bg-blue-100 text-blue-800',
-        badgeText: 'Info'
-    };
-}
-
-/**
- * Clean markdown and emoji from text for display.
- */
-function cleanText(text: string): string {
-    return text
-        .replace(/\*\*/g, '')
-        .replace(/(🔴|🟢|📊|💰|🚀|📁|✅|🛒|🔍|⭐|🚫|⚠️|📝|📉|📈|🎨|👥|💵|ℹ️|📅)/gu, '')
-        .trim();
 }
 
 export function AdAIPage() {
@@ -108,6 +53,11 @@ export function AdAIPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showContextModal, setShowContextModal] = useState(false);
+    const [showCampaignWizard, setShowCampaignWizard] = useState(false);
+
+    // Keyword Modal State
+    const [keywordModalOpen, setKeywordModalOpen] = useState(false);
+    const [activeKeywordRec, setActiveKeywordRec] = useState<ActionableRecommendation | null>(null);
 
     const fetchSuggestions = useCallback(async (isRefresh = false) => {
         if (!currentAccount || !token) return;
@@ -141,197 +91,356 @@ export function AdAIPage() {
         fetchSuggestions();
     }, [fetchSuggestions]);
 
-    // Separate by priority
-    const urgentItems = data?.prioritized?.filter(s => s.priority === 1) || [];
-    const importantItems = data?.prioritized?.filter(s => s.priority === 2) || [];
-    const infoItems = data?.prioritized?.filter(s => s.priority === 3) || [];
+    const handleKeywordConfirm = async (rec: ActionableRecommendation, keywordData: { keyword: string; matchType: string; bid: number; adGroupId: string }) => {
+        if (!token || !currentAccount) return;
+
+        // Optimistic update
+        const originalData = data;
+        if (data && data.actionableRecommendations) {
+            const newData = {
+                ...data,
+                actionableRecommendations: data.actionableRecommendations.filter(r => r.id !== rec.id)
+            };
+            setData(newData);
+        }
+
+        try {
+            const res = await fetch('/api/ads/execute-action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({
+                    recommendationId: rec.id,
+                    actionType: 'add_keyword',
+                    platform: rec.platform,
+                    campaignId: (rec.action as any).campaignId,
+                    parameters: {
+                        keyword: keywordData.keyword,
+                        matchType: keywordData.matchType,
+                        bid: keywordData.bid,
+                        adGroupId: keywordData.adGroupId,
+                        adAccountId: (rec as any).adAccountId // If available, otherwise backend finds it
+                    }
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to add keyword');
+            }
+            console.log('Keyword added successfully');
+        } catch (err: any) {
+            console.error('Failed to add keyword', err);
+            setData(originalData); // Revert
+            alert(`Failed to add keyword: ${err.message}`);
+        }
+    };
+
+    const handleApply = async (rec: ActionableRecommendation) => {
+        if (!token || !currentAccount) return;
+
+        // Special handling for keyword additions - needs modal
+        if (rec.action.actionType === 'add_keyword') {
+            setActiveKeywordRec(rec);
+            setKeywordModalOpen(true);
+            return;
+        }
+
+        // Optimistically remove from UI to feel instant
+        // In a real app, we might show a spinner on the card instead
+        const originalData = data;
+
+        // Remove the item from the list visually
+        if (data && data.actionableRecommendations) {
+            const newData = {
+                ...data,
+                actionableRecommendations: data.actionableRecommendations.filter(r => r.id !== rec.id)
+            };
+            setData(newData);
+        }
+
+        try {
+            let parameters: any = {};
+            let actionType = '';
+
+            // Map frontend action to backend parameters
+            if (rec.action.actionType === 'budget_increase' || rec.action.actionType === 'budget_decrease') {
+                // TS check or cast - we know it's BudgetAction if types match
+                const budgetAction = rec.action as any;
+                parameters.amount = budgetAction.suggestedBudget;
+                actionType = budgetAction.actionType;
+            } else if (rec.action.actionType === 'pause' || rec.action.actionType === 'enable') {
+                actionType = rec.action.actionType;
+            } else {
+                console.warn('Action type not yet supported for execution:', rec.action.actionType);
+                // Revert optimistic update
+                setData(originalData);
+                alert('This action type is not yet fully connected to the API.');
+                return;
+            }
+
+            const res = await fetch('/api/ads/execute-action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({
+                    recommendationId: rec.id,
+                    actionType: actionType,
+                    platform: rec.platform,
+                    campaignId: (rec.action as any).campaignId, // BudgetAction has campaignId
+                    parameters
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to execute action');
+            }
+
+            // Success - maybe show a toast
+            console.log('Action executed successfully');
+
+        } catch (err: any) {
+            console.error('Failed to apply recommendation', err);
+            // Revert optimistic update on error
+            setData(originalData);
+            alert(`Failed to apply action: ${err.message}`);
+        }
+    };
+
+    const handleDismiss = (rec: ActionableRecommendation) => {
+        console.log('Dismissing recommendation:', rec);
+        // Could remove from list locally
+    };
+
+    // Separate recommendations by priority
+    const actionableRecs = data?.actionableRecommendations || [];
+    const urgentItems = actionableRecs.filter(s => s.priority === 1);
+    const importantItems = actionableRecs.filter(s => s.priority === 2);
+    const opportunityItems = actionableRecs.filter(s => s.priority === 3);
+
+    // Fallback to legacy items if no actionable ones (backward compatibility)
+    const hasLegacyOnly = actionableRecs.length === 0 && (data?.prioritized?.length || 0) > 0;
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-96">
-                <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-8 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="relative">
+                        <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Sparkles className="w-6 h-6 text-blue-500 animate-pulse" />
+                        </div>
+                    </div>
+                    <p className="text-gray-500 font-medium">Analyzing campaign performance...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate('/marketing?tab=ads')}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                            <Lightbulb className="text-amber-500" />
-                            AI Ad Suggestions
-                        </h1>
-                        <p className="text-gray-500">Priority-sorted recommendations for your ad campaigns</p>
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 md:p-8">
+            <div className="max-w-5xl mx-auto space-y-8">
+
+                {/* Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate('/marketing?tab=ads')}
+                            className="p-2 hover:bg-white rounded-xl transition-all shadow-sm hover:shadow text-gray-600"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-lg text-white shadow-lg shadow-blue-500/20">
+                                    <Zap size={24} fill="currentColor" />
+                                </div>
+                                AI Co-pilot
+                            </h1>
+                            <p className="text-gray-500 mt-1">Real-time actionable insights for your campaigns</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowCampaignWizard(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                        >
+                            <Sparkles size={18} />
+                            Create Campaign
+                        </button>
+                        <button
+                            onClick={() => setShowContextModal(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all border border-gray-200 shadow-sm"
+                        >
+                            <MessageCirclePlus size={18} />
+                            Add Context
+                        </button>
+                        <button
+                            onClick={() => fetchSuggestions(true)}
+                            disabled={refreshing}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:translate-y-0"
+                        >
+                            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+                            {refreshing ? 'Analyzing...' : 'Refresh Analysis'}
+                        </button>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setShowContextModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
-                    >
-                        <MessageCirclePlus size={18} />
-                        Add Context
-                    </button>
-                    <button
-                        onClick={() => fetchSuggestions(true)}
-                        disabled={refreshing}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                        Refresh
-                    </button>
-                </div>
-            </div>
 
-            <AdContextModal
-                isOpen={showContextModal}
-                onClose={() => setShowContextModal(false)}
-                onSaved={() => fetchSuggestions(true)}
-            />
+                <CampaignWizard
+                    isOpen={showCampaignWizard}
+                    onClose={() => setShowCampaignWizard(false)}
+                />
 
-            {/* No accounts message */}
-            {data?.message && (
-                <div className="bg-gray-50 rounded-xl p-8 text-center">
-                    <Lightbulb className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">{data.message}</p>
-                    <button
-                        onClick={() => navigate('/marketing?tab=ads')}
-                        className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                        Connect Ad Accounts →
-                    </button>
-                </div>
-            )}
+                <AdContextModal
+                    isOpen={showContextModal}
+                    onClose={() => setShowContextModal(false)}
+                    onSaved={() => fetchSuggestions(true)}
+                />
 
-            {/* Error state */}
-            {error && (
-                <div className="bg-red-50 rounded-xl p-6 text-red-700">
-                    <AlertCircle className="inline mr-2" />
-                    {error}
-                </div>
-            )}
+                {/* Keyword Addition Modal */}
+                {activeKeywordRec && (
+                    <AddKeywordModal
+                        isOpen={keywordModalOpen}
+                        onClose={() => setKeywordModalOpen(false)}
+                        recommendation={activeKeywordRec}
+                        onConfirm={async (data) => {
+                            await handleKeywordConfirm(activeKeywordRec, data);
+                            setKeywordModalOpen(false);
+                            setActiveKeywordRec(null);
+                        }}
+                    />
+                )}
 
-            {/* Summary Stats */}
-            {data?.summary && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-white rounded-xl p-4 border shadow-sm">
-                        <p className="text-sm text-gray-500">Urgent Issues</p>
-                        <p className={`text-2xl font-bold ${urgentItems.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {urgentItems.length}
-                        </p>
+                {/* Error state */}
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700 flex items-start gap-3">
+                        <AlertCircle className="shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-semibold">Analysis Failed</h3>
+                            <p className="text-sm opacity-90">{error}</p>
+                        </div>
                     </div>
-                    <div className="bg-white rounded-xl p-4 border shadow-sm">
-                        <p className="text-sm text-gray-500">Important Actions</p>
-                        <p className="text-2xl font-bold text-amber-600">{importantItems.length}</p>
-                    </div>
-                    <div className="bg-white rounded-xl p-4 border shadow-sm">
-                        <p className="text-sm text-gray-500">Insights</p>
-                        <p className="text-2xl font-bold text-blue-600">{infoItems.length}</p>
-                    </div>
-                    {data.summary.seasonal && (
-                        <div className="bg-white rounded-xl p-4 border shadow-sm">
-                            <p className="text-sm text-gray-500">Season</p>
-                            <p className="text-sm font-semibold text-purple-600">{data.summary.seasonal.period}</p>
+                )}
+
+                {/* Main Content */}
+                <div className="space-y-8">
+
+                    {/* Urgent Section */}
+                    {urgentItems.length > 0 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-red-600 font-bold uppercase tracking-wider text-sm ml-1">
+                                <AlertTriangle size={16} />
+                                Requires Attention
+                            </div>
+                            <div className="grid gap-4">
+                                {urgentItems.map(rec => (
+                                    <ActionableRecommendationCard
+                                        key={rec.id}
+                                        recommendation={rec}
+                                        onApply={handleApply}
+                                        onDismiss={handleDismiss}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* Urgent Alerts */}
-            {urgentItems.length > 0 && (
-                <div className="space-y-3">
-                    <h2 className="text-lg font-semibold text-red-700 flex items-center gap-2">
-                        <AlertTriangle size={20} />
-                        Urgent - Requires Immediate Attention
-                    </h2>
-                    <div className="space-y-3">
-                        {urgentItems.map((item, idx) => {
-                            const style = getSuggestionStyle(item);
-                            return (
-                                <div key={idx} className={`p-4 rounded-xl border ${style.bg} flex items-start gap-3`}>
-                                    <div className={style.iconColor}>{style.icon}</div>
-                                    <div className="flex-1">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${style.badge} mb-2`}>
-                                            {style.badgeText}
-                                        </span>
-                                        <p className="text-gray-800">{cleanText(item.text)}</p>
+                    {/* Important Section */}
+                    {importantItems.length > 0 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-amber-600 font-bold uppercase tracking-wider text-sm ml-1">
+                                <Zap size={16} />
+                                High Impact Opportunities
+                            </div>
+                            <div className="grid gap-4">
+                                {importantItems.map(rec => (
+                                    <ActionableRecommendationCard
+                                        key={rec.id}
+                                        recommendation={rec}
+                                        onApply={handleApply}
+                                        onDismiss={handleDismiss}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Optimization Section */}
+                    {opportunityItems.length > 0 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-blue-600 font-bold uppercase tracking-wider text-sm ml-1">
+                                <Lightbulb size={16} />
+                                Optimizations & Insights
+                            </div>
+                            <div className="grid gap-4">
+                                {opportunityItems.map(rec => (
+                                    <ActionableRecommendationCard
+                                        key={rec.id}
+                                        recommendation={rec}
+                                        onApply={handleApply}
+                                        onDismiss={handleDismiss}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Empty State */}
+                    {!loading && !error && actionableRecs.length === 0 && !hasLegacyOnly && (
+                        <div className="bg-white/50 backdrop-blur-sm border border-white/60 rounded-3xl p-12 text-center shadow-sm">
+                            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <CheckCircle size={40} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">All Systems Optimized</h3>
+                            <p className="text-gray-500 max-w-md mx-auto">
+                                Your campaigns are running smoothly. The AI Co-pilot analyzes your data 24/7 and will alert you when opportunities arise.
+                            </p>
+                            <button
+                                onClick={() => fetchSuggestions(true)}
+                                className="mt-8 text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                            >
+                                Force Re-analysis
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Legacy Items Fallback */}
+                    {hasLegacyOnly && (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-gray-500 font-bold uppercase tracking-wider text-sm ml-1">
+                                <Info size={16} />
+                                General Suggestions
+                            </div>
+                            <div className="grid gap-4">
+                                {data?.prioritized?.map((item, idx) => (
+                                    <div key={idx} className="bg-white/80 backdrop-blur border border-white/20 p-6 rounded-2xl shadow-sm">
+                                        <div className="flex gap-4">
+                                            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl h-fit">
+                                                <Info size={24} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-medium text-gray-900 mb-1">{item.text}</h3>
+                                                <span className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded-md uppercase tracking-wider">
+                                                    {item.category}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-            {/* Important Items */}
-            {importantItems.length > 0 && (
-                <div className="space-y-3">
-                    <h2 className="text-lg font-semibold text-amber-700 flex items-center gap-2">
-                        <AlertCircle size={20} />
-                        Important - Action Recommended
-                    </h2>
-                    <div className="space-y-3">
-                        {importantItems.map((item, idx) => {
-                            const style = getSuggestionStyle(item);
-                            return (
-                                <div key={idx} className={`p-4 rounded-xl border ${style.bg} flex items-start gap-3`}>
-                                    <div className={style.iconColor}>{style.icon}</div>
-                                    <div className="flex-1">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${style.badge} mb-2`}>
-                                            {style.badgeText}
-                                        </span>
-                                        <p className="text-gray-800">{cleanText(item.text)}</p>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
                 </div>
-            )}
-
-            {/* Info Items */}
-            {infoItems.length > 0 && (
-                <div className="space-y-3">
-                    <h2 className="text-lg font-semibold text-blue-700 flex items-center gap-2">
-                        <Info size={20} />
-                        Insights & Information
-                    </h2>
-                    <div className="space-y-3">
-                        {infoItems.map((item, idx) => {
-                            const style = getSuggestionStyle(item);
-                            return (
-                                <div key={idx} className={`p-4 rounded-xl border ${style.bg} flex items-start gap-3`}>
-                                    <div className={style.iconColor}>{style.icon}</div>
-                                    <div className="flex-1">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${style.badge} mb-2`}>
-                                            {style.badgeText}
-                                        </span>
-                                        <p className="text-gray-800">{cleanText(item.text)}</p>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* All clear state */}
-            {data?.prioritized && data.prioritized.length === 0 && (
-                <div className="bg-green-50 rounded-xl p-8 text-center">
-                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-green-700">All Clear!</h3>
-                    <p className="text-green-600">Your ad campaigns are performing well with no issues detected.</p>
-                </div>
-            )}
+            </div>
         </div>
     );
 }

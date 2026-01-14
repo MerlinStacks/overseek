@@ -10,6 +10,8 @@ import { SuggestionCategory } from '../config/MarketingCopilotConfig';
 // SUGGESTION TYPES
 // =============================================================================
 
+import { ActionableRecommendation } from './ActionableTypes';
+
 /**
  * Unified suggestion format used across all analyzers.
  */
@@ -52,6 +54,7 @@ export function createSuggestion(
 export interface BaseAnalysisResult {
     hasData: boolean;
     suggestions: Suggestion[];
+    actionableRecommendations?: ActionableRecommendation[];
     metadata: AnalysisMetadata;
 }
 

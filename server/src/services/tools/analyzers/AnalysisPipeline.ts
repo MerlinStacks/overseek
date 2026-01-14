@@ -12,6 +12,7 @@ import {
     UnifiedAnalysis,
     AnalysisMetadata
 } from '../types/AnalysisTypes';
+import { ActionableRecommendation } from '../types/ActionableTypes';
 import { BaseAnalyzer } from './BaseAnalyzer';
 
 // Import individual analyzers
@@ -20,6 +21,8 @@ import { CrossChannelAnalyzer } from './CrossChannelAnalyzer';
 import { LTVAnalyzer } from './LTVAnalyzer';
 import { FunnelAnalyzer } from './FunnelAnalyzer';
 import { AudienceAnalyzer } from './AudienceAnalyzer';
+import { ProductOpportunityAnalyzer } from './ProductOpportunityAnalyzer';
+import { KeywordOpportunityAnalyzer } from './KeywordOpportunityAnalyzer';
 
 // =============================================================================
 // PIPELINE
@@ -39,17 +42,36 @@ export class AnalysisPipeline {
             crossChannel,
             ltv,
             funnel,
-            audience
+            audience,
+            productOpp,
+            keywordOpp
         ] = await Promise.all([
             MultiPeriodAnalyzer.analyze(accountId),
             CrossChannelAnalyzer.analyze(accountId),
             LTVAnalyzer.analyze(accountId),
             FunnelAnalyzer.analyze(accountId),
             AudienceAnalyzer.analyze(accountId),
+            ProductOpportunityAnalyzer.analyze(accountId), // New
+            KeywordOpportunityAnalyzer.analyze(accountId)  // New
         ]);
 
         // Collect all suggestions
         const allSuggestions: Suggestion[] = [];
+        const allActions: ActionableRecommendation[] = [];
+
+        // Collect actionable recommendations from new analyzers
+        if (productOpp.unpromotedProducts) allActions.push(...productOpp.unpromotedProducts);
+        if (productOpp.underperformingProducts) allActions.push(...productOpp.underperformingProducts);
+        if (productOpp.highPotentialProducts) allActions.push(...productOpp.highPotentialProducts);
+
+        if (keywordOpp.keywordOpportunities) allActions.push(...keywordOpp.keywordOpportunities);
+        if (keywordOpp.negativeKeywordOpportunities) allActions.push(...keywordOpp.negativeKeywordOpportunities);
+        if (keywordOpp.bidAdjustments) allActions.push(...keywordOpp.bidAdjustments);
+
+        // Collect actionable recommendations from existing updated analyzers
+        if (multiPeriod.actionableRecommendations) {
+            allActions.push(...multiPeriod.actionableRecommendations);
+        }
 
         // Convert legacy string suggestions to new format
         this.convertAndAddSuggestions(allSuggestions, multiPeriod.suggestions, 'MultiPeriodAnalyzer');
@@ -62,13 +84,21 @@ export class AnalysisPipeline {
         const dedupedSuggestions = this.deduplicateSuggestions(allSuggestions);
         const sortedSuggestions = this.sortSuggestions(dedupedSuggestions);
 
+        // Sort actionable recommendations by priority
+        const sortedActions = allActions.sort((a, b) => {
+            if (a.priority !== b.priority) return a.priority - b.priority;
+            return b.confidence - a.confidence;
+        });
+
         // Build unified result
         const hasData = multiPeriod.hasData || crossChannel.hasData ||
-            ltv.hasData || funnel.hasData || audience.hasData;
+            ltv.hasData || funnel.hasData || audience.hasData ||
+            productOpp.hasData || keywordOpp.hasData;
 
         return {
             hasData,
             suggestions: sortedSuggestions,
+            actionableRecommendations: sortedActions,
             results: {
                 multiPeriod: this.toBaseResult(multiPeriod, 'MultiPeriodAnalyzer', accountId, startTime),
                 crossChannel: this.toBaseResult(crossChannel, 'CrossChannelAnalyzer', accountId, startTime),

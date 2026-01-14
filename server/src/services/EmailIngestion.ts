@@ -230,9 +230,9 @@ export class EmailIngestion {
         conversationId: string
     ) {
         try {
-            // Get default email account for sending
+            // Get default email account for sending (SMTP enabled)
             const emailAccount = await prisma.emailAccount.findFirst({
-                where: { accountId, isDefault: true, type: 'SMTP' }
+                where: { accountId, isDefault: true, smtpEnabled: true }
             });
 
             if (!emailAccount) {

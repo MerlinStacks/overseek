@@ -333,6 +333,163 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: error.message });
         }
     });
+    // POST /api/ads/execute-action - Execute an actionable recommendation
+    fastify.post<{ Body: { actionType: string; platform: 'google' | 'meta'; campaignId: string; parameters: any } }>('/execute-action', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+        try {
+            const { actionType, platform, campaignId, parameters } = request.body;
+            const { amount, status } = parameters || {};
+
+            Logger.info('Executing Ad Action', { accountId, actionType, platform, campaignId, parameters });
+
+            // 1. Find the specific Ad Account for this campaign
+            // We need to find which ad account owns this campaign.
+            // Since we don't pass adAccountId explicitly in the action payload from UI (yet), 
+            // we have to look it up or rely on the UI passing it.
+            // The ActionableRecommendation currently has 'campaignId' but 'adAccountId' might be missing in `BudgetAction`.
+            // However, `campaignId` in the recommendations is usually globally unique-ish BUT for safety we need the adAccountId.
+            // ActionableType `BudgetAction` has `campaignId`. 
+            // The UI ActionableRecommendationCard usually has context.
+            // Let's assume the UI passes `adAccountId` in `parameters` or we search for it.
+
+            // RECOMMENDATION: Update UI/Type to include adAccountId.
+            // For now, let's search all connected accounts of that platform for the campaign.
+            // This is inefficient but works for Phase 1.
+
+            const accounts = await AdsService.getAdAccounts(accountId);
+            const platformAccounts = accounts.filter(a => a.platform === platform.toUpperCase());
+
+            if (platformAccounts.length === 0) {
+                return reply.code(400).send({ error: `No connected ${platform} accounts found` });
+            }
+
+            let targetAccount = null;
+            // Iterate to find which account owns this campaign (if we have to).
+            // But actually, for Google, "campaignId" is unique enough within a customer, but we need the customer ID (adAccount.externalId).
+            // Let's assume the UI sends 'adAccountId' if available, otherwise we default to the first one or try all.
+            // BETTER APPROACH: The `campaignId` in `MultiPeriodAnalyzer` came from `GoogleAdsTools` or `MetaAdsTools`. 
+            // In `GoogleAdsTools`, `allCampaigns` objects had keys.
+            // The `ActionableRecommendation` doesn't explicitly store `adAccountId`.
+            // We'll try to execute against the first matching account or iterate.
+
+            // Simplification for Phase 1: Try the first account of that platform, or require adAccountId in parameters.
+            let adAccountId = parameters.adAccountId;
+
+            if (!adAccountId) {
+                // Heuristic: If only 1 account, use it.
+                if (platformAccounts.length === 1) {
+                    targetAccount = platformAccounts[0];
+                    adAccountId = targetAccount.id;
+                } else {
+                    // If multiple, we really need the ID.
+                    // For now, try all (sequence) until success? That's risky for writes.
+                    // Return error.
+                    return reply.code(400).send({ error: 'Multiple ad accounts found. Please specify adAccountId.' });
+                }
+            } else {
+                targetAccount = platformAccounts.find(a => a.id === adAccountId);
+            }
+
+            if (!targetAccount) {
+                return reply.code(404).send({ error: 'Target ad account not found' });
+            }
+
+            let success = false;
+
+            if (platform === 'meta') {
+                if (actionType === 'budget_increase' || actionType === 'budget_decrease') {
+                    if (!amount) return reply.code(400).send({ error: 'Amount is required for budget update' });
+                    success = await AdsService.updateMetaCampaignBudget(targetAccount.id, campaignId, amount);
+                } else if (actionType === 'pause') {
+                    success = await AdsService.updateMetaCampaignStatus(targetAccount.id, campaignId, 'PAUSED');
+                } else if (actionType === 'enable') {
+                    success = await AdsService.updateMetaCampaignStatus(targetAccount.id, campaignId, 'ACTIVE');
+                }
+            } else if (platform === 'google') {
+                if (actionType === 'budget_increase' || actionType === 'budget_decrease') {
+                    if (!amount) return reply.code(400).send({ error: 'Amount is required for budget update' });
+                    success = await AdsService.updateGoogleCampaignBudget(targetAccount.id, campaignId, amount);
+                } else if (actionType === 'pause') {
+                    success = await AdsService.updateGoogleCampaignStatus(targetAccount.id, campaignId, 'PAUSED');
+                } else if (actionType === 'enable') {
+                    success = await AdsService.updateGoogleCampaignStatus(targetAccount.id, campaignId, 'ENABLED');
+                } else if (actionType === 'keyword_add') {
+                    // Parameters for keyword add
+                    // We need adGroupId, keywordText, matchType, cpcBid
+                    const { adGroupId, keyword, matchType, bid } = parameters;
+                    if (!adGroupId || !keyword || !matchType) {
+                        return reply.code(400).send({ error: 'Missing required fields for keyword add: adGroupId, keyword, matchType' });
+                    }
+                    success = await AdsService.addGoogleSearchKeyword(
+                        targetAccount.id,
+                        campaignId,
+                        adGroupId,
+                        keyword,
+                        matchType,
+                        bid ? parseFloat(bid) : undefined
+                    );
+                }
+            }
+
+            if (success) {
+                Logger.info('Ad Action Executed Successfully', { campaignId, actionType });
+                // TODO: Insert into ActionLog
+                return { success: true };
+            } else {
+                return reply.code(500).send({ error: 'Failed to execute action' });
+            }
+
+        } catch (error: any) {
+            Logger.error('Ad Action Execution Failed', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // POST /api/ads/create-campaign - Create a new ad campaign (Wizard)
+    fastify.post<{ Body: { type: 'SEARCH' | 'PMAX'; name: string; budget: number; keywords?: any[]; adCopy?: any; productIds?: string[] } }>('/create-campaign', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+        try {
+            const { type, name, budget, keywords, adCopy, productIds } = request.body;
+            const { CampaignBuilderService } = await import('../services/ads/CampaignBuilderService');
+
+            // We need to resolve the adAccountId. 
+            // Phase 3 Wizard should ideally pass it. For now, find Google Account.
+            // Simplification: Pick the first Google account.
+            const accounts = await AdsService.getAdAccounts(accountId);
+            const googleAccount = accounts.find(a => a.platform === 'GOOGLE');
+
+            if (!googleAccount) {
+                return reply.code(400).send({ error: 'No Google Ads account connected' });
+            }
+
+            if (type === 'SEARCH') {
+                if (!keywords || !adCopy) {
+                    return reply.code(400).send({ error: 'Keywords and Ad Copy are required for Search campaigns' });
+                }
+                const result = await CampaignBuilderService.createSearchCampaign(
+                    googleAccount.id,
+                    { name, dailyBudget: budget },
+                    keywords,
+                    adCopy
+                );
+                return result;
+            } else if (type === 'PMAX') {
+                // Placeholder for PMax
+                return reply.code(501).send({ error: 'Performance Max creation not yet enabled' });
+            }
+
+            return reply.code(400).send({ error: 'Invalid campaign type' });
+
+        } catch (error: any) {
+            Logger.error('Failed to create campaign', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
 };
 
 export default adsRoutes;

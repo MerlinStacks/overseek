@@ -278,4 +278,88 @@ export class MetaAdsService {
             throw error;
         }
     }
+
+    /**
+     * Update a Meta Ads campaign's daily budget.
+     */
+    static async updateCampaignBudget(adAccountId: string, campaignId: string, dailyBudget: number): Promise<boolean> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        // Meta Ads API requires budget in cents (basic unit) usually, but Graph API v18 takes 'daily_budget' in basic unit (e.g. 1000 for $10.00).
+        // Actually, for most currencies, it's the "offset" unit. For USD, it's cents.
+        // We will assume the input 'dailyBudget' is in DOLLARS (e.g. 50.00).
+        // So we multiply by 100.
+        const budgetInCents = Math.round(dailyBudget * 100);
+
+        const url = `https://graph.facebook.com/v18.0/${campaignId}?access_token=${adAccount.accessToken}`;
+
+        try {
+            Logger.info('[MetaAds] Updating budget', { campaignId, dailyBudget, budgetInCents });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    daily_budget: budgetInCents
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Update Budget Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            return data.success === true;
+        } catch (error) {
+            Logger.error('Failed to update Meta campaign budget', { error });
+            throw error;
+        }
+    }
+
+    /**
+     * Update a Meta Ads campaign's status (PAUSED or ACTIVE).
+     */
+    static async updateCampaignStatus(adAccountId: string, campaignId: string, status: 'ACTIVE' | 'PAUSED'): Promise<boolean> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const url = `https://graph.facebook.com/v18.0/${campaignId}?access_token=${adAccount.accessToken}`;
+
+        try {
+            Logger.info('[MetaAds] Updating status', { campaignId, status });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: status
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Update Status Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            return data.success === true;
+        } catch (error) {
+            Logger.error('Failed to update Meta campaign status', { error });
+            throw error;
+        }
+    }
 }

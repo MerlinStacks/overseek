@@ -37,6 +37,12 @@ export class AdsService {
     /** @see MetaAdsService.getDailyTrends */
     static getMetaDailyTrends = MetaAdsService.getDailyTrends;
 
+    /** @see MetaAdsService.updateCampaignBudget */
+    static updateMetaCampaignBudget = MetaAdsService.updateCampaignBudget;
+
+    /** @see MetaAdsService.updateCampaignStatus */
+    static updateMetaCampaignStatus = MetaAdsService.updateCampaignStatus;
+
     // ──────────────────────────────────────────────────────────────
     // GOOGLE ADS - Delegates to GoogleAdsService
     // ──────────────────────────────────────────────────────────────
@@ -50,6 +56,12 @@ export class AdsService {
     /** @see GoogleAdsService.getDailyTrends */
     static getGoogleDailyTrends = GoogleAdsService.getDailyTrends;
 
+    /** @see GoogleAdsService.updateCampaignBudget */
+    static updateGoogleCampaignBudget = GoogleAdsService.updateCampaignBudget;
+
+    /** @see GoogleAdsService.updateCampaignStatus */
+    static updateGoogleCampaignStatus = GoogleAdsService.updateCampaignStatus;
+
     /** @see GoogleAdsService.exchangeCode */
     static exchangeGoogleCode = GoogleAdsService.exchangeCode;
 
@@ -61,6 +73,9 @@ export class AdsService {
 
     /** @see GoogleAdsService.getShoppingProducts */
     static getGoogleShoppingProducts = GoogleAdsService.getShoppingProducts;
+
+    /** @see GoogleAdsService.addSearchKeyword */
+    static addGoogleSearchKeyword = GoogleAdsService.addSearchKeyword;
 
     /** @see GoogleAdsService.getCampaignProducts */
     static getGoogleCampaignProducts = GoogleAdsService.getCampaignProducts;

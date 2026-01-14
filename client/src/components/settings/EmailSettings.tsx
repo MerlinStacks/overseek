@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { EmailAccountForm, type EmailAccount } from './EmailAccountForm';
@@ -6,6 +6,9 @@ import { EmailAccountList } from './EmailAccountList';
 import { EmailLogPanel } from './EmailLogPanel';
 import { RefreshCw } from 'lucide-react';
 
+/**
+ * Email Settings page - manages unified email accounts with SMTP/IMAP.
+ */
 export function EmailSettings() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -19,14 +22,8 @@ export function EmailSettings() {
 
     const [editingAccount, setEditingAccount] = useState<Partial<EmailAccount> | null>(null);
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchAccounts();
-        }
-    }, [currentAccount, token]);
-
-    const fetchAccounts = async () => {
-        if (!currentAccount) return;
+    const fetchAccounts = useCallback(async () => {
+        if (!currentAccount || !token) return;
         try {
             const res = await fetch('/api/email/accounts', {
                 headers: {
@@ -43,7 +40,13 @@ export function EmailSettings() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (currentAccount && token) {
+            fetchAccounts();
+        }
+    }, [currentAccount, token, fetchAccounts]);
 
     const handleSave = async (accountData: Partial<EmailAccount>) => {
         if (!currentAccount || !token) return;
@@ -97,7 +100,7 @@ export function EmailSettings() {
         }
     };
 
-    const handleTestConnection = async (accountData: Partial<EmailAccount>) => {
+    const handleTestConnection = async (testData: { protocol: 'SMTP' | 'IMAP'; host: string; port: number; username: string; password: string; isSecure: boolean; id?: string }) => {
         if (!currentAccount) return { success: false, message: 'No account selected' };
         setIsTesting(true);
         setTestResult(null);
@@ -110,7 +113,7 @@ export function EmailSettings() {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 },
-                body: JSON.stringify(accountData)
+                body: JSON.stringify(testData)
             });
 
             const data = await res.json();
@@ -181,7 +184,7 @@ export function EmailSettings() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="font-medium text-gray-900">Email Sync</h3>
-                            <p className="text-sm text-gray-500">Manually check IMAP accounts for new emails</p>
+                            <p className="text-sm text-gray-500">Check enabled IMAP accounts for new emails</p>
                         </div>
                         <button
                             onClick={handleSyncNow}
@@ -208,7 +211,7 @@ export function EmailSettings() {
                     accounts={accounts}
                     onEdit={setEditingAccount}
                     onDelete={handleDelete}
-                    onAdd={() => setEditingAccount({ type: 'SMTP', port: 587, isSecure: true })}
+                    onAdd={() => setEditingAccount({ smtpEnabled: false, imapEnabled: false })}
                     onSetDefault={handleSetDefault}
                 />
             )}
@@ -232,4 +235,3 @@ export function EmailSettings() {
         </div>
     );
 }
-

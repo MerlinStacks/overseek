@@ -11,7 +11,18 @@ export default defineConfig(({ mode }) => {
     return {
         plugins: [react()],
         resolve: {
-            dedupe: ['react', 'react-dom'],
+            dedupe: [
+                'react',
+                'react-dom',
+                'lexical',
+                '@lexical/react',
+                '@lexical/html',
+                '@lexical/link',
+                '@lexical/list',
+                '@lexical/rich-text',
+                '@lexical/selection',
+                '@lexical/utils'
+            ],
             alias: {
                 // Force single React instance - critical for react-email-editor compatibility with React 19.
                 // Use package.json resolution (not directory path) to properly handle subpath exports.

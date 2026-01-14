@@ -1,12 +1,18 @@
+/**
+ * Email Service
+ * 
+ * Handles SMTP sending and IMAP receiving using the unified EmailAccount model.
+ */
 
 import { EmailAccount } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
-import { simpleParser, ParsedMail, Attachment } from 'mailparser';
+import { simpleParser, ParsedMail } from 'mailparser';
 import { prisma } from '../utils/prisma';
 import { EventBus, EVENTS } from './events';
 import { Logger } from '../utils/logger';
 import { decrypt } from '../utils/encryption';
+import crypto from 'crypto';
 
 
 export class EmailService {
@@ -15,31 +21,38 @@ export class EmailService {
     // Sending (SMTP)
     // -------------------
 
+    /**
+     * Create nodemailer transporter for SMTP sending.
+     */
     async createTransporter(account: EmailAccount) {
-        // Port 465 uses implicit TLS, port 587 uses STARTTLS
-        const useImplicitTLS = account.port === 465;
+        if (!account.smtpEnabled || !account.smtpHost || !account.smtpPort || !account.smtpPassword) {
+            throw new Error('SMTP not configured for this account');
+        }
 
-        // Decrypt the stored password (same as checkEmails does for IMAP)
-        const decryptedPassword = decrypt(account.password);
+        // Port 465 uses implicit TLS, port 587 uses STARTTLS
+        const useImplicitTLS = account.smtpPort === 465;
+
+        const decryptedPassword = decrypt(account.smtpPassword);
 
         return nodemailer.createTransport({
-            host: account.host,
-            port: account.port,
-            secure: useImplicitTLS, // true for 465 only
-            requireTLS: !useImplicitTLS && account.isSecure, // Force STARTTLS for 587 when secure is wanted
+            host: account.smtpHost,
+            port: account.smtpPort,
+            secure: useImplicitTLS,
+            requireTLS: !useImplicitTLS && account.smtpSecure,
             auth: {
-                user: account.username,
+                user: account.smtpUsername || account.email,
                 pass: decryptedPassword,
             },
             tls: {
-                // Allow connections to servers with mismatched certificates
-                // (common with shared hosting like cPanel)
                 rejectUnauthorized: false,
-                servername: account.host
+                servername: account.smtpHost
             }
         });
     }
 
+    /**
+     * Send email via SMTP.
+     */
     async sendEmail(
         accountId: string,
         emailAccountId: string,
@@ -54,7 +67,6 @@ export class EmailService {
         });
 
         if (!emailAccount) {
-            // Log failure for missing account
             await prisma.emailLog.create({
                 data: {
                     accountId,
@@ -70,6 +82,10 @@ export class EmailService {
             throw new Error("Email account not found");
         }
 
+        if (!emailAccount.smtpEnabled) {
+            throw new Error("SMTP not enabled for this account");
+        }
+
         try {
             const transporter = await this.createTransporter(emailAccount);
 
@@ -77,12 +93,11 @@ export class EmailService {
             const trackingId = crypto.randomUUID();
             const trackingPixelUrl = `${process.env.API_URL || 'http://localhost:3000'}/api/email/track/${trackingId}.png`;
 
-            // Inject tracking pixel at end of HTML body
+            // Inject tracking pixel
             const htmlWithTracking = html.includes('</body>')
                 ? html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
                 : `${html}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
 
-            // Build mail options with threading headers
             const mailOptions: any = {
                 from: `"${emailAccount.name}" <${emailAccount.email}>`,
                 to,
@@ -91,7 +106,6 @@ export class EmailService {
                 attachments
             };
 
-            // Add threading headers for proper email thread display
             if (options?.inReplyTo) {
                 mailOptions.inReplyTo = options.inReplyTo;
             }
@@ -101,7 +115,6 @@ export class EmailService {
 
             const info = await transporter.sendMail(mailOptions);
 
-            // Log success with tracking ID
             await prisma.emailLog.create({
                 data: {
                     accountId,
@@ -119,7 +132,6 @@ export class EmailService {
             Logger.info(`Sent email with tracking`, { messageId: info.messageId, to, trackingId });
             return info;
         } catch (error: any) {
-            // Log failure
             await prisma.emailLog.create({
                 data: {
                     accountId,
@@ -135,14 +147,31 @@ export class EmailService {
             });
 
             Logger.error(`Failed to send email`, { to, error: error.message });
-            throw error; // Re-throw so callers can handle
+            throw error;
         }
     }
 
-    async verifyConnection(account: EmailAccount): Promise<boolean> {
+    /**
+     * Verify SMTP or IMAP connection.
+     */
+    async verifyConnection(account: { host: string; port: number; username: string; password: string; type: string; isSecure: boolean }): Promise<boolean> {
         if (account.type === 'SMTP') {
             try {
-                const transporter = await this.createTransporter(account);
+                const useImplicitTLS = account.port === 465;
+                const transporter = nodemailer.createTransport({
+                    host: account.host,
+                    port: account.port,
+                    secure: useImplicitTLS,
+                    requireTLS: !useImplicitTLS && account.isSecure,
+                    auth: {
+                        user: account.username,
+                        pass: account.password,
+                    },
+                    tls: {
+                        rejectUnauthorized: false,
+                        servername: account.host
+                    }
+                });
                 await transporter.verify();
                 return true;
             } catch (error) {
@@ -151,10 +180,7 @@ export class EmailService {
             }
         } else if (account.type === 'IMAP') {
             try {
-                // Port 993 uses implicit TLS (connection is encrypted from start)
-                // Port 143 uses STARTTLS (connection starts plain, then upgrades)
                 const useImplicitTLS = account.port === 993;
-
                 const client = new ImapFlow({
                     host: account.host,
                     port: account.port,
@@ -184,26 +210,32 @@ export class EmailService {
     // Receiving (IMAP)
     // -------------------
 
+    /**
+     * Check for new emails via IMAP.
+     */
     async checkEmails(emailAccountId: string) {
         const account = await prisma.emailAccount.findUnique({ where: { id: emailAccountId } });
         if (!account) {
             Logger.warn('[checkEmails] Email account not found', { emailAccountId });
             return;
         }
-        if (account.type !== 'IMAP') {
-            Logger.warn('[checkEmails] Account is not IMAP type, skipping', { emailAccountId, type: account.type });
+        if (!account.imapEnabled) {
+            Logger.warn('[checkEmails] IMAP not enabled, skipping', { emailAccountId });
+            return;
+        }
+        if (!account.imapHost || !account.imapPort || !account.imapPassword) {
+            Logger.warn('[checkEmails] IMAP not fully configured', { emailAccountId });
             return;
         }
 
         // Port 993 uses implicit TLS, port 143 uses STARTTLS
-        const useImplicitTLS = account.port === 993;
+        const useImplicitTLS = account.imapPort === 993;
 
-        // Decrypt the stored password
         let decryptedPassword: string;
         try {
-            decryptedPassword = decrypt(account.password);
+            decryptedPassword = decrypt(account.imapPassword);
         } catch (e: any) {
-            Logger.error('[checkEmails] Failed to decrypt email password', {
+            Logger.error('[checkEmails] Failed to decrypt IMAP password', {
                 emailAccountId,
                 error: e?.message || String(e)
             });
@@ -211,11 +243,11 @@ export class EmailService {
         }
 
         const client = new ImapFlow({
-            host: account.host,
-            port: account.port,
+            host: account.imapHost,
+            port: account.imapPort,
             secure: useImplicitTLS,
             auth: {
-                user: account.username,
+                user: account.imapUsername || account.email,
                 pass: decryptedPassword
             },
             logger: false,
@@ -225,18 +257,15 @@ export class EmailService {
         });
 
         try {
-            Logger.info('[checkEmails] Connecting to IMAP server', { host: account.host, port: account.port });
+            Logger.info('[checkEmails] Connecting to IMAP server', { host: account.imapHost, port: account.imapPort });
             await client.connect();
 
-            // Get mailbox lock for safe concurrent access
             const lock = await client.getMailboxLock('INBOX');
             Logger.info('[checkEmails] Connected and locked INBOX');
 
             let messageCount = 0;
 
             try {
-                // Fetch unseen messages using async iterator
-                // We need 'source' to parse the full email
                 for await (const message of client.fetch({ seen: false }, {
                     envelope: true,
                     bodyStructure: true,
@@ -250,18 +279,15 @@ export class EmailService {
                             continue;
                         }
 
-                        // Parse the email using mailparser
                         const parsed: ParsedMail = await simpleParser(source, { skipImageLinks: true });
 
                         const subject = parsed.subject || '(No Subject)';
                         const fromAddress = parsed.from?.value[0];
                         const fromEmail = fromAddress?.address || '';
                         const fromName = fromAddress?.name || '';
-                        // Use parsed messageId, fallback to envelope, fallback to generated
                         const messageId = parsed.messageId || message.envelope.messageId || `local-${Date.now()}`;
                         const inReplyTo = parsed.inReplyTo || message.envelope.inReplyTo || undefined;
 
-                        // Handle references (can be string or array)
                         let references: string | undefined;
                         if (typeof parsed.references === 'string') {
                             references = parsed.references;
@@ -269,19 +295,16 @@ export class EmailService {
                             references = parsed.references.join(' ');
                         }
 
-                        // Get HTML or Text body
                         let html = parsed.html || false;
                         const text = parsed.text || '';
 
-                        // Process inline images (cid:) -> Base64
+                        // Process inline images
                         if (html && parsed.attachments && parsed.attachments.length > 0) {
                             for (const attachment of parsed.attachments) {
                                 if (attachment.contentId && attachment.content && attachment.contentType) {
-                                    const cid = attachment.contentId.replace(/^<|>$/g, ''); // Remove < > wrappers
+                                    const cid = attachment.contentId.replace(/^<|>$/g, '');
                                     const base64 = attachment.content.toString('base64');
                                     const dataUri = `data:${attachment.contentType};base64,${base64}`;
-
-                                    // Replace cid: CID with data URI globally
                                     const regex = new RegExp(`cid:${cid}`, 'g');
                                     html = html.replace(regex, dataUri);
                                 }
@@ -298,8 +321,8 @@ export class EmailService {
                             fromEmail,
                             fromName,
                             subject,
-                            body: text, // Fallback / plain text representation
-                            html: html || undefined, // The processed HTML
+                            body: text,
+                            html: html || undefined,
                             messageId,
                             inReplyTo,
                             references
@@ -316,7 +339,6 @@ export class EmailService {
 
                 Logger.info(`[checkEmails] Found ${messageCount} unseen email(s)`, { email: account.email });
             } finally {
-                // Always release the lock
                 lock.release();
             }
 
@@ -328,10 +350,9 @@ export class EmailService {
                 error: error?.message || String(error),
                 stack: error?.stack
             });
-            // Ensure we try to close the connection on error
             try {
                 await client.logout();
-            } catch { /* ignore logout errors */ }
+            } catch { /* ignore */ }
         }
     }
 }

@@ -1,4 +1,4 @@
-import { Mail, Plus, Trash2, Star } from 'lucide-react';
+import { Mail, Plus, Trash2, Star, Send, Inbox } from 'lucide-react';
 import type { EmailAccount } from './EmailAccountForm';
 
 interface EmailAccountListProps {
@@ -9,13 +9,16 @@ interface EmailAccountListProps {
     onSetDefault?: (id: string) => void;
 }
 
+/**
+ * Displays list of unified email accounts with sending/receiving badges.
+ */
 export function EmailAccountList({ accounts, onEdit, onDelete, onAdd, onSetDefault }: EmailAccountListProps) {
     return (
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                 <div>
                     <h2 className="text-lg font-medium text-gray-900">Email Accounts</h2>
-                    <p className="text-sm text-gray-500 mt-1">Manage SMTP and IMAP connections. The default SMTP account is used for broadcasts and automations.</p>
+                    <p className="text-sm text-gray-500 mt-1">Manage email accounts for sending and receiving.</p>
                 </div>
                 <button
                     onClick={onAdd}
@@ -46,11 +49,31 @@ export function EmailAccountList({ accounts, onEdit, onDelete, onAdd, onSetDefau
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-500">{acc.email} • {acc.type} • {acc.host}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-sm text-gray-500">{acc.email}</span>
+                                        <span className="text-gray-300">•</span>
+                                        <div className="flex items-center gap-1.5">
+                                            {acc.smtpEnabled && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+                                                    <Send size={10} />
+                                                    Sending
+                                                </span>
+                                            )}
+                                            {acc.imapEnabled && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                                                    <Inbox size={10} />
+                                                    Receiving
+                                                </span>
+                                            )}
+                                            {!acc.smtpEnabled && !acc.imapEnabled && (
+                                                <span className="text-xs text-gray-400">Not configured</span>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                {acc.type === 'SMTP' && !acc.isDefault && onSetDefault && (
+                                {acc.smtpEnabled && !acc.isDefault && onSetDefault && (
                                     <button
                                         onClick={() => onSetDefault(acc.id)}
                                         className="p-2 text-gray-400 hover:text-amber-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-200 text-sm"
