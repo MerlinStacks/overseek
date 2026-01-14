@@ -21,7 +21,8 @@ import {
 import { processSearchSuggestions } from './advisors/SearchAdvisor';
 
 // Import multi-period analyzer (AI Marketing Co-Pilot Phase 1)
-import { MultiPeriodAnalyzer } from './analyzers';
+// Import cross-channel and LTV analyzers (AI Marketing Co-Pilot Phase 2)
+import { MultiPeriodAnalyzer, CrossChannelAnalyzer, LTVAnalyzer } from './analyzers';
 
 export interface AdOptimizerOptions {
     userContext?: string;
@@ -132,6 +133,32 @@ export class AdOptimizer {
                 };
                 // Add multi-period suggestions (these come pre-prioritized)
                 for (const suggestion of multiPeriodAnalysis.suggestions) {
+                    suggestions.push(suggestion);
+                }
+            }
+
+            // Cross-channel analysis (AI Marketing Co-Pilot Phase 2)
+            const crossChannelAnalysis = await CrossChannelAnalyzer.analyze(accountId);
+            if (crossChannelAnalysis.hasData) {
+                combinedSummary.crossChannel = {
+                    channelPerformance: crossChannelAnalysis.channelPerformance,
+                    assistedConversions: crossChannelAnalysis.assistedConversions,
+                    budgetRecommendation: crossChannelAnalysis.budgetRecommendation
+                };
+                for (const suggestion of crossChannelAnalysis.suggestions) {
+                    suggestions.push(suggestion);
+                }
+            }
+
+            // LTV analysis (AI Marketing Co-Pilot Phase 2)
+            const ltvAnalysis = await LTVAnalyzer.analyze(accountId);
+            if (ltvAnalysis.hasData) {
+                combinedSummary.ltv = {
+                    overall: ltvAnalysis.overall,
+                    channelLtv: ltvAnalysis.channelLtv,
+                    highValueSegments: ltvAnalysis.highValueSegments
+                };
+                for (const suggestion of ltvAnalysis.suggestions) {
                     suggestions.push(suggestion);
                 }
             }
