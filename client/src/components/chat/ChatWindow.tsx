@@ -198,7 +198,8 @@ export function ChatWindow({
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id,
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({})
             });
 
             if (!res.ok) {

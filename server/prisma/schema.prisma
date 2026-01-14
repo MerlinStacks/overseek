@@ -113,8 +113,9 @@ model Account {
   Supplier      Supplier[]
 
   // Chat & Support
-  conversations   Conversation[]
-  cannedResponses CannedResponse[]
+  conversations         Conversation[]
+  cannedResponses       CannedResponse[]
+  cannedResponseLabels  CannedResponseLabel[]
 
   // Marketing & Automation
   marketingCampaigns   MarketingCampaign[]
@@ -880,15 +881,33 @@ model CannedResponse {
 
   shortcut String // e.g. "hi", "refund"
   content  String @db.Text
-  category String? // Optional category for grouping (e.g. "Shipping", "Returns")
+  labelId  String? // Optional label for grouping
 
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label   CannedResponseLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([accountId, shortcut])
-  @@index([accountId, category])
+  @@index([accountId, labelId])
+}
+
+// Labels for canned responses (editable categories)
+model CannedResponseLabel {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+  color     String @default("#6366f1") // Tailwind indigo-500
+
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  responses CannedResponse[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId])
 }
 
 // --------------------------------------

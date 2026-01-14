@@ -6,11 +6,18 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 
+export interface CannedResponseLabel {
+    id: string;
+    name: string;
+    color: string;
+}
+
 export interface CannedResponse {
     id: string;
     shortcut: string;
     content: string;
-    category: string | null;
+    labelId: string | null;
+    label: CannedResponseLabel | null;
 }
 
 
@@ -96,14 +103,14 @@ export function useCannedResponses(): UseCannedResponsesReturn {
         fetchCanned();
     }, [fetchCanned]);
 
-    // Filter by shortcut, content, or category
+    // Filter by shortcut, content, or label name
     const filteredCanned = useMemo(() => {
         if (!cannedFilter) return cannedResponses;
         const filter = cannedFilter.toLowerCase();
         return cannedResponses.filter(r =>
             r.shortcut.toLowerCase().includes(filter) ||
             r.content.toLowerCase().includes(filter) ||
-            (r.category && r.category.toLowerCase().includes(filter))
+            (r.label?.name && r.label.name.toLowerCase().includes(filter))
         );
     }, [cannedResponses, cannedFilter]);
 

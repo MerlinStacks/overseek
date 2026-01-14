@@ -1,45 +1,196 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, MapPin, Monitor, Smartphone, Tablet, Globe, Clock, ShoppingCart, Eye, Search, CreditCard, Package } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, Monitor, Smartphone, Tablet, Globe, Clock, ShoppingCart, Eye, Search, CreditCard, Package, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
-interface VisitorEvent {
+interface AnalyticsEvent {
     id: string;
     type: string;
-    pageTitle: string | null;
-    pagePath: string | null;
+    url?: string;
+    pageTitle?: string;
+    payload?: any;
     createdAt: string;
-    metadata?: Record<string, unknown>;
 }
 
-interface VisitorProfile {
+interface AnalyticsVisit {
     id: string;
-    visitorId: string;
-    email: string | null;
-    country: string | null;
-    city: string | null;
-    deviceType: string | null;
-    browser: string | null;
-    os: string | null;
-    firstSeenAt: string;
-    lastSeenAt: string;
-    totalSessions: number;
-    totalPageViews: number;
-    customer: { firstName: string | null; lastName: string | null; email: string } | null;
-    events: VisitorEvent[];
+    visitNumber: number;
+    startedAt: string;
+    endedAt: string;
+    referrer?: string;
+    utmSource?: string;
+    deviceType?: string;
+    browser?: string;
+    os?: string;
+    country?: string;
+    city?: string;
+    pageviews: number;
+    actions: number;
+    events: AnalyticsEvent[];
+}
+
+interface VisitorData {
+    session: {
+        id: string;
+        visitorId: string;
+        email?: string;
+        ipAddress?: string;
+        city?: string;
+        country?: string;
+        deviceType?: string;
+        browser?: string;
+        os?: string;
+        referrer?: string;
+        utmSource?: string;
+        lastActiveAt: string;
+        events?: AnalyticsEvent[];
+    };
+    visits?: AnalyticsVisit[];
+    customer?: {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        wooId?: number;
+        totalSpent?: number;
+        currency?: string;
+    };
+    stats: {
+        totalEvents: number;
+        totalVisits?: number;
+        firstSeen?: { createdAt: string };
+    };
+}
+
+/**
+ * Mobile Visit Section - Collapsible visit with events
+ */
+function VisitSection({ visit, isFirst, totalVisits }: { visit: AnalyticsVisit; isFirst: boolean; totalVisits: number }) {
+    const [expanded, setExpanded] = useState(isFirst);
+
+    const formatDuration = (start: string, end: string) => {
+        const ms = new Date(end).getTime() - new Date(start).getTime();
+        const mins = Math.floor(ms / 60000);
+        if (mins < 1) return 'Less than 1 min';
+        if (mins < 60) return `${mins} min`;
+        return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    };
+
+    const displayNumber = totalVisits - visit.visitNumber + 1;
+
+    return (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3">
+            <button
+                onClick={() => setExpanded(!expanded)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left active:bg-gray-50"
+            >
+                <div className="flex items-center gap-2">
+                    {expanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+                    <div>
+                        <span className="font-semibold text-gray-900">Visit #{displayNumber}</span>
+                        <span className="text-gray-500 text-sm ml-2">
+                            {new Date(visit.startedAt).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}
+                        </span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span>{visit.actions} actions</span>
+                    <span>{formatDuration(visit.startedAt, visit.endedAt)}</span>
+                </div>
+            </button>
+
+            {expanded && (
+                <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+                    {visit.utmSource && (
+                        <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-50">
+                            Source: <span className="font-medium text-gray-700">{visit.utmSource}</span>
+                        </div>
+                    )}
+                    <div className="space-y-2">
+                        {visit.events.map((event) => (
+                            <EventItem key={event.id} event={event} />
+                        ))}
+                        {visit.events.length === 0 && (
+                            <div className="text-sm text-gray-400 italic">No events in this visit</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Mobile Event Item - Single event in timeline
+ */
+function EventItem({ event }: { event: AnalyticsEvent }) {
+    const payload = event.payload || {};
+
+    const getEventConfig = (type: string) => {
+        switch (type) {
+            case 'pageview':
+            case 'page_view':
+                return { icon: <Eye size={14} className="text-blue-500" />, color: 'bg-blue-50', label: 'Viewed' };
+            case 'product_view':
+                return { icon: <Eye size={14} className="text-indigo-500" />, color: 'bg-indigo-50', label: 'Viewed Product' };
+            case 'add_to_cart':
+                return { icon: <ShoppingCart size={14} className="text-amber-500" />, color: 'bg-amber-50', label: 'Added to Cart' };
+            case 'remove_from_cart':
+                return { icon: <ShoppingCart size={14} className="text-gray-400" />, color: 'bg-gray-50', label: 'Removed from Cart' };
+            case 'checkout_start':
+            case 'checkout_view':
+                return { icon: <CreditCard size={14} className="text-purple-500" />, color: 'bg-purple-50', label: 'At Checkout' };
+            case 'purchase':
+            case 'checkout_success':
+                return { icon: <Package size={14} className="text-green-500" />, color: 'bg-green-50', label: 'Purchased' };
+            case 'search':
+                return { icon: <Search size={14} className="text-amber-600" />, color: 'bg-amber-50', label: 'Searched' };
+            default:
+                return { icon: <Clock size={14} className="text-gray-400" />, color: 'bg-gray-50', label: type.replace(/_/g, ' ') };
+        }
+    };
+
+    const config = getEventConfig(event.type);
+    const time = new Date(event.createdAt).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
+
+    return (
+        <div className="flex items-start gap-3">
+            <div className={`w-7 h-7 rounded-full ${config.color} flex items-center justify-center flex-shrink-0`}>
+                {config.icon}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-900">
+                        {event.type === 'product_view' && (payload.productName || event.pageTitle || config.label)}
+                        {event.type === 'search' && `Searched "${payload.term || payload.searchQuery || 'unknown'}"`}
+                        {event.type === 'add_to_cart' && (payload.name || payload.productName || 'Added to cart')}
+                        {event.type === 'purchase' && (
+                            <span className="text-green-600">
+                                Purchased {payload.total && `$${payload.total}`}
+                            </span>
+                        )}
+                        {!['product_view', 'search', 'add_to_cart', 'purchase'].includes(event.type) && (event.pageTitle || config.label)}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-2">{time}</span>
+                </div>
+                {event.url && event.type === 'pageview' && (
+                    <p className="text-xs text-gray-500 truncate mt-0.5">{event.url}</p>
+                )}
+            </div>
+        </div>
+    );
 }
 
 /**
  * MobileVisitorDetail - Shows full visitor profile and event timeline.
- * Navigated to from MobileLiveVisitors when clicking a visitor card.
+ * Matches desktop VisitorProfileModal structure with visits containing events.
  */
 export function MobileVisitorDetail() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [profile, setProfile] = useState<VisitorProfile | null>(null);
+    const [data, setData] = useState<VisitorData | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -62,8 +213,8 @@ export function MobileVisitorDetail() {
             });
 
             if (res.ok) {
-                const data = await res.json();
-                setProfile(data);
+                const json = await res.json();
+                setData(json);
             }
         } catch (error) {
             console.error('[MobileVisitorDetail] Error:', error);
@@ -72,53 +223,23 @@ export function MobileVisitorDetail() {
         }
     };
 
-    const getDeviceIcon = (deviceType: string | null) => {
+    const getDeviceIcon = (deviceType: string | null | undefined) => {
         if (deviceType === 'mobile') return <Smartphone size={16} className="text-gray-500" />;
         if (deviceType === 'tablet') return <Tablet size={16} className="text-gray-500" />;
         return <Monitor size={16} className="text-gray-500" />;
     };
 
-    const formatTime = (date: string) => {
-        return new Date(date).toLocaleTimeString('en-AU', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
+    // Get legacy events for sessions without visits
+    const getLegacyEvents = () => {
+        if (!data?.session?.events) return [];
+        const productViewUrls = new Set<string>();
+        data.session.events.forEach(ev => {
+            if (ev.type === 'product_view' && ev.url) productViewUrls.add(ev.url);
         });
-    };
-
-    const formatDate = (date: string) => {
-        return new Date(date).toLocaleDateString('en-AU', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short'
+        return data.session.events.filter(ev => {
+            if (ev.type === 'pageview' && ev.url && productViewUrls.has(ev.url)) return false;
+            return true;
         });
-    };
-
-    const getEventIcon = (type: string) => {
-        switch (type) {
-            case 'page_view': return <Eye size={14} className="text-gray-500" />;
-            case 'add_to_cart': return <ShoppingCart size={14} className="text-blue-500" />;
-            case 'checkout_start':
-            case 'checkout_view': return <CreditCard size={14} className="text-purple-500" />;
-            case 'purchase':
-            case 'checkout_success': return <Package size={14} className="text-green-500" />;
-            case 'search': return <Search size={14} className="text-amber-500" />;
-            default: return <Clock size={14} className="text-gray-400" />;
-        }
-    };
-
-    const getEventLabel = (event: VisitorEvent) => {
-        switch (event.type) {
-            case 'page_view': return event.pageTitle || event.pagePath || 'Page View';
-            case 'add_to_cart': return 'Added to Cart';
-            case 'remove_from_cart': return 'Removed from Cart';
-            case 'checkout_start': return 'Started Checkout';
-            case 'checkout_view': return 'Viewing Checkout';
-            case 'checkout_success':
-            case 'purchase': return 'Completed Purchase';
-            case 'search': return `Searched: "${(event.metadata as any)?.query || 'unknown'}"`;
-            default: return event.type.replace(/_/g, ' ');
-        }
     };
 
     if (loading) {
@@ -126,12 +247,12 @@ export function MobileVisitorDetail() {
             <div className="space-y-4 animate-pulse">
                 <div className="h-8 bg-gray-200 rounded w-1/3" />
                 <div className="h-32 bg-gray-200 rounded-xl" />
-                {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-gray-200 rounded-xl" />)}
+                {[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-gray-200 rounded-xl" />)}
             </div>
         );
     }
 
-    if (!profile) {
+    if (!data) {
         return (
             <div className="text-center py-16">
                 <p className="text-gray-500">Visitor not found</p>
@@ -140,12 +261,13 @@ export function MobileVisitorDetail() {
         );
     }
 
-    const visitorName = profile.customer
-        ? `${profile.customer.firstName || ''} ${profile.customer.lastName || ''}`.trim() || profile.customer.email
-        : profile.email || 'Anonymous Visitor';
+    // Visitor name: prioritize customer data, then email, then anonymous
+    const visitorName = data.customer
+        ? `${data.customer.firstName || ''} ${data.customer.lastName || ''}`.trim() || data.customer.email || 'Customer'
+        : data.session.email || 'Anonymous Visitor';
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 pb-8">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100">
@@ -153,7 +275,9 @@ export function MobileVisitorDetail() {
                 </button>
                 <div className="flex-1">
                     <h1 className="text-xl font-bold text-gray-900 truncate">{visitorName}</h1>
-                    <p className="text-sm text-gray-500">Visitor Profile</p>
+                    <p className="text-sm text-gray-500">
+                        {data.stats.totalVisits ? `${data.stats.totalVisits} visit${data.stats.totalVisits > 1 ? 's' : ''}` : 'Visitor Profile'}
+                    </p>
                 </div>
                 <button onClick={fetchVisitorProfile} className="p-2 rounded-full hover:bg-gray-100">
                     <RefreshCw size={20} className="text-gray-600" />
@@ -168,56 +292,75 @@ export function MobileVisitorDetail() {
                     </div>
                     <div className="flex-1">
                         <p className="font-semibold text-gray-900">{visitorName}</p>
-                        {profile.email && <p className="text-sm text-gray-500">{profile.email}</p>}
+                        {data.session.email && <p className="text-sm text-gray-500">{data.session.email}</p>}
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                    {profile.country && (
+                    {data.session.country && (
                         <div className="flex items-center gap-2 text-gray-600">
                             <MapPin size={14} />
-                            <span>{profile.city ? `${profile.city}, ${profile.country}` : profile.country}</span>
+                            <span>{data.session.city ? `${data.session.city}, ${data.session.country}` : data.session.country}</span>
                         </div>
                     )}
                     <div className="flex items-center gap-2 text-gray-600">
-                        {getDeviceIcon(profile.deviceType)}
-                        <span>{profile.browser || 'Unknown'}</span>
+                        {getDeviceIcon(data.session.deviceType)}
+                        <span>{data.session.browser || 'Unknown'}</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
                         <Globe size={14} />
-                        <span>{profile.totalSessions} sessions</span>
+                        <span>{data.stats.totalVisits || 0} sessions</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
                         <Eye size={14} />
-                        <span>{profile.totalPageViews} page views</span>
+                        <span>{data.stats.totalEvents || 0} events</span>
                     </div>
                 </div>
+
+                {/* Customer badge if linked */}
+                {data.customer && (
+                    <div className="mt-4 pt-3 border-t border-gray-100">
+                        <div className="bg-green-50 text-green-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                            <Package size={16} />
+                            <span className="font-medium">Customer</span>
+                            {data.customer.totalSpent !== undefined && (
+                                <span className="ml-auto">${data.customer.totalSpent}</span>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Timeline */}
+            {/* Activity Timeline */}
             <div>
                 <h2 className="text-sm font-semibold text-gray-700 mb-3">Activity Timeline</h2>
-                <div className="space-y-2">
-                    {profile.events && profile.events.length > 0 ? (
-                        profile.events.slice(0, 50).map((event) => (
-                            <div key={event.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-100">
-                                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                                    {getEventIcon(event.type)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">
-                                        {getEventLabel(event)}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                        {formatDate(event.createdAt)} at {formatTime(event.createdAt)}
-                                    </p>
-                                </div>
-                            </div>
-                        ))
-                    ) : (
-                        <p className="text-sm text-gray-500 text-center py-8">No events recorded</p>
-                    )}
-                </div>
+
+                {/* Render visits if available (preferred structure) */}
+                {data.visits && data.visits.length > 0 ? (
+                    <div>
+                        {data.visits.map((visit, idx) => (
+                            <VisitSection
+                                key={visit.id}
+                                visit={visit}
+                                isFirst={idx === 0}
+                                totalVisits={data.stats.totalVisits || data.visits!.length}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    /* Fallback: Legacy flat events */
+                    <div className="bg-white rounded-xl border border-gray-100 p-4">
+                        <div className="space-y-3">
+                            {getLegacyEvents().length > 0 ? (
+                                getLegacyEvents().map((event) => (
+                                    <EventItem key={event.id} event={event} />
+                                ))
+                            ) : (
+                                <p className="text-sm text-gray-400 italic text-center py-4">No events recorded</p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

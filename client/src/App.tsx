@@ -80,6 +80,7 @@ const MobileLiveVisitors = lazy(() => import('./pages/mobile/MobileLiveVisitors'
 const MobileProfile = lazy(() => import('./pages/mobile/MobileProfile').then(m => ({ default: m.MobileProfile })));
 const MobileSettings = lazy(() => import('./pages/mobile/MobileSettings').then(m => ({ default: m.MobileSettings })));
 const MobileCustomers = lazy(() => import('./pages/mobile/MobileCustomers').then(m => ({ default: m.MobileCustomers })));
+const MobileCustomerDetail = lazy(() => import('./pages/mobile/MobileCustomerDetail').then(m => ({ default: m.MobileCustomerDetail })));
 const MobileVisitorDetail = lazy(() => import('./pages/mobile/MobileVisitorDetail').then(m => ({ default: m.MobileVisitorDetail })));
 
 // Loading fallback for lazy routes
@@ -245,6 +246,7 @@ function App() {
                                                 <Route path="/m/profile" element={<AccountGuard><MobileProfile /></AccountGuard>} />
                                                 <Route path="/m/settings" element={<AccountGuard><MobileSettings /></AccountGuard>} />
                                                 <Route path="/m/customers" element={<AccountGuard><MobileCustomers /></AccountGuard>} />
+                                                <Route path="/m/customers/:id" element={<AccountGuard><MobileCustomerDetail /></AccountGuard>} />
                                                 <Route path="/m/notifications" element={<AccountGuard><MobileNotifications /></AccountGuard>} />
                                                 <Route path="/m/live-visitors" element={<AccountGuard><MobileLiveVisitors /></AccountGuard>} />
                                                 <Route path="/m/visitor/:id" element={<AccountGuard><MobileVisitorDetail /></AccountGuard>} />

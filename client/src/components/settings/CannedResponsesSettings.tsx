@@ -1,26 +1,34 @@
 /**
  * Canned Responses Settings Component.
- * Full CRUD interface for managing canned response templates with categories.
+ * Full CRUD interface for managing canned response templates with labels (rich text).
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Edit2, Save, X, Zap, FolderOpen, Search } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Zap, Tag, Search, Palette } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { cn } from '../../utils/cn';
+import { RichTextEditor } from '../common/RichTextEditor';
+import DOMPurify from 'dompurify';
+
+interface CannedResponseLabel {
+    id: string;
+    name: string;
+    color: string;
+}
 
 interface CannedResponse {
     id: string;
     shortcut: string;
     content: string;
-    category: string | null;
+    labelId: string | null;
+    label: CannedResponseLabel | null;
 }
-
-const DEFAULT_CATEGORIES = ['General', 'Shipping', 'Returns', 'Payments', 'Products'];
 
 export function CannedResponsesSettings() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [responses, setResponses] = useState<CannedResponse[]>([]);
+    const [labels, setLabels] = useState<CannedResponseLabel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -29,8 +37,31 @@ export function CannedResponsesSettings() {
     const [formData, setFormData] = useState({
         shortcut: '',
         content: '',
-        category: ''
+        labelId: ''
     });
+
+    // Label management state
+    const [showLabelManager, setShowLabelManager] = useState(false);
+    const [newLabelName, setNewLabelName] = useState('');
+    const [newLabelColor, setNewLabelColor] = useState('#6366f1');
+    const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+
+    const fetchLabels = useCallback(async () => {
+        if (!currentAccount || !token) return;
+        try {
+            const res = await fetch('/api/chat/canned-labels', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                setLabels(await res.json());
+            }
+        } catch (error) {
+            console.error('Failed to fetch labels:', error);
+        }
+    }, [currentAccount, token]);
 
     const fetchResponses = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -53,8 +84,9 @@ export function CannedResponsesSettings() {
     }, [currentAccount, token]);
 
     useEffect(() => {
+        fetchLabels();
         fetchResponses();
-    }, [fetchResponses]);
+    }, [fetchLabels, fetchResponses]);
 
     const handleSave = async () => {
         if (!formData.shortcut.trim() || !formData.content.trim()) return;
@@ -62,7 +94,7 @@ export function CannedResponsesSettings() {
         const payload = {
             shortcut: formData.shortcut.trim(),
             content: formData.content.trim(),
-            category: formData.category.trim() || null
+            labelId: formData.labelId || null
         };
 
         try {
@@ -82,7 +114,7 @@ export function CannedResponsesSettings() {
             });
 
             if (res.ok) {
-                setFormData({ shortcut: '', content: '', category: '' });
+                setFormData({ shortcut: '', content: '', labelId: '' });
                 setEditingId(null);
                 fetchResponses();
             }
@@ -96,7 +128,7 @@ export function CannedResponsesSettings() {
         setFormData({
             shortcut: response.shortcut,
             content: response.content,
-            category: response.category || ''
+            labelId: response.labelId || ''
         });
     };
 
@@ -118,31 +150,92 @@ export function CannedResponsesSettings() {
 
     const handleCancel = () => {
         setEditingId(null);
-        setFormData({ shortcut: '', content: '', category: '' });
+        setFormData({ shortcut: '', content: '', labelId: '' });
     };
 
-    // Get unique categories from responses
-    const existingCategories = [...new Set(responses.map(r => r.category).filter(Boolean) as string[])];
-    const allCategories = [...new Set([...DEFAULT_CATEGORIES, ...existingCategories])].sort();
+    // Label CRUD
+    const handleCreateLabel = async () => {
+        if (!newLabelName.trim()) return;
+        try {
+            const res = await fetch('/api/chat/canned-labels', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                },
+                body: JSON.stringify({ name: newLabelName.trim(), color: newLabelColor })
+            });
+            if (res.ok) {
+                setNewLabelName('');
+                setNewLabelColor('#6366f1');
+                fetchLabels();
+            } else {
+                const err = await res.json();
+                alert(err.error || 'Failed to create label');
+            }
+        } catch (error) {
+            console.error('Failed to create label:', error);
+        }
+    };
 
-    // Group responses by category
+    const handleUpdateLabel = async (id: string, name: string, color: string) => {
+        try {
+            await fetch(`/api/chat/canned-labels/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                },
+                body: JSON.stringify({ name, color })
+            });
+            setEditingLabelId(null);
+            fetchLabels();
+            fetchResponses(); // Refresh to get updated label info
+        } catch (error) {
+            console.error('Failed to update label:', error);
+        }
+    };
+
+    const handleDeleteLabel = async (id: string) => {
+        if (!confirm('Delete this label? Responses will keep their content but lose this label.')) return;
+        try {
+            await fetch(`/api/chat/canned-labels/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                }
+            });
+            fetchLabels();
+            fetchResponses();
+        } catch (error) {
+            console.error('Failed to delete label:', error);
+        }
+    };
+
+    // Group responses by label
     const groupedResponses = responses.reduce((acc, response) => {
-        const cat = response.category || 'Uncategorized';
-        if (!acc[cat]) acc[cat] = [];
-        acc[cat].push(response);
+        const labelName = response.label?.name || 'Uncategorized';
+        if (!acc[labelName]) acc[labelName] = { label: response.label, items: [] };
+        acc[labelName].items.push(response);
         return acc;
-    }, {} as Record<string, CannedResponse[]>);
+    }, {} as Record<string, { label: CannedResponseLabel | null; items: CannedResponse[] }>);
 
     // Filter by search
     const filteredGroups = Object.entries(groupedResponses)
-        .map(([category, items]) => ({
-            category,
+        .map(([name, { label, items }]) => ({
+            name,
+            label,
             items: items.filter(r =>
                 r.shortcut.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 r.content.toLowerCase().includes(searchQuery.toLowerCase())
             )
         }))
         .filter(g => g.items.length > 0);
+
+    const PRESET_COLORS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'];
 
     return (
         <div className="space-y-6">
@@ -151,14 +244,147 @@ export function CannedResponsesSettings() {
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Canned Responses</h2>
                     <p className="text-sm text-gray-500">
-                        Create reusable message templates. Type "/" in the chat to use them.
+                        Create reusable rich text templates. Type "/" in the chat to use them.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <Zap size={14} className="text-amber-500" />
-                    Supports placeholders: {`{{customer.firstName}}`}, {`{{customer.email}}`}
-                </div>
+                <button
+                    onClick={() => setShowLabelManager(!showLabelManager)}
+                    className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                        showLabelManager
+                            ? "bg-indigo-100 text-indigo-700"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    )}
+                >
+                    <Tag size={14} />
+                    Manage Labels
+                </button>
             </div>
+
+            {/* Label Manager Panel */}
+            {showLabelManager && (
+                <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
+                    <h3 className="text-sm font-medium text-indigo-900 mb-3">Labels</h3>
+
+                    {/* Existing Labels */}
+                    <div className="space-y-2 mb-4">
+                        {labels.map(label => (
+                            <div key={label.id} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-indigo-100">
+                                {editingLabelId === label.id ? (
+                                    <>
+                                        <input
+                                            type="color"
+                                            value={label.color}
+                                            onChange={(e) => {
+                                                setLabels(labels.map(l => l.id === label.id ? { ...l, color: e.target.value } : l));
+                                            }}
+                                            className="w-6 h-6 rounded cursor-pointer"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={label.name}
+                                            onChange={(e) => {
+                                                setLabels(labels.map(l => l.id === label.id ? { ...l, name: e.target.value } : l));
+                                            }}
+                                            className="flex-1 px-2 py-1 border rounded text-sm"
+                                        />
+                                        <button
+                                            onClick={() => handleUpdateLabel(label.id, label.name, label.color)}
+                                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                        >
+                                            <Save size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setEditingLabelId(null);
+                                                fetchLabels(); // Reset to original
+                                            }}
+                                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div
+                                            className="w-4 h-4 rounded-full"
+                                            style={{ backgroundColor: label.color }}
+                                        />
+                                        <span className="flex-1 text-sm text-gray-700">{label.name}</span>
+                                        <button
+                                            onClick={() => setEditingLabelId(label.id)}
+                                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                        >
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteLabel(label.id)}
+                                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                        {labels.length === 0 && (
+                            <p className="text-sm text-indigo-600 italic">No labels yet. Create one below.</p>
+                        )}
+                    </div>
+
+                    {/* Create New Label */}
+                    <div className="flex items-center gap-2">
+                        <div className="relative">
+                            <button
+                                className="w-8 h-8 rounded-lg border-2 border-dashed border-indigo-300 flex items-center justify-center hover:border-indigo-400"
+                                style={{ backgroundColor: newLabelColor }}
+                                onClick={(e) => {
+                                    const input = document.getElementById('new-label-color');
+                                    input?.click();
+                                }}
+                            >
+                                <Palette size={14} className="text-white drop-shadow" />
+                            </button>
+                            <input
+                                id="new-label-color"
+                                type="color"
+                                value={newLabelColor}
+                                onChange={(e) => setNewLabelColor(e.target.value)}
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                            />
+                        </div>
+                        <div className="flex gap-1">
+                            {PRESET_COLORS.map(color => (
+                                <button
+                                    key={color}
+                                    onClick={() => setNewLabelColor(color)}
+                                    className={cn(
+                                        "w-5 h-5 rounded-full transition-transform",
+                                        newLabelColor === color && "ring-2 ring-offset-1 ring-indigo-500 scale-110"
+                                    )}
+                                    style={{ backgroundColor: color }}
+                                />
+                            ))}
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="New label name..."
+                            value={newLabelName}
+                            onChange={(e) => setNewLabelName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateLabel()}
+                            className="flex-1 px-3 py-1.5 border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                        />
+                        <button
+                            onClick={handleCreateLabel}
+                            disabled={!newLabelName.trim()}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                            <Plus size={14} />
+                            Add
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Search */}
             <div className="relative">
@@ -177,7 +403,7 @@ export function CannedResponsesSettings() {
                 <h3 className="text-sm font-medium text-gray-700 mb-3">
                     {editingId ? 'Edit Response' : 'Add New Response'}
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                     <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Shortcut</label>
                         <input
@@ -189,15 +415,17 @@ export function CannedResponsesSettings() {
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Label</label>
                         <select
-                            value={formData.category}
-                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                            value={formData.labelId}
+                            onChange={(e) => setFormData({ ...formData, labelId: e.target.value })}
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                         >
-                            <option value="">No Category</option>
-                            {allCategories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
+                            <option value="">No Label</option>
+                            {labels.map(label => (
+                                <option key={label.id} value={label.id}>
+                                    {label.name}
+                                </option>
                             ))}
                         </select>
                     </div>
@@ -221,15 +449,18 @@ export function CannedResponsesSettings() {
                         )}
                     </div>
                 </div>
-                <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Content</label>
-                    <textarea
-                        placeholder="Type your response here... Use {{customer.firstName}} for placeholders."
+                <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Content (Rich Text)</label>
+                    <RichTextEditor
                         value={formData.content}
-                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                        onChange={(val) => setFormData({ ...formData, content: val })}
+                        placeholder="Type your response here... Use {{customer.firstName}} for placeholders."
+                        variant="standard"
                     />
+                </div>
+                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                    <Zap size={12} className="text-amber-500" />
+                    Supports placeholders: {`{{customer.firstName}}`}, {`{{customer.email}}`}
                 </div>
             </div>
 
@@ -242,11 +473,18 @@ export function CannedResponsesSettings() {
                 </div>
             ) : (
                 <div className="space-y-6">
-                    {filteredGroups.map(({ category, items }) => (
-                        <div key={category}>
+                    {filteredGroups.map(({ name, label, items }) => (
+                        <div key={name}>
                             <div className="flex items-center gap-2 mb-2">
-                                <FolderOpen size={14} className="text-gray-400" />
-                                <h4 className="text-sm font-medium text-gray-700">{category}</h4>
+                                {label ? (
+                                    <div
+                                        className="w-3 h-3 rounded-full"
+                                        style={{ backgroundColor: label.color }}
+                                    />
+                                ) : (
+                                    <Tag size={14} className="text-gray-400" />
+                                )}
+                                <h4 className="text-sm font-medium text-gray-700">{name}</h4>
                                 <span className="text-xs text-gray-400">({items.length})</span>
                             </div>
                             <div className="space-y-2">
@@ -264,8 +502,24 @@ export function CannedResponsesSettings() {
                                                     <code className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-mono">
                                                         /{response.shortcut}
                                                     </code>
+                                                    {response.label && (
+                                                        <span
+                                                            className="px-1.5 py-0.5 rounded text-xs text-white"
+                                                            style={{ backgroundColor: response.label.color }}
+                                                        >
+                                                            {response.label.name}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <p className="text-sm text-gray-600 line-clamp-2">{response.content}</p>
+                                                <div
+                                                    className="text-sm text-gray-600 line-clamp-2 prose prose-sm max-w-none"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: DOMPurify.sanitize(response.content, {
+                                                            ALLOWED_TAGS: ['b', 'i', 'u', 'strong', 'em', 'p', 'br', 'ul', 'ol', 'li', 'a'],
+                                                            ALLOWED_ATTR: ['href', 'target']
+                                                        })
+                                                    }}
+                                                />
                                             </div>
                                             <div className="flex items-center gap-1 shrink-0">
                                                 <button

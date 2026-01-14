@@ -12,3 +12,5 @@ export { MobileLiveVisitors } from './MobileLiveVisitors';
 export { MobileProfile } from './MobileProfile';
 export { MobileSettings } from './MobileSettings';
 export { MobileCustomers } from './MobileCustomers';
+export { MobileCustomerDetail } from './MobileCustomerDetail';
+export { MobileVisitorDetail } from './MobileVisitorDetail';

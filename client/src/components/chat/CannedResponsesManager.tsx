@@ -1,13 +1,26 @@
-
+/**
+ * CannedResponsesManager - Modal for quickly managing canned responses from inbox.
+ * Includes rich text editing and label support.
+ */
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Zap } from 'lucide-react';
+import { X, Plus, Trash2, Zap, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { RichTextEditor } from '../common/RichTextEditor';
+import DOMPurify from 'dompurify';
+
+interface CannedResponseLabel {
+    id: string;
+    name: string;
+    color: string;
+}
 
 interface CannedResponse {
     id: string;
     shortcut: string;
     content: string;
+    labelId: string | null;
+    label: CannedResponseLabel | null;
 }
 
 interface CannedResponsesManagerProps {
@@ -20,16 +33,36 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [responses, setResponses] = useState<CannedResponse[]>([]);
+    const [labels, setLabels] = useState<CannedResponseLabel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [newShortcut, setNewShortcut] = useState('');
     const [newContent, setNewContent] = useState('');
+    const [newLabelId, setNewLabelId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         if (isOpen && currentAccount && token) {
             fetchResponses();
+            fetchLabels();
         }
     }, [isOpen, currentAccount, token]);
+
+    const fetchLabels = async () => {
+        if (!currentAccount || !token) return;
+        try {
+            const res = await fetch('/api/chat/canned-labels', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                setLabels(await res.json());
+            }
+        } catch (e) {
+            console.error('Failed to fetch labels', e);
+        }
+    };
 
     const fetchResponses = async () => {
         if (!currentAccount || !token) return;
@@ -64,6 +97,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                 body: JSON.stringify({
                     shortcut: newShortcut.trim(),
                     content: newContent.trim(),
+                    labelId: newLabelId || null,
                     accountId: currentAccount.id
                 })
             });
@@ -73,6 +107,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                 setResponses(prev => [...prev, newResponse]);
                 setNewShortcut('');
                 setNewContent('');
+                setNewLabelId('');
                 onUpdate?.();
             }
         } finally {
@@ -102,6 +137,14 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
 
     if (!isOpen) return null;
 
+    // Group by label
+    const grouped = responses.reduce((acc, r) => {
+        const key = r.label?.name || 'Uncategorized';
+        if (!acc[key]) acc[key] = { label: r.label, items: [] };
+        acc[key].items.push(r);
+        return acc;
+    }, {} as Record<string, { label: CannedResponseLabel | null; items: CannedResponse[] }>);
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
@@ -122,7 +165,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                 {/* Add New Form */}
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
                     <h3 className="text-sm font-medium text-gray-700 mb-3">Add New Response</h3>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 mb-3">
                         <div className="w-32">
                             <label className="block text-xs text-gray-500 mb-1">Shortcut</label>
                             <div className="flex items-center">
@@ -136,15 +179,18 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                                 />
                             </div>
                         </div>
-                        <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">Response Content</label>
-                            <input
-                                type="text"
-                                value={newContent}
-                                onChange={(e) => setNewContent(e.target.value)}
-                                placeholder="Hello! How can I help you today?"
-                                className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
-                            />
+                        <div className="w-40">
+                            <label className="block text-xs text-gray-500 mb-1">Label</label>
+                            <select
+                                value={newLabelId}
+                                onChange={(e) => setNewLabelId(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                            >
+                                <option value="">No Label</option>
+                                {labels.map(label => (
+                                    <option key={label.id} value={label.id}>{label.name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="flex items-end">
                             <button
@@ -156,6 +202,15 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                                 {isSaving ? 'Adding...' : 'Add'}
                             </button>
                         </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">Content (Rich Text)</label>
+                        <RichTextEditor
+                            value={newContent}
+                            onChange={setNewContent}
+                            placeholder="Hello! How can I help you today?"
+                            variant="compact"
+                        />
                     </div>
                 </div>
 
@@ -171,23 +226,44 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                         </div>
                     ) : (
                         <div className="divide-y divide-gray-100">
-                            {responses.map(response => (
-                                <div key={response.id} className="px-6 py-3 flex items-start gap-4 hover:bg-gray-50">
-                                    <div className="shrink-0 pt-0.5">
-                                        <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded-sm text-gray-600">
-                                            /{response.shortcut}
-                                        </span>
+                            {Object.entries(grouped).map(([name, { label, items }]) => (
+                                <div key={name} className="px-6 py-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        {label ? (
+                                            <div
+                                                className="w-3 h-3 rounded-full"
+                                                style={{ backgroundColor: label.color }}
+                                            />
+                                        ) : (
+                                            <Tag size={12} className="text-gray-400" />
+                                        )}
+                                        <span className="text-xs font-medium text-gray-500 uppercase">{name}</span>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{response.content}</p>
-                                    </div>
-                                    <button
-                                        onClick={() => handleDelete(response.id)}
-                                        className="shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-sm transition-colors"
-                                        title="Delete"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {items.map(response => (
+                                        <div key={response.id} className="flex items-start gap-4 py-2 hover:bg-gray-50 rounded-lg px-2 -mx-2">
+                                            <div className="shrink-0 pt-0.5">
+                                                <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded-sm text-gray-600">
+                                                    /{response.shortcut}
+                                                </span>
+                                            </div>
+                                            <div
+                                                className="flex-1 min-w-0 text-sm text-gray-700 prose prose-sm max-w-none line-clamp-2"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: DOMPurify.sanitize(response.content, {
+                                                        ALLOWED_TAGS: ['b', 'i', 'u', 'strong', 'em', 'p', 'br'],
+                                                        ALLOWED_ATTR: []
+                                                    })
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => handleDelete(response.id)}
+                                                className="shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-sm transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             ))}
                         </div>

@@ -1,8 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+
+interface OrderMetaData {
+    key: string;
+    value: string;
+}
+
+interface OrderLineItem {
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+    image?: string;
+    sku?: string;
+    meta_data?: OrderMetaData[];
+}
 
 interface OrderDetail {
     id: string;
@@ -17,9 +32,10 @@ interface OrderDetail {
     customer: { name: string; email: string; phone?: string };
     billing: { address1: string; city: string; state: string; postcode: string; country: string };
     shipping: { address1: string; city: string; state: string; postcode: string; country: string };
-    lineItems: { id: string; name: string; quantity: number; price: number; image?: string }[];
+    lineItems: OrderLineItem[];
     trackingNumber?: string;
     trackingUrl?: string;
+    currency?: string;
 }
 
 const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; text: string }> = {
@@ -38,6 +54,7 @@ export function MobileOrderDetail() {
     const { currentAccount } = useAccount();
     const [order, setOrder] = useState<OrderDetail | null>(null);
     const [loading, setLoading] = useState(true);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
     useEffect(() => {
         if (id) fetchOrder();
@@ -75,8 +92,18 @@ export function MobileOrderDetail() {
                 },
                 billing: { address1: o.billing?.address_1 || '', city: o.billing?.city || '', state: o.billing?.state || '', postcode: o.billing?.postcode || '', country: o.billing?.country || '' },
                 shipping: { address1: o.shipping?.address_1 || o.billing?.address_1 || '', city: o.shipping?.city || o.billing?.city || '', state: o.shipping?.state || o.billing?.state || '', postcode: o.shipping?.postcode || o.billing?.postcode || '', country: o.shipping?.country || o.billing?.country || '' },
-                lineItems: (o.line_items || []).map((item: any) => ({ id: item.id, name: item.name || 'Unknown', quantity: item.quantity || 1, price: Number(item.total || item.price) || 0, image: item.image?.src })),
-                trackingNumber: o.tracking_number, trackingUrl: o.tracking_url
+                lineItems: (o.line_items || []).map((item: any) => ({
+                    id: item.id,
+                    name: item.name || 'Unknown',
+                    quantity: item.quantity || 1,
+                    price: Number(item.total || item.price) || 0,
+                    image: item.image?.src,
+                    sku: item.sku,
+                    meta_data: item.meta_data
+                })),
+                trackingNumber: o.tracking_number,
+                trackingUrl: o.tracking_url,
+                currency: o.currency
             });
         } catch (error) {
             console.error('[MobileOrderDetail] Error:', error);
@@ -129,10 +156,55 @@ export function MobileOrderDetail() {
                 <h2 className="font-semibold text-gray-900 p-4 border-b border-gray-100">Items ({order.lineItems.length})</h2>
                 <div className="divide-y divide-gray-100">
                     {order.lineItems.map((item) => (
-                        <div key={item.id} className="flex items-center gap-3 p-4">
-                            {item.image ? <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" /> : <div className="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><Package size={20} className="text-gray-400" /></div>}
-                            <div className="flex-1 min-w-0"><p className="font-medium text-gray-900 truncate">{item.name}</p><p className="text-sm text-gray-500">Qty: {item.quantity}</p></div>
-                            <span className="font-medium text-gray-900">{formatCurrency(item.price)}</span>
+                        <div key={item.id} className="p-4">
+                            <div className="flex items-start gap-3">
+                                {item.image ? (
+                                    <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                                ) : (
+                                    <div className="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                        <Package size={20} className="text-gray-400" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-gray-900">{item.name}</p>
+                                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                                        <span>Qty: {item.quantity}</span>
+                                        {item.sku && <span>• SKU: {item.sku}</span>}
+                                    </div>
+                                </div>
+                                <span className="font-medium text-gray-900">{formatCurrency(item.price)}</span>
+                            </div>
+                            {/* Product Variations / Metadata */}
+                            {item.meta_data && item.meta_data.length > 0 && (
+                                <div className="mt-2 ml-[68px] space-y-1">
+                                    {item.meta_data
+                                        .filter((meta) => !meta.key.startsWith('_'))
+                                        .map((meta, idx) => {
+                                            const imageUrl = extractImageUrl(meta.value);
+                                            return (
+                                                <div key={idx} className="text-xs">
+                                                    <span className="font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                        {meta.key}:
+                                                    </span>
+                                                    {imageUrl ? (
+                                                        <button
+                                                            onClick={() => setSelectedImage(imageUrl)}
+                                                            className="ml-1 inline-block"
+                                                        >
+                                                            <img
+                                                                src={imageUrl}
+                                                                alt={meta.key}
+                                                                className="h-12 w-auto rounded border border-gray-200 mt-1"
+                                                            />
+                                                        </button>
+                                                    ) : (
+                                                        <span className="ml-1 text-gray-700">{meta.value}</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -148,6 +220,54 @@ export function MobileOrderDetail() {
                 </div>
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100"><CreditCard size={16} className="text-gray-400" /><span className="text-sm text-gray-600">{order.paymentMethod}</span></div>
             </div>
+
+            {/* Image Preview Modal */}
+            {selectedImage && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+                    onClick={() => setSelectedImage(null)}
+                >
+                    <button
+                        className="absolute top-4 right-4 p-2 bg-white/10 rounded-full"
+                        onClick={() => setSelectedImage(null)}
+                    >
+                        <X size={24} className="text-white" />
+                    </button>
+                    <img
+                        src={selectedImage}
+                        alt="Preview"
+                        className="max-w-full max-h-[85vh] object-contain rounded-lg"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
         </div>
     );
 }
+
+/**
+ * Extracts an image URL from a meta value.
+ * Handles compound values like "filename.webp | https://example.com/path/to/image.webp"
+ */
+const extractImageUrl = (value: string): string | null => {
+    if (typeof value !== 'string') return null;
+
+    const imagePattern = /\.(jpg|jpeg|png|gif|webp|svg|bmp)/i;
+
+    // Direct image URL
+    if (imagePattern.test(value) && value.startsWith('http')) {
+        return value;
+    }
+
+    // Look for URLs within the value (handles "filename | url" format)
+    const urlMatch = value.match(/(https?:\/\/[^\s|]+)/g);
+    if (urlMatch) {
+        for (const url of urlMatch) {
+            if (imagePattern.test(url)) {
+                return url.trim();
+            }
+        }
+    }
+
+    return null;
+};
