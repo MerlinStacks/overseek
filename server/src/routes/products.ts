@@ -105,13 +105,26 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!p) return reply.code(404).send({ error: 'Product not found in WooCommerce' });
 
+            // For variable products, fetch full variation data
+            let variationsData: any[] = [];
+            if (p.type === 'variable' && p.variations?.length > 0) {
+                variationsData = await woo.getProductVariations(wooId);
+                Logger.info(`Fetched ${variationsData.length} variations for product ${wooId}`);
+            }
+
+            // Store rawData with variationsData included
+            const rawDataWithVariations = {
+                ...p,
+                variationsData
+            };
+
             await prisma.wooProduct.upsert({
                 where: { accountId_wooId: { accountId, wooId: p.id } },
                 update: {
                     name: p.name,
                     price: p.price === '' ? null : p.price,
                     stockStatus: p.stock_status,
-                    rawData: p as any,
+                    rawData: rawDataWithVariations as any,
                     mainImage: p.images?.[0]?.src,
                     weight: p.weight ? parseFloat(p.weight) : null,
                     length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
@@ -133,9 +146,10 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
                     height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
                     images: p.images || [],
-                    rawData: p as any
+                    rawData: rawDataWithVariations as any
                 }
             });
+
 
             const upsertedProduct = await prisma.wooProduct.findUnique({
                 where: { accountId_wooId: { accountId, wooId: p.id } }

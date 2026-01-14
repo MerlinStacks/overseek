@@ -21,26 +21,35 @@ export class ProductsService {
         Logger.debug('rawData keys', { keys: Object.keys(raw || {}) });
 
         // Merge DB variations with rawData variations (IDs)
-        // Ideally DB variations are the source of truth for local fields
         const variationIds: number[] = raw?.variations || [];
 
+        // Check if we have full variation data from sync
+        const variationsData: any[] = raw?.variationsData || [];
+
         const mergedVariations = variationIds.map((vId: number) => {
+            // Try to find full variation data from variationsData array
+            const fullData = variationsData.find((v: any) => v.id === vId);
+
             return {
                 id: vId,
-                sku: '',
-                price: '',
-                salePrice: '',
-                stockStatus: 'instock',
+                sku: fullData?.sku || '',
+                price: fullData?.price || '',
+                salePrice: fullData?.sale_price || '',
+                stockStatus: fullData?.stock_status || 'instock',
+                stockQuantity: fullData?.stock_quantity ?? null,
                 cogs: '',
                 binLocation: '',
-                images: []
+                image: fullData?.image || null, // Single image object { src: ... }
+                images: fullData?.image ? [fullData.image] : [],
+                attributes: fullData?.attributes || []
             };
         });
+
 
         return {
             ...product,
             type: raw?.type || 'simple',
-            variations: mergedVariations, // Return full objects, not just IDs
+            variations: mergedVariations, // Return full objects with stock data
             variationIds: raw?.variations || [], // Keep IDs for reference
             description: raw?.description || '',
             short_description: raw?.short_description || '',

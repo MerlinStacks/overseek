@@ -145,6 +145,23 @@ export class WooService {
         return response.data;
     }
 
+    /**
+     * Fetch all variations for a variable product.
+     * Includes stock_quantity, sku, price, attributes, etc.
+     */
+    async getProductVariations(productId: number): Promise<any[]> {
+        if (this.isDemo) return [];
+
+        try {
+            // WooCommerce has pagination for variations, fetch up to 100
+            const response = await this.requestWithRetry('get', `products/${productId}/variations`, { per_page: 100 });
+            return response.data || [];
+        } catch (error) {
+            Logger.warn(`Failed to fetch variations for product ${productId}`, { error });
+            return [];
+        }
+    }
+
     async updateProduct(id: number, data: any, userId?: string) {
         if (this.isDemo) {
             Logger.debug(`[Demo] Updated Product ${id}`, { data });

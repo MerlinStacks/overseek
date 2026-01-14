@@ -47,7 +47,7 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
 
         const delayDebounceFn = setTimeout(async () => {
             try {
-                const res = await fetch(`/api/products?q=${encodeURIComponent(searchTerm)}&limit=5`, {
+                const res = await fetch(`/api/products?q=${encodeURIComponent(searchTerm)}&limit=8`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': currentAccount?.id || ''
@@ -55,7 +55,8 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setSearchResults(data.items || []);
+                    // API returns 'products' not 'items'
+                    setSearchResults(data.products || []);
                 }
             } catch (err) {
                 console.error("Failed to search products", err);
@@ -231,15 +232,25 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
                             />
                             {/* Search Results Dropdown */}
                             {searchResults.length > 0 && (
-                                <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
+                                <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-72 overflow-y-auto">
                                     {searchResults.map(p => (
                                         <button
                                             key={p.id}
-                                            className="w-full text-left p-2 hover:bg-gray-50 text-sm flex justify-between"
+                                            className="w-full text-left p-3 hover:bg-blue-50 transition-colors flex items-center gap-3 border-b border-gray-50 last:border-b-0"
                                             onClick={() => handleAddProduct(p)}
                                         >
-                                            <span>{p.name}</span>
-                                            <span className="text-gray-500">${p.price}</span>
+                                            {p.mainImage && (
+                                                <img src={p.mainImage} alt="" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium text-gray-900 text-sm truncate">{p.name}</div>
+                                                <div className="text-xs text-gray-500">
+                                                    {p.sku && <span className="font-mono">{p.sku}</span>}
+                                                    {p.sku && p.stockQuantity !== undefined && <span className="mx-1">•</span>}
+                                                    {p.stockQuantity !== undefined && <span>Stock: {p.stockQuantity}</span>}
+                                                </div>
+                                            </div>
+                                            <div className="text-sm font-semibold text-gray-700">${p.price || '0.00'}</div>
                                         </button>
                                     ))}
                                 </div>
