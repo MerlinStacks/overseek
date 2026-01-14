@@ -24,7 +24,7 @@ export interface HelpCollection {
     articles: HelpArticle[];
 }
 
-const LAST_UPDATED = '2026-01-07';
+const LAST_UPDATED = '2026-01-14';
 
 export const helpCollections: HelpCollection[] = [
     {
@@ -320,7 +320,7 @@ You will receive a **single daily email** summarizing all products that have fal
         id: 'col-analytics',
         title: 'Analytics & Reporting',
         slug: 'analytics-reporting',
-        description: 'Custom reports, Report Builder, and Live View.',
+        description: 'Custom reports, Email Digests, Cohorts, and Live View.',
         icon: 'BarChart2',
         order: 3,
         articles: [
@@ -373,6 +373,374 @@ Go to **Live** in the sidebar. You will see:
 
 ## Abandoned Cart Recovery
 If a logged-in user (or a guest who entered their email at checkout) leaves without buying, they are flagged for **Abandoned Cart Automation** (configured in the Marketing tab).`
+            },
+            {
+                id: 'art-email-digests',
+                title: 'Scheduled Email Digests',
+                slug: 'email-digests',
+                excerpt: 'Receive automated daily or weekly performance summaries.',
+                order: 2,
+                collectionSlug: 'analytics-reporting',
+                updatedAt: LAST_UPDATED,
+                content: `# Scheduled Email Digests
+
+Stay informed without logging in. OverSeek can send you automated performance summaries directly to your inbox.
+
+## Digest Types
+
+### Daily Digest
+Summarizes **yesterday's** performance compared to the day before:
+- Revenue, Order Count, AOV, New Customers
+- Top 5 traffic sources
+- Top 5 products by quantity sold
+
+### Weekly Digest
+Summarizes the **last 7 days** compared to the preceding week:
+- All daily metrics aggregated
+- Week-over-week trend analysis
+
+## Setting Up Digests
+1.  Go to **Reports > Schedules**.
+2.  Click **New Digest**.
+3.  Choose **Daily** or **Weekly**.
+4.  Add recipient email addresses.
+5.  Set the delivery time (e.g., 8:00 AM).
+
+## Understanding the Report
+- **Green ↑**: Metric improved vs. previous period
+- **Red ↓**: Metric declined vs. previous period
+- **Percentage**: Shows the magnitude of change`
+            },
+            {
+                id: 'art-customer-cohorts',
+                title: 'Customer Cohort Analysis',
+                slug: 'customer-cohorts',
+                excerpt: 'Understand retention and acquisition patterns through behavioral segmentation.',
+                order: 3,
+                collectionSlug: 'analytics-reporting',
+                updatedAt: LAST_UPDATED,
+                content: `# Customer Cohort Analysis
+
+Cohorts help you understand long-term customer behavior beyond single-order metrics.
+
+## Available Cohorts
+
+### Retention Cohorts
+Groups customers by their **first purchase month** and tracks how many return in subsequent months.
+- See if January customers are more loyal than December customers
+- Identify seasonal patterns in repeat behavior
+- Track 12-month retention horizons
+
+### Acquisition Source Cohorts
+Compares retention rates by **how customers found you**:
+- Google Ads vs. Meta Ads vs. Organic
+- Which channel brings the most loyal customers?
+- Informs budget allocation decisions
+
+### Product-Based Cohorts
+Segments customers by their **first product category**:
+- Do "Ring" buyers return more than "Necklace" buyers?
+- Identify "gateway products" that lead to high LTV
+- Optimize merchandising strategy
+
+## Accessing Cohorts
+Go to **Reports > Cohorts** to view all three analysis types with visual heatmaps and trend indicators.`
+            },
+            {
+                id: 'art-product-rankings',
+                title: 'Product Performance Rankings',
+                slug: 'product-rankings',
+                excerpt: 'Quickly identify your top and bottom performing products.',
+                order: 4,
+                collectionSlug: 'analytics-reporting',
+                updatedAt: LAST_UPDATED,
+                content: `# Product Performance Rankings
+
+The ranking engine provides at-a-glance visibility into your product catalog performance.
+
+## Ranking Criteria
+Products are ranked by:
+- **Revenue**: Total sales value
+- **Units Sold**: Quantity shipped
+- **Order Count**: Number of orders containing the product
+
+## Time Periods
+Compare across multiple windows:
+- **7 Days**: Recent momentum
+- **30 Days**: Monthly performance
+- **90 Days**: Quarterly trends
+- **YTD**: Year-to-date totals
+
+## Trend Indicators
+Each product shows a trend arrow:
+- **↑ Green**: Performance improving vs. previous period
+- **↓ Red**: Performance declining
+- **→ Gray**: Stable (less than 5% change)
+
+## Profit Margins
+When COGS (Cost of Goods Sold) is set, the ranking includes **profit margin percentages** to identify your most profitable products, not just highest revenue.
+
+## Accessing Rankings
+Go to **Reports > Products** and toggle between "Top Performers" and "Bottom Performers" tabs.`
+            }
+        ]
+    },
+    {
+        id: 'col-ai-marketing',
+        title: 'AI & Marketing Intelligence',
+        slug: 'ai-marketing',
+        description: 'AI Marketing Co-Pilot, Ad Platform Connections, and Optimization.',
+        icon: 'TrendingUp',
+        order: 4,
+        articles: [
+            {
+                id: 'art-ai-copilot',
+                title: 'AI Marketing Co-Pilot Guide',
+                slug: 'ai-marketing-copilot',
+                excerpt: 'Using the intelligent ad optimization advisor to improve campaign performance.',
+                order: 0,
+                collectionSlug: 'ai-marketing',
+                updatedAt: LAST_UPDATED,
+                content: `# AI Marketing Co-Pilot
+
+The AI Marketing Co-Pilot is an intelligent advisor that analyzes your advertising data and provides actionable optimization recommendations.
+
+## How It Works
+
+Instead of manually analyzing spreadsheets, the Co-Pilot:
+1. **Aggregates Data**: Pulls metrics from Google Ads and Meta Ads
+2. **Analyzes Trends**: Compares 7d, 30d, and 90d performance windows
+3. **Applies Intelligence**: Uses marketing best practices and statistical analysis
+4. **Generates Recommendations**: Provides specific, actionable suggestions
+
+## Key Capabilities
+
+### Multi-Period Analysis
+See how campaigns perform across different timeframes with statistical significance scoring to filter out noise.
+
+### Cross-Channel Attribution
+Understand how Google and Meta Ads work together—does Google assist Meta conversions or vice versa?
+
+### LTV-Based Optimization
+Move beyond immediate ROAS to focus on Customer Lifetime Value and payback periods.
+
+### Funnel-Aware Insights
+Different expectations for Top-of-Funnel (awareness) vs. Bottom-of-Funnel (conversion) campaigns.
+
+## Understanding Recommendations
+
+Each suggestion includes:
+- **Confidence Score**: How reliable is this recommendation (based on data volume)
+- **Expected Impact**: Estimated improvement if implemented
+- **Reasoning**: Why the AI made this suggestion
+
+## Taking Action
+Review recommendations in **Marketing > Co-Pilot**. Mark suggestions as "Implemented" or "Dismissed" to help the system learn your preferences.`
+            },
+            {
+                id: 'art-ad-connections',
+                title: 'Connecting Ad Platforms',
+                slug: 'connecting-ad-platforms',
+                excerpt: 'Set up Google Ads and Meta Ads OAuth connections for unified insights.',
+                order: 1,
+                collectionSlug: 'ai-marketing',
+                updatedAt: LAST_UPDATED,
+                content: `# Connecting Ad Platforms
+
+OverSeek integrates directly with Google Ads and Meta Ads to pull campaign performance data.
+
+## Google Ads Setup
+
+1. Go to **Settings > Integrations > Google Ads**
+2. Click **Connect Google Ads**
+3. Sign in with your Google account
+4. Grant permission to access your Google Ads data
+5. Select the Ads accounts you want to monitor
+
+### What Data is Synced?
+- Campaign names, status, and budgets
+- Impressions, clicks, conversions
+- Cost and ROAS metrics
+- Daily performance snapshots
+
+## Meta Ads Setup
+
+1. Go to **Settings > Integrations > Meta Ads**
+2. Click **Connect Meta Business**
+3. Sign in with your Facebook account
+4. Grant permission to access your Ad accounts
+5. Select the accounts you want to monitor
+
+### What Data is Synced?
+- Campaign and Ad Set performance
+- Reach, impressions, clicks, conversions
+- Spend and cost metrics
+- Audience breakdowns
+
+## Cross-Platform Comparison
+
+Once both platforms are connected, OverSeek enables:
+- **Unified Dashboard**: See Google and Meta side-by-side
+- **True ROAS**: Match ad spend to actual WooCommerce revenue
+- **Attribution Analysis**: Understand cross-platform customer journeys
+
+## Troubleshooting
+
+### Token Expired
+OAuth tokens expire periodically. If you see "Reconnect Required", simply re-authorize the platform.
+
+### Missing Data
+- Ensure you selected the correct account during setup
+- Data syncs every 6 hours; new campaigns may take time to appear`
+            }
+        ]
+    },
+    {
+        id: 'col-inbox',
+        title: 'Communication & Inbox',
+        slug: 'communication-inbox',
+        description: 'Unified Inbox, Canned Responses, and Conversation Management.',
+        icon: 'MessageSquare',
+        order: 5,
+        articles: [
+            {
+                id: 'art-inbox-overview',
+                title: 'Unified Inbox Overview',
+                slug: 'unified-inbox',
+                excerpt: 'Managing customer conversations across email, chat, and social channels.',
+                order: 0,
+                collectionSlug: 'communication-inbox',
+                updatedAt: LAST_UPDATED,
+                content: `# Unified Inbox
+
+The Unified Inbox brings all your customer communications into one place.
+
+## Supported Channels
+- **Email**: Via IMAP integration with your business email
+- **Live Chat**: From visitors using the embedded chat widget
+- **Social Media**: Facebook and Instagram messages (when connected)
+
+## The Interface
+
+### Conversation List
+The left panel shows all conversations sorted by recency. Unread messages are highlighted.
+
+### Message Thread
+The center panel shows the full conversation history with a customer.
+
+### Customer Context
+The right panel shows:
+- Customer profile and order history
+- Previous conversations
+- Tags and notes
+
+## Assigning Conversations
+Click **Assign** to route a conversation to a specific team member. Assignments trigger notifications.
+
+## Status Management
+- **Open**: Needs attention
+- **Snoozed**: Hidden temporarily (will resurface at set time)
+- **Closed**: Resolved
+
+## Business Hours
+OverSeek can auto-reply when your business is closed, letting customers know when to expect a response.`
+            },
+            {
+                id: 'art-canned-responses',
+                title: 'Canned Responses',
+                slug: 'canned-responses',
+                excerpt: 'Create and use reusable message templates with rich formatting.',
+                order: 1,
+                collectionSlug: 'communication-inbox',
+                updatedAt: LAST_UPDATED,
+                content: `# Canned Responses
+
+Canned responses are pre-written message templates that save time on common replies.
+
+## Creating a Canned Response
+1. Go to **Settings > Inbox > Canned Responses**
+2. Click **New Response**
+3. Enter a **Title** (for easy searching)
+4. Write your **Content** using the rich text editor
+5. Assign **Labels** for organization
+6. Click **Save**
+
+## Rich Text Support
+Canned responses support full formatting:
+- **Bold**, *italic*, and lists
+- Links and formatted text
+- Structured layouts
+
+## Using Labels
+Labels help organize your templates:
+- **Shipping**: Tracking inquiries, delivery updates
+- **Returns**: Return policies, refund status
+- **Product**: Size guides, care instructions
+
+Create, edit, and delete labels from the Settings page.
+
+## Inserting a Canned Response
+While composing a reply:
+1. Click the **Canned Responses** icon (or press \`/\`)
+2. Search by title or label
+3. Click to insert
+4. Edit as needed before sending
+
+## Dynamic Variables
+Use variables that auto-fill with customer data:
+- \`{{customer.name}}\`
+- \`{{order.number}}\`
+- \`{{order.status}}\``
+            },
+            {
+                id: 'art-conversation-management',
+                title: 'Conversation Search & Merge',
+                slug: 'conversation-management',
+                excerpt: 'Finding conversations and consolidating duplicate customer threads.',
+                order: 2,
+                collectionSlug: 'communication-inbox',
+                updatedAt: LAST_UPDATED,
+                content: `# Conversation Management
+
+Keep your inbox organized with search and merge capabilities.
+
+## Searching Conversations
+
+### Quick Search
+Use the search bar at the top of the Inbox to find conversations by:
+- **Message content**: What was said
+- **Customer name**: Who you're talking to
+- **Email address**: Customer's email
+
+### Filters
+Combine search with filters:
+- Status (Open, Closed, Snoozed)
+- Assigned team member
+- Channel (Email, Chat, Social)
+- Date range
+
+## Merging Conversations
+
+Sometimes the same customer contacts you through multiple channels, creating duplicate threads.
+
+### How to Merge
+1. Select conversations using the checkboxes
+2. Click **Merge** in the action bar
+3. Choose the **Primary Conversation** (the one to keep)
+4. Confirm the merge
+
+### What Happens
+- All messages are combined into the primary thread
+- The merged conversation shows all recipient channels
+- Original conversations are archived (not deleted)
+
+## Interaction History
+Each customer's profile shows their complete **Interaction Timeline**:
+- Past conversations (clickable to view)
+- Order history
+- Site visits and activity
+
+This provides full context before responding.`
             }
         ]
     },
@@ -382,7 +750,7 @@ If a logged-in user (or a guest who entered their email at checkout) leaves with
         slug: 'settings-config',
         description: 'Platform configuration, Gold Price, and Account settings.',
         icon: 'Settings',
-        order: 4,
+        order: 6,
         articles: [
             {
                 id: 'art-gold-pricing',

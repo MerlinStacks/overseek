@@ -1,251 +1,147 @@
 <p align="center">
   <h1 align="center">🚀 OverSeek</h1>
-  <p align="center"><strong>The Sovereign E-Commerce Intelligence Platform</strong></p>
-  <p align="center"><em>Stop Overpaying. Start OverSeeking.</em></p>
+  <p align="center"><strong>Your Store's Command Center</strong></p>
+  <p align="center"><em>Everything about your WooCommerce store. One dashboard. Zero monthly fees.</em></p>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.0-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
-  <img src="https://img.shields.io/badge/stack-PERN-blueviolet" alt="Stack">
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/AI-powered-ff6b6b?logo=openai&logoColor=white" alt="AI Powered">
-  <img src="https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white" alt="Fastify Powered">
 </p>
 
 ---
 
-## 💡 Why OverSeek?
+## What is OverSeek?
 
-Tired of paying **$200+/month** for fragmented SaaS tools like Metorik, Matomo, Crisp, and FunnelKit?
+**OverSeek puts you back in control of your e-commerce data.**
 
-OverSeek is your **open-source command center**—a self-hosted, privacy-first platform that unifies analytics, automation, inventory, and customer intelligence into one powerful dashboard.
+If you run a WooCommerce store, you know the pain: Metorik for analytics ($79/mo), Crisp for chat ($75/mo), Klaviyo for emails ($45/mo), and a dozen other tools that barely talk to each other. That's $200+ per month, your customer data scattered across a dozen SaaS platforms, and no single source of truth.
 
-| Feature | OverSeek | Others |
-|---------|----------|--------|
-| **Data Ownership** | 100% yours, on your server | Locked in third-party silos |
-| **Real-Time Intelligence** | Sub-second via Socket.io | Minutes of delay |
-| **Monthly Cost** | $0 | $200-500+/month |
-| **WooCommerce Native** | Deep bi-directional sync | Basic API polling |
-| **AI-Powered Insights** | Built-in assistant & content tools | Expensive add-ons |
+OverSeek fixes that. It's a self-hosted dashboard that syncs with your WooCommerce store and gives you:
+
+- 📊 **Real-time analytics** — See who's on your site right now, what's in their cart, and where they came from
+- 💬 **Unified inbox** — Email, live chat, Facebook, Instagram—all in one place
+- 🤖 **AI that actually helps** — Ask questions about your data, draft customer replies, optimize your ads
+- 📦 **Inventory tools** — Stock alerts, purchase orders, picklists, the works
+- ⚡ **Marketing automation** — Abandoned cart flows, welcome series, post-purchase emails
+
+All running on your server. Your data never leaves your control.
 
 ---
 
-## ✨ Feature Highlights
+## Quick Start
 
-### 🤖 "Iron Core" Architecture (v2.0)
-- **High-Performance Backend**: Migrated to **Fastify 5** for maximum throughput and low latency.
-- **Modern Frontend**: Built with **React 19** and **Tailwind CSS v4** for a cutting-edge UX.
-- **Security First**: **Argon2id** hashing, **Pino** secure logging, and rigorous input validation.
-- **Scalable Infrastructure**: Powered by **Elasticsearch 9**, **Redis 7**, and **PostgreSQL 16**.
+```bash
+git clone https://github.com/MerlinStacks/overseek.git
+cd overseek
+cp .env.example .env
+docker-compose up -d
+npm install && npm run db:migrate && npm run dev
+```
 
-### 🧠 AI-Powered Intelligence
-- **Data-Aware AI Assistant**: Chat with your store data—ask questions about sales, customers, and ads.
-- **AI Draft Replies**: Generative AI suggestions in the inbox with full conversation context.
-- **AI Product Rewriting**: One-click AI-powered product description generation.
-- **Multi-Model Support**: Connect to any OpenRouter-compatible model (GPT-4, Claude, etc.).
+Open `http://localhost:5173` and you're in.
 
-### 📊 Analytics & Visitor Intelligence
-- **Live Visitor Tracking**: Real-time geographic mapping of active visitors.
-- **E-Commerce Stream**: Live feed of add-to-cart, checkout, and purchase events.
-- **Visitor Journey History**: Sessionized browsing history with interactivity tracking.
-- **UTM/MTM Attribution**: First-click and last-click attribution models.
-- **Abandoned Cart Detection**: Automatic identification and recovery flows.
+> **Requirements:** Docker, Node.js 22+
 
-### 👤 Customer 360 Profiles
-- **Unified Timeline**: Orders, emails, chats, and site visits in one view.
-- **LTV & AOV Metrics**: Lifetime value calculated automatically.
-- **Behavioral Insights**: Entry/exit pages, time on site, and journey mapping.
+---
 
-### 🛒 WooCommerce Sync Engine
-- **Deep Integration**: Bi-directional sync of orders, products, customers, and reviews.
-- **Webhook Support**: Instant updates via `order.created`, `product.updated`, etc.
-- **Delta Sync**: Only fetch what's changed to save bandwidth.
+## Core Features
 
-### 📣 Google Ads Integration
-- **OAuth Connection**: Securely link your Google Ads account.
-- **Campaign Monitoring**: Track spend, impressions, clicks, and conversions.
-- **ROAS Tracking**: Automatic Return on Ad Spend calculations.
+### 📊 Analytics & Tracking
+See your store in real-time. Live visitors on a globe, add-to-cart events streaming in, abandoned carts flagged automatically. Works even with ad blockers (server-side tracking).
 
-### 📱 Meta Ads Integration
-- **OAuth Connection**: Securely link Meta Business accounts (Facebook/Instagram).
-- **Campaign Insights**: Track reach, impressions, clicks, and conversions.
-- **Cross-Platform Analysis**: Compare performance across Google and Meta campaigns.
+### 💬 Unified Inbox
+One inbox for everything. Emails (via IMAP), live chat widget, Facebook messages, Instagram DMs. Canned responses, AI-drafted replies, conversation search. No more tab-switching.
 
 ### 🤖 AI Marketing Co-Pilot
-- **Intelligent Optimization**: AI-powered ad recommendations replacing manual analysis.
-- **Multi-Period Analysis**: Compare 7d, 30d, and 90d performance with statistical significance.
-- **LTV-Based Optimization**: Shift focus from immediate ROAS to Customer Lifetime Value.
-- **Funnel-Aware Insights**: Differentiate Top-of-Funnel vs Bottom-of-Funnel benchmarks.
-- **Explainable AI**: Confidence scoring with transparent reasoning behind suggestions.
+Connect your Google Ads and Meta Ads accounts. The AI analyzes your campaigns across 7, 30, and 90-day windows, spots trends, and gives you specific recommendations—with confidence scores so you know what to trust.
 
-### 📦 Inventory & Supply Chain
-- **Stock Velocity Reports**: Identify fast/slow movers with days-of-inventory projections.
-- **Bill of Materials (BOM)**: Track raw materials for manufactured goods.
-- **Purchase Orders**: Manage inbound inventory with ETA tracking.
+### 📈 Business Intelligence
+Daily/weekly email digests land in your inbox with revenue, top products, and traffic sources. Customer cohort analysis shows you which acquisition channels bring the best long-term customers. Product rankings reveal your winners and losers.
 
-### 🧾 Visual Invoice & Email Designer
-- **Drag-and-Drop Builder**: Create beautiful invoice templates.
-- **Dynamic Variables**: Use `{{customer.name}}`, `{{order.total}}`, and more.
-- **PDF Generation**: Print-ready invoices with full tax breakdowns.
+### 📦 Inventory & Warehouse
+Low stock alerts based on sales velocity (not just static thresholds). Bill of Materials for bundles and kits. Purchase orders with supplier management. Picklists that optimize your warehouse walking path.
 
 ### ⚡ Marketing Automation
-- **Visual Flow Builder**: Drag-and-drop node canvas.
-- **Smart Triggers**: Abandoned cart, post-purchase, welcome series.
-- **Email Templates**: MJML-powered responsive designs.
+Visual flow builder with drag-and-drop. Abandoned cart sequences, post-purchase follow-ups, welcome series. MJML-powered email templates that look great everywhere.
 
-### 💬 Unified Inbox & Chat
-- **Live Chat Widget**: Embeddable widget with business hours detection.
-- **IMAP Integration**: Pull emails directly into the dashboard.
-- **Email Threading**: Bi-directional threading with `In-Reply-To` support.
-- **Social Messaging**: Respond to standard communication channels.
-- **Rich Canned Responses**: Reusable templates with full formatting support.
-- **Conversation Search & Merge**: Find and consolidate customer threads.
-
-### 📊 Proactive Business Intelligence
-- **Email Digests**: Automated Daily/Weekly reports with trend analysis.
-- **Customer Cohorts**: Retention, acquisition source, and product-based segmentation.
-- **Product Rankings**: Top/Bottom performer benchmarking with profit margins.
-
-### 🛠️ Developer & Admin Tools
-- **Audit Logs**: Track who changed what, when.
-- **Session Management**: View and revoke active sessions.
-- **Two-Factor Auth**: TOTP-based 2FA support.
-- **Health Dashboard**: System status, logs, and diagnostics.
-- **Notification Engine**: Centralized alerting with diagnostic logging.
+### 👤 Customer Profiles
+Full 360° view of every customer. Order history, lifetime value, all their conversations, every page they've visited. Know who you're talking to.
 
 ---
 
-## 🛠️ Tech Stack
-
-Built with modern, battle-tested technologies:
+## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| **Frontend** | React 19, Vite, TypeScript 5.8+, Tailwind CSS v4 |
-| **State** | React Query, Zustand |
-| **Backend** | Node.js 22+, Fastify 5, TypeScript (ESM) |
-| **Database** | PostgreSQL 16 + Prisma 7 (Driver Adapter) |
-| **Search** | Elasticsearch 9.x |
-| **Cache/Queue** | Redis 7 + BullMQ |
-| **Real-Time** | Socket.io |
-| **AI/Embeddings** | OpenRouter API + pgvector |
-| **Infrastructure** | Docker & Docker Compose |
+| Frontend | React 19, Vite, TypeScript, Tailwind CSS v4 |
+| Backend | Node.js 22, Fastify 5, Prisma 7 |
+| Database | PostgreSQL 16, Elasticsearch 9, Redis 7 |
+| AI | OpenRouter API (GPT-4, Claude, etc.) |
+| Infrastructure | Docker Compose |
 
 ---
 
-## 🚀 Quick Start
+## WooCommerce Integration
 
-### Prerequisites
-- Docker & Docker Compose
-- Node.js 22+ (required for Prisma 7)
+Two ways to connect:
 
-### Installation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/MerlinStacks/overseek.git
-cd overseek
-
-# 2. Copy environment variables
-cp .env.example .env
-
-# 3. Start the infrastructure (Postgres, Elasticsearch, Redis)
-docker-compose up -d
-
-# 4. Install dependencies
-npm install
-
-# 5. Run database migrations
-npm run db:migrate
-
-# 6. Start development servers
-npm run dev
-```
-
-**Access Points:**
-- 🌐 Frontend: `http://localhost:5173`
-- 🔌 API: `http://localhost:3000`
-- 📊 Bull Board: `http://localhost:3000/admin/queues` (Super Admin only)
+1. **Tracking Only** — Drop our WordPress plugin in, paste your config, start seeing visitors immediately
+2. **Full Sync** — Connect via WooCommerce REST API keys for two-way sync of orders, products, and customers
 
 ---
 
-## 📂 Project Structure
+## Security
+
+- **Argon2id** password hashing
+- **JWT** with refresh token rotation
+- **2FA** support (TOTP)
+- **Rate limiting** built-in
+- **Secure headers** via Fastify Helmet
+
+---
+
+## Project Structure
 
 ```
 overseek/
-├── client/                    # React 19 (Vite) Frontend
-│   ├── src/
-│   │   ├── components/        # UI Components (Tailwind v4)
-│   │   ├── hooks/             # Custom React Hooks
-│   │   ├── pages/             # Dashboard Views
-│   │   └── services/          # API Integration Layer
-│   └── package.json
-├── server/                    # Node.js (Fastify) Backend
-│   ├── src/
-│   │   ├── routes/            # Fastify Routes
-│   │   ├── services/          # Business Logic
-│   │   ├── workers/           # BullMQ Background Jobs
-│   │   └── prisma/            # Database Schema & Migrations
-│   └── package.json
-├── overseek-wc-plugin/        # WordPress/WooCommerce Plugin
-├── docker-compose.yml         # Infrastructure Orchestration
-└── package.json               # Monorepo Workspace Config
+├── client/              # React frontend
+├── server/              # Fastify backend
+├── overseek-wc-plugin/  # WordPress plugin
+└── docker-compose.yml   # Infrastructure
 ```
 
 ---
 
-## 🔌 WooCommerce Integration
+## Documentation
 
-OverSeek uses a **dual-protocol** approach for maximum flexibility:
-
-### Protocol A: Live Analytics (Zero-Config)
-Paste a simple JSON config into the WordPress plugin to start tracking immediately.
-
-### Protocol B: Core Sync (Full Power)
-Connect via WooCommerce REST API keys for bi-directional sync of orders, inventory, and products.
+- [Changelog](./CHANGELOG.md) — What's new
+- [Contributing](./CONTRIBUTING.md) — How to help
+- [Code of Conduct](./CODE_OF_CONDUCT.md) — Community guidelines
 
 ---
 
-## 🔒 Security
+## Contributing
 
-- **Argon2id Hashing**: State-of-the-art password security.
-- **Fastify Helmet**: Secure HTTP headers.
-- **JWT Authentication**: With rotation and session revocation.
-- **Rate Limiting**: Built-in protection against abuse.
-- **Two-Factor Authentication**: TOTP support.
+Found a bug? Want to add a feature? PRs welcome.
 
----
-
-## 📖 Documentation
-
-- **[Full Manual](./Overseek_Manual.md)**: Complete feature guide and API reference
-- **[Changelog](./CHANGELOG.md)**: Version history and release notes
-- **[Contributing](./CONTRIBUTING.md)**: How to contribute
-- **[Code of Conduct](./CODE_OF_CONDUCT.md)**: Community guidelines
+1. Fork it
+2. Create your branch (`git checkout -b feature/cool-thing`)
+3. Commit your changes
+4. Push and open a PR
 
 ---
 
-## 🤝 Contributing
+## License
 
-We believe in open source. Found a bug? Want to add a feature?
-
-1. **Fork** the repository
-2. **Branch** (`git checkout -b feature/amazing-feature`)
-3. **Commit** (`git commit -m 'Add amazing feature'`)
-4. **Push** (`git push origin feature/amazing-feature`)
-5. **Pull Request** and we'll review!
-
----
-
-## 📜 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
+MIT — do what you want with it.
 
 ---
 
 <p align="center">
-  <strong>Built with ❤️ for E-Commerce Merchants Who Demand Better</strong>
+  <strong>Built for store owners who want control back.</strong>
   <br>
-  <em>Own your data. Know your customers. Grow your business.</em>
+  <em>Your data. Your server. Your rules.</em>
 </p>
