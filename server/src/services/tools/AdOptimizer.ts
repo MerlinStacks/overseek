@@ -208,7 +208,7 @@ export class AdOptimizer {
 
             if (hasGoogle && googleAnalysis.campaign_insights) {
                 const kbRecs = RecommendationEngine.generateFromCampaigns(
-                    googleAnalysis.campaign_insights, 'google', trends
+                    googleAnalysis.campaign_insights as any, 'google', trends
                 );
                 for (const rec of kbRecs.slice(0, 3)) {
                     suggestions.push(rec.text);
@@ -221,7 +221,7 @@ export class AdOptimizer {
 
             if (hasMeta && metaAnalysis.campaign_insights) {
                 const kbRecs = RecommendationEngine.generateFromCampaigns(
-                    metaAnalysis.campaign_insights, 'meta', trends
+                    metaAnalysis.campaign_insights as any, 'meta', trends
                 );
                 for (const rec of kbRecs.slice(0, 3)) {
                     suggestions.push(rec.text);

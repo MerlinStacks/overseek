@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-01-14
+
+### 🤖 AI Marketing Co-Pilot
+- **Intelligent Ad Optimization**: Complete 6-phase AI advisor replacing traditional digital marketing agents.
+  - Phase 1: Multi-Period Analysis (7d/30d/90d) with historical snapshots and statistical significance.
+  - Phase 2: Cross-Channel Attribution with LTV-based optimization.
+  - Phase 3: Funnel-Aware Recommendations with audience/geo/device analysis.
+  - Phase 4: Marketing Knowledge Base with confidence scoring and explainability.
+  - Phase 5: Recommendation tracking with feedback-based learning loop.
+  - Phase 6: Proactive Alert System for critical performance regressions.
+- **Cross-Platform Comparison**: Unified insights across Google Ads and Meta Ads campaigns.
+- **Stock-Aware Optimization**: Automatically excludes out-of-stock items from ad suggestions.
+
+### 📊 Proactive Business Intelligence
+- **Email Digests**: Automated Daily/Weekly stakeholder summaries via `DigestReportService`.
+  - Core metrics: Revenue, Order Count, AOV, New Customers with period-over-period change detection.
+  - Top 5 traffic sources and Top 5 products by quantity sold.
+  - Color-coded trend indicators (Green ↑ / Red ↓).
+- **Customer Cohort Analysis**: Order-based behavioral segmentation via `CustomerCohortService`.
+  - Retention cohorts (monthly repeat purchase rates over 12-month horizon).
+  - Acquisition source cohorts (Google Ads, Meta, Organic retention comparison).
+  - Product-based cohorts (retention by first product category purchased).
+- **Product Performance Ranking**: High-velocity benchmarking via `ProductRankingService`.
+  - Top/Bottom performers with multi-period trends (7d/30d/90d/YTD).
+  - Profit margin visibility using COGS subtraction.
+  - Revenue, Units Sold, and Order Count rankings.
+
+### 📱 Mobile & PWA Enhancements
+- **Order Attribution**: Marketing attribution visible in desktop order list, order detail, and PWA.
+- **Tag Management**: Operational tags can be added/removed directly from PWA order detail.
+- **Customer Navigation**: Fixed mobile customer profile dead-end with proper order data display.
+- **Activity Timeline**: Visit-based activity timeline for visitor profiles on mobile.
+
+### 💬 Unified Inbox Suite
+- **Rich Text Canned Responses**: Full rich text support matching inbox composer capabilities.
+- **Canned Response Labels**: Editable/deletable labels replacing static categories.
+- **Conversation Search**: Backend search by message content, customer name, and email.
+- **Multi-Select Merge**: Safe protocol for merging conversations with multi-channel recipient display.
+- **Interaction History**: Clickable timeline linking to past conversation threads.
+
+### 🔔 Notification Engine
+- **Centralized Alerting**: Event-driven `NotificationEngine.ts` decouples business logic from delivery.
+- **Diagnostic Logging**: `NotificationDelivery` model provides 100% observability of all alerts.
+- **Multi-Channel Support**: Unified handling for In-App, Web Push (VAPID), and Socket.IO protocols.
+
+### ⚙️ Infrastructure Modernization
+- **Prisma 7**: Migrated to Driver Adapter pattern with native PostgreSQL connections.
+- **Elasticsearch 9.2**: Upgraded with refactored API calls (removed deprecated `body` wrapper).
+- **Tailwind CSS v4**: Migrated to Oxide engine with CSS-first `@import` syntax.
+- **ESLint 9**: Flat config migration with TypeScript-ESLint 8.
+- **TypeScript 5.8**: Upgraded client workspace for modern type-checking.
+- **Dependency Cleanup**: Removed `lodash`, `axios`, and `multer` in favor of native solutions.
+- **Log Hygiene**: Standardized Pino 10 JSON output with consistent formatting.
+- **Connection Pool**: 50-connection pool optimized for high-concurrency multi-account syncs.
+
+### 🐛 Bug Fixes
+- **Revenue Widget**: Fixed timezone issue causing incorrect "today's" revenue calculation.
+- **Search Relevance**: Improved product search ranking for more relevant results.
+- **Transaction Timeouts**: Resolved Prisma transaction timeouts with batch size optimization (25 items).
+- **Visitor Ordering**: Corrected visit order display in visitor profile modal.
+
+---
+
 ## [1.1.0] - 2026-01-07
 
 ### 🤖 AI Intelligence

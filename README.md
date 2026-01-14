@@ -67,6 +67,18 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **Campaign Monitoring**: Track spend, impressions, clicks, and conversions.
 - **ROAS Tracking**: Automatic Return on Ad Spend calculations.
 
+### 📱 Meta Ads Integration
+- **OAuth Connection**: Securely link Meta Business accounts (Facebook/Instagram).
+- **Campaign Insights**: Track reach, impressions, clicks, and conversions.
+- **Cross-Platform Analysis**: Compare performance across Google and Meta campaigns.
+
+### 🤖 AI Marketing Co-Pilot
+- **Intelligent Optimization**: AI-powered ad recommendations replacing manual analysis.
+- **Multi-Period Analysis**: Compare 7d, 30d, and 90d performance with statistical significance.
+- **LTV-Based Optimization**: Shift focus from immediate ROAS to Customer Lifetime Value.
+- **Funnel-Aware Insights**: Differentiate Top-of-Funnel vs Bottom-of-Funnel benchmarks.
+- **Explainable AI**: Confidence scoring with transparent reasoning behind suggestions.
+
 ### 📦 Inventory & Supply Chain
 - **Stock Velocity Reports**: Identify fast/slow movers with days-of-inventory projections.
 - **Bill of Materials (BOM)**: Track raw materials for manufactured goods.
@@ -87,12 +99,20 @@ OverSeek is your **open-source command center**—a self-hosted, privacy-first p
 - **IMAP Integration**: Pull emails directly into the dashboard.
 - **Email Threading**: Bi-directional threading with `In-Reply-To` support.
 - **Social Messaging**: Respond to standard communication channels.
+- **Rich Canned Responses**: Reusable templates with full formatting support.
+- **Conversation Search & Merge**: Find and consolidate customer threads.
+
+### 📊 Proactive Business Intelligence
+- **Email Digests**: Automated Daily/Weekly reports with trend analysis.
+- **Customer Cohorts**: Retention, acquisition source, and product-based segmentation.
+- **Product Rankings**: Top/Bottom performer benchmarking with profit margins.
 
 ### 🛠️ Developer & Admin Tools
 - **Audit Logs**: Track who changed what, when.
 - **Session Management**: View and revoke active sessions.
 - **Two-Factor Auth**: TOTP-based 2FA support.
 - **Health Dashboard**: System status, logs, and diagnostics.
+- **Notification Engine**: Centralized alerting with diagnostic logging.
 
 ---
 

@@ -95,6 +95,21 @@ export class MetaAdsTools {
                     roas: `${c.roas.toFixed(2)}x`,
                     revenue: `$${c.conversionsValue.toFixed(2)}`,
                     suggestion: 'Consider increasing budget'
+                })),
+                // Raw campaign data for knowledge base recommendations
+                campaign_insights: allCampaigns.map(c => ({
+                    campaignId: c.campaignId || c.id || `${c.campaignName}-${c.account}`,
+                    campaignName: c.campaignName,
+                    platform: 'meta' as const,
+                    spend: c.spend,
+                    revenue: c.conversionsValue || 0,
+                    roas: c.roas,
+                    ctr: c.ctr || (c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0),
+                    cpc: c.cpc || (c.clicks > 0 ? c.spend / c.clicks : 0),
+                    cpa: c.cpa || (c.conversions > 0 ? c.spend / c.conversions : 0),
+                    conversions: c.conversions,
+                    impressions: c.impressions,
+                    clicks: c.clicks
                 }))
             };
 
