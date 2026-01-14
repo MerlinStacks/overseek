@@ -9,6 +9,7 @@ import { AcquisitionAnalytics } from '../services/analytics/acquisition';
 import { BehaviourAnalytics } from '../services/analytics/behaviour';
 import { CustomerAnalytics } from '../services/analytics/customer';
 import { RoadblockAnalytics } from '../services/analytics/roadblock';
+import { ProductRankingService } from '../services/analytics/ProductRankingService';
 import { AdsService } from '../services/ads';
 import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
@@ -17,14 +18,16 @@ import { AnalyticsService } from '../services/AnalyticsService';
 
 import analyticsReportsRoutes from './analyticsReports';
 import analyticsInventoryRoutes from './analyticsInventory';
+import cohortRoutes from './cohorts';
 import { AnomalyDetection } from '../services/analytics/AnomalyDetection';
 
 const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
     // Mount sub-routers as nested plugins
-    await fastify.register(analyticsReportsRoutes);     // /templates, /schedules
+    await fastify.register(analyticsReportsRoutes);     // /templates, /schedules, /digests
     await fastify.register(analyticsInventoryRoutes);   // /health, /stock-velocity
+    await fastify.register(cohortRoutes, { prefix: '/cohorts' }); // /cohorts/retention, /cohorts/acquisition, /cohorts/product
 
     // --- Visitor & Channel Endpoints ---
     fastify.get('/visitors/log', async (request, reply) => {
@@ -97,6 +100,17 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { startDate?: string; endDate?: string };
             return await SalesAnalytics.getTopProducts(request.accountId!, query.startDate, query.endDate);
         } catch (e) { Logger.error('Top Products Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+    });
+
+    // Product Rankings (enhanced)
+    fastify.get('/products/ranking', async (request, reply) => {
+        try {
+            const query = request.query as { period?: string; sortBy?: string; limit?: string };
+            const period = (query.period || '30d') as '7d' | '30d' | '90d' | 'ytd';
+            const sortBy = (query.sortBy || 'revenue') as 'revenue' | 'units' | 'orders' | 'margin';
+            const limit = parseInt(query.limit || '10', 10);
+            return await ProductRankingService.getProductRankings(request.accountId!, period, sortBy, limit);
+        } catch (e) { Logger.error('Product Ranking Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
     fastify.get('/customer-growth', async (request, reply) => {

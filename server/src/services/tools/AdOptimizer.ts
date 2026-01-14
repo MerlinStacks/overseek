@@ -22,7 +22,17 @@ import { processSearchSuggestions } from './advisors/SearchAdvisor';
 
 // Import multi-period analyzer (AI Marketing Co-Pilot Phase 1)
 // Import cross-channel and LTV analyzers (AI Marketing Co-Pilot Phase 2)
-import { MultiPeriodAnalyzer, CrossChannelAnalyzer, LTVAnalyzer } from './analyzers';
+// Import funnel and audience analyzers (AI Marketing Co-Pilot Phase 3)
+import {
+    MultiPeriodAnalyzer,
+    CrossChannelAnalyzer,
+    LTVAnalyzer,
+    FunnelAnalyzer,
+    AudienceAnalyzer
+} from './analyzers';
+
+// Import knowledge base (AI Marketing Co-Pilot Phase 4)
+import { RecommendationEngine, MarketingKnowledgeBase } from './knowledge';
 
 export interface AdOptimizerOptions {
     userContext?: string;
@@ -160,6 +170,64 @@ export class AdOptimizer {
                 };
                 for (const suggestion of ltvAnalysis.suggestions) {
                     suggestions.push(suggestion);
+                }
+            }
+
+            // Funnel analysis (AI Marketing Co-Pilot Phase 3)
+            const funnelAnalysis = await FunnelAnalyzer.analyze(accountId);
+            if (funnelAnalysis.hasData) {
+                combinedSummary.funnel = {
+                    byStageSummary: funnelAnalysis.byStageSummary,
+                    funnelHealth: funnelAnalysis.funnelHealth,
+                    misjudgedCount: funnelAnalysis.misjudgedCampaigns.length
+                };
+                for (const suggestion of funnelAnalysis.suggestions) {
+                    suggestions.push(suggestion);
+                }
+            }
+
+            // Audience analysis (AI Marketing Co-Pilot Phase 3)
+            const audienceAnalysis = await AudienceAnalyzer.analyze(accountId);
+            if (audienceAnalysis.hasData) {
+                combinedSummary.audience = {
+                    devicePerformance: audienceAnalysis.devicePerformance,
+                    geoPerformance: audienceAnalysis.geoPerformance.slice(0, 5),
+                    bidAdjustments: audienceAnalysis.bidAdjustments
+                };
+                for (const suggestion of audienceAnalysis.suggestions) {
+                    suggestions.push(suggestion);
+                }
+            }
+
+            // Knowledge-base recommendations (AI Marketing Co-Pilot Phase 4)
+            const trends = multiPeriodAnalysis.hasData ? {
+                roas: multiPeriodAnalysis.trends.performance_trajectory === 'improving' ? 'improving' as const :
+                    multiPeriodAnalysis.trends.performance_trajectory === 'declining' ? 'declining' as const : 'stable' as const,
+                ctr: 'stable' as const
+            } : undefined;
+
+            if (hasGoogle && googleAnalysis.campaign_insights) {
+                const kbRecs = RecommendationEngine.generateFromCampaigns(
+                    googleAnalysis.campaign_insights, 'google', trends
+                );
+                for (const rec of kbRecs.slice(0, 3)) {
+                    suggestions.push(rec.text);
+                }
+                combinedSummary.knowledgeBase = {
+                    googleRecommendations: kbRecs.length,
+                    topConfidence: kbRecs[0]?.confidence.score || 0
+                };
+            }
+
+            if (hasMeta && metaAnalysis.campaign_insights) {
+                const kbRecs = RecommendationEngine.generateFromCampaigns(
+                    metaAnalysis.campaign_insights, 'meta', trends
+                );
+                for (const rec of kbRecs.slice(0, 3)) {
+                    suggestions.push(rec.text);
+                }
+                if (combinedSummary.knowledgeBase) {
+                    (combinedSummary.knowledgeBase as any).metaRecommendations = kbRecs.length;
                 }
             }
 

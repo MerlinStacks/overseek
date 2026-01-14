@@ -143,7 +143,6 @@ async function build() {
     // =====================================================
 
     const healthRoutes = (await import('./routes/health')).default;
-    const debugRoutes = (await import('./routes/debug')).default;
     const customersRoutes = (await import('./routes/customers')).default;
     const ordersRoutes = (await import('./routes/orders')).default;
     const reviewsRoutes = (await import('./routes/reviews')).default;
@@ -160,9 +159,8 @@ async function build() {
     const aiRoutes = (await import('./routes/ai')).default;
     const dashboardRoutes = (await import('./routes/dashboard')).default;
 
-    // Register native Fastify plugins (17 routes)
+    // Register native Fastify plugins
     await fastify.register(healthRoutes, { prefix: '/health' });
-    await fastify.register(debugRoutes, { prefix: '/api/debug' });
     await fastify.register(customersRoutes, { prefix: '/api/customers' });
     await fastify.register(ordersRoutes, { prefix: '/api/orders' });
     await fastify.register(reviewsRoutes, { prefix: '/api/reviews' });

@@ -1,6 +1,0 @@
-﻿NAME                         IMAGE                                                   COMMAND                  SERVICE         CREATED          STATUS                    PORTS
-overseekv2-api-1             overseekv2-api                                          "docker-entrypoint.sΓÇª"   api             4 minutes ago    Up 4 minutes (healthy)    0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
-overseekv2-elasticsearch-1   docker.elastic.co/elasticsearch/elasticsearch:7.17.15   "/bin/tini -- /usr/lΓÇª"   elasticsearch   18 minutes ago   Up 18 minutes (healthy)   9200/tcp, 9300/tcp
-overseekv2-postgres-1        postgres:16-alpine                                      "docker-entrypoint.sΓÇª"   postgres        18 minutes ago   Up 18 minutes (healthy)   5432/tcp
-overseekv2-redis-1           redis:alpine                                            "docker-entrypoint.sΓÇª"   redis           18 minutes ago   Up 18 minutes (healthy)   6379/tcp
-overseekv2-web-1             overseekv2-web                                          "docker-entrypoint.sΓÇª"   web             4 minutes ago    Up 4 minutes (healthy)    0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp

@@ -67,8 +67,11 @@ export class NotificationEngine {
         // Social Message Events
         EventBus.on(EVENTS.SOCIAL.MESSAGE_RECEIVED, this.handleSocialMessage.bind(this));
 
+        // Ad Performance Alerts (AI Marketing Co-Pilot Phase 6)
+        EventBus.on(EVENTS.AD.ALERT, this.handleAdAlert.bind(this));
+
         this.initialized = true;
-        Logger.info('[NotificationEngine] Initialized - listening for 6 event types');
+        Logger.info('[NotificationEngine] Initialized - listening for 7 event types');
     }
 
     /**
@@ -242,6 +245,48 @@ export class NotificationEngine {
             },
             pushType: 'message',
             payload: { platform, conversationId }
+        });
+    }
+
+    /**
+     * Handle ad performance alert (AI Marketing Co-Pilot Phase 6)
+     */
+    private static async handleAdAlert(data: {
+        accountId: string;
+        alert: {
+            severity: string;
+            type: string;
+            title: string;
+            message: string;
+            campaignName?: string;
+        };
+    }): Promise<void> {
+        const { accountId, alert } = data;
+
+        const emoji = alert.severity === 'critical' ? '🚨' :
+            alert.severity === 'warning' ? '⚠️' : 'ℹ️';
+
+        await this.sendNotification({
+            accountId,
+            eventType: 'AD_ALERT',
+            channels: ['in_app', 'push'],
+            inApp: {
+                title: alert.title,
+                message: alert.message,
+                type: alert.severity === 'critical' ? 'ERROR' : 'WARNING',
+                link: '/marketing/ads'
+            },
+            push: {
+                title: `${emoji} ${alert.title}`,
+                body: alert.message,
+                data: { url: '/marketing/ads', alertType: alert.type }
+            },
+            pushType: 'order', // Ad alerts use order notification preference
+            payload: {
+                alertType: alert.type,
+                severity: alert.severity,
+                campaignName: alert.campaignName
+            }
         });
     }
 

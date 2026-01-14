@@ -97,7 +97,90 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const schedule = await prisma.reportSchedule.create({
-                data: { accountId, reportTemplateId: targetTemplateId, frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive: isActive ?? true }
+                data: { accountId, reportTemplateId: targetTemplateId, reportType: 'CUSTOM', frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive: isActive ?? true }
+            });
+            return schedule;
+        } catch (e: any) { return reply.code(500).send({ error: e.message }); }
+    });
+
+    // Delete schedule
+    fastify.delete<{ Params: { id: string } }>('/schedules/:id', async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            await prisma.reportSchedule.delete({ where: { id: request.params.id, accountId } });
+            return { success: true };
+        } catch (e: any) { return reply.code(500).send({ error: e.message }); }
+    });
+
+    // Update schedule
+    fastify.patch<{ Params: { id: string } }>('/schedules/:id', async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            const { frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive } = request.body as any;
+
+            const schedule = await prisma.reportSchedule.update({
+                where: { id: request.params.id, accountId },
+                data: {
+                    ...(frequency && { frequency }),
+                    ...(dayOfWeek !== undefined && { dayOfWeek }),
+                    ...(dayOfMonth !== undefined && { dayOfMonth }),
+                    ...(time && { time }),
+                    ...(emailRecipients && { emailRecipients }),
+                    ...(isActive !== undefined && { isActive })
+                }
+            });
+            return schedule;
+        } catch (e: any) { return reply.code(500).send({ error: e.message }); }
+    });
+
+    // ========================================
+    // Digest Schedule Endpoints
+    // ========================================
+
+    // Get digest schedules only
+    fastify.get('/digests', async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            const digests = await prisma.reportSchedule.findMany({
+                where: { accountId, reportType: 'DIGEST' },
+                orderBy: { createdAt: 'desc' }
+            });
+            return digests;
+        } catch (e: any) { return reply.code(500).send({ error: e.message }); }
+    });
+
+    // Create a digest schedule
+    fastify.post('/digests', async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            const { frequency, dayOfWeek, time, emailRecipients, isActive } = request.body as any;
+
+            // Validate frequency for digests (only DAILY or WEEKLY)
+            if (!['DAILY', 'WEEKLY'].includes(frequency)) {
+                return reply.code(400).send({ error: 'Digest frequency must be DAILY or WEEKLY' });
+            }
+
+            // Calculate next run time
+            const now = new Date();
+            const [hour, minute] = (time || '09:00').split(':').map(Number);
+            let nextRunAt = new Date();
+            nextRunAt.setHours(hour, minute, 0, 0);
+            if (nextRunAt <= now) {
+                nextRunAt.setDate(nextRunAt.getDate() + 1);
+            }
+
+            const schedule = await prisma.reportSchedule.create({
+                data: {
+                    accountId,
+                    reportType: 'DIGEST',
+                    reportTemplateId: null,
+                    frequency,
+                    dayOfWeek: frequency === 'WEEKLY' ? (dayOfWeek || 1) : null,
+                    time: time || '09:00',
+                    emailRecipients: emailRecipients || [],
+                    isActive: isActive ?? true,
+                    nextRunAt
+                }
             });
             return schedule;
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }

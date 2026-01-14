@@ -56,38 +56,10 @@ export interface CrossChannelInsight {
 // HELPERS
 // =============================================================================
 
-function normalizeSource(source: string | null): string {
-    if (!source) return 'direct';
+import { normalizeChannel } from '../utils/ChannelUtils';
 
-    const s = source.toLowerCase().trim();
-
-    // Google sources
-    if (s.includes('google') || s.includes('gclid') || s === 'cpc') {
-        return 'google';
-    }
-    // Meta sources
-    if (s.includes('facebook') || s.includes('instagram') || s.includes('fb') || s.includes('meta') || s.includes('fbclid')) {
-        return 'meta';
-    }
-    // Organic search
-    if (s.includes('organic') || s === 'bing' || s === 'yahoo' || s === 'duckduckgo') {
-        return 'organic_search';
-    }
-    // Email
-    if (s.includes('email') || s.includes('newsletter') || s.includes('klaviyo') || s.includes('mailchimp')) {
-        return 'email';
-    }
-    // Direct
-    if (s === 'direct' || s === '(direct)' || s === 'none' || s === '') {
-        return 'direct';
-    }
-    // Social (non-paid)
-    if (s.includes('social')) {
-        return 'social_organic';
-    }
-
-    return 'other';
-}
+// Alias for backwards compatibility
+const normalizeSource = normalizeChannel;
 
 // =============================================================================
 // MAIN ANALYZER

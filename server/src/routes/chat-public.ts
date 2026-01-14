@@ -1,6 +1,11 @@
 /**
  * Public Chat Routes - Fastify Plugin Factory
  * Public-facing endpoints for guest visitors.
+ * 
+ * Features:
+ * - Auto-links visitors to existing WooCommerce customers by email
+ * - Stores guest name/email for non-customers
+ * - Sets channel to LIVE_CHAT for proper categorization
  */
 
 import { FastifyPluginAsync } from 'fastify';
@@ -24,19 +29,77 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                     where: { accountId, visitorToken, status: 'OPEN' },
                     include: {
                         messages: { orderBy: { createdAt: 'asc' } },
-                        assignee: { select: { id: true, fullName: true, avatarUrl: true } }
+                        assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                        wooCustomer: { select: { id: true, firstName: true, lastName: true, email: true, totalSpent: true, ordersCount: true } }
                     }
                 });
 
-                // If not found, create new
+                // If not found, create new with WooCommerce customer linking
                 if (!conversation) {
+                    // Try to find existing WooCommerce customer by email
+                    let wooCustomerId: string | undefined;
+                    if (email) {
+                        const customer = await prisma.wooCustomer.findFirst({
+                            where: { accountId, email: email.toLowerCase() }
+                        });
+                        if (customer) {
+                            wooCustomerId = customer.id;
+                            Logger.info('[PublicChat] Linked visitor to WooCommerce customer', {
+                                email,
+                                customerId: customer.id,
+                                customerName: `${customer.firstName} ${customer.lastName}`.trim()
+                            });
+                        }
+                    }
+
                     conversation = await prisma.conversation.create({
-                        data: { accountId, visitorToken, status: 'OPEN' },
+                        data: {
+                            accountId,
+                            visitorToken,
+                            status: 'OPEN',
+                            channel: 'CHAT',
+                            wooCustomerId,
+                            guestEmail: wooCustomerId ? undefined : email || undefined,
+                            guestName: wooCustomerId ? undefined : name || undefined
+                        },
                         include: {
                             messages: true,
-                            assignee: { select: { id: true, fullName: true, avatarUrl: true } }
+                            assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                            wooCustomer: { select: { id: true, firstName: true, lastName: true, email: true, totalSpent: true, ordersCount: true } }
                         }
                     });
+
+                    Logger.info('[PublicChat] Created new conversation', {
+                        conversationId: conversation.id,
+                        hasCustomerLink: !!wooCustomerId,
+                        guestEmail: email
+                    });
+                } else {
+                    // Existing conversation - try to link customer if not already linked and email provided
+                    if (!conversation.wooCustomerId && email) {
+                        const customer = await prisma.wooCustomer.findFirst({
+                            where: { accountId, email: email.toLowerCase() }
+                        });
+                        if (customer) {
+                            conversation = await prisma.conversation.update({
+                                where: { id: conversation.id },
+                                data: {
+                                    wooCustomerId: customer.id,
+                                    guestEmail: null,
+                                    guestName: null
+                                },
+                                include: {
+                                    messages: { orderBy: { createdAt: 'asc' } },
+                                    assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                                    wooCustomer: { select: { id: true, firstName: true, lastName: true, email: true, totalSpent: true, ordersCount: true } }
+                                }
+                            });
+                            Logger.info('[PublicChat] Linked existing conversation to WooCommerce customer', {
+                                conversationId: conversation.id,
+                                customerId: customer.id
+                            });
+                        }
+                    }
                 }
 
                 return conversation;
@@ -97,3 +160,4 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
 
 // Legacy export for backward compatibility
 export { createPublicChatRoutes as createPublicChatRouter };
+

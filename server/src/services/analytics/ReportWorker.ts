@@ -2,6 +2,7 @@
 import { Job } from 'bullmq';
 import { prisma } from '../../utils/prisma';
 import { SalesAnalytics } from './sales';
+import { DigestReportService } from './DigestReportService';
 import { EmailService } from '../EmailService';
 import { Logger } from '../../utils/logger';
 
@@ -23,44 +24,56 @@ export class ReportWorker {
                 return;
             }
 
-            // 1. Generate Data
-            const config = schedule.template.config as any;
+            // Get email account for sending
+            const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
+            const emailAccount = await getDefaultEmailAccount(accountId);
 
-            // Adjust Date Range if it's dynamic (e.g. "Last 30 Days")
-            // The template config usually has relative range like "30d", "7d".
-            // SalesAnalytics.getCustomReport handles "30d" internally via getSalesOverTime logic?
-            // Wait, getCustomReport expects { startDate: string, endDate: string } in current implementation?
-            // Let's check SalesAnalytics.getCustomReport signature.
-            // It expects { metrics, dimension, startDate, endDate }.
-            // We need to resolve "30d" to actual dates here.
+            if (!emailAccount) {
+                Logger.warn(`[ReportWorker] No default SMTP account found for Account ${accountId}. Cannot send email.`);
+                return;
+            }
 
-            const { startDate, endDate } = this.resolveDateRange(config.dateRange || '30d');
+            let html: string;
+            let subject: string;
 
-            const reportData = await SalesAnalytics.getCustomReport(accountId, {
-                metrics: config.metrics || ['sales'],
-                dimension: config.dimension || 'day',
-                startDate: startDate.toISOString(),
-                endDate: endDate.toISOString()
-            });
+            // Handle DIGEST type reports
+            if (schedule.reportType === 'DIGEST') {
+                const currency = schedule.account.currency || 'USD';
 
-            // 2. Format HTML
-            const html = this.generateHtml(schedule.template.name, reportData, config);
-
-            // 3. Send Email
-            if (schedule.emailRecipients && schedule.emailRecipients.length > 0) {
-                // We need an email account to send FROM.
-                // Use the default SMTP account with fallback if none marked as default.
-                const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
-                const emailAccount = await getDefaultEmailAccount(accountId);
-
-                if (!emailAccount) {
-                    Logger.warn(`[ReportWorker] No default SMTP account found for Account ${accountId}. Cannot send email.`);
-                    // Ideally fallback to a system "noreply@overseek.io" if enabled.
+                if (schedule.frequency === 'DAILY') {
+                    const digestData = await DigestReportService.generateDailyDigest(accountId);
+                    html = DigestReportService.generateHtml(digestData, currency);
+                    subject = `📊 Daily Digest - ${new Date().toLocaleDateString()}`;
+                } else {
+                    // Weekly or default
+                    const digestData = await DigestReportService.generateWeeklyDigest(accountId);
+                    html = DigestReportService.generateHtml(digestData, currency);
+                    subject = `📊 Weekly Digest - ${new Date().toLocaleDateString()}`;
+                }
+            } else {
+                // Handle CUSTOM type reports (existing logic)
+                if (!schedule.template) {
+                    Logger.warn(`[ReportWorker] CUSTOM schedule ${scheduleId} has no template. Skipping.`);
                     return;
                 }
 
+                const config = schedule.template.config as any;
+                const { startDate, endDate } = this.resolveDateRange(config.dateRange || '30d');
+
+                const reportData = await SalesAnalytics.getCustomReport(accountId, {
+                    metrics: config.metrics || ['sales'],
+                    dimension: config.dimension || 'day',
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString()
+                });
+
+                html = this.generateHtml(schedule.template.name, reportData, config);
+                subject = `[Report] ${schedule.template.name} - ${new Date().toLocaleDateString()}`;
+            }
+
+            // Send Email
+            if (schedule.emailRecipients && schedule.emailRecipients.length > 0) {
                 const emailService = new EmailService();
-                const subject = `[Report] ${schedule.template.name} - ${new Date().toLocaleDateString()}`;
 
                 for (const recipient of schedule.emailRecipients) {
                     await emailService.sendEmail(
@@ -73,7 +86,7 @@ export class ReportWorker {
                 }
             }
 
-            // 4. Update Last Run
+            // Update Last Run
             await prisma.reportSchedule.update({
                 where: { id: scheduleId },
                 data: { lastRunAt: new Date() }

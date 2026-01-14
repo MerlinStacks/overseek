@@ -63,19 +63,7 @@ export interface LTVInsight {
 // HELPERS
 // =============================================================================
 
-function normalizeChannel(source: string | null): string {
-    if (!source) return 'direct';
-
-    const s = source.toLowerCase().trim();
-
-    if (s.includes('google') || s.includes('gclid') || s === 'cpc') return 'google';
-    if (s.includes('facebook') || s.includes('instagram') || s.includes('fb') || s.includes('meta')) return 'meta';
-    if (s.includes('organic') || s === 'bing' || s === 'yahoo') return 'organic_search';
-    if (s.includes('email') || s.includes('newsletter')) return 'email';
-    if (s === 'direct' || s === '(direct)' || s === 'none' || s === '') return 'direct';
-
-    return 'other';
-}
+import { normalizeChannel } from '../utils/ChannelUtils';
 
 // =============================================================================
 // MAIN ANALYZER

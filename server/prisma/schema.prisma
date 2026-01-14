@@ -733,6 +733,54 @@ model AdPerformanceSnapshot {
   @@index([adAccountId, date])
 }
 
+// --------------------------------------
+// Recommendation Tracking (AI Marketing Co-Pilot Phase 5)
+// --------------------------------------
+
+/// Tracks AI-generated recommendations and their outcomes for learning.
+model RecommendationLog {
+  id          String   @id @default(uuid())
+  accountId   String
+  
+  // Recommendation details
+  recommendationId  String    // Unique ID from knowledge base (e.g., "google_pmax_learning")
+  text              String    @db.Text
+  category          String    // bid_strategy, audience, creative, budget, structure, optimization
+  priority          Int       // 1=urgent, 2=important, 3=info
+  platform          String?   // google, meta, both
+  campaignId        String?   // Associated campaign if applicable
+  campaignName      String?
+  
+  // Confidence at time of generation
+  confidenceScore   Int       // 0-100
+  confidenceLevel   String    // high, medium, low
+  
+  // User interaction
+  status            String    @default("pending") // pending, implemented, dismissed, expired
+  implementedAt     DateTime?
+  dismissedAt       DateTime?
+  dismissReason     String?   // "not_relevant", "already_done", "disagree", "will_do_later"
+  
+  // Outcome tracking (populated after implementation)
+  outcomeRecordedAt DateTime?
+  roasBefore        Float?
+  roasAfter         Float?
+  roasChange        Float?    // Percentage change
+  wasSuccessful     Boolean?  // Did ROAS improve?
+  outcomeNotes      String?   @db.Text
+  
+  // Metadata
+  dataPoints        Json?     // Supporting data at time of generation
+  tags              Json?     // Array of tags
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([accountId, createdAt])
+  @@index([accountId, status])
+  @@index([recommendationId])
+}
+
 model WooCustomer {
   id        String @id @default(uuid())
   accountId String
@@ -1497,10 +1545,13 @@ model ReportTemplate {
 
 model ReportSchedule {
   id               String @id @default(uuid())
-  reportTemplateId String
+  reportTemplateId String?
   accountId        String
 
-  frequency  String // "WEEKLY", "MONTHLY"
+  // Report type: CUSTOM (uses template) or DIGEST (uses DigestReportService)
+  reportType String @default("CUSTOM") // "CUSTOM", "DIGEST"
+
+  frequency  String // "DAILY", "WEEKLY", "MONTHLY"
   dayOfWeek  Int? // 1 (Mon) - 7 (Sun) for WEEKLY
   dayOfMonth Int? // 1-28 for MONTHLY
 
@@ -1512,7 +1563,7 @@ model ReportSchedule {
   lastRunAt DateTime?
   nextRunAt DateTime?
 
-  template ReportTemplate @relation(fields: [reportTemplateId], references: [id], onDelete: Cascade)
+  template ReportTemplate? @relation(fields: [reportTemplateId], references: [id], onDelete: Cascade)
   account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())

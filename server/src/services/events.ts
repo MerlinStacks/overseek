@@ -29,6 +29,9 @@ export const EVENTS = {
         MESSAGE_SENT: 'social:message_sent',
         ACCOUNT_CONNECTED: 'social:account_connected',
         ACCOUNT_DISCONNECTED: 'social:account_disconnected',
+    },
+    AD: {
+        ALERT: 'ad:alert', // AI Marketing Co-Pilot Phase 6
     }
 };
 
