@@ -468,52 +468,52 @@ export class GoogleAdsService {
             throw error;
         }
     }
-}
+
 
     /**
      * Add a Search Keyword to an Ad Group.
      */
     static async addSearchKeyword(
-    adAccountId: string,
-    campaignId: string, /* Not strictly needed for creation but good for logs/context */
-    adGroupId: string,
-    keywordText: string,
-    matchType: 'BROAD' | 'PHRASE' | 'EXACT',
-    cpcBid ?: number
-): Promise < boolean > {
-    const { customer } = await createGoogleAdsClient(adAccountId);
+        adAccountId: string,
+        campaignId: string, /* Not strictly needed for creation but good for logs/context */
+        adGroupId: string,
+        keywordText: string,
+        matchType: 'BROAD' | 'PHRASE' | 'EXACT',
+        cpcBid?: number
+    ): Promise<boolean> {
+        const { customer } = await createGoogleAdsClient(adAccountId);
 
-    try {
-        Logger.info('[GoogleAds] Adding keyword', { campaignId, adGroupId, keywordText, matchType, cpcBid });
+        try {
+            Logger.info('[GoogleAds] Adding keyword', { campaignId, adGroupId, keywordText, matchType, cpcBid });
 
-        // Create AdGroupCriterion resource
-        const operation: any = {
-            ad_group: `customers/${customer.credentials.customer_id}/adGroups/${adGroupId}`,
-            status: 'ENABLED',
-            keyword: {
-                text: keywordText,
-                match_type: matchType
+            // Create AdGroupCriterion resource
+            const operation: any = {
+                ad_group: `customers/${customer.credentials.customer_id}/adGroups/${adGroupId}`,
+                status: 'ENABLED',
+                keyword: {
+                    text: keywordText,
+                    match_type: matchType
+                }
+            };
+
+            if (cpcBid) {
+                operation.cpc_bid_micros = Math.round(cpcBid * 1_000_000);
             }
-        };
-
-        if(cpcBid) {
-            operation.cpc_bid_micros = Math.round(cpcBid * 1_000_000);
-        }
 
             // google-ads-api helper: customer.adGroupCriteria.create([...])
             await customer.adGroupCriteria.create([operation]);
 
-        return true;
-
-    } catch(error: any) {
-        // Handle specific issues
-        // e.g. Keyword already exists
-        if (error.message?.includes('KEYWORD_ALREADY_EXISTS')) {
-            Logger.info('Keyword already exists, treating as success', { keywordText, adGroupId });
             return true;
+
+        } catch (error: any) {
+            // Handle specific issues
+            // e.g. Keyword already exists
+            if (error.message?.includes('KEYWORD_ALREADY_EXISTS')) {
+                Logger.info('Keyword already exists, treating as success', { keywordText, adGroupId });
+                return true;
+            }
+            Logger.error('Failed to add Google Ads keyword', { error: error.message, fullError: error });
+            throw error;
         }
-        Logger.error('Failed to add Google Ads keyword', { error: error.message, fullError: error });
-        throw error;
     }
-}
 }

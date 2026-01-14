@@ -99,7 +99,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const accounts = await prisma.emailAccount.findMany({
-                    where: { accountId, type: 'SMTP' },
+                    where: { accountId, smtpEnabled: true },
                     select: { id: true, name: true, email: true }
                 });
                 return accounts;

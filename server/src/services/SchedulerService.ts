@@ -35,8 +35,8 @@ export class SchedulerService {
         // Email Polling (Check every 2 minutes)
         setInterval(async () => {
             try {
-                const accounts = await prisma.emailAccount.findMany({ where: { type: 'IMAP' } });
-                Logger.info(`[Email Polling] Starting check - found ${accounts.length} IMAP account(s)`);
+                const accounts = await prisma.emailAccount.findMany({ where: { imapEnabled: true } });
+                Logger.info(`[Email Polling] Starting check - found ${accounts.length} IMAP-enabled account(s)`);
 
                 if (accounts.length > 0) {
                     const { EmailService } = await import('./EmailService');

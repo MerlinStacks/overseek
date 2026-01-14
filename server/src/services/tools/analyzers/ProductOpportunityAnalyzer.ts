@@ -82,8 +82,7 @@ export class ProductOpportunityAnalyzer {
                     name: true,
                     sku: true,
                     price: true,
-                    cost: true,
-                    stockQuantity: true,
+                    cogs: true,
                     stockStatus: true
                 }
             });
@@ -142,7 +141,7 @@ export class ProductOpportunityAnalyzer {
                     ? sales.prices.reduce((a, b) => a + b, 0) / sales.prices.length
                     : parseFloat(String(product.price)) || 0;
 
-                const cost = product.cost ? parseFloat(String(product.cost)) : undefined;
+                const cost = product.cogs ? parseFloat(String(product.cogs)) : undefined;
                 const margin = cost && avgPrice > 0 ? ((avgPrice - cost) / avgPrice) * 100 : undefined;
 
                 velocityData.push({

@@ -9,10 +9,10 @@ import { prisma } from './prisma';
 import { EmailAccount } from '@prisma/client';
 
 /**
- * Fetches the default SMTP email account for a tenant.
+ * Fetches the default SMTP-enabled email account for a tenant.
  * Priority:
- *   1. Account with isDefault: true and type: 'SMTP'
- *   2. First SMTP account found (fallback)
+ *   1. Account with isDefault: true and smtpEnabled: true
+ *   2. First SMTP-enabled account found (fallback)
  *   3. null if no SMTP accounts exist
  */
 export async function getDefaultEmailAccount(accountId: string): Promise<EmailAccount | null> {
@@ -20,7 +20,7 @@ export async function getDefaultEmailAccount(accountId: string): Promise<EmailAc
     const defaultAccount = await prisma.emailAccount.findFirst({
         where: {
             accountId,
-            type: 'SMTP',
+            smtpEnabled: true,
             isDefault: true
         }
     });
@@ -29,11 +29,11 @@ export async function getDefaultEmailAccount(accountId: string): Promise<EmailAc
         return defaultAccount;
     }
 
-    // Fallback: return first SMTP account
+    // Fallback: return first SMTP-enabled account
     return prisma.emailAccount.findFirst({
         where: {
             accountId,
-            type: 'SMTP'
+            smtpEnabled: true
         }
     });
 }

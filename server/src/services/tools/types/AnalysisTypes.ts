@@ -72,6 +72,7 @@ export interface AnalysisMetadata {
 export interface UnifiedAnalysis {
     hasData: boolean;
     suggestions: Suggestion[];
+    actionableRecommendations?: any[]; // From ProductOpportunityAnalyzer, KeywordOpportunityAnalyzer
 
     // Individual analyzer results
     results: {
