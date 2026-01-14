@@ -45,17 +45,42 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
     // Check browser support
     useEffect(() => {
-        const supported = 'serviceWorker' in navigator && 'PushManager' in window;
-        setIsSupported(supported);
+        const checkSupport = () => {
+            const hasSW = 'serviceWorker' in navigator;
+            const hasPushManager = 'PushManager' in window;
 
-        if (!supported) {
-            setPermissionState('unsupported');
-            setIsLoading(false);
-            return;
-        }
+            // Detect iOS
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-        setPermissionState(Notification.permission);
+            // Check if running as installed PWA (standalone mode)
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                (window.navigator as any).standalone === true;
+
+            // On iOS, push only works when installed to Home Screen as PWA
+            // Safari in browser shows PushManager but it won't work until installed
+            if (isIOS && !isStandalone) {
+                setIsSupported(false);
+                setPermissionState('unsupported');
+                Logger.debug('[usePushNotifications] iOS detected but not in standalone mode - push not available');
+                setIsLoading(false);
+                return;
+            }
+
+            const supported = hasSW && hasPushManager;
+            setIsSupported(supported);
+
+            if (!supported) {
+                setPermissionState('unsupported');
+                setIsLoading(false);
+                return;
+            }
+
+            setPermissionState(Notification.permission);
+        };
+
+        checkSupport();
     }, []);
+
 
     // Register service worker and check subscription status
     useEffect(() => {
