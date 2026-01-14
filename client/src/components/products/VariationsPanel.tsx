@@ -72,18 +72,19 @@ export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, varia
                 </div>
             </div>
             <div className="p-0 overflow-x-auto">
-                <table className="w-full text-left text-sm min-w-[700px]">
+                <table className="w-full text-left text-sm min-w-[850px]">
                     <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100/50">
                         <tr>
                             <th className="w-8"></th>
                             <th className="w-16 px-2 py-3">Image</th>
-                            <th className="px-4 py-3 w-20">ID</th>
+                            <th className="px-4 py-3">Attributes</th>
                             <th className="px-4 py-3">SKU</th>
                             <th className="px-4 py-3 w-28">Price</th>
                             <th className="px-4 py-3 w-28">Sale Price</th>
                             <th className="px-4 py-3 w-32">Stock</th>
                         </tr>
                     </thead>
+
                     <tbody className="divide-y divide-gray-100/50">
                         {editingVariants.length === 0 ? (
                             <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">
@@ -112,7 +113,21 @@ export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, varia
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2 font-mono text-xs text-gray-500">#{v.id}</td>
+                                        <td className="px-4 py-2">
+                                            <div className="flex flex-wrap gap-1">
+                                                {v.attributes && v.attributes.length > 0 ? (
+                                                    v.attributes.map((attr: any, idx: number) => (
+                                                        <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                                                            <span className="font-medium text-gray-500">{attr.name}:</span>
+                                                            <span className="ml-1">{attr.option}</span>
+                                                        </span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-xs text-gray-400 font-mono">#{v.id}</span>
+                                                )}
+                                            </div>
+                                        </td>
+
                                         <td className="px-4 py-2">
                                             <input
                                                 type="text"
