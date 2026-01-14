@@ -297,12 +297,38 @@ export class SchedulerService {
     private static async dispatchInventoryAlerts() {
         const accounts = await prisma.account.findMany({ select: { id: true } });
         const { InventoryService } = await import('./InventoryService');
+        const { InventoryForecastService } = await import('./analytics/InventoryForecastService');
+        const { EventBus, EVENTS } = await import('./events');
 
         Logger.info(`[Scheduler] Dispatching Inventory Alerts for ${accounts.length} accounts`);
 
         for (const acc of accounts) {
-            // We could queue this further, but calling directly is fine for daily low volume
-            await InventoryService.sendLowStockAlerts(acc.id);
+            try {
+                // Legacy: Basic velocity-based alerts
+                await InventoryService.sendLowStockAlerts(acc.id);
+
+                // New: Predictive forecast-based alerts
+                const alerts = await InventoryForecastService.getStockoutAlerts(acc.id, 14);
+
+                if (alerts.critical.length > 0) {
+                    // Emit event for NotificationEngine to handle
+                    EventBus.emit(EVENTS.INVENTORY.STOCKOUT_ALERT, {
+                        accountId: acc.id,
+                        products: alerts.critical.map(p => ({
+                            id: p.id,
+                            name: p.name,
+                            sku: p.sku,
+                            currentStock: p.currentStock,
+                            daysUntilStockout: p.daysUntilStockout,
+                            stockoutRisk: p.stockoutRisk,
+                            recommendedReorderQty: p.recommendedReorderQty
+                        }))
+                    });
+                    Logger.info(`[Scheduler] Emitted stockout alert for ${alerts.critical.length} products`, { accountId: acc.id });
+                }
+            } catch (error) {
+                Logger.error(`[Scheduler] Inventory alerts failed for account ${acc.id}`, { error });
+            }
         }
     }
 

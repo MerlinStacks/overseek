@@ -70,8 +70,11 @@ export class NotificationEngine {
         // Ad Performance Alerts (AI Marketing Co-Pilot Phase 6)
         EventBus.on(EVENTS.AD.ALERT, this.handleAdAlert.bind(this));
 
+        // Inventory Stockout Alerts (Predictive Inventory Forecasting)
+        EventBus.on(EVENTS.INVENTORY.STOCKOUT_ALERT, this.handleStockoutAlert.bind(this));
+
         this.initialized = true;
-        Logger.info('[NotificationEngine] Initialized - listening for 7 event types');
+        Logger.info('[NotificationEngine] Initialized - listening for 8 event types');
     }
 
     /**
@@ -286,6 +289,52 @@ export class NotificationEngine {
                 alertType: alert.type,
                 severity: alert.severity,
                 campaignName: alert.campaignName
+            }
+        });
+    }
+
+    /**
+     * Handle inventory stockout alert (Predictive Inventory Forecasting)
+     */
+    private static async handleStockoutAlert(data: {
+        accountId: string;
+        products: Array<{
+            id: string;
+            name: string;
+            sku: string | null;
+            currentStock: number;
+            daysUntilStockout: number;
+            stockoutRisk: string;
+            recommendedReorderQty: number;
+        }>;
+    }): Promise<void> {
+        const { accountId, products } = data;
+
+        if (products.length === 0) return;
+
+        const criticalCount = products.length;
+        const productList = products.slice(0, 3).map(p => p.name).join(', ');
+        const moreText = criticalCount > 3 ? ` and ${criticalCount - 3} more` : '';
+
+        await this.sendNotification({
+            accountId,
+            eventType: 'STOCKOUT_ALERT',
+            channels: ['in_app', 'push'],
+            inApp: {
+                title: 'Stockout Risk Alert',
+                message: `${criticalCount} product${criticalCount > 1 ? 's' : ''} at risk: ${productList}${moreText}`,
+                type: 'WARNING',
+                link: '/inventory/forecasts'
+            },
+            push: {
+                title: '⚠️ Stockout Risk Alert',
+                body: `${criticalCount} product${criticalCount > 1 ? 's' : ''} may stock out soon: ${productList}${moreText}`,
+                data: { url: '/inventory/forecasts' }
+            },
+            pushType: 'order', // Inventory uses order notification preference
+            payload: {
+                criticalCount,
+                products: products.map(p => ({ id: p.id, name: p.name, daysLeft: p.daysUntilStockout }))
             }
         });
     }

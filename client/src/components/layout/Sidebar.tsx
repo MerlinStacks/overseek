@@ -24,7 +24,12 @@ import {
     GitBranch,
     X,
     BookOpen,
-    Zap
+    Zap,
+    Brain,
+    HelpCircle,
+    UsersRound,
+    Filter,
+    TrendingDown
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -52,7 +57,9 @@ const navItems = [
         children: [
             { icon: ShoppingCart, label: 'Orders', path: '/orders' },
             { icon: Package, label: 'Inventory', path: '/inventory' },
+            { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
             { icon: Users, label: 'Customers', path: '/customers' },
+            { icon: Filter, label: 'Segments', path: '/customers/segments' },
         ]
     },
     {
@@ -73,6 +80,7 @@ const navItems = [
         label: 'Growth',
         icon: TrendingUp,
         children: [
+            { icon: Brain, label: 'AI Co-Pilot', path: '/marketing/ai' },
             { icon: Megaphone, label: 'Paid Ads', path: '/ads' },
             { icon: Zap, label: 'Flows', path: '/flows' },
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
@@ -81,6 +89,8 @@ const navItems = [
     },
     { type: 'link', icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
     { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
+    { type: 'link', icon: UsersRound, label: 'Team', path: '/team' },
+    { type: 'link', icon: HelpCircle, label: 'Help Center', path: '/help' },
 ];
 
 export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
@@ -96,14 +106,15 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
         if (item.label === 'Commerce') {
             const hasChild = item.children?.some(child => {
                 if (child.path === '/orders') return hasPermission('view_orders');
-                if (child.path === '/inventory') return hasPermission('view_products');
-                if (child.path === '/customers') return hasPermission('view_orders');
+                if (child.path === '/inventory' || child.path === '/inventory/forecasts') return hasPermission('view_products');
+                if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
                 return true;
             });
             return hasChild;
         }
         if (item.label === 'Analytics') return hasPermission('view_finance');
         if (item.label === 'Growth') return hasPermission('view_marketing');
+        if (item.label === 'Team') return hasPermission('view_orders');
         return true;
     }).map(item => {
         if (item.children) {
@@ -111,8 +122,8 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 ...item,
                 children: item.children.filter(child => {
                     if (child.path === '/orders') return hasPermission('view_orders');
-                    if (child.path === '/inventory') return hasPermission('view_products');
-                    if (child.path === '/customers') return hasPermission('view_orders');
+                    if (child.path === '/inventory' || child.path === '/inventory/forecasts') return hasPermission('view_products');
+                    if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
                     if (item.label === 'Analytics') return hasPermission('view_finance');
                     if (item.label === 'Growth') return hasPermission('view_marketing');
                     return true;

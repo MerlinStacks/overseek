@@ -67,7 +67,7 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
   - Lead time awareness from supplier data
   - Cash flow-aware ordering windows
   
-- [ ] **Predictive Inventory Forecasting** — AI-powered demand prediction
+- [x] **Predictive Inventory Forecasting** — AI-powered demand prediction
   - Forecast by SKU using historical sales, seasonality, market trends
   - Stockout risk alerts before they happen (proactive vs reactive)
   

@@ -90,7 +90,28 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const tokenData = await tokenResponse.json() as any;
             if (tokenData.error) throw new Error(tokenData.error.message);
 
-            const pages = await MetaMessagingService.listUserPages(tokenData.access_token);
+            // Exchange short-lived user token for long-lived (~60 days)
+            Logger.info('[MetaOAuth] Exchanging for long-lived token');
+            const longLivedResponse = await fetch(
+                `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokenData.access_token}`
+            );
+            const longLivedData = await longLivedResponse.json() as any;
+            if (longLivedData.error) {
+                Logger.warn('[MetaOAuth] Long-lived token exchange failed, using short-lived', { error: longLivedData.error });
+            }
+
+            // Use long-lived token if available, otherwise fall back to short-lived
+            const userAccessToken = longLivedData.access_token || tokenData.access_token;
+            const tokenExpiresIn = longLivedData.expires_in || 3600; // Default 1 hour if short-lived
+            const tokenExpiresAt = new Date(Date.now() + (tokenExpiresIn * 1000));
+
+            Logger.info('[MetaOAuth] Token acquired', {
+                isLongLived: !!longLivedData.access_token,
+                expiresIn: tokenExpiresIn,
+                expiresAt: tokenExpiresAt.toISOString()
+            });
+
+            const pages = await MetaMessagingService.listUserPages(userAccessToken);
             if (pages.length === 0) return reply.redirect(`${frontendRedirect}&error=no_pages`);
 
             const page = pages[0];
@@ -98,15 +119,15 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             await prisma.socialAccount.upsert({
                 where: { accountId_platform_externalId: { accountId, platform: 'FACEBOOK', externalId: page.id } },
-                create: { accountId, platform: 'FACEBOOK', externalId: page.id, name: page.name, accessToken: page.accessToken, metadata: { userAccessToken: tokenData.access_token } },
-                update: { name: page.name, accessToken: page.accessToken, metadata: { userAccessToken: tokenData.access_token }, isActive: true },
+                create: { accountId, platform: 'FACEBOOK', externalId: page.id, name: page.name, accessToken: page.accessToken, metadata: { userAccessToken, tokenExpiresAt: tokenExpiresAt.toISOString() } },
+                update: { name: page.name, accessToken: page.accessToken, metadata: { userAccessToken, tokenExpiresAt: tokenExpiresAt.toISOString() }, isActive: true },
             });
 
             if (igAccount) {
                 await prisma.socialAccount.upsert({
                     where: { accountId_platform_externalId: { accountId, platform: 'INSTAGRAM', externalId: igAccount.igUserId } },
-                    create: { accountId, platform: 'INSTAGRAM', externalId: igAccount.igUserId, name: `@${igAccount.username}`, accessToken: page.accessToken, metadata: { username: igAccount.username, linkedPageId: page.id } },
-                    update: { name: `@${igAccount.username}`, accessToken: page.accessToken, metadata: { username: igAccount.username, linkedPageId: page.id }, isActive: true },
+                    create: { accountId, platform: 'INSTAGRAM', externalId: igAccount.igUserId, name: `@${igAccount.username}`, accessToken: page.accessToken, metadata: { username: igAccount.username, linkedPageId: page.id, userAccessToken, tokenExpiresAt: tokenExpiresAt.toISOString() } },
+                    update: { name: `@${igAccount.username}`, accessToken: page.accessToken, metadata: { username: igAccount.username, linkedPageId: page.id, userAccessToken, tokenExpiresAt: tokenExpiresAt.toISOString() }, isActive: true },
                 });
             }
 

@@ -123,6 +123,20 @@ const credentialsCache: Map<string, { data: any; expiry: number }> = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * Clear the credentials cache for a specific platform or all platforms.
+ * Call this when platform credentials are updated in Super Admin.
+ */
+export function clearCredentialsCache(platform?: 'GOOGLE_ADS' | 'META_ADS'): void {
+    if (platform) {
+        credentialsCache.delete(platform);
+        Logger.info(`Cleared credentials cache for ${platform}`);
+    } else {
+        credentialsCache.clear();
+        Logger.info('Cleared all credentials cache');
+    }
+}
+
+/**
  * Fetch platform credentials from database with caching.
  * Falls back to environment variables for backwards compatibility.
  */

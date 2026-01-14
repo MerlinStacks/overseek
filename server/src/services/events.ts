@@ -32,6 +32,9 @@ export const EVENTS = {
     },
     AD: {
         ALERT: 'ad:alert', // AI Marketing Co-Pilot Phase 6
+    },
+    INVENTORY: {
+        STOCKOUT_ALERT: 'inventory:stockout_alert', // Predictive Inventory Forecasting
     }
 };
 

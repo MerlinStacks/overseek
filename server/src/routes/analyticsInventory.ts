@@ -1,13 +1,9 @@
-/**
- * Analytics Inventory Routes - Fastify Plugin
- * Stock velocity and inventory analytics.
- */
-
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../utils/prisma';
 import { esClient } from '../utils/elastic';
 import { Logger } from '../utils/logger';
 import { InventoryService } from '../services/InventoryService';
+import { InventoryForecastService } from '../services/analytics/InventoryForecastService';
 
 const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -97,6 +93,75 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
         } catch (e: any) {
             Logger.error('Stock Velocity Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // ========================================================================
+    // Predictive Inventory Forecasting
+    // ========================================================================
+
+    /**
+     * GET /sku-forecasts
+     * Returns AI-powered demand forecasts for all managed-stock products.
+     * Query: ?days=30 (forecast horizon)
+     */
+    fastify.get('/sku-forecasts', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { days } = request.query as { days?: string };
+            const forecastDays = days ? parseInt(days, 10) : 30;
+
+            const forecasts = await InventoryForecastService.getSkuForecasts(accountId, forecastDays);
+            return forecasts;
+        } catch (e: any) {
+            Logger.error('[InventoryRoutes] SKU Forecasts Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    /**
+     * GET /stockout-alerts
+     * Returns products at risk of stockout grouped by severity.
+     * Query: ?threshold=14 (days threshold for medium risk)
+     */
+    fastify.get('/stockout-alerts', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { threshold } = request.query as { threshold?: string };
+            const thresholdDays = threshold ? parseInt(threshold, 10) : 30;
+
+            const alerts = await InventoryForecastService.getStockoutAlerts(accountId, thresholdDays);
+            return alerts;
+        } catch (e: any) {
+            Logger.error('[InventoryRoutes] Stockout Alerts Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    /**
+     * GET /sku-forecasts/:wooId
+     * Returns detailed forecast for a single product including forecast curve.
+     */
+    fastify.get('/sku-forecasts/:wooId', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { wooId } = request.params as { wooId: string };
+            const productWooId = parseInt(wooId, 10);
+
+            if (isNaN(productWooId)) {
+                return reply.code(400).send({ error: 'Invalid product ID' });
+            }
+
+            const detail = await InventoryForecastService.getSkuForecastDetail(accountId, productWooId);
+
+            if (!detail) {
+                return reply.code(404).send({ error: 'Product not found or not managed' });
+            }
+
+            return detail;
+        } catch (e: any) {
+            Logger.error('[InventoryRoutes] SKU Forecast Detail Error', { error: e });
             return reply.code(500).send({ error: e.message });
         }
     });

@@ -216,6 +216,13 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 update: { credentials, notes },
                 create: { platform, credentials, notes }
             });
+
+            // Invalidate credentials cache to ensure new values take effect immediately
+            if (platform === 'GOOGLE_ADS' || platform === 'META_ADS') {
+                const { clearCredentialsCache } = await import('../services/ads/types');
+                clearCredentialsCache(platform as 'GOOGLE_ADS' | 'META_ADS');
+            }
+
             return { ...cred, credentials: maskCredentials(cred.credentials as Record<string, string>) };
         } catch (e) {
             return reply.code(500).send({ error: 'Failed to save platform credentials' });

@@ -31,11 +31,19 @@ export class MetaAdsService {
         const url = `https://graph.facebook.com/v18.0/${actId}/insights?fields=${fields}&date_preset=last_30d&access_token=${adAccount.accessToken}`;
 
         try {
+            Logger.info('[MetaAds] Fetching insights', { actId, hasToken: !!adAccount.accessToken });
+
             const response = await fetch(url);
             const data = await response.json();
 
             if (data.error) {
-                Logger.error('Meta API Error', { error: data.error });
+                Logger.error('[MetaAds] API Error', {
+                    actId,
+                    errorCode: data.error.code,
+                    errorType: data.error.type,
+                    errorMessage: data.error.message,
+                    errorSubcode: data.error.error_subcode
+                });
                 throw new Error(data.error.message);
             }
 

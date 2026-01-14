@@ -49,6 +49,28 @@ export const ANALYTICS_CONFIG = {
         /** Trend threshold (%) - above this = 'up', below negative = 'down' */
         trendThreshold: 5,
     },
+
+    /**
+     * Inventory Forecasting defaults
+     */
+    forecasting: {
+        /** Minimum days of sales history required for forecasting */
+        minHistoryDays: 30,
+        /** Default forecast horizon (days) */
+        defaultForecastDays: 30,
+        /** Safety stock buffer (days) */
+        safetyStockDays: 7,
+        /** Default lead time if supplier not configured (days) */
+        defaultLeadTimeDays: 14,
+        /** Risk thresholds (days until stockout) */
+        riskThresholds: {
+            critical: 7,
+            high: 14,
+            medium: 30
+        },
+        /** WMA weights (most recent segment -> oldest segment) */
+        wmaWeights: [0.4, 0.3, 0.2, 0.1]
+    },
 } as const;
 
 /**

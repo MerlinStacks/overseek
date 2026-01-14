@@ -47,9 +47,18 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
         refresh_token: adAccount.refreshToken
     };
 
+    // Debug: Log credential state to diagnose permission issues
+    Logger.info('Google Ads client config', {
+        customerId: adAccount.externalId,
+        hasLoginCustomerId: !!loginCustomerId,
+        loginCustomerId: loginCustomerId ? `${loginCustomerId.substring(0, 4)}...` : null
+    });
+
     if (loginCustomerId) {
         // Only add if explicitly set in credentials
         customerConfig.login_customer_id = loginCustomerId.replace(/-/g, '');
+    } else {
+        Logger.warn('No loginCustomerId configured - this may cause USER_PERMISSION_DENIED errors for MCC-managed accounts');
     }
 
     return {
