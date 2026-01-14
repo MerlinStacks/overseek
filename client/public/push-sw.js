@@ -7,7 +7,7 @@
  */
 
 // Cache version - UPDATE THIS ON EVERY DEPLOYMENT
-const CACHE_VERSION = '2026-01-13-v2';
+const CACHE_VERSION = '2026-01-14-v1';
 const CACHE_NAME = `overseek-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -121,7 +121,16 @@ self.addEventListener('fetch', (event) => {
 
 // Push notification handler
 self.addEventListener('push', (event) => {
-    const data = event.data?.json() || {};
+    console.log('[SW] Push event received!', event);
+
+    let data = {};
+    try {
+        data = event.data?.json() || {};
+        console.log('[SW] Push data parsed:', data);
+    } catch (e) {
+        console.error('[SW] Failed to parse push data:', e);
+        data = { title: 'OverSeek', body: event.data?.text() || 'You have a new notification' };
+    }
 
     const options = {
         body: data.body || 'You have a new notification',
@@ -129,15 +138,20 @@ self.addEventListener('push', (event) => {
         badge: '/icons/icon-72.png',
         data: data.data || {},
         requireInteraction: true,
-        tag: data.tag || 'overseek-notification',
+        tag: data.tag || `overseek-${Date.now()}`,
         vibrate: [200, 100, 200],
         actions: data.actions || []
     };
 
+    console.log('[SW] Showing notification:', data.title, options);
+
     event.waitUntil(
         self.registration.showNotification(data.title || 'OverSeek', options)
+            .then(() => console.log('[SW] Notification displayed successfully'))
+            .catch((err) => console.error('[SW] Failed to show notification:', err))
     );
 });
+
 
 // Notification click handler
 self.addEventListener('notificationclick', (event) => {
