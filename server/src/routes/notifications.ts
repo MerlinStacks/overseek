@@ -220,6 +220,51 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to send test notification' });
         }
     });
+
+    // POST /push/test-order - Test order notification specifically
+    fastify.post('/push/test-order', async (request, reply) => {
+        try {
+            const accountId = request.headers['x-account-id'] as string;
+            const userId = request.user?.id;
+            Logger.info('[notifications] Test ORDER notification request', { userId, accountId });
+
+            if (!accountId || !userId) {
+                return reply.code(400).send({ error: 'Account ID and user required' });
+            }
+
+            // Create a mock order notification
+            const mockOrderNumber = Math.floor(1000 + Math.random() * 9000);
+            const mockTotal = (Math.random() * 200 + 20).toFixed(2);
+            const mockName = ['John Smith', 'Emma Wilson', 'Michael Brown', 'Sarah Davis'][Math.floor(Math.random() * 4)];
+
+            const result = await PushNotificationService.sendToAccount(
+                accountId,
+                {
+                    title: `🛒 New Order #${mockOrderNumber}`,
+                    body: `${mockName} placed an order for $${mockTotal}`,
+                    data: {
+                        type: 'order',
+                        orderId: mockOrderNumber.toString(),
+                        url: `/m/orders/${mockOrderNumber}`
+                    }
+                },
+                'order'
+            );
+
+            Logger.info('[notifications] Test order notification result', { result });
+
+            return {
+                success: true,
+                sent: result.sent,
+                failed: result.failed,
+                orderNumber: mockOrderNumber
+            };
+        } catch (error) {
+            Logger.error('[notifications] Test order notification failed', { error });
+            return reply.code(500).send({ error: 'Failed to send test order notification' });
+        }
+    });
 };
+
 
 export default notificationsRoutes;

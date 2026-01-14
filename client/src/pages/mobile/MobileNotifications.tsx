@@ -84,6 +84,7 @@ export function MobileNotifications() {
 
     const [testResult, setTestResult] = useState<string | null>(null);
     const [testLoading, setTestLoading] = useState(false);
+    const [orderTestLoading, setOrderTestLoading] = useState(false);
 
     const sendTestNotification = async () => {
         if (!token || !currentAccount) return;
@@ -112,6 +113,35 @@ export function MobileNotifications() {
             setTestLoading(false);
         }
     };
+
+    const sendTestOrderNotification = async () => {
+        if (!token || !currentAccount) return;
+
+        setOrderTestLoading(true);
+        setTestResult(null);
+
+        try {
+            const res = await fetch('/api/notifications/push/test-order', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setTestResult(`✅ Order #${data.orderNumber} sent to ${data.sent} device(s)`);
+            } else {
+                setTestResult(`❌ ${data.error || 'Failed to send'}`);
+            }
+        } catch (error) {
+            setTestResult('❌ Network error');
+        } finally {
+            setOrderTestLoading(false);
+        }
+    };
+
 
     // Detect iOS (for specific PWA guidance)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -176,9 +206,9 @@ export function MobileNotifications() {
                     </div>
                 </div>
 
-                {/* Test Notification Button */}
+                {/* Test Notification Buttons */}
                 {isSubscribed && (
-                    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
                         <button
                             onClick={sendTestNotification}
                             disabled={testLoading}
@@ -186,11 +216,19 @@ export function MobileNotifications() {
                         >
                             {testLoading ? 'Sending...' : '🔔 Send Test Notification'}
                         </button>
+                        <button
+                            onClick={sendTestOrderNotification}
+                            disabled={orderTestLoading}
+                            className="w-full py-3 px-4 bg-blue-50 text-blue-600 font-semibold rounded-xl active:bg-blue-100 disabled:opacity-50"
+                        >
+                            {orderTestLoading ? 'Sending...' : '🛒 Test Order Notification'}
+                        </button>
                         {testResult && (
                             <p className="text-sm text-center mt-2 text-gray-600">{testResult}</p>
                         )}
                     </div>
                 )}
+
 
                 {/* Notification Types */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">
