@@ -179,18 +179,24 @@ export class ProductSync extends BaseSync {
                 select: { id: true, wooId: true }
             });
 
-            const deletePromises: Promise<any>[] = [];
-            for (const local of localProducts) {
-                if (!wooProductIds.has(local.wooId)) {
-                    deletePromises.push(
-                        prisma.wooProduct.delete({ where: { id: local.id } })
-                            .then(() => IndexingService.deleteProduct(accountId, local.wooId))
-                    );
-                    totalDeleted++;
-                }
-            }
+            const orphanedProducts = localProducts.filter(local => !wooProductIds.has(local.wooId));
 
-            if (deletePromises.length > 0) {
+            if (orphanedProducts.length > 0) {
+                const deleteIds = orphanedProducts.map(p => p.id);
+
+                // Batch delete from database (N+1 optimization)
+                await prisma.wooProduct.deleteMany({
+                    where: { id: { in: deleteIds } }
+                });
+
+                // Update count
+                totalDeleted += deleteIds.length;
+
+                // Delete from index concurrently
+                const deletePromises = orphanedProducts.map(local =>
+                    IndexingService.deleteProduct(accountId, local.wooId)
+                );
+
                 await Promise.allSettled(deletePromises);
                 Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned products`, { accountId, syncId });
             }
