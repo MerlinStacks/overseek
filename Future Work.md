@@ -121,3 +121,12 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 - [ ] Export customer segments to CSV
 
 
+Gold price needs option for 18ct and 9ct in both gold and white, we also need to add at 10% margin on top of the market price, this will need to have the different fields in the settings to allow us to enter them / have them updated via market. The products will also need to have a drop down to select which one applies to the product.
+
+COGS need a misc add field with a notes for what they are for, this field should be repeatable on the item.
+
+Revenue needs to be tax inclusive and state that, this should be an option in the settings.
+
+If there is a way to pull payment fees for the woocommerce order and include in the profitibilty report it would be good.
+
+saving a product is very slow.

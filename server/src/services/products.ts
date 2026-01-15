@@ -142,7 +142,8 @@ export class ProductsService {
             const { WooService } = await import('./woo');
             const wooService = await WooService.forAccount(accountId);
 
-            for (const v of variations) {
+            // Parallelize variation updates for performance
+            await Promise.all(variations.map(async (v) => {
                 // Update local DB for variations
                 await prisma.productVariation.upsert({
                     where: { productId_wooId: { productId: updated.id, wooId: v.id } },
@@ -169,19 +170,17 @@ export class ProductsService {
                 });
 
                 // Sync to Woo (Only synced fields)
-                // We only sync if changed? For now, sync on save.
                 try {
                     await wooService.updateProduct(v.id, {
                         sku: v.sku,
-                        regular_price: v.price, // Woo maps regular_price, sale_price needed too?
+                        regular_price: v.price,
                         sale_price: v.salePrice,
                         stock_status: v.stockStatus
-                        // Variation images in Woo are complex, skipping sync for images for now unless requested
                     });
                 } catch (err: any) {
                     Logger.error(`Failed to sync variation ${v.id} to WooCommerce`, { error: err.message });
                 }
-            }
+            }));
         }
 
         return updated;
