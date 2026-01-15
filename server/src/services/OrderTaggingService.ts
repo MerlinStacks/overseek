@@ -48,6 +48,96 @@ export class OrderTaggingService {
     }
 
     /**
+     * Batch extract tags for multiple orders.
+     * Efficiently fetches products in a single query.
+     * @param accountId - The account ID
+     * @param orders - Array of raw WooCommerce order data
+     * @returns Map of orderId -> Array of mapped order tag names
+     */
+    static async extractTagsForOrders(accountId: string, orders: any[]): Promise<Map<number, string[]>> {
+        const result = new Map<number, string[]>();
+        if (!orders.length) return result;
+
+        // Initialize empty arrays for all orders
+        for (const order of orders) {
+            if (order.id) result.set(order.id, []);
+        }
+
+        // Get tag mappings for this account
+        const mappings = await this.getTagMappings(accountId);
+        const enabledMappings = mappings.filter(m => m.enabled);
+
+        // If no mappings configured, return empty map (all orders have empty tags)
+        if (enabledMappings.length === 0) return result;
+
+        // Build lookup: productTag -> orderTag
+        const mappingLookup = new Map<string, string>();
+        for (const m of enabledMappings) {
+            mappingLookup.set(m.productTag.toLowerCase(), m.orderTag);
+        }
+
+        // Collect all unique product IDs from all orders
+        const allProductIds = new Set<number>();
+        const orderProductMap = new Map<number, number[]>(); // orderId -> productIds
+
+        for (const order of orders) {
+            const lineItems = order.line_items || [];
+            const pIds = lineItems
+                .map((item: any) => item.product_id)
+                .filter((id: number) => id && id > 0);
+
+            if (pIds.length > 0) {
+                orderProductMap.set(order.id, pIds);
+                pIds.forEach((id: number) => allProductIds.add(id));
+            }
+        }
+
+        if (allProductIds.size === 0) return result;
+
+        // Fetch products from database
+        const products = await prisma.wooProduct.findMany({
+            where: {
+                accountId,
+                wooId: { in: Array.from(allProductIds) }
+            },
+            select: { wooId: true, rawData: true }
+        });
+
+        // Create product lookup map
+        const productLookup = new Map<number, any>();
+        for (const product of products) {
+            productLookup.set(product.wooId, product.rawData);
+        }
+
+        // Process each order
+        for (const order of orders) {
+            const orderId = order.id;
+            const pIds = orderProductMap.get(orderId);
+
+            if (!pIds || pIds.length === 0) continue;
+
+            const orderTags = new Set<string>();
+            for (const pid of pIds) {
+                const rawData = productLookup.get(pid);
+                if (rawData) {
+                    const tags = rawData.tags || [];
+                    for (const tag of tags) {
+                        if (tag?.name) {
+                            const mappedTag = mappingLookup.get(tag.name.toLowerCase());
+                            if (mappedTag) {
+                                orderTags.add(mappedTag);
+                            }
+                        }
+                    }
+                }
+            }
+            result.set(orderId, Array.from(orderTags));
+        }
+
+        return result;
+    }
+
+    /**
      * Extract tags from order line items and apply mappings.
      * Only returns tags that have an enabled mapping defined.
      * @param accountId - The account ID

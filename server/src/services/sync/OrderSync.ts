@@ -87,6 +87,14 @@ export class OrderSync extends BaseSync {
             // Execute batch transaction
             await prisma.$transaction(upsertOperations);
 
+            // Fetch tags for all orders in batch
+            let orderTagsMap: Map<number, string[]> | undefined;
+            try {
+                orderTagsMap = await OrderTaggingService.extractTagsForOrders(accountId, orders);
+            } catch (error: any) {
+                Logger.warn('Failed to batch extract tags, falling back to individual extraction', { accountId, syncId, error: error.message });
+            }
+
             // Process events and indexing
             const indexPromises: Promise<any>[] = [];
 
@@ -113,7 +121,14 @@ export class OrderSync extends BaseSync {
 
                 indexPromises.push((async () => {
                     try {
-                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
+                        let tags: string[];
+                        if (orderTagsMap) {
+                            // Best performance: use pre-extracted batch tags
+                            tags = orderTagsMap.get(order.id) || [];
+                        } else {
+                            // Fallback with tagMappings optimization
+                            tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
+                        }
                         await IndexingService.indexOrder(accountId, order, tags);
                     } catch (error: any) {
                         Logger.warn(`Failed to index order ${order.id}`, { accountId, syncId, error: error.message });
