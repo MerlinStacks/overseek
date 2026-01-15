@@ -4,7 +4,7 @@ import { Logger } from '../utils/logger';
 /**
  * Tag mapping configuration stored in Account.orderTagMappings
  */
-interface TagMapping {
+export interface TagMapping {
     productTag: string;  // The tag name from WooCommerce product
     orderTag: string;    // The tag name to apply to orders
     enabled: boolean;    // Whether this mapping is active
@@ -52,14 +52,15 @@ export class OrderTaggingService {
      * Only returns tags that have an enabled mapping defined.
      * @param accountId - The account ID
      * @param rawOrderData - Raw WooCommerce order data containing line_items
+     * @param knownMappings - Optional optimization: pass already loaded mappings to avoid DB lookup
      * @returns Array of mapped order tag names
      */
-    static async extractTagsFromOrder(accountId: string, rawOrderData: any): Promise<string[]> {
+    static async extractTagsFromOrder(accountId: string, rawOrderData: any, knownMappings?: TagMapping[]): Promise<string[]> {
         const lineItems = rawOrderData?.line_items || [];
         if (lineItems.length === 0) return [];
 
         // Get tag mappings for this account
-        const mappings = await this.getTagMappings(accountId);
+        const mappings = knownMappings || await this.getTagMappings(accountId);
         const enabledMappings = mappings.filter(m => m.enabled);
 
         // If no mappings configured, return empty (user must configure first)

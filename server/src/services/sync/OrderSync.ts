@@ -90,6 +90,9 @@ export class OrderSync extends BaseSync {
             // Process events and indexing
             const indexPromises: Promise<any>[] = [];
 
+            // Optimization: Fetch tag mappings once for the batch
+            const tagMappings = await OrderTaggingService.getTagMappings(accountId);
+
             for (const order of orders) {
                 const existingStatus = existingMap.get(order.id);
                 const isNew = !existingStatus;
@@ -110,7 +113,7 @@ export class OrderSync extends BaseSync {
 
                 indexPromises.push((async () => {
                     try {
-                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order);
+                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
                         await IndexingService.indexOrder(accountId, order, tags);
                     } catch (error: any) {
                         Logger.warn(`Failed to index order ${order.id}`, { accountId, syncId, error: error.message });
