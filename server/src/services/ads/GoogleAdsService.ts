@@ -471,6 +471,41 @@ export class GoogleAdsService {
 
 
     /**
+     * Fetch Ad Groups for a specific campaign.
+     */
+    static async getCampaignAdGroups(adAccountId: string, campaignId: string): Promise<any[]> {
+        try {
+            const { customer } = await createGoogleAdsClient(adAccountId);
+
+            const query = `
+                SELECT
+                    ad_group.id,
+                    ad_group.name,
+                    ad_group.status,
+                    ad_group.type
+                FROM ad_group
+                WHERE campaign.id = ${campaignId}
+                    AND ad_group.status = 'ENABLED'
+            `;
+
+            const results = await customer.query(query);
+
+            return results.map((row: any) => ({
+                id: row.ad_group?.id?.toString() || '',
+                name: row.ad_group?.name || 'Unknown',
+                status: row.ad_group?.status || 'UNKNOWN',
+                type: row.ad_group?.type || 'UNKNOWN',
+                campaignId: campaignId
+            }));
+
+        } catch (error: any) {
+            Logger.error('Failed to fetch Google Ads Ad Groups', { error: error.message, adAccountId, campaignId });
+            // We return empty array to avoid breaking UI if one campaign fails
+            return [];
+        }
+    }
+
+    /**
      * Add a Search Keyword to an Ad Group.
      */
     static async addSearchKeyword(

@@ -249,6 +249,38 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // GET /api/ads/campaigns/:campaignId/adgroups - Fetch Ad Groups for a specific campaign (searches all Google accounts)
+    fastify.get<{ Params: { campaignId: string } }>('/campaigns/:campaignId/adgroups', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+        try {
+            const { campaignId } = request.params;
+            const accounts = await AdsService.getAdAccounts(accountId);
+            // Prioritize Google for now as ad groups are a Google concept (AdSets in Meta)
+            const googleAccounts = accounts.filter(a => a.platform === 'GOOGLE');
+
+            for (const account of googleAccounts) {
+                try {
+                    const adGroups = await AdsService.getGoogleCampaignAdGroups(account.id, campaignId);
+                    if (adGroups && adGroups.length > 0) {
+                        return adGroups;
+                    }
+                } catch (e) {
+                    // Continue to next account if this one fails or campaign not found
+                    Logger.warn(`Campaign ${campaignId} not found in account ${account.id}`, { error: e });
+                }
+            }
+
+            // If we are here, we didn't find the campaign or it has no ad groups.
+            return [];
+
+        } catch (error: any) {
+            Logger.error('Failed to fetch ad groups', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
     // GET /api/ads/:adAccountId/campaigns/:campaignId/products - Fetch products for a specific campaign
     fastify.get<{ Params: { adAccountId: string; campaignId: string } }>('/:adAccountId/campaigns/:campaignId/products', async (request, reply) => {
         try {
