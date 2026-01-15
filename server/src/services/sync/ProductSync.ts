@@ -14,6 +14,11 @@ export class ProductSync extends BaseSync {
     protected entityType = 'products';
 
     protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { openRouterApiKey: true, embeddingModel: true }
+        });
+
         const after = incremental ? await this.getLastSync(accountId) : undefined;
         let page = 1;
         let hasMore = true;
@@ -125,7 +130,7 @@ export class ProductSync extends BaseSync {
                         })
                     );
 
-                    EmbeddingService.updateProductEmbedding(upsertedProduct.id, accountId)
+                    EmbeddingService.updateProductEmbedding(upsertedProduct.id, accountId, account || undefined, upsertedProduct)
                         .catch((err: any) => Logger.debug('Embedding generation skipped', { productId: upsertedProduct.id, reason: err.message }));
 
                     scoringResults.push({ seoScore: seoResult.score, merchantCenterScore: mcResult.score });

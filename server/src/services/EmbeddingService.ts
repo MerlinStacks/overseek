@@ -82,11 +82,19 @@ export class EmbeddingService {
     /**
      * Update embedding for a single product
      */
-    static async updateProductEmbedding(productId: string, accountId: string): Promise<void> {
-        const account = await prisma.account.findUnique({
-            where: { id: accountId },
-            select: { openRouterApiKey: true, embeddingModel: true }
-        });
+    static async updateProductEmbedding(
+        productId: string,
+        accountId: string,
+        accountData?: { openRouterApiKey: string | null; embeddingModel: string | null },
+        productData?: any
+    ): Promise<void> {
+        let account = accountData;
+        if (!account) {
+            account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: { openRouterApiKey: true, embeddingModel: true }
+            });
+        }
 
         const apiKey = account?.openRouterApiKey;
         if (!apiKey) {
@@ -94,14 +102,17 @@ export class EmbeddingService {
             return;
         }
 
-        const product = await prisma.wooProduct.findUnique({
-            where: { id: productId }
-        });
+        let product = productData;
+        if (!product) {
+            product = await prisma.wooProduct.findUnique({
+                where: { id: productId }
+            });
+        }
 
         if (!product) return;
 
         const searchText = this.getProductSearchText(product.rawData);
-        const model = account.embeddingModel || DEFAULT_EMBEDDING_MODEL;
+        const model = account?.embeddingModel || DEFAULT_EMBEDDING_MODEL;
         const embedding = await this.generateEmbedding(searchText, apiKey, model);
 
         // Store embedding using raw SQL (pgvector)
