@@ -45,7 +45,19 @@ export class PicklistService {
             }
         });
 
-        // 2. Aggregate Items
+        // 2. Pre-fetch Products
+        const allProductIds = new Set<number>();
+        for (const order of orders) {
+             const raw = order.rawData as any;
+             const lineItems = raw.line_items || [];
+             for (const item of lineItems) {
+                 if (item.product_id) allProductIds.add(item.product_id);
+             }
+        }
+
+        const productCache = await this.prefetchProducts(accountId, Array.from(allProductIds));
+
+        // 3. Aggregate Items
         const itemMap = new Map<string, PicklistItem>(); // Key: ProductID (or VariantID)
 
         for (const order of orders) {
@@ -61,7 +73,7 @@ export class PicklistService {
                 const variationId = item.variation_id || 0;
                 const quantity = item.quantity;
 
-                await this.processLineItem(accountId, productId, variationId, quantity, orderNumber, wooOrderId, innerItem => {
+                await this.processLineItem(accountId, productId, variationId, quantity, orderNumber, wooOrderId, productCache, innerItem => {
                     // Skip products that don't have inventory tracking enabled
                     if (!innerItem.manageStock) {
                         return;
@@ -94,7 +106,7 @@ export class PicklistService {
             }
         }
 
-        // 3. Convert map to array and Sort by Bin Location
+        // 4. Convert map to array and Sort by Bin Location
         const result = Array.from(itemMap.values()).filter(item => {
             // Filter: "Pull only in-stock products"
             // If stockStatus is 'outofstock', exclude?
@@ -114,6 +126,58 @@ export class PicklistService {
         return result;
     }
 
+    private async prefetchProducts(accountId: string, initialProductIds: number[]): Promise<Map<number, any>> {
+        const productMap = new Map<number, any>();
+        const idsToFetch = new Set<number>(initialProductIds);
+        const fetchedIds = new Set<number>();
+
+        while (idsToFetch.size > 0) {
+            const batchIds = Array.from(idsToFetch).filter(id => !fetchedIds.has(id));
+            if (batchIds.length === 0) break;
+
+            // Mark as fetching/fetched to avoid dupes in this loop
+            batchIds.forEach(id => fetchedIds.add(id));
+            // Also remove from idsToFetch
+            batchIds.forEach(id => idsToFetch.delete(id));
+
+            // Fetch batch
+            const products = await prisma.wooProduct.findMany({
+                where: {
+                    accountId,
+                    wooId: { in: batchIds }
+                },
+                include: {
+                    boms: {
+                        include: {
+                            items: {
+                                include: {
+                                    childProduct: true
+                                }
+                            }
+                        }
+                    },
+                    variations: true // We fetch all variations to filter in memory
+                }
+            });
+
+            for (const product of products) {
+                productMap.set(product.wooId, product);
+
+                // Check for BOMs and add child products to fetch list
+                if (product.boms && product.boms.length > 0) {
+                    for (const bom of product.boms) {
+                        for (const item of bom.items) {
+                            if (item.childProduct && !fetchedIds.has(item.childProduct.wooId) && !productMap.has(item.childProduct.wooId)) {
+                                idsToFetch.add(item.childProduct.wooId);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return productMap;
+    }
+
     /**
      * Recursive function to resolve BOMs
      */
@@ -124,6 +188,7 @@ export class PicklistService {
         quantity: number,
         orderContext: string,
         wooOrderId: number,
+        productCache: Map<number, any>,
         callback: (item: { productId: number, sku: string, name: string, quantity: number, binLocation: string | null, stockStatus: string | null, image: any, manageStock: boolean }) => void
     ) {
         // Check if this product/variant has a BOM
@@ -131,23 +196,28 @@ export class PicklistService {
         // Need to find internal internal ID first.
 
         // 1. Find internal Product
-        const product = await prisma.wooProduct.findFirst({
-            where: { accountId, wooId: productId },
-            include: {
-                boms: {
-                    include: {
-                        items: {
-                            include: {
-                                childProduct: true
+        let product = productCache.get(productId);
+
+        if (!product) {
+            // Fallback: try fetching if missing (edge case or race condition)
+            product = await prisma.wooProduct.findFirst({
+                where: { accountId, wooId: productId },
+                include: {
+                    boms: {
+                        include: {
+                            items: {
+                                include: {
+                                    childProduct: true
+                                }
                             }
                         }
+                    },
+                    variations: {
+                        where: { wooId: variationId !== 0 ? variationId : undefined }
                     }
-                },
-                variations: {
-                    where: { wooId: variationId !== 0 ? variationId : undefined }
                 }
-            }
-        });
+            });
+        }
 
         if (!product) {
             // Product not synced? Just return as is with basic BOM fallback if possible (impossible without sync)
@@ -173,9 +243,9 @@ export class PicklistService {
            - If not found, look for BOM with variationId === 0 (Parent BOM)
            - If neither, it's a regular product
         */
-        let activeBOM = product.boms.find(b => b.variationId === variationId);
+        let activeBOM = product.boms.find((b: any) => b.variationId === variationId);
         if (!activeBOM && variationId !== 0) {
-            activeBOM = product.boms.find(b => b.variationId === 0);
+            activeBOM = product.boms.find((b: any) => b.variationId === 0);
         }
 
         if (activeBOM && activeBOM.items.length > 0) {
@@ -200,6 +270,7 @@ export class PicklistService {
                         componentQty,
                         orderContext,
                         wooOrderId,
+                        productCache,
                         callback
                     );
                 } else {
@@ -217,15 +288,19 @@ export class PicklistService {
             let finalBinLocation = product.binLocation;
             // If we have a variation ID and we fetched variations, check if we have a match
             if (variationId !== 0 && product.variations && product.variations.length > 0) {
-                const variant = product.variations[0]; // We filtered by wooId in the query
-                if (variant.binLocation) {
+                // If fetching from cache, product.variations contains ALL variations. Need to filter.
+                // If fetching from fallback findFirst, it might contain only the specific one.
+                // Safest to find by ID.
+                const variant = product.variations.find((v: any) => v.wooId === variationId);
+
+                if (variant && variant.binLocation) {
                     finalBinLocation = variant.binLocation;
                 }
             }
 
             callback({
                 productId: variationId !== 0 ? variationId : product.wooId,
-                sku: (variationId !== 0 && product.variations?.[0]?.sku) ? product.variations[0].sku! : (product.sku || ''),
+                sku: (variationId !== 0) ? (product.variations?.find((v:any) => v.wooId === variationId)?.sku || product.sku || '') : (product.sku || ''),
                 name: product.name,
                 quantity,
                 binLocation: finalBinLocation,
