@@ -432,14 +432,24 @@ export class NotificationEngine {
         payload?: Record<string, unknown>;
     }): Promise<void> {
         try {
+            // Sanitize data to ensure valid JSON (removes undefined, functions, circular refs)
+            const sanitize = <T>(obj: T): T | undefined => {
+                if (obj === null || obj === undefined) return undefined;
+                try {
+                    return JSON.parse(JSON.stringify(obj));
+                } catch {
+                    return undefined;
+                }
+            };
+
             await prisma.notificationDelivery.create({
                 data: {
                     accountId: data.accountId,
                     eventType: data.eventType,
-                    channels: data.channels as Prisma.InputJsonValue,
-                    results: data.results as Prisma.InputJsonValue,
-                    subscriptionLookup: (data.subscriptionLookup ?? undefined) as Prisma.InputJsonValue | undefined,
-                    payload: (data.payload ?? undefined) as Prisma.InputJsonValue | undefined
+                    channels: (sanitize(data.channels) ?? []) as Prisma.InputJsonValue,
+                    results: (sanitize(data.results) ?? {}) as Prisma.InputJsonValue,
+                    subscriptionLookup: sanitize(data.subscriptionLookup) as Prisma.InputJsonValue | undefined,
+                    payload: sanitize(data.payload) as Prisma.InputJsonValue | undefined
                 }
             });
         } catch (error) {

@@ -277,25 +277,61 @@ export class EmailService {
             Logger.error('[checkEmails] IMAP client error event', { email: account.email, error: err.message });
         });
 
-        try {
-            Logger.info('[checkEmails] Connecting to IMAP server', {
-                host: account.imapHost,
-                port: account.imapPort,
-                email: account.email,
-                secure: useImplicitTLS
-            });
-            await client.connect();
+        // Retry logic for connection with exponential backoff
+        const MAX_RETRIES = 2;
+        let lastError: Error | null = null;
 
-            // Verify connection is actually open
-            if (!client.usable) {
-                throw new Error('IMAP connection not usable after connect');
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                if (attempt > 0) {
+                    const delay = Math.pow(2, attempt) * 1000; // 2s, 4s
+                    Logger.info(`[checkEmails] Retry attempt ${attempt}/${MAX_RETRIES} after ${delay}ms`, { email: account.email });
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+
+                Logger.info('[checkEmails] Connecting to IMAP server', {
+                    host: account.imapHost,
+                    port: account.imapPort,
+                    email: account.email,
+                    secure: useImplicitTLS,
+                    attempt: attempt + 1
+                });
+                await client.connect();
+
+                // Verify connection is actually open
+                if (!client.usable) {
+                    throw new Error('IMAP connection not usable after connect');
+                }
+                Logger.info('[checkEmails] Connection established successfully');
+                lastError = null;
+                break; // Success, exit retry loop
+            } catch (connectError: any) {
+                lastError = connectError;
+                Logger.warn(`[checkEmails] Connection attempt ${attempt + 1} failed`, {
+                    email: account.email,
+                    error: connectError?.message || String(connectError)
+                });
+
+                // Clean up failed connection before retry
+                try { await client.logout(); } catch { /* ignore */ }
             }
-            Logger.info('[checkEmails] Connection established successfully');
+        }
 
+        if (lastError) {
+            Logger.error('[checkEmails] All connection attempts failed', {
+                email: account.email,
+                error: lastError.message,
+                attempts: MAX_RETRIES + 1
+            });
+            return;
+        }
+
+        try {
             const lock = await client.getMailboxLock('INBOX');
             Logger.info('[checkEmails] Connected and locked INBOX');
 
             let messageCount = 0;
+            const processedUids: number[] = []; // Collect UIDs to mark as seen AFTER loop
 
             try {
                 for await (const message of client.fetch({ seen: false }, {
@@ -317,17 +353,9 @@ export class EmailService {
                             continue;
                         }
 
-                        // Mark as seen IMMEDIATELY after fetch to prevent duplicate ingestion
-                        // This must happen before any processing that could fail or timeout
-                        try {
-                            await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
-                        } catch (flagError: any) {
-                            Logger.warn('[checkEmails] Failed to mark message as seen', {
-                                uid: message.uid,
-                                error: flagError?.message || String(flagError)
-                            });
-                            // Continue processing anyway - we'll get a duplicate but at least process the email
-                        }
+                        // Store UID for marking as seen AFTER the loop
+                        // NOTE: imapflow docs warn that calling messageFlagsAdd inside fetch loop causes DEADLOCK
+                        processedUids.push(message.uid);
 
                         const parsed: ParsedMail = await simpleParser(source, { skipImageLinks: true });
 
@@ -385,6 +413,26 @@ export class EmailService {
                 }
 
                 Logger.info(`[checkEmails] Found ${messageCount} unseen email(s)`, { email: account.email });
+
+                // Mark all processed messages as seen AFTER the fetch loop completes
+                // This avoids the deadlock issue documented in imapflow
+                if (processedUids.length > 0) {
+                    try {
+                        // Use UID range for efficiency (e.g., "1,2,5,10" or "1:10")
+                        const uidRange = processedUids.join(',');
+                        await client.messageFlagsAdd(uidRange, ['\\Seen'], { uid: true });
+                        Logger.info('[checkEmails] Successfully marked all messages as seen', {
+                            count: processedUids.length,
+                            uids: processedUids
+                        });
+                    } catch (flagError: any) {
+                        Logger.error('[checkEmails] Failed to mark messages as seen', {
+                            uids: processedUids,
+                            error: flagError?.message || String(flagError),
+                            stack: flagError?.stack
+                        });
+                    }
+                }
             } finally {
                 lock.release();
             }
