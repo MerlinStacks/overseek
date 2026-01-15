@@ -160,39 +160,34 @@ export class OrderSync extends BaseSync {
         }
 
         // After all orders are synced, recalculate customer order counts from local data
+        await this.recalculateCustomerCounts(accountId, syncId);
+
+        return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
+    }
+
+    protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
         Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
         try {
-            const ordersWithCustomers = await prisma.wooOrder.findMany({
-                where: { accountId },
-                select: { rawData: true }
-            });
-
-            const customerOrderCounts = new Map<number, number>();
-            for (const order of ordersWithCustomers) {
-                const customerId = (order.rawData as any)?.customer_id;
-                if (customerId && customerId > 0) {
-                    customerOrderCounts.set(customerId, (customerOrderCounts.get(customerId) || 0) + 1);
-                }
-            }
-
-            // Batch update customer order counts
-            const updatePromises: Promise<any>[] = [];
-            for (const [wooId, count] of customerOrderCounts) {
-                updatePromises.push(
-                    prisma.wooCustomer.updateMany({
-                        where: { accountId, wooId },
-                        data: { ordersCount: count }
-                    })
-                );
-            }
-
-            await Promise.allSettled(updatePromises);
-            Logger.info(`Updated order counts for ${customerOrderCounts.size} customers`, { accountId, syncId });
+            await prisma.$executeRaw`
+                UPDATE "WooCustomer" wc
+                SET "ordersCount" = c.count
+                FROM (
+                    SELECT
+                        ("rawData"->>'customer_id')::int as woo_id,
+                        COUNT(*)::int as count
+                    FROM "WooOrder"
+                    WHERE "accountId" = ${accountId}
+                      AND "rawData"->>'customer_id' IS NOT NULL
+                      AND "rawData"->>'customer_id' != '0'
+                    GROUP BY "rawData"->>'customer_id'
+                ) c
+                WHERE wc."accountId" = ${accountId}
+                  AND wc."wooId" = c.woo_id;
+            `;
+            Logger.info(`Updated customer order counts`, { accountId, syncId });
         } catch (error: any) {
             Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
         }
-
-        return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 }
 
