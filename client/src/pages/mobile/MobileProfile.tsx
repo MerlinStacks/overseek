@@ -19,13 +19,14 @@ import {
  */
 export function MobileProfile() {
     const navigate = useNavigate();
-    const { token, user, logout } = useAuth();
+    const { token, user, logout, updateUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [fullName, setFullName] = useState(user?.fullName || '');
     const [email, setEmail] = useState(user?.email || '');
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
@@ -59,13 +60,44 @@ export function MobileProfile() {
         }
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = () => setAvatarPreview(reader.result as string);
             reader.readAsDataURL(file);
-            // TODO: Upload to backend
+
+            if (!token) return;
+
+            setUploading(true);
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/auth/upload-avatar', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (user) {
+                        updateUser({ ...user, avatarUrl: data.avatarUrl });
+                    }
+                    setAvatarPreview(null);
+                } else {
+                    console.error('Failed to upload avatar');
+                    setAvatarPreview(null);
+                }
+            } catch (error) {
+                console.error('Error uploading avatar:', error);
+                setAvatarPreview(null);
+            } finally {
+                setUploading(false);
+            }
         }
     };
 
@@ -112,10 +144,16 @@ export function MobileProfile() {
                             {fullName?.[0]?.toUpperCase() || email?.[0]?.toUpperCase() || 'U'}
                         </div>
                     )}
+                    {uploading && (
+                        <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
+                            <Loader2 className="animate-spin text-white" size={24} />
+                        </div>
+                    )}
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg active:bg-indigo-700"
                         aria-label="Change avatar"
+                        disabled={uploading}
                     >
                         <Camera size={16} />
                     </button>

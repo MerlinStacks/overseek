@@ -20,6 +20,10 @@ vi.mock('../../utils/prisma', () => ({
             create: vi.fn(),
             update: vi.fn()
         }
+    },
+    Prisma: {
+        sql: vi.fn(),
+        join: vi.fn()
     }
 }));
 
@@ -48,7 +52,8 @@ vi.mock('../search/IndexingService', () => ({
 
 vi.mock('../OrderTaggingService', () => ({
     OrderTaggingService: {
-        extractTagsFromOrder: vi.fn()
+        extractTagsFromOrder: vi.fn(),
+        getTagMappings: vi.fn()
     }
 }));
 

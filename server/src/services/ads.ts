@@ -83,6 +83,9 @@ export class AdsService {
     /** @see GoogleAdsService.getSearchKeywords */
     static getGoogleSearchKeywords = GoogleAdsService.getSearchKeywords;
 
+    /** @see GoogleAdsService.getCampaignAdGroups */
+    static getGoogleCampaignAdGroups = GoogleAdsService.getCampaignAdGroups;
+
     // ──────────────────────────────────────────────────────────────
     // COMMON ACCOUNT MANAGEMENT
     // ──────────────────────────────────────────────────────────────

@@ -94,6 +94,56 @@ export class SegmentService {
         return customers;
     }
 
+    /**
+     * getSegmentCount - Returns the count of customers in a segment
+     */
+    async getSegmentCount(accountId: string, segmentId: string): Promise<number> {
+        const segment = await this.getSegment(segmentId, accountId);
+        if (!segment) return 0;
+
+        const criteria = segment.criteria as unknown as SegmentCriteria;
+        const whereClause = this.buildWhereClause(accountId, criteria);
+
+        return prisma.wooCustomer.count({ where: whereClause });
+    }
+
+    /**
+     * iterateCustomersInSegment - Yields batches of customers in a segment
+     */
+    async *iterateCustomersInSegment(accountId: string, segmentId: string, batchSize = 1000) {
+        const segment = await this.getSegment(segmentId, accountId);
+        if (!segment) return;
+
+        const criteria = segment.criteria as unknown as SegmentCriteria;
+        const whereClause = this.buildWhereClause(accountId, criteria);
+
+        let cursor: string | undefined;
+
+        while (true) {
+            const params: any = {
+                where: whereClause,
+                take: batchSize,
+                orderBy: { id: 'asc' },
+                select: { id: true, email: true }
+            };
+
+            if (cursor) {
+                params.cursor = { id: cursor };
+                params.skip = 1;
+            }
+
+            const batch = await prisma.wooCustomer.findMany(params);
+
+            if (batch.length === 0) break;
+
+            yield batch;
+
+            if (batch.length < batchSize) break;
+
+            cursor = batch[batch.length - 1].id;
+        }
+    }
+
     private buildWhereClause(accountId: string, criteria: SegmentCriteria): Prisma.WooCustomerWhereInput {
         if (!criteria || !criteria.rules || criteria.rules.length === 0) {
             return { accountId }; // Return all if no rules? Or none? Let's say all for now or handle empty.

@@ -2,11 +2,13 @@ import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 
+import { WooService, WooProductData } from './woo';
+
 export class ProductsService {
-    static async createProduct(accountId: string, data: any): Promise<never> {
-        // TODO: Implement product creation via WooCommerce API
-        // WooService.createProduct method needs to be added first
-        throw new Error('Product creation not yet implemented. Please create products in WooCommerce directly.');
+    static async createProduct(accountId: string, data: WooProductData, userId?: string): Promise<any> {
+        const wooService = await WooService.forAccount(accountId);
+        const newProduct = await wooService.createProduct(data, userId);
+        return newProduct;
     }
 
     static async getProductByWooId(accountId: string, wooId: number) {

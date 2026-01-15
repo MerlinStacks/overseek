@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, Search, Sparkles } from 'lucide-react';
 import { ActionableRecommendation } from '../../types/ActionableTypes';
+import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
 
 interface AddKeywordModalProps {
     isOpen: boolean;
@@ -16,6 +18,8 @@ interface AdGroup {
 }
 
 export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: AddKeywordModalProps) {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [matches, setMatches] = useState<'BROAD' | 'PHRASE' | 'EXACT'>('PHRASE');
     const [keyword, setKeyword] = useState('');
     const [bid, setBid] = useState(0);
@@ -33,23 +37,32 @@ export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: 
                 setMatches(action.matchType || 'PHRASE');
                 setBid(action.suggestedCpc || 1.00);
 
-                // Fetch Ad Groups for the campaign
-                // Since our current API might not expose listAdGroups easily per campaign without a specific endpoint 
-                // we might need to rely on mocking or adding an endpoint. 
-                // For Phase 2, let's assume we can fetch them or user has to pick from a potentially empty list if API fails.
-                // Or simplified: Just auto-pick the "best" ad group or a new one.
-                // Currently our ActionableRecommendation typically carries context.
-
-                // TODO: Wire up actual ad group fetching
-                // For now, mockup some groups or try to fetch from API
-                // For demo purposes, we will mock until we add GET /api/ads/campaigns/:id/adgroups
-                setAdGroups([
-                    { id: '123', name: 'General Search', campaignId: action.campaignId },
-                    { id: '456', name: 'Competitor', campaignId: action.campaignId }
-                ]);
+                if (action.campaignId && token && currentAccount) {
+                    setFetchingGroups(true);
+                    fetch(`/api/ads/campaigns/${action.campaignId}/adgroups`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'x-account-id': currentAccount.id
+                        }
+                    })
+                        .then(res => {
+                            if (!res.ok) throw new Error('Failed to fetch ad groups');
+                            return res.json();
+                        })
+                        .then(data => {
+                            setAdGroups(data);
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            setAdGroups([]);
+                        })
+                        .finally(() => {
+                            setFetchingGroups(false);
+                        });
+                }
             }
         }
-    }, [isOpen, recommendation]);
+    }, [isOpen, recommendation, token, currentAccount]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

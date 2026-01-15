@@ -1,5 +1,6 @@
 import { Component, ReactNode } from 'react';
 import { WifiOff, RefreshCw, Home } from 'lucide-react';
+import * as Sentry from '@sentry/react';
 
 /**
  * MobileErrorBoundary - Catches React errors in mobile pages and displays a friendly fallback.
@@ -34,7 +35,8 @@ export class MobileErrorBoundary extends Component<Props, State> {
         console.error('[MobileErrorBoundary] Caught error:', error);
         console.error('[MobileErrorBoundary] Error info:', errorInfo.componentStack);
 
-        // TODO: Send to error monitoring service (e.g., Sentry)
+        // Send to error monitoring service (e.g., Sentry)
+        Sentry.captureException(error, { extra: errorInfo });
     }
 
     handleRetry = (): void => {

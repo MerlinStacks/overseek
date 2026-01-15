@@ -68,22 +68,6 @@ export class CustomersService {
             where: whereClause
         });
 
-        // RECOVERY: If not found, try searching globally (ignoring accountId) to detect mismatch
-        if (!customer) {
-            Logger.debug(`CustomerDetails missing, trying global lookup`, { accountId });
-            const globalWhere = isWooId ? { wooId: Number(customerId) } : { id: customerId };
-            const globalCustomer = await prisma.wooCustomer.findFirst({
-                where: globalWhere
-            });
-
-            if (globalCustomer) {
-                Logger.warn(`CustomerDetails found in different account`, { foundAccountId: globalCustomer.accountId });
-                // Security Note: In a real multi-tenant app this is dangerous, but for this specific user request to "fix it", we allow it.
-                // We return the customer as is.
-                customer = globalCustomer;
-            }
-        }
-
         // FALLBACK: If still missing in DB (Consistency Issue), try to fetch from Elastic to at least show the profile
         if (!customer) {
             Logger.debug(`CustomerDetails missing in DB, trying ES fallback`, { customerId });

@@ -1,6 +1,6 @@
 import { BaseSync, SyncResult } from './BaseSync';
 import { WooService } from '../woo';
-import { prisma } from '../../utils/prisma';
+import { prisma, Prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
 import { OrderTaggingService } from '../OrderTaggingService';
 import { EventBus, EVENTS } from '../events';
@@ -90,6 +90,9 @@ export class OrderSync extends BaseSync {
             // Process events and indexing
             const indexPromises: Promise<any>[] = [];
 
+            // Optimization: Fetch tag mappings once for the batch
+            const tagMappings = await OrderTaggingService.getTagMappings(accountId);
+
             for (const order of orders) {
                 const existingStatus = existingMap.get(order.id);
                 const isNew = !existingStatus;
@@ -110,7 +113,7 @@ export class OrderSync extends BaseSync {
 
                 indexPromises.push((async () => {
                     try {
-                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order);
+                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
                         await IndexingService.indexOrder(accountId, order, tags);
                     } catch (error: any) {
                         Logger.warn(`Failed to index order ${order.id}`, { accountId, syncId, error: error.message });
@@ -138,23 +141,29 @@ export class OrderSync extends BaseSync {
         if (!incremental && wooOrderIds.size > 0) {
             const localOrders = await prisma.wooOrder.findMany({
                 where: { accountId },
-                select: { id: true, wooId: true }
+                select: { wooId: true }
             });
 
-            const deletePromises: Promise<any>[] = [];
-            for (const local of localOrders) {
-                if (!wooOrderIds.has(local.wooId)) {
-                    // Order exists locally but not in WooCommerce - delete it
-                    deletePromises.push(
-                        prisma.wooOrder.delete({ where: { id: local.id } })
-                            .then(() => IndexingService.deleteOrder(accountId, local.wooId))
-                    );
-                    totalDeleted++;
-                }
-            }
+            const wooIdsToDelete = localOrders
+                .filter(local => !wooOrderIds.has(local.wooId))
+                .map(local => local.wooId);
 
-            if (deletePromises.length > 0) {
-                await Promise.allSettled(deletePromises);
+            if (wooIdsToDelete.length > 0) {
+                // Batch delete from the search index first
+                const deleteIndexPromises = wooIdsToDelete.map(wooId =>
+                    IndexingService.deleteOrder(accountId, wooId)
+                );
+                await Promise.allSettled(deleteIndexPromises);
+
+                // Then, bulk delete from the database
+                const { count } = await prisma.wooOrder.deleteMany({
+                    where: {
+                        accountId,
+                        wooId: { in: wooIdsToDelete }
+                    }
+                });
+                totalDeleted = count;
+
                 Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned orders`, { accountId, syncId });
             }
         }
@@ -190,4 +199,3 @@ export class OrderSync extends BaseSync {
         }
     }
 }
-
