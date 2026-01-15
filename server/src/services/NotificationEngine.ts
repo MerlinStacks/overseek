@@ -7,6 +7,7 @@
 
 import { EventBus, EVENTS } from './events';
 import { prisma } from '../utils/prisma';
+import { Prisma } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import { PushNotificationService } from './PushNotificationService';
 import { getIO } from '../socket';
@@ -435,10 +436,10 @@ export class NotificationEngine {
                 data: {
                     accountId: data.accountId,
                     eventType: data.eventType,
-                    channels: data.channels as object,
-                    results: data.results as object,
-                    subscriptionLookup: data.subscriptionLookup as object ?? undefined,
-                    payload: data.payload as object ?? undefined
+                    channels: data.channels as Prisma.InputJsonValue,
+                    results: data.results as Prisma.InputJsonValue,
+                    subscriptionLookup: (data.subscriptionLookup ?? undefined) as Prisma.InputJsonValue | undefined,
+                    payload: (data.payload ?? undefined) as Prisma.InputJsonValue | undefined
                 }
             });
         } catch (error) {

@@ -252,6 +252,8 @@ export class EmailService {
             return;
         }
 
+        const MAX_MESSAGES_PER_POLL = 10; // Limit to prevent long-running connections
+
         const client = new ImapFlow({
             host: account.imapHost,
             port: account.imapPort,
@@ -262,9 +264,9 @@ export class EmailService {
             },
             logger: false,
             emitLogs: false,
-            connectionTimeout: 30000, // 30 second connection timeout
-            greetingTimeout: 15000,   // 15 second greeting timeout
-            socketTimeout: 60000,     // 60 second socket timeout
+            connectionTimeout: 15000, // 15 second connection timeout (reduced)
+            greetingTimeout: 10000,   // 10 second greeting timeout (reduced)
+            socketTimeout: 30000,     // 30 second socket timeout (reduced from 60s)
             tls: {
                 rejectUnauthorized: false,
             } as any
@@ -301,12 +303,30 @@ export class EmailService {
                     bodyStructure: true,
                     source: true
                 })) {
+                    // Limit messages per poll to avoid long-running connections
+                    if (messageCount >= MAX_MESSAGES_PER_POLL) {
+                        Logger.info(`[checkEmails] Reached batch limit of ${MAX_MESSAGES_PER_POLL}, will continue in next poll`);
+                        break;
+                    }
+
                     messageCount++;
                     try {
                         const source = message.source;
                         if (!source) {
                             Logger.warn('[checkEmails] Message has no source', { uid: message.uid });
                             continue;
+                        }
+
+                        // Mark as seen IMMEDIATELY after fetch to prevent duplicate ingestion
+                        // This must happen before any processing that could fail or timeout
+                        try {
+                            await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
+                        } catch (flagError: any) {
+                            Logger.warn('[checkEmails] Failed to mark message as seen', {
+                                uid: message.uid,
+                                error: flagError?.message || String(flagError)
+                            });
+                            // Continue processing anyway - we'll get a duplicate but at least process the email
                         }
 
                         const parsed: ParsedMail = await simpleParser(source, { skipImageLinks: true });
@@ -342,9 +362,6 @@ export class EmailService {
                         }
 
                         Logger.info(`[checkEmails] Processing email`, { fromEmail, subject, hasHtml: !!html });
-
-                        // Mark as seen
-                        await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
 
                         EventBus.emit(EVENTS.EMAIL.RECEIVED, {
                             emailAccountId,

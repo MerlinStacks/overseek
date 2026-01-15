@@ -2,14 +2,28 @@
  * MessageBubble - Renders a single message in the inbox.
  * Redesigned to display emails in a traditional email reader format (like Gmail/Outlook)
  * rather than chat bubbles. Shows sender header, date, and clean body layout.
+ * 
+ * Features:
+ * - Collapsible quoted content with preview snippet
+ * - Line count indicator for hidden content
+ * - Smart attachment handling with image thumbnails
+ * - Email signature detection
  */
 import { useState, useMemo, memo } from 'react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { cn } from '../../utils/cn';
-import { Check, AlertCircle, ChevronDown, ChevronUp, FileText, Download, Image as ImageIcon, File, Reply, Eye } from 'lucide-react';
+import { Check, AlertCircle, ChevronDown, ChevronUp, FileText, Download, Image as ImageIcon, File, Reply, Eye, Paperclip } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { GravatarAvatar } from './GravatarAvatar';
+
+interface QuotedContentInfo {
+    mainContent: string;
+    quotedContent: string | null;
+    quotedPreview: string | null;
+    quotedLineCount: number;
+    quotedAttachmentCount: number;
+}
 
 interface MessageBubbleProps {
     message: {
@@ -48,28 +62,135 @@ function parseEmailContent(content: string): { subject: string | null; body: str
 }
 
 /**
- * Detects and separates quoted email content from the main message.
+ * Strips HTML tags and returns plain text for analysis.
  */
-function parseQuotedContent(body: string): { mainContent: string; quotedContent: string | null } {
+function stripHtmlForAnalysis(html: string): string {
+    return html
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/\n{3,}/g, '\n\n') // Collapse excessive newlines
+        .trim();
+}
+
+/**
+ * Extracts a preview snippet from quoted content (first meaningful line or two).
+ */
+function extractQuotedPreview(quotedContent: string): string {
+    const text = stripHtmlForAnalysis(quotedContent);
+    const lines = text.split('\n').filter(line => {
+        const trimmed = line.trim();
+        // Skip empty lines, quote markers, and metadata headers
+        if (!trimmed) return false;
+        if (trimmed.startsWith('>')) return false;
+        if (/^(On|From|Sent|To|Subject|Date):/i.test(trimmed)) return false;
+        if (/wrote:$/i.test(trimmed)) return false;
+        if (/^-{3,}/.test(trimmed) || /^_{3,}/.test(trimmed)) return false;
+        return true;
+    });
+
+    // Get first meaningful line, truncated if needed
+    const preview = lines[0] || '';
+    return preview.length > 80 ? preview.slice(0, 77) + '...' : preview;
+}
+
+/**
+ * Counts meaningful lines in quoted content.
+ */
+function countQuotedLines(quotedContent: string): number {
+    const text = stripHtmlForAnalysis(quotedContent);
+    return text.split('\n').filter(line => line.trim().length > 0).length;
+}
+
+/**
+ * Counts attachments referenced in quoted content.
+ */
+function countQuotedAttachments(quotedContent: string): number {
+    const imgMatches = quotedContent.match(/<img[^>]+>/gi) || [];
+    const attachmentMatches = quotedContent.match(/<\d+.*?\.pdf>|<\d+.*?\.docx?>|<\d+.*?\.xlsx?>/gi) || [];
+    return imgMatches.length + attachmentMatches.length;
+}
+
+/**
+ * Detects and separates quoted email content from the main message.
+ * Handles various email clients: Gmail, Outlook, Apple Mail, etc.
+ */
+function parseQuotedContent(body: string): QuotedContentInfo {
+    // First, try to find HTML-based quote markers (Gmail blockquote, etc.)
+    const htmlQuotePatterns = [
+        // Gmail-style blockquote
+        /<blockquote[^>]*class="[^"]*gmail_quote[^"]*"[^>]*>/i,
+        // Generic blockquote with cite
+        /<blockquote[^>]*type="cite"[^>]*>/i,
+        // Outlook-style divider
+        /<div[^>]*style="[^"]*border-top[^"]*"[^>]*>/i,
+        // Apple Mail quote wrapper
+        /<div[^>]*class="[^"]*AppleOriginalContents[^"]*"[^>]*>/i,
+    ];
+
+    const buildResult = (main: string, quoted: string | null): QuotedContentInfo => ({
+        mainContent: main,
+        quotedContent: quoted,
+        quotedPreview: quoted ? extractQuotedPreview(quoted) : null,
+        quotedLineCount: quoted ? countQuotedLines(quoted) : 0,
+        quotedAttachmentCount: quoted ? countQuotedAttachments(quoted) : 0,
+    });
+
+    for (const pattern of htmlQuotePatterns) {
+        const match = body.match(pattern);
+        if (match && match.index !== undefined && match.index > 50) {
+            return buildResult(
+                body.slice(0, match.index).trim(),
+                body.slice(match.index).trim()
+            );
+        }
+    }
+
+    // Strip HTML for text-based pattern matching
+    const textBody = stripHtmlForAnalysis(body);
+
+    // Patterns that typically start quoted content
     const quoteStartPatterns = [
-        /^On .+ wrote:$/m,
-        /^-{3,}\s*Original Message\s*-{3,}$/mi,
-        /^From:.+\nSent:.+\nTo:.+/m,
-        /^_{3,}$/m,
+        // iOS/Apple Mail: "On Jan 15, 2026, at 8:52 am, Name <email> wrote:"
+        /On .+,\s*(at\s+)?\d{1,2}[:.]\d{2}\s*(am|pm)?,?\s*.+\s*wrote:/im,
+        // Standard: "On Mon, Jan 15, 2026 at 8:52 AM Name <email> wrote:"
+        /On .+ wrote:$/m,
+        // Outlook style headers block
+        /From:\s*.+\n\s*Sent:\s*.+\n\s*To:/im,
+        // Outlook: "From: Name" followed by metadata
+        /^From:\s*.+<.+@.+>/m,
+        // Original Message dividers
+        /-{2,}\s*Original Message\s*-{2,}/im,
+        /-{2,}\s*Forwarded message\s*-{2,}/im,
+        // Separator lines
+        /^_{5,}$/m,
+        /^-{5,}$/m,
+        // CAUTION/Warning banners (often precede forwarded content)
+        /CAUTION:\s*This email originated from outside/i,
+        // Subject line in reply (often indicates quoted content)
+        /^Subject:\s*.+$/m,
     ];
 
     let splitIndex = -1;
+    let matchedInTextBody = false;
 
     for (const pattern of quoteStartPatterns) {
-        const match = body.match(pattern);
-        if (match && match.index !== undefined) {
+        const match = textBody.match(pattern);
+        if (match && match.index !== undefined && match.index > 20) {
             if (splitIndex === -1 || match.index < splitIndex) {
                 splitIndex = match.index;
+                matchedInTextBody = true;
             }
         }
     }
 
-    const lines = body.split('\n');
+    // Also check for consecutive ">" quoted lines
+    const lines = textBody.split('\n');
     let consecutiveQuotedLines = 0;
     let firstQuoteIndex = -1;
 
@@ -82,6 +203,7 @@ function parseQuotedContent(body: string): { mainContent: string; quotedContent:
                 const charIndex = lines.slice(0, firstQuoteIndex).join('\n').length;
                 if (splitIndex === -1 || charIndex < splitIndex) {
                     splitIndex = charIndex;
+                    matchedInTextBody = true;
                 }
             }
             consecutiveQuotedLines = 0;
@@ -90,41 +212,95 @@ function parseQuotedContent(body: string): { mainContent: string; quotedContent:
     }
 
     if (splitIndex > 0) {
-        return {
-            mainContent: body.slice(0, splitIndex).trim(),
-            quotedContent: body.slice(splitIndex).trim()
-        };
+        if (matchedInTextBody) {
+            const textBeforeQuote = textBody.slice(0, splitIndex).trim();
+            const lastWords = textBeforeQuote.split(/\s+/).slice(-5).join('\\s*');
+            if (lastWords.length > 10) {
+                const htmlSearchPattern = new RegExp(lastWords.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+                const htmlMatch = body.match(htmlSearchPattern);
+                if (htmlMatch && htmlMatch.index !== undefined) {
+                    const htmlSplitIndex = htmlMatch.index + htmlMatch[0].length;
+                    const afterMatch = body.slice(htmlSplitIndex);
+                    const nextBreak = afterMatch.match(/^[^<]*(<|$)/);
+                    const adjustedSplit = htmlSplitIndex + (nextBreak ? nextBreak[0].length - 1 : 0);
+                    return buildResult(
+                        body.slice(0, adjustedSplit).trim(),
+                        body.slice(adjustedSplit).trim()
+                    );
+                }
+            }
+        }
+
+        return buildResult(
+            body.slice(0, splitIndex).trim(),
+            body.slice(splitIndex).trim()
+        );
     }
 
-    return { mainContent: body, quotedContent: null };
+    return buildResult(body, null);
+}
+
+interface AttachmentInfo {
+    type: 'image' | 'pdf' | 'document' | 'file';
+    url: string;
+    filename: string;
+    isInline?: boolean;
 }
 
 /**
  * Extracts attachment info from message content.
+ * Handles inline images, linked files, and email attachment references.
  */
-function extractAttachments(content: string): { type: 'image' | 'pdf' | 'document' | 'file'; url: string; filename: string }[] {
-    const attachments: { type: 'image' | 'pdf' | 'document' | 'file'; url: string; filename: string }[] = [];
+function extractAttachments(content: string): AttachmentInfo[] {
+    const attachments: AttachmentInfo[] = [];
+    const seenUrls = new Set<string>();
 
+    // Extract inline images
     const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
     let match;
     while ((match = imgRegex.exec(content)) !== null) {
         const url = match[1];
-        const filename = url.split('/').pop() || 'image';
-        attachments.push({ type: 'image', url, filename });
+        if (!seenUrls.has(url)) {
+            seenUrls.add(url);
+            const filename = url.split('/').pop() || 'image';
+            attachments.push({ type: 'image', url, filename, isInline: true });
+        }
     }
 
+    // Extract linked files
     const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi;
     while ((match = linkRegex.exec(content)) !== null) {
         const url = match[1];
         const text = match[2];
+        if (seenUrls.has(url)) continue;
+
         const ext = url.split('.').pop()?.toLowerCase() || '';
 
         if (['pdf'].includes(ext)) {
+            seenUrls.add(url);
             attachments.push({ type: 'pdf', url, filename: text || url.split('/').pop() || 'document.pdf' });
         } else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) {
+            seenUrls.add(url);
             attachments.push({ type: 'document', url, filename: text || url.split('/').pop() || 'document' });
         } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+            seenUrls.add(url);
             attachments.push({ type: 'image', url, filename: text || url.split('/').pop() || 'image' });
+        }
+    }
+
+    // Extract email attachment references like "<55340 - Jules Denslow.pdf>"
+    const emailAttachmentRegex = /<([^>]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp))>/gi;
+    while ((match = emailAttachmentRegex.exec(content)) !== null) {
+        const filename = match[1].trim();
+        const ext = match[2].toLowerCase();
+
+        let type: AttachmentInfo['type'] = 'file';
+        if (ext === 'pdf') type = 'pdf';
+        else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) type = 'document';
+        else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image';
+
+        if (!attachments.some(a => a.filename === filename)) {
+            attachments.push({ type, url: '', filename });
         }
     }
 
@@ -163,8 +339,8 @@ export const MessageBubble = memo(function MessageBubble({
     const isSystem = message.senderType === 'SYSTEM';
 
     const { subject, body } = useMemo(() => parseEmailContent(message.content), [message.content]);
-    const { mainContent, quotedContent } = useMemo(() => parseQuotedContent(body), [body]);
-    const attachments = useMemo(() => extractAttachments(body), [body]);
+    const { mainContent, quotedContent, quotedPreview, quotedLineCount, quotedAttachmentCount } = useMemo(() => parseQuotedContent(body), [body]);
+    const attachments = useMemo(() => extractAttachments(mainContent), [mainContent]); // Only from main content, not quoted
     const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(mainContent), [mainContent]);
 
     const sanitizedContent = useMemo(() => {
@@ -274,23 +450,39 @@ export const MessageBubble = memo(function MessageBubble({
                         {/* Quoted content (collapsible) */}
                         {quotedContent && (
                             <div className={cn(
-                                "mt-2 pt-2 border-t",
+                                "mt-3 pt-2 border-t",
                                 isMe ? "border-blue-500/30" : "border-gray-200"
                             )}>
                                 <button
                                     onClick={() => setShowQuoted(!showQuoted)}
                                     className={cn(
-                                        "flex items-center gap-1 text-xs transition-colors",
-                                        isMe ? "text-blue-200 hover:text-white" : "text-gray-500 hover:text-gray-700"
+                                        "flex flex-col items-start gap-1 text-xs w-full text-left px-2 py-1.5 rounded transition-colors",
+                                        isMe
+                                            ? "text-blue-200 hover:text-white hover:bg-blue-500/30"
+                                            : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50"
                                     )}
                                 >
-                                    {showQuoted ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                    <span>{showQuoted ? 'Hide' : 'Show'} quoted</span>
+                                    <div className="flex items-center gap-1.5 font-medium">
+                                        {showQuoted ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        <span>{showQuoted ? 'View less' : 'View more'}</span>
+                                        <span className="text-[10px] opacity-70 font-normal">
+                                            • {quotedLineCount} lines
+                                            {quotedAttachmentCount > 0 && ` • ${quotedAttachmentCount} attachment${quotedAttachmentCount > 1 ? 's' : ''}`}
+                                        </span>
+                                    </div>
+                                    {!showQuoted && quotedPreview && (
+                                        <div className={cn(
+                                            "text-[11px] pl-5 opacity-60 italic truncate max-w-full",
+                                            isMe ? "text-blue-100" : "text-gray-600"
+                                        )}>
+                                            "{quotedPreview}"
+                                        </div>
+                                    )}
                                 </button>
                                 {showQuoted && sanitizedQuotedContent && (
                                     <div
                                         className={cn(
-                                            "mt-2 pl-3 border-l-2 text-xs italic opacity-80",
+                                            "mt-2 pl-3 border-l-2 text-xs opacity-80 max-h-96 overflow-y-auto",
                                             isMe ? "border-blue-400" : "border-gray-300"
                                         )}
                                         dangerouslySetInnerHTML={{ __html: sanitizedQuotedContent }}
@@ -302,19 +494,42 @@ export const MessageBubble = memo(function MessageBubble({
 
                     {/* Attachments (if any) */}
                     {attachments.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
+                        <div className="flex flex-wrap gap-1.5 mt-2">
                             {attachments.map((attachment, idx) => (
-                                <a
-                                    key={idx}
-                                    href={attachment.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-xs"
-                                >
-                                    <AttachmentIcon type={attachment.type} />
-                                    <span className="text-gray-700 max-w-[100px] truncate">{attachment.filename}</span>
-                                    <Download size={10} className="text-gray-400" />
-                                </a>
+                                attachment.type === 'image' && attachment.url ? (
+                                    // Image thumbnail
+                                    <button
+                                        key={idx}
+                                        onClick={() => onImageClick?.(attachment.url)}
+                                        className="relative group bg-white border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors"
+                                    >
+                                        <img
+                                            src={attachment.url}
+                                            alt={attachment.filename}
+                                            className="w-16 h-16 object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                                            <Eye size={16} className="text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                        </div>
+                                    </button>
+                                ) : (
+                                    // File attachment
+                                    <a
+                                        key={idx}
+                                        href={attachment.url || '#'}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={cn(
+                                            "inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-xs",
+                                            !attachment.url && "pointer-events-none"
+                                        )}
+                                    >
+                                        <AttachmentIcon type={attachment.type} />
+                                        <span className="text-gray-700 max-w-[120px] truncate">{attachment.filename}</span>
+                                        {attachment.url && <Download size={10} className="text-gray-400" />}
+                                        {!attachment.url && <Paperclip size={10} className="text-gray-400" />}
+                                    </a>
+                                )
                             ))}
                         </div>
                     )}

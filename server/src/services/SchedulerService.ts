@@ -41,12 +41,23 @@ export class SchedulerService {
                 if (accounts.length > 0) {
                     const { EmailService } = await import('./EmailService');
                     const emailService = new EmailService();
-                    for (const acc of accounts) {
-                        try {
+
+                    // Process ALL accounts in PARALLEL so one slow connection doesn't block others
+                    const results = await Promise.allSettled(
+                        accounts.map(async (acc) => {
                             await emailService.checkEmails(acc.id);
-                            Logger.info(`[Email Polling] Checked account: ${acc.email}`);
-                        } catch (accError) {
-                            Logger.error(`[Email Polling] Failed to check account: ${acc.email}`, { error: accError });
+                            return acc.email;
+                        })
+                    );
+
+                    // Log results
+                    for (let i = 0; i < results.length; i++) {
+                        const result = results[i];
+                        const email = accounts[i].email;
+                        if (result.status === 'fulfilled') {
+                            Logger.info(`[Email Polling] Checked account: ${email}`);
+                        } else {
+                            Logger.error(`[Email Polling] Failed to check account: ${email}`, { error: result.reason });
                         }
                     }
                 }
