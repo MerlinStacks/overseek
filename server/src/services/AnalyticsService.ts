@@ -408,13 +408,32 @@ export class AnalyticsService {
             });
         }
 
-        const totalProfit = totalRevenue - totalCost;
+        // Calculate Payment Fees from Orders
+        let totalPaymentFees = 0;
+        const paymentFeeKeys = ['_stripe_fee', '_paypal_transaction_fee', '_wcpay_transaction_fee', '_transaction_fee'];
+
+        for (const order of orders) {
+            const raw = order.rawData as any;
+            if (raw.meta_data && Array.isArray(raw.meta_data)) {
+                for (const meta of raw.meta_data) {
+                    if (paymentFeeKeys.includes(meta.key) && meta.value) {
+                        const fee = parseFloat(meta.value);
+                        if (!isNaN(fee)) {
+                            totalPaymentFees += fee;
+                        }
+                    }
+                }
+            }
+        }
+
+        const totalProfit = totalRevenue - totalCost - totalPaymentFees;
         const totalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
         return {
             summary: {
                 revenue: totalRevenue,
                 cost: totalCost,
+                paymentFees: totalPaymentFees,
                 profit: totalProfit,
                 margin: totalMargin
             },
