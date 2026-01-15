@@ -132,7 +132,8 @@ export class ProductsService {
             const { WooService } = await import('./woo');
             const wooService = await WooService.forAccount(accountId);
 
-            for (const v of variations) {
+            // Parallelize variation updates for performance
+            await Promise.all(variations.map(async (v) => {
                 // Note: ProductVariation model not in schema, skipping local upsert
                 // Only sync to WooCommerce
 
@@ -149,7 +150,7 @@ export class ProductsService {
                 } catch (err: any) {
                     Logger.error(`Failed to sync variation ${v.id} to WooCommerce`, { error: err.message });
                 }
-            }
+            }));
         }
 
         return updated;
