@@ -53,14 +53,36 @@ export function isRateLimited(accountId: string): boolean {
 }
 
 // Cleanup stale entries every 5 minutes
-setInterval(() => {
+export async function cleanupRateLimits() {
     const now = Date.now();
+    const batchSize = 1000;
+    let count = 0;
+
     for (const [accountId, timestamps] of accountRateLimits.entries()) {
+        // Yield to event loop every batchSize iterations
+        if (++count % batchSize === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+
+        // Check for concurrent modification
+        // If the entry in the map has changed (reference differs), it means
+        // it was updated by isRateLimited (which creates a new array).
+        // In that case, the entry is already "fresh" (filtered by isRateLimited)
+        // so we can skip it.
+        if (accountRateLimits.get(accountId) !== timestamps) {
+            continue;
+        }
+
         const recent = timestamps.filter(t => now - t < 60000);
+
         if (recent.length === 0) {
             accountRateLimits.delete(accountId);
-        } else {
+        } else if (recent.length < timestamps.length) {
             accountRateLimits.set(accountId, recent);
         }
     }
+}
+
+setInterval(() => {
+    cleanupRateLimits().catch(err => console.error('Rate limit cleanup failed', err));
 }, 5 * 60 * 1000);
