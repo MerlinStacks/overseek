@@ -50,13 +50,16 @@ export class ProductRankingService {
         limit: number = 10
     ): Promise<RankingResult> {
         try {
+            const account = await prisma.account.findUnique({ where: { id: accountId } });
+            const useInclusive = account?.revenueTaxInclusive ?? true;
+
             const { startDate, endDate, prevStartDate, prevEndDate } = this.resolvePeriod(period);
 
             // Get current period data from Elasticsearch
-            const currentData = await this.getProductMetrics(accountId, startDate, endDate);
+            const currentData = await this.getProductMetrics(accountId, startDate, endDate, useInclusive);
 
             // Get previous period data for trend calculation
-            const previousData = await this.getProductMetrics(accountId, prevStartDate, prevEndDate);
+            const previousData = await this.getProductMetrics(accountId, prevStartDate, prevEndDate, useInclusive);
 
             // Get product details from database
             const productIds = [...new Set([
@@ -187,9 +190,12 @@ export class ProductRankingService {
     private static async getProductMetrics(
         accountId: string,
         startDate: Date,
-        endDate: Date
+        endDate: Date,
+        useInclusive: boolean = true
     ): Promise<Array<{ productId: number; revenue: number; unitsSold: number; orderCount: number }>> {
         try {
+            const revenueField = useInclusive ? 'line_items.total' : 'line_items.net_total';
+
             const response = await esClient.search({
                 index: 'orders',
                 size: 0,
@@ -219,7 +225,7 @@ export class ProductRankingService {
                                     size: 1000
                                 },
                                 aggs: {
-                                    total_revenue: { sum: { field: 'line_items.total' } },
+                                    total_revenue: { sum: { field: revenueField } },
                                     total_quantity: { sum: { field: 'line_items.quantity' } },
                                     order_count: {
                                         reverse_nested: {},

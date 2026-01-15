@@ -76,7 +76,9 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
         <div className={`bg-white h-full w-full p-6 flex flex-col justify-between rounded-xl shadow-xs border border-gray-200 ${className}`}>
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
+                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">
+                        Total Revenue {currentAccount?.revenueTaxInclusive !== false ? '(Inclusive)' : '(Exclusive)'}
+                    </h3>
                     {loading ? (
                         <div className="flex items-center gap-2 mt-2 text-gray-400"><Loader2 className="animate-spin" size={20} /></div>
                     ) : (

@@ -14,7 +14,8 @@ export function GeneralSettings() {
         domain: '',
         wooUrl: '',
         wooConsumerKey: '',
-        wooConsumerSecret: ''
+        wooConsumerSecret: '',
+        revenueTaxInclusive: true
     });
 
     useEffect(() => {
@@ -24,13 +25,15 @@ export function GeneralSettings() {
                 domain: currentAccount.domain || '',
                 wooUrl: currentAccount.wooUrl || '',
                 wooConsumerKey: currentAccount.wooConsumerKey || '',
-                wooConsumerSecret: '' // Don't show existing secret for security, only if updating
+                wooConsumerSecret: '', // Don't show existing secret for security, only if updating
+                revenueTaxInclusive: currentAccount.revenueTaxInclusive ?? true
             });
         }
     }, [currentAccount]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        setFormData({ ...formData, [e.target.name]: value });
     };
 
     const validateForm = () => {
@@ -174,6 +177,30 @@ export function GeneralSettings() {
                                 value={formData.wooConsumerSecret}
                                 onChange={handleChange}
                             />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-6">
+                    <h3 className="text-sm font-medium text-gray-900 mb-4">Financial Settings</h3>
+                    <div className="flex items-start gap-3">
+                        <div className="flex items-center h-5">
+                            <input
+                                type="checkbox"
+                                id="revenueTaxInclusive"
+                                name="revenueTaxInclusive"
+                                checked={formData.revenueTaxInclusive}
+                                onChange={handleChange}
+                                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="revenueTaxInclusive" className="text-sm font-medium text-gray-700">
+                                Revenue includes tax
+                            </label>
+                            <p className="text-xs text-gray-500 mt-1">
+                                If enabled, revenue metrics in dashboards and reports will include tax. If disabled, tax will be deducted.
+                            </p>
                         </div>
                     </div>
                 </div>

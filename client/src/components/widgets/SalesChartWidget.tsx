@@ -150,7 +150,9 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
     return (
         <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-xs border border-gray-200 overflow-hidden min-h-[300px] ${className}`} style={{ minHeight: '300px' }}>
             <div className="flex justify-between items-center mb-2">
-                <h3 className="font-semibold text-gray-900">Sales Trend</h3>
+                <h3 className="font-semibold text-gray-900">
+                    Sales Trend {currentAccount?.revenueTaxInclusive !== false ? '(Tax Inclusive)' : '(Tax Exclusive)'}
+                </h3>
                 <BarChart3 size={18} className="text-gray-400" />
             </div>
 

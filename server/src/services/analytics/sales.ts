@@ -1,4 +1,5 @@
 import { esClient } from '../../utils/elastic';
+import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { SalesForecastService } from './SalesForecast';
 import { CustomReportService, CustomReportConfig } from './CustomReport';
@@ -17,6 +18,10 @@ export class SalesAnalytics {
      */
     static async getTotalSales(accountId: string, startDate?: string, endDate?: string) {
         try {
+            const account = await prisma.account.findUnique({ where: { id: accountId } });
+            const useInclusive = account?.revenueTaxInclusive ?? true;
+            const revenueField = useInclusive ? 'total' : 'net_sales';
+
             const must: any[] = [
                 { term: { accountId } },
                 { terms: { 'status': REVENUE_STATUSES } }
@@ -43,7 +48,7 @@ export class SalesAnalytics {
                 size: 0,
                 query: { bool: { must } },
                 aggs: {
-                    total_sales: { sum: { field: 'total' } },
+                    total_sales: { sum: { field: revenueField } },
                     order_count: { value_count: { field: 'id' } }
                 }
             });
@@ -80,6 +85,10 @@ export class SalesAnalytics {
      * Get Sales Over Time (Date Histogram)
      */
     static async getSalesOverTime(accountId: string, startDate?: string, endDate?: string, interval: 'day' | 'week' | 'month' = 'day', timezone: string = 'UTC') {
+        const account = await prisma.account.findUnique({ where: { id: accountId } });
+        const useInclusive = account?.revenueTaxInclusive ?? true;
+        const revenueField = useInclusive ? 'total' : 'net_sales';
+
         const must: any[] = [
             { term: { accountId } },
             { terms: { 'status': REVENUE_STATUSES } }
@@ -115,7 +124,7 @@ export class SalesAnalytics {
                             time_zone: timezone
                         },
                         aggs: {
-                            total_sales: { sum: { field: 'total' } },
+                            total_sales: { sum: { field: revenueField } },
                             order_count: { value_count: { field: 'id' } }
                         }
                     }

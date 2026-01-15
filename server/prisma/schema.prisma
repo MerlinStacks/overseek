@@ -78,6 +78,9 @@ model Account {
   weightUnit    String @default("kg")
   dimensionUnit String @default("cm")
 
+  // Financial Settings
+  revenueTaxInclusive Boolean @default(true)
+
   // Gold Price Settings
   goldPrice         Decimal? @default(0) @db.Decimal(10, 2)
   goldPriceCurrency String?  @default("USD")

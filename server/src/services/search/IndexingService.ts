@@ -87,6 +87,8 @@ export class IndexingService {
                 id: { type: 'integer' },
                 status: { type: 'keyword' },
                 total: { type: 'float' },
+                total_tax: { type: 'float' },
+                net_sales: { type: 'float' },
                 currency: { type: 'keyword' },
                 date_created: { type: 'date' },
                 tags: { type: 'keyword' },
@@ -98,6 +100,9 @@ export class IndexingService {
                         sku: { type: 'keyword' },
                         productId: { type: 'integer' },
                         quantity: { type: 'integer' },
+                        total: { type: 'float' },
+                        total_tax: { type: 'float' },
+                        net_total: { type: 'float' },
                         meta_data: {
                             type: 'nested',
                             properties: { key: { type: 'keyword' }, value: { type: 'text' } }
@@ -275,6 +280,8 @@ export class IndexingService {
                 id: order.id,
                 status: order.status.toLowerCase(),
                 total: parseFloat(order.total),
+                total_tax: parseFloat(order.total_tax || '0'),
+                net_sales: parseFloat(order.total) - parseFloat(order.total_tax || '0'),
                 currency: order.currency,
                 date_created: IndexingService.formatDateToUTC(order.date_created_gmt || order.date_created),
                 tags: tags || [],
@@ -284,6 +291,9 @@ export class IndexingService {
                     sku: item.sku,
                     productId: item.product_id,
                     quantity: item.quantity,
+                    total: parseFloat(item.total || '0') + parseFloat(item.total_tax || '0'),
+                    total_tax: parseFloat(item.total_tax || '0'),
+                    net_total: parseFloat(item.total || '0'),
                     meta_data: item.meta_data?.map((m: any) => ({
                         key: m.key,
                         value: typeof m.value === 'string' ? m.value : JSON.stringify(m.value)
