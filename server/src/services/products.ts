@@ -119,6 +119,7 @@ export class ProductsService {
                 width: productData.width ? parseFloat(productData.width) : undefined,
                 height: productData.height ? parseFloat(productData.height) : undefined,
                 isGoldPriceApplied: productData.isGoldPriceApplied,
+                goldPriceType: productData.goldPriceType,
                 cogs: productData.cogs ? parseFloat(productData.cogs) : undefined,
                 supplierId: productData.supplierId || null,
                 images: productData.images || undefined,

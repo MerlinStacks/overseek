@@ -18,6 +18,11 @@ export interface Account {
     };
     goldPrice?: number;
     goldPriceCurrency?: string;
+    goldPrice18ct?: number;
+    goldPrice9ct?: number;
+    goldPrice18ctWhite?: number;
+    goldPrice9ctWhite?: number;
+    goldPriceMargin?: number;
     features?: { featureKey: string; isEnabled: boolean }[];
     weightUnit?: string;
     dimensionUnit?: string;

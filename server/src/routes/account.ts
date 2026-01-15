@@ -75,7 +75,12 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.put<{ Params: { accountId: string } }>('/:accountId', async (request, reply) => {
         try {
             const { accountId } = request.params;
-            const { name, domain, wooUrl, wooConsumerKey, wooConsumerSecret, webhookSecret, openRouterApiKey, aiModel, appearance, goldPrice, refreshGoldPrice } = request.body as any;
+            const {
+                name, domain, wooUrl, wooConsumerKey, wooConsumerSecret, webhookSecret,
+                openRouterApiKey, aiModel, appearance,
+                goldPrice, refreshGoldPrice,
+                goldPrice18ct, goldPrice9ct, goldPrice18ctWhite, goldPrice9ctWhite, goldPriceMargin
+            } = request.body as any;
             const userId = request.user!.id;
 
             const membership = await prisma.accountUser.findUnique({ where: { userId_accountId: { userId, accountId } } });
@@ -88,8 +93,24 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             if (webhookSecret !== undefined) data.webhookSecret = webhookSecret?.trim() || null;
 
             if (refreshGoldPrice) {
-                await GoldPriceService.updateAccountPrice(accountId);
+                await GoldPriceService.updateAccountPrices(accountId);
                 return await prisma.account.findUnique({ where: { id: accountId } });
+            }
+
+            // Check if any of the new gold price fields are being updated
+            if (goldPrice18ct !== undefined || goldPrice9ct !== undefined || goldPrice18ctWhite !== undefined || goldPrice9ctWhite !== undefined || goldPriceMargin !== undefined) {
+                 await GoldPriceService.updateAccountPrices(accountId, {
+                    goldPrice18ct: goldPrice18ct ? parseFloat(goldPrice18ct) : undefined,
+                    goldPrice9ct: goldPrice9ct ? parseFloat(goldPrice9ct) : undefined,
+                    goldPrice18ctWhite: goldPrice18ctWhite ? parseFloat(goldPrice18ctWhite) : undefined,
+                    goldPrice9ctWhite: goldPrice9ctWhite ? parseFloat(goldPrice9ctWhite) : undefined,
+                    goldPriceMargin: goldPriceMargin ? parseFloat(goldPriceMargin) : undefined
+                 });
+                 // If base goldPrice is also provided (legacy or base update), update it too
+                 if (goldPrice !== undefined) {
+                     await GoldPriceService.updateAccountPrice(accountId, parseFloat(goldPrice));
+                 }
+                 return await prisma.account.findUnique({ where: { id: accountId } });
             } else if (goldPrice !== undefined) {
                 await GoldPriceService.updateAccountPrice(accountId, parseFloat(goldPrice));
                 return await prisma.account.findUnique({ where: { id: accountId } });

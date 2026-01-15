@@ -79,31 +79,73 @@ export class GoldPriceService {
      * Updates the account's gold price manually or via API
      */
     static async updateAccountPrice(accountId: string, manualPrice?: number): Promise<void> {
-        let price = manualPrice;
-        let accountCurrency: string | undefined;
+        // Redirect legacy call to new method (assuming manualPrice is meant for base or we ignore it?
+        // Actually, let's keep it for backward compat but also trigger the new update logic if manualPrice is NOT provided (refresh))
 
-        if (price === undefined) {
-            // Fetch from API
-            const account = await prisma.account.findUnique({
+        if (manualPrice === undefined) {
+            return this.updateAccountPrices(accountId);
+        } else {
+            // Legacy update for single price field
+            await prisma.account.update({
                 where: { id: accountId },
-                select: { currency: true }
+                data: { goldPrice: manualPrice }
             });
-
-            if (account) {
-                accountCurrency = account.currency;
-                const livePrice = await this.fetchLivePrice(account.currency);
-                if (livePrice !== null) {
-                    price = livePrice;
-                }
-            }
         }
+    }
 
-        if (price !== undefined && price !== null) {
+    /**
+     * Updates the expanded set of gold prices (18ct, 9ct, etc)
+     * If manualData is provided, it saves those values.
+     * If not, it fetches live 24ct price and calculates them based on margin.
+     */
+    static async updateAccountPrices(accountId: string, manualData?: {
+        goldPrice18ct?: number;
+        goldPrice9ct?: number;
+        goldPrice18ctWhite?: number;
+        goldPrice9ctWhite?: number;
+        goldPriceMargin?: number;
+    }): Promise<void> {
+        if (manualData) {
             await prisma.account.update({
                 where: { id: accountId },
                 data: {
-                    goldPrice: price,
-                    goldPriceCurrency: accountCurrency || 'USD' // Ideally usually matches account.currency
+                    goldPrice18ct: manualData.goldPrice18ct,
+                    goldPrice9ct: manualData.goldPrice9ct,
+                    goldPrice18ctWhite: manualData.goldPrice18ctWhite,
+                    goldPrice9ctWhite: manualData.goldPrice9ctWhite,
+                    goldPriceMargin: manualData.goldPriceMargin
+                }
+            });
+            return;
+        }
+
+        // Fetch live price and calculate
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { currency: true, goldPriceMargin: true }
+        });
+
+        if (!account) return;
+
+        const livePricePerGram24ct = await this.fetchLivePrice(account.currency);
+        if (livePricePerGram24ct !== null) {
+            const margin = Number(account.goldPriceMargin) || 10; // Default 10%
+            const marginMultiplier = 1 + (margin / 100);
+
+            // 18ct = 75% gold
+            const price18ct = livePricePerGram24ct * 0.75 * marginMultiplier;
+            // 9ct = 37.5% gold
+            const price9ct = livePricePerGram24ct * 0.375 * marginMultiplier;
+
+            await prisma.account.update({
+                where: { id: accountId },
+                data: {
+                    goldPrice: livePricePerGram24ct, // Update base price too
+                    goldPriceCurrency: account.currency,
+                    goldPrice18ct: price18ct,
+                    goldPrice9ct: price9ct,
+                    goldPrice18ctWhite: price18ct, // White gold same price base
+                    goldPrice9ctWhite: price9ct
                 }
             });
         }

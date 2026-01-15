@@ -31,6 +31,7 @@ const updateProductBodySchema = z.object({
     name: z.string().optional(),
     stockStatus: z.string().optional(),
     isGoldPriceApplied: z.boolean().optional(),
+    goldPriceType: z.string().nullable().optional(),
     sku: z.string().optional(),
     price: z.union([z.string(), z.number()]).transform(val => String(val)).optional(),
     salePrice: z.union([z.string(), z.number()]).transform(val => String(val)).optional(),
@@ -198,10 +199,10 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
-            const { binLocation, name, stockStatus, isGoldPriceApplied, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword, variations } = updateProductBodySchema.parse(request.body);
+            const { binLocation, name, stockStatus, isGoldPriceApplied, goldPriceType, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword, variations } = updateProductBodySchema.parse(request.body);
 
             let product = await ProductsService.updateProduct(accountId, wooId, {
-                binLocation, name, stockStatus, isGoldPriceApplied,
+                binLocation, name, stockStatus, isGoldPriceApplied, goldPriceType,
                 sku, price, salePrice, weight, length, width, height, description, short_description,
                 cogs, supplierId, images, variations
             });
