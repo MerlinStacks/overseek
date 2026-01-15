@@ -13,6 +13,15 @@ const MOCK_ORDERS: MockOrder[] = [];
 const MOCK_CUSTOMERS: MockCustomer[] = [];
 const MOCK_REVIEWS: MockReview[] = [];
 
+export interface WooProductData {
+    name: string;
+    type?: 'simple' | 'variable' | 'grouped' | 'external';
+    regular_price?: string;
+    description?: string;
+    short_description?: string;
+    images?: { src: string }[];
+}
+
 interface WooCredentials {
     url: string;
     consumerKey: string;
@@ -160,6 +169,30 @@ export class WooService {
             Logger.warn(`Failed to fetch variations for product ${productId}`, { error });
             return [];
         }
+    }
+
+    async createProduct(data: WooProductData, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug(`[Demo] Created Product`, { data });
+            const newProduct: MockProduct = { id: Math.floor(Math.random() * 1000), name: data.name || 'New Product', price: data.regular_price || '0' };
+            MOCK_PRODUCTS.push(newProduct);
+            return newProduct;
+        }
+        const response = await this.api.post('products', data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(
+                this.accountId,
+                userId || null,
+                'CREATE',
+                'PRODUCT',
+                response.data.id.toString(),
+                data
+            );
+        }
+
+        return response.data;
     }
 
     async updateProduct(id: number, data: any, userId?: string) {
