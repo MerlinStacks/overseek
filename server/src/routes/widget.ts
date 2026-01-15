@@ -121,17 +121,17 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
     const rgb = hexToRgb(PRIMARY_COLOR);
     const darkerColor = 'rgb(' + Math.max(0, rgb.r - 30) + ',' + Math.max(0, rgb.g - 30) + ',' + Math.max(0, rgb.b - 30) + ')';
 
-    const styles = \`
+    const styles = '
         /* === 2026 Chat Widget with Enhanced Features === */
         #os-chat-widget {
-            --os-primary: \${PRIMARY_COLOR};
-            --os-primary-dark: \${darkerColor};
-            --os-bg: \${prefersDark ? '#1e1e2e' : '#ffffff'};
-            --os-bg-subtle: \${prefersDark ? '#2a2a3e' : '#f8fafc'};
-            --os-text: \${prefersDark ? '#e2e8f0' : '#1e293b'};
-            --os-text-muted: \${prefersDark ? '#94a3b8' : '#64748b'};
-            --os-border: \${prefersDark ? '#3f3f5a' : '#e2e8f0'};
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --os-primary: ' + PRIMARY_COLOR + ';
+            --os-primary-dark: ' + darkerColor + ';
+            --os-bg: ' + (prefersDark ? '#1e1e2e' : '#ffffff') + ';
+            --os-bg-subtle: ' + (prefersDark ? '#2a2a3e' : '#f8fafc') + ';
+            --os-text: ' + (prefersDark ? '#e2e8f0' : '#1e293b') + ';
+            --os-text-muted: ' + (prefersDark ? '#94a3b8' : '#64748b') + ';
+            --os-border: ' + (prefersDark ? '#3f3f5a' : '#e2e8f0') + ';
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             position: fixed; bottom: 20px;
             right: ${rightPos}; left: ${leftPos};
             z-index: 999999;
@@ -320,7 +320,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
             display: flex; align-items: center; justify-content: center;
             color: var(--os-text-muted); font-size: 14px;
         }
-    \`;
+    ';
 
     const styleSheet = document.createElement("style");
     styleSheet.innerText = styles;
@@ -328,10 +328,10 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
 
     const container = document.createElement('div');
     container.id = 'os-chat-widget';
-    container.innerHTML = \`
+    container.innerHTML = '
         <div id="os-chat-window">
             <div class="os-header">
-                <span class="os-header-title">\${HEADER_TEXT}</span>
+                <span class="os-header-title">' + HEADER_TEXT + '</span>
                 <span class="os-close" id="os-close">&times;</span>
             </div>
             <div class="os-prechat" id="os-prechat">
@@ -366,7 +366,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
                         <input type="file" id="os-file-input" accept="image/*,.pdf,.doc,.docx" style="display:none" />
                     </div>
                     <div class="os-emoji-picker" id="os-emoji-picker">
-                        \${EMOJIS.map(e => '<button type="button">' + e + '</button>').join('')}
+                        ' + EMOJIS.map(function(e) { return "<button type=button>" + e + "</button>"; }).join("") + '
                     </div>
                     <input type="text" id="os-input" placeholder="Type a message..." autocomplete="off" />
                     <button id="os-send" aria-label="Send">
@@ -383,7 +383,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"></path>
             </svg>
         </div>
-    \`;
+    ';
     document.body.appendChild(container);
 
     // Elements
@@ -661,6 +661,38 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
             Logger.error('Widget script error', { error: e });
             reply.header('Content-Type', 'application/javascript');
             return '';
+        }
+    });
+
+    /**
+     * Chat Configuration Endpoint
+     * GET /api/chat/config/:accountId
+     * Used by WooCommerce plugin for server-side business hours checking
+     */
+    fastify.get('/config/:accountId', async (request, reply) => {
+        const { accountId } = request.params as { accountId: string };
+
+        if (!accountId) {
+            return reply.status(400).send({ error: 'Missing accountId' });
+        }
+
+        try {
+            const feature = await prisma.accountFeature.findUnique({
+                where: { accountId_featureKey: { accountId, featureKey: 'CHAT_SETTINGS' } }
+            });
+
+            const config = feature?.config as Record<string, unknown> || {};
+
+            // Return only the fields needed for server-side checks
+            return {
+                businessHours: config.businessHours || { enabled: false },
+                businessTimezone: config.businessTimezone || 'Australia/Sydney',
+                position: config.position || 'bottom-right',
+                showOnMobile: config.showOnMobile !== false,
+            };
+        } catch (e) {
+            Logger.error('Chat config error', { error: e, accountId });
+            return reply.status(500).send({ error: 'Failed to fetch config' });
         }
     });
 };

@@ -20,6 +20,8 @@ export interface FeedbackContext {
         feedback: string | null;
         count: number;
     }[];
+    /** IDs of all dismissed recommendations - never show these again */
+    dismissedIds: Set<string>;
     /** Total feedback entries analyzed */
     totalFeedbackEntries: number;
 }
@@ -33,22 +35,20 @@ export async function getFeedbackContext(accountId: string): Promise<FeedbackCon
         avoidList: [],
         preferences: [],
         dismissalPatterns: [],
+        dismissedIds: new Set<string>(),
         totalFeedbackEntries: 0
     };
 
     try {
-        // Get recent dismissed recommendations with feedback
-        const recentFeedback = await prisma.recommendationLog.findMany({
+        // Get ALL dismissed recommendations (not just those with feedback)
+        // This ensures we never show the same recommendation again
+        const allDismissed = await prisma.recommendationLog.findMany({
             where: {
                 accountId,
-                status: 'dismissed',
-                OR: [
-                    { userFeedback: { not: null } },
-                    { dismissReason: { not: null } }
-                ]
+                status: 'dismissed'
             },
             orderBy: { dismissedAt: 'desc' },
-            take: 50,
+            take: 200, // Keep track of last 200 dismissals
             select: {
                 recommendationId: true,
                 text: true,
@@ -58,6 +58,18 @@ export async function getFeedbackContext(accountId: string): Promise<FeedbackCon
                 tags: true
             }
         });
+
+        // Add all dismissed IDs to the set
+        for (const entry of allDismissed) {
+            if (entry.recommendationId) {
+                context.dismissedIds.add(entry.recommendationId);
+            }
+        }
+
+        // Filter to those with feedback for pattern analysis
+        const recentFeedback = allDismissed.filter(
+            e => e.userFeedback || e.dismissReason
+        );
 
         context.totalFeedbackEntries = recentFeedback.length;
 
@@ -120,6 +132,7 @@ export async function getFeedbackContext(accountId: string): Promise<FeedbackCon
 
         Logger.debug('Loaded feedback context', {
             accountId,
+            dismissedCount: context.dismissedIds.size,
             totalEntries: context.totalFeedbackEntries,
             avoidListSize: context.avoidList.length,
             preferencesCount: context.preferences.length,
@@ -138,12 +151,18 @@ export async function getFeedbackContext(accountId: string): Promise<FeedbackCon
  * Returns true if the recommendation should be skipped.
  */
 export function shouldFilterRecommendation(
-    recommendation: { headline: string; category: string; tags?: string[] },
+    recommendation: { id: string; headline: string; category: string; tags?: string[] },
     feedbackContext: FeedbackContext
 ): boolean {
+    // FIRST: Check if this exact recommendation was previously dismissed
+    // This is the primary filter - dismissed recommendations never reappear
+    if (feedbackContext.dismissedIds.has(recommendation.id)) {
+        return true;
+    }
+
     const headlineLower = recommendation.headline.toLowerCase();
 
-    // Check against avoid list
+    // Check against avoid list (user said "don't suggest X")
     for (const avoidItem of feedbackContext.avoidList) {
         if (headlineLower.includes(avoidItem)) {
             return true;

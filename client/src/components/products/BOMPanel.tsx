@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { Plus, Trash2, Calendar, DollarSign, Loader2, GitBranch } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -17,9 +17,17 @@ interface BOMPanelProps {
     productId: string; // Internal UUID
     variants?: any[]; // Passed from parent
     fixedVariationId?: number; // If set, locks to this ID
+    onSaveComplete?: () => void; // Optional callback after save completes
 }
 
-export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPanelProps) {
+/**
+ * Exposes a save() method via ref so parent can trigger BOM save.
+ */
+export interface BOMPanelRef {
+    save: () => Promise<boolean>;
+}
+
+export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [bomItems, setBomItems] = useState<BOMItem[]>([]);
@@ -28,6 +36,7 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
 
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
+
 
     // 0 = Main Product, otherwise Variant ID
     // If fixedVariationId is defined, use it, else default to 0
@@ -104,7 +113,10 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
         }
     };
 
-    const handleSave = async () => {
+    /**
+     * Saves the BOM configuration. Returns true on success, false on failure.
+     */
+    const handleSave = async (): Promise<boolean> => {
         setSaving(true);
         try {
             const payload = {
@@ -128,18 +140,24 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
             });
 
             if (res.ok) {
-                // Success feedback?
                 fetchBOM(); // Refresh
+                onSaveComplete?.();
+                return true;
             } else {
-                alert('Failed to save BOM configuration.');
+                return false;
             }
         } catch (err) {
             console.error(err);
-            alert('Error saving BOM.');
+            return false;
         } finally {
             setSaving(false);
         }
     };
+
+    // Expose save method to parent via ref - placed after handleSave definition
+    useImperativeHandle(ref, () => ({
+        save: handleSave
+    }), [bomItems, selectedScope, productId, token, currentAccount, handleSave]);
 
     const handleAddProduct = (product: any) => {
         // Check if already exists
@@ -327,4 +345,4 @@ export function BOMPanel({ productId, variants = [], fixedVariationId }: BOMPane
         </div>
     );
 }
-
+);

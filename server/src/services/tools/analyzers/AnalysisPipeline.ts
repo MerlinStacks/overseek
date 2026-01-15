@@ -132,6 +132,8 @@ export class AnalysisPipeline {
             accountId,
             before: sortedActions.length,
             after: filteredActions.length,
+            filteredOut: sortedActions.length - filteredActions.length,
+            dismissedIdsCount: feedbackContext.dismissedIds.size,
             feedbackEntries: feedbackContext.totalFeedbackEntries,
             contextKeywords: contextKeywords.length
         });

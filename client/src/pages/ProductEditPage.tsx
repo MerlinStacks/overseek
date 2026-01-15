@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -11,7 +11,7 @@ import { GeneralInfoPanel } from '../components/products/GeneralInfoPanel';
 import { LogisticsPanel } from '../components/products/LogisticsPanel';
 import { VariationsPanel } from '../components/products/VariationsPanel';
 import { PricingPanel } from '../components/products/PricingPanel';
-import { BOMPanel } from '../components/products/BOMPanel';
+import { BOMPanel, BOMPanelRef } from '../components/products/BOMPanel';
 import { WooCommerceInfoPanel } from '../components/products/WooCommerceInfoPanel';
 import { GoldPricePanel } from '../components/products/GoldPricePanel';
 import { Tabs } from '../components/ui/Tabs';
@@ -97,6 +97,9 @@ export function ProductEditPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [product, setProduct] = useState<ProductData | null>(null);
+
+    // Ref to BOMPanel for triggering save from parent
+    const bomPanelRef = useRef<BOMPanelRef>(null);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -220,6 +223,7 @@ export function ProductEditPage() {
         if (!currentAccount || !id || !token) return;
         setIsSaving(true);
         try {
+            // Save product data
             await ProductService.updateProduct(id, {
                 name: formData.name,
                 sku: formData.sku,
@@ -233,12 +237,19 @@ export function ProductEditPage() {
                 price: formData.price,
                 salePrice: formData.salePrice,
                 description: formData.description,
+                short_description: formData.short_description,
                 cogs: formData.cogs,
                 supplierId: formData.supplierId,
                 images: formData.images,
                 variations: variants, // Include variations in save
                 focusKeyword: formData.focusKeyword
             }, token, currentAccount.id);
+
+            // Also save BOM if the panel is mounted
+            const bomSaveResult = await bomPanelRef.current?.save();
+            if (bomSaveResult === false) {
+                alert('Product saved, but BOM configuration failed to save.');
+            }
 
             fetchProduct(); // Reload
         } catch (error) {
@@ -372,7 +383,7 @@ export function ProductEditPage() {
                     {/* BOM for Simple Products */}
                     {product.type !== 'variable' && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                            <BOMPanel productId={product.id} variants={[]} fixedVariationId={0} />
+                            <BOMPanel ref={bomPanelRef} productId={product.id} variants={[]} fixedVariationId={0} />
                         </div>
                     )}
                 </div>

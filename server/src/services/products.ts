@@ -59,6 +59,7 @@ export class ProductsService {
             variationIds: raw?.variations || [], // Keep IDs for reference
             description: raw?.description || '',
             short_description: raw?.short_description || '',
+            salePrice: raw?.sale_price || '',
             // Fallback for when images column is empty (legacy sync)
             images: (Array.isArray(product.images) && product.images.length > 0) ? product.images : (raw?.images || []),
             // WooCommerce inventory & taxonomy fields
@@ -77,6 +78,31 @@ export class ProductsService {
     static async updateProduct(accountId: string, wooId: number, data: any) {
         const { variations, ...productData } = data;
 
+        // Fetch existing product to get current rawData
+        const existing = await prisma.wooProduct.findUnique({
+            where: { accountId_wooId: { accountId, wooId } }
+        });
+
+        if (!existing) {
+            throw new Error(`Product with wooId ${wooId} not found`);
+        }
+
+        // Merge description into rawData (description is stored in rawData, not a separate column)
+        const existingRawData = (existing.rawData as any) || {};
+        const updatedRawData = {
+            ...existingRawData,
+            description: productData.description !== undefined ? productData.description : existingRawData.description,
+            short_description: productData.short_description !== undefined ? productData.short_description : existingRawData.short_description,
+            sale_price: productData.salePrice !== undefined ? productData.salePrice : existingRawData.sale_price
+        };
+
+        // Merge focusKeyword into seoData
+        const existingSeoData = (existing.seoData as any) || {};
+        const updatedSeoData = {
+            ...existingSeoData,
+            focusKeyword: productData.focusKeyword !== undefined ? productData.focusKeyword : existingSeoData.focusKeyword
+        };
+
         // 1. Update Parent Product
         const updated = await prisma.wooProduct.update({
             where: { accountId_wooId: { accountId, wooId } },
@@ -93,7 +119,9 @@ export class ProductsService {
                 isGoldPriceApplied: productData.isGoldPriceApplied,
                 cogs: productData.cogs ? parseFloat(productData.cogs) : undefined,
                 supplierId: productData.supplierId || null,
-                images: productData.images || undefined
+                images: productData.images || undefined,
+                rawData: updatedRawData,
+                seoData: updatedSeoData
             }
         });
 

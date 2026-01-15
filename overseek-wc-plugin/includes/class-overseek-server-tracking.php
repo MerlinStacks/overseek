@@ -1,4 +1,15 @@
 <?php
+/**
+ * Server-Side Analytics Tracking
+ *
+ * 100% server-side tracking via WooCommerce/WordPress hooks.
+ * Unblockable by ad blockers since it runs entirely on the server.
+ *
+ * @package OverSeek
+ * @since   1.0.0
+ */
+
+declare(strict_types=1);
 
 if (!defined('ABSPATH')) {
     exit;
@@ -7,9 +18,10 @@ if (!defined('ABSPATH')) {
 /**
  * Class OverSeek_Server_Tracking
  *
- * Handles 100% server-side tracking via WooCommerce/WordPress hooks.
- * This is UNBLOCKABLE by ad blockers since it runs entirely on the server.
- * NO JAVASCRIPT REQUIRED.
+ * Handles server-side analytics tracking for WooCommerce events.
+ * NO JAVASCRIPT REQUIRED - completely ad-blocker proof.
+ *
+ * @since 1.0.0
  */
 class OverSeek_Server_Tracking
 {

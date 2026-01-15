@@ -7,6 +7,7 @@ import {
     Loader2, Package, RefreshCw, ChevronDown, ChevronUp,
     ArrowUpRight, Info
 } from 'lucide-react';
+import { ForecastChart } from '../components/ForecastChart';
 
 // Types matching backend
 type StockoutRisk = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -62,6 +63,17 @@ export function InventoryForecastPage() {
 
     // Filter
     const [riskFilter, setRiskFilter] = useState<StockoutRisk | 'ALL'>('ALL');
+
+    // Revenue forecast date range (last 30 days)
+    const [dateRange] = useState(() => {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 30);
+        return {
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0]
+        };
+    });
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -288,6 +300,17 @@ export function InventoryForecastPage() {
                 />
             </div>
 
+            {/* Revenue Forecast Section */}
+            <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-gray-800">Revenue Forecast</h2>
+                <ForecastChart dateRange={dateRange} />
+            </div>
+
+            {/* Inventory Forecast Section Header */}
+            <div className="pt-2">
+                <h2 className="text-lg font-semibold text-gray-800">Inventory Forecast</h2>
+            </div>
+
             {/* Filter Bar */}
             <div className="flex items-center gap-4">
                 <span className="text-sm text-gray-600">Filter by risk:</span>
@@ -297,8 +320,8 @@ export function InventoryForecastPage() {
                             key={risk}
                             onClick={() => setRiskFilter(risk)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${riskFilter === risk
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                                 }`}
                         >
                             {risk}
@@ -375,8 +398,8 @@ export function InventoryForecastPage() {
                                     {/* Current Stock */}
                                     <td className="px-4 py-3">
                                         <span className={`font-bold ${forecast.currentStock === 0 ? 'text-red-600' :
-                                                forecast.currentStock <= forecast.reorderPoint ? 'text-orange-600' :
-                                                    'text-gray-900'
+                                            forecast.currentStock <= forecast.reorderPoint ? 'text-orange-600' :
+                                                'text-gray-900'
                                             }`}>
                                             {forecast.currentStock}
                                         </span>
@@ -390,9 +413,9 @@ export function InventoryForecastPage() {
                                     {/* Days Until Stockout */}
                                     <td className="px-4 py-3">
                                         <span className={`font-bold ${forecast.daysUntilStockout <= 7 ? 'text-red-600' :
-                                                forecast.daysUntilStockout <= 14 ? 'text-orange-600' :
-                                                    forecast.daysUntilStockout <= 30 ? 'text-yellow-600' :
-                                                        'text-green-600'
+                                            forecast.daysUntilStockout <= 14 ? 'text-orange-600' :
+                                                forecast.daysUntilStockout <= 30 ? 'text-yellow-600' :
+                                                    'text-green-600'
                                             }`}>
                                             {forecast.daysUntilStockout >= 999 ? '∞' : `${forecast.daysUntilStockout}d`}
                                         </span>
@@ -416,8 +439,8 @@ export function InventoryForecastPage() {
                                             <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
                                                 <div
                                                     className={`h-full rounded-full ${forecast.confidence >= 70 ? 'bg-green-500' :
-                                                            forecast.confidence >= 50 ? 'bg-yellow-500' :
-                                                                'bg-red-500'
+                                                        forecast.confidence >= 50 ? 'bg-yellow-500' :
+                                                            'bg-red-500'
                                                         }`}
                                                     style={{ width: `${forecast.confidence}%` }}
                                                 />
