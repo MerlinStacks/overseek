@@ -12,6 +12,9 @@ const mockPrisma = vi.hoisted(() => ({
         deleteMany: vi.fn(),
         update: vi.fn(),
     },
+    account: {
+        findUnique: vi.fn(),
+    },
     $transaction: vi.fn(),
 }));
 

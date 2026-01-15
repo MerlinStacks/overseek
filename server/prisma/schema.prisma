@@ -493,6 +493,7 @@ model WooProduct {
 
   // COGS & Supplier
   cogs       Decimal?  @db.Decimal(10, 2)
+  miscCosts  Json?     @default("[]") // Array of { amount, note }
   supplierId String?
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
@@ -533,6 +534,7 @@ model ProductVariation {
   
   // Custom Fields
   cogs        Decimal? @db.Decimal(10, 2)
+  miscCosts   Json?    @default("[]") // Array of { amount, note }
   binLocation String?
   
   images      Json? @default("[]") // Local overrides or cached images

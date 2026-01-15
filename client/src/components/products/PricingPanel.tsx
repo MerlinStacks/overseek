@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { DollarSign } from 'lucide-react';
+import { MiscCostsEditor, MiscCost } from './MiscCostsEditor';
 
 interface PricingPanelProps {
     formData: any;
@@ -14,7 +15,7 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                 Pricing
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Regular Price</label>
                     <div className="relative">
@@ -59,13 +60,23 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                 </div>
             </div>
 
+            <div className="mb-6">
+                <MiscCostsEditor
+                    value={formData.miscCosts || []}
+                    onChange={(costs) => onChange && onChange({ miscCosts: costs })}
+                />
+            </div>
+
             {/* Profit Margin Calculator */}
             {(() => {
                 const sellingPrice = parseFloat(formData.salePrice) || parseFloat(formData.price) || 0;
                 const cogs = parseFloat(formData.cogs) || 0;
-                const profitDollar = sellingPrice - cogs;
+                const miscTotal = (formData.miscCosts || []).reduce((sum: number, item: MiscCost) => sum + (Number(item.amount) || 0), 0);
+                const totalCost = cogs + miscTotal;
+
+                const profitDollar = sellingPrice - totalCost;
                 const profitPercent = sellingPrice > 0 ? ((profitDollar / sellingPrice) * 100) : 0;
-                const hasCogs = formData.cogs && parseFloat(formData.cogs) > 0;
+                const hasCogs = (formData.cogs && parseFloat(formData.cogs) > 0) || miscTotal > 0;
                 const hasPrice = sellingPrice > 0;
 
                 if (!hasPrice && !hasCogs) return null;

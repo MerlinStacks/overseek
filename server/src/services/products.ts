@@ -28,9 +28,15 @@ export class ProductsService {
         // Check if we have full variation data from sync
         const variationsData: any[] = raw?.variationsData || [];
 
+        // Fetch local variation overrides (COGS, binLocation, miscCosts)
+        const localVariations = await prisma.productVariation.findMany({
+            where: { productId: product.id }
+        });
+
         const mergedVariations = variationIds.map((vId: number) => {
             // Try to find full variation data from variationsData array
             const fullData = variationsData.find((v: any) => v.id === vId);
+            const localVariant = localVariations.find(lv => lv.wooId === vId);
 
             return {
                 id: vId,
@@ -45,8 +51,9 @@ export class ProductsService {
                     width: fullData?.dimensions?.width || '',
                     height: fullData?.dimensions?.height || ''
                 },
-                cogs: '',
-                binLocation: '',
+                cogs: localVariant?.cogs?.toString() || '',
+                miscCosts: localVariant?.miscCosts || [],
+                binLocation: localVariant?.binLocation || '',
                 image: fullData?.image || null, // Single image object { src: ... }
                 images: fullData?.image ? [fullData.image] : [],
                 attributes: fullData?.attributes || []
@@ -56,6 +63,7 @@ export class ProductsService {
 
         return {
             ...product,
+            miscCosts: product.miscCosts || [],
             type: raw?.type || 'simple',
             variations: mergedVariations, // Return full objects with stock data
             variationIds: raw?.variations || [], // Keep IDs for reference
@@ -120,6 +128,7 @@ export class ProductsService {
                 height: productData.height ? parseFloat(productData.height) : undefined,
                 isGoldPriceApplied: productData.isGoldPriceApplied,
                 cogs: productData.cogs ? parseFloat(productData.cogs) : undefined,
+                miscCosts: productData.miscCosts || undefined,
                 supplierId: productData.supplierId || null,
                 images: productData.images || undefined,
                 rawData: updatedRawData,
@@ -133,8 +142,30 @@ export class ProductsService {
             const wooService = await WooService.forAccount(accountId);
 
             for (const v of variations) {
-                // Note: ProductVariation model not in schema, skipping local upsert
-                // Only sync to WooCommerce
+                // Update local DB for variations
+                await prisma.productVariation.upsert({
+                    where: { productId_wooId: { productId: updated.id, wooId: v.id } },
+                    update: {
+                        cogs: v.cogs ? parseFloat(v.cogs) : undefined,
+                        miscCosts: v.miscCosts || undefined,
+                        binLocation: v.binLocation,
+                        sku: v.sku,
+                        price: v.price ? parseFloat(v.price) : undefined,
+                        salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
+                        stockStatus: v.stockStatus
+                    },
+                    create: {
+                        productId: updated.id,
+                        wooId: v.id,
+                        cogs: v.cogs ? parseFloat(v.cogs) : undefined,
+                        miscCosts: v.miscCosts || undefined,
+                        binLocation: v.binLocation,
+                        sku: v.sku,
+                        price: v.price ? parseFloat(v.price) : undefined,
+                        salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
+                        stockStatus: v.stockStatus
+                    }
+                });
 
                 // Sync to Woo (Only synced fields)
                 // We only sync if changed? For now, sync on save.

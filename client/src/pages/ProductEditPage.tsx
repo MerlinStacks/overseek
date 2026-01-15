@@ -55,6 +55,7 @@ interface ProductData {
 
     // COGS & Supplier
     cogs?: string; // Decimal as string for input
+    miscCosts?: any[];
     supplierId?: string;
     images?: any[];
 
@@ -117,6 +118,7 @@ export function ProductEditPage() {
         width: '',
         height: '',
         cogs: '',
+        miscCosts: [] as any[],
         supplierId: '',
         binLocation: '',
         images: [] as any[]
@@ -170,6 +172,7 @@ export function ProductEditPage() {
                 width: data.dimensions?.width?.toString() || '',
                 height: data.dimensions?.height?.toString() || '',
                 cogs: data.cogs ? data.cogs.toString() : '',
+                miscCosts: data.miscCosts || [],
                 supplierId: data.supplierId || '',
                 images: data.images || []
             });
@@ -239,6 +242,7 @@ export function ProductEditPage() {
                 description: formData.description,
                 short_description: formData.short_description,
                 cogs: formData.cogs,
+                miscCosts: formData.miscCosts,
                 supplierId: formData.supplierId,
                 images: formData.images,
                 variations: variants, // Include variations in save
