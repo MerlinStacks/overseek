@@ -20,9 +20,9 @@ interface EmbeddingResult {
 
 export class EmbeddingService {
     /**
-     * Generate embedding using OpenRouter API
+     * Generate embeddings for multiple texts using OpenRouter API
      */
-    static async generateEmbedding(text: string, apiKey: string, model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[]> {
+    static async generateEmbeddings(texts: string[], apiKey: string, model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[][]> {
         if (!apiKey) {
             throw new Error('OpenRouter API key required for embeddings');
         }
@@ -38,7 +38,7 @@ export class EmbeddingService {
                 },
                 body: JSON.stringify({
                     model: model,
-                    input: text.slice(0, 8000) // Max input length
+                    input: texts.map(t => t.slice(0, 8000)) // Max input length
                 })
             });
 
@@ -48,11 +48,19 @@ export class EmbeddingService {
             }
 
             const data = await response.json();
-            return data.data[0].embedding;
+            return data.data.sort((a: any, b: any) => a.index - b.index).map((d: any) => d.embedding);
         } catch (error) {
-            Logger.error('Failed to generate embedding', { error, model });
+            Logger.error('Failed to generate embeddings', { error, model, count: texts.length });
             throw error;
         }
+    }
+
+    /**
+     * Generate embedding using OpenRouter API
+     */
+    static async generateEmbedding(text: string, apiKey: string, model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[]> {
+        const embeddings = await this.generateEmbeddings([text], apiKey, model);
+        return embeddings[0];
     }
 
     /**
@@ -131,25 +139,25 @@ export class EmbeddingService {
             LIMIT ${limit}
         `;
 
+        if (products.length === 0) return 0;
+
         let updated = 0;
-        for (const product of products) {
-            try {
-                const searchText = this.getProductSearchText(product.rawData);
-                const embedding = await this.generateEmbedding(searchText, apiKey, model);
+        try {
+            const searchTexts = products.map(p => this.getProductSearchText(p.rawData));
+            const embeddings = await this.generateEmbeddings(searchTexts, apiKey, model);
 
-                await prisma.$executeRaw`
-                    UPDATE "WooProduct" 
-                    SET embedding = ${embedding}::vector
-                    WHERE id = ${product.id}
-                `;
-
-                updated++;
-
-                // Rate limit: 100 requests per minute for OpenAI
-                await new Promise(resolve => setTimeout(resolve, 600));
-            } catch (error) {
-                Logger.error('Failed to update embedding', { productId: product.id, error });
+            for (let i = 0; i < products.length; i++) {
+                if (embeddings[i]) {
+                    await prisma.$executeRaw`
+                        UPDATE "WooProduct"
+                        SET embedding = ${embeddings[i]}::vector
+                        WHERE id = ${products[i].id}
+                    `;
+                    updated++;
+                }
             }
+        } catch (error) {
+            Logger.error('Failed to batch update embeddings', { accountId, error });
         }
 
         Logger.info('Batch embedding update complete', { accountId, updated });
