@@ -1,7 +1,7 @@
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { GripVertical, Image as ImageIcon, Type, Table, DollarSign } from 'lucide-react';
+import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading } from 'lucide-react';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
@@ -23,31 +23,83 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
         if (!itemConfig) return <div className="p-3 text-red-500 text-sm">Error: Item config missing</div>;
 
         switch (itemConfig.type) {
-            case 'text':
+            case 'header':
                 return (
-                    <div className="p-4 h-full overflow-hidden">
-                        <div className="flex items-start gap-2 text-slate-500 mb-2">
+                    <div className="p-4 h-full bg-linear-to-br from-slate-50 to-gray-50 flex flex-col rounded-lg border border-dashed border-slate-300">
+                        <div className="flex items-center gap-2 text-slate-600 mb-2">
+                            <Heading size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Header (First Page Only)</span>
+                        </div>
+                        <div className="flex-1 flex items-center justify-center text-center">
+                            <p className="text-xs text-slate-500 italic">
+                                {itemConfig.content || 'Header content goes here...'}
+                            </p>
+                        </div>
+                    </div>
+                );
+            case 'text':
+                const style = itemConfig.style || {};
+                return (
+                    <div className="p-4 h-full overflow-hidden flex flex-col">
+                        <div className="flex items-start gap-2 text-slate-500 mb-2 shrink-0">
                             <Type size={14} className="shrink-0 mt-0.5" />
                             <span className="text-xs font-medium uppercase tracking-wider">Text Block</span>
                         </div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        <div
+                            className="flex-1 whitespace-pre-wrap leading-relaxed overflow-hidden"
+                            style={{
+                                fontSize: style.fontSize || '14px',
+                                fontWeight: style.fontWeight || 'normal',
+                                textAlign: style.textAlign || 'left',
+                                color: '#334155'
+                            }}
+                        >
                             {itemConfig.content || 'Click to edit text...'}
-                        </p>
+                        </div>
                     </div>
                 );
             case 'image':
                 return (
-                    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-linear-to-br from-slate-50 to-slate-100 rounded-lg">
+                    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-linear-to-br from-slate-50 to-slate-100 rounded-lg relative">
                         {itemConfig.content ? (
-                            <img src={itemConfig.content} alt="Invoice" className="w-full h-full object-contain" />
+                            <img
+                                src={itemConfig.content}
+                                alt="Invoice"
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                    // Fallback if image fails to load
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                    (e.target as HTMLImageElement).parentElement?.classList.add('image-error');
+                                }}
+                            />
                         ) : (
                             <div className="text-slate-400 flex flex-col items-center gap-2">
                                 <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
                                     <ImageIcon size={24} className="text-purple-500" />
                                 </div>
-                                <span className="text-xs font-medium">Add Image URL</span>
+                                <span className="text-xs font-medium">Add Image</span>
                             </div>
                         )}
+                        {/* Error state overlay */}
+                        <div className="hidden image-error:flex absolute inset-0 flex-col items-center justify-center text-red-400 bg-red-50">
+                            <ImageIcon size={24} className="mb-2 opacity-50" />
+                            <span className="text-xs font-medium">Failed to load image</span>
+                        </div>
+                    </div>
+                );
+            case 'customer_details':
+                return (
+                    <div className="p-4 h-full bg-linear-to-br from-indigo-50 to-blue-50 flex flex-col rounded-lg border border-dashed border-indigo-300">
+                        <div className="flex items-center gap-2 text-indigo-600 mb-3">
+                            <User size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Customer Details</span>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="h-4 w-32 bg-indigo-200/50 rounded-sm"></div>
+                            <div className="h-3 w-48 bg-indigo-200/50 rounded-sm"></div>
+                            <div className="h-3 w-40 bg-indigo-200/50 rounded-sm"></div>
+                            <div className="h-3 w-24 bg-indigo-200/50 rounded-sm"></div>
+                        </div>
                     </div>
                 );
             case 'order_table':
@@ -102,6 +154,20 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                                 <span className="text-amber-700">Total:</span>
                                 <span className="w-24 bg-amber-200 rounded-sm h-4"></span>
                             </div>
+                        </div>
+                    </div>
+                );
+            case 'footer':
+                return (
+                    <div className="p-4 h-full bg-linear-to-br from-slate-50 to-gray-50 flex flex-col rounded-lg border border-dashed border-slate-300">
+                        <div className="flex items-center gap-2 text-slate-600 mb-2">
+                            <LayoutTemplate size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Footer (Last Page Only)</span>
+                        </div>
+                        <div className="flex-1 flex items-center justify-center text-center">
+                            <p className="text-xs text-slate-500 italic">
+                                {itemConfig.content || 'Footer content goes here...'}
+                            </p>
                         </div>
                     </div>
                 );

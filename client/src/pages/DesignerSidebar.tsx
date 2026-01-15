@@ -1,4 +1,4 @@
-import { Type, Image as ImageIcon, Table, DollarSign, Sparkles } from 'lucide-react';
+import { Type, Image as ImageIcon, Table, DollarSign, Sparkles, User, LayoutTemplate, Heading } from 'lucide-react';
 import { TOOLBOX_ITEMS } from './invoiceUtils';
 
 interface DesignerSidebarProps {
@@ -6,17 +6,23 @@ interface DesignerSidebarProps {
 }
 
 const ICONS: Record<string, any> = {
+    header: Heading,
     text: Type,
     image: ImageIcon,
+    customer_details: User,
     order_table: Table,
-    totals: DollarSign
+    totals: DollarSign,
+    footer: LayoutTemplate
 };
 
 const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
+    header: { bg: 'bg-slate-50', hover: 'hover:border-slate-400', icon: 'text-slate-600' },
     text: { bg: 'bg-blue-50', hover: 'hover:border-blue-400', icon: 'text-blue-600' },
     image: { bg: 'bg-purple-50', hover: 'hover:border-purple-400', icon: 'text-purple-600' },
+    customer_details: { bg: 'bg-indigo-50', hover: 'hover:border-indigo-400', icon: 'text-indigo-600' },
     order_table: { bg: 'bg-emerald-50', hover: 'hover:border-emerald-400', icon: 'text-emerald-600' },
-    totals: { bg: 'bg-amber-50', hover: 'hover:border-amber-400', icon: 'text-amber-600' }
+    totals: { bg: 'bg-amber-50', hover: 'hover:border-amber-400', icon: 'text-amber-600' },
+    footer: { bg: 'bg-slate-50', hover: 'hover:border-slate-400', icon: 'text-slate-600' }
 };
 
 /**
@@ -58,10 +64,13 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                                 <div className="flex-1">
                                     <span className="text-sm font-semibold text-slate-700 block">{item.label}</span>
                                     <span className="text-xs text-slate-400">
+                                        {item.type === 'header' && 'First page header'}
                                         {item.type === 'text' && 'Add custom text'}
                                         {item.type === 'image' && 'Logo or image'}
+                                        {item.type === 'customer_details' && 'Bill to/Ship to info'}
                                         {item.type === 'order_table' && 'Line items table'}
                                         {item.type === 'totals' && 'Subtotal, tax, total'}
+                                        {item.type === 'footer' && 'Last page footer'}
                                     </span>
                                 </div>
                             </div>

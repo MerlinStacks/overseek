@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
-import { X, Trash2, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Trash2, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle, User, LayoutTemplate, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Heading } from 'lucide-react';
 
 interface DesignerPropertiesProps {
     items: any[];
     selectedId: string | null;
-    onUpdateContent: (newContent: string) => void;
+    onUpdateItem: (updates: any) => void;
     onDeleteItem: () => void;
     onClose: () => void;
     token?: string;
@@ -13,17 +13,20 @@ interface DesignerPropertiesProps {
 
 
 const TYPE_CONFIG: Record<string, { icon: any; label: string; color: string }> = {
+    header: { icon: Heading, label: 'Header', color: 'text-slate-600 bg-slate-50' },
     text: { icon: Type, label: 'Text Block', color: 'text-blue-600 bg-blue-50' },
     image: { icon: ImageIcon, label: 'Image', color: 'text-purple-600 bg-purple-50' },
+    customer_details: { icon: User, label: 'Customer Details', color: 'text-indigo-600 bg-indigo-50' },
     order_table: { icon: Table, label: 'Order Items', color: 'text-emerald-600 bg-emerald-50' },
-    totals: { icon: DollarSign, label: 'Totals', color: 'text-amber-600 bg-amber-50' }
+    totals: { icon: DollarSign, label: 'Totals', color: 'text-amber-600 bg-amber-50' },
+    footer: { icon: LayoutTemplate, label: 'Footer', color: 'text-slate-600 bg-slate-50' }
 };
 
 /**
  * DesignerProperties - Property editor panel for selected canvas items.
  * Allows editing content and deleting items.
  */
-export function DesignerProperties({ items, selectedId, onUpdateContent, onDeleteItem, onClose, token, accountId }: DesignerPropertiesProps) {
+export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteItem, onClose, token, accountId }: DesignerPropertiesProps) {
     const selectedItem = items.find(i => i.id === selectedId);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -80,12 +83,22 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
             }
 
             const result = await response.json();
-            onUpdateContent(result.url);
+            onUpdateItem({ content: result.url });
         } catch (error: any) {
             setUploadError(error.message || 'Failed to upload image');
         } finally {
             setIsUploading(false);
         }
+    };
+
+    const updateStyle = (key: string, value: any) => {
+        const currentStyle = selectedItem.style || {};
+        onUpdateItem({
+            style: {
+                ...currentStyle,
+                [key]: value
+            }
+        });
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,8 +144,26 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Settings</span>
                         </div>
 
-                        {selectedItem.type === 'text' && (
+                        {selectedItem.type === 'header' && (
                             <div className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Header Content</label>
+                                    <textarea
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
+                                        rows={4}
+                                        placeholder="Enter header text..."
+                                        value={selectedItem.content}
+                                        onChange={e => onUpdateItem({ content: e.target.value })}
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-400">
+                                    This content will only appear on the first page of the invoice.
+                                </p>
+                            </div>
+                        )}
+
+                        {selectedItem.type === 'text' && (
+                            <div className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-2">Content</label>
                                     <textarea
@@ -140,12 +171,65 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
                                         rows={6}
                                         placeholder="Enter your text content..."
                                         value={selectedItem.content}
-                                        onChange={e => onUpdateContent(e.target.value)}
+                                        onChange={e => onUpdateItem({ content: e.target.value })}
                                     />
                                 </div>
-                                <p className="text-xs text-slate-400">
-                                    Supports multiple lines. Press Enter for line breaks.
-                                </p>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Typography</label>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <select
+                                            className="flex-1 text-sm border border-slate-200 rounded-lg p-2"
+                                            value={selectedItem.style?.fontSize || '14px'}
+                                            onChange={(e) => updateStyle('fontSize', e.target.value)}
+                                        >
+                                            <option value="12px">Small (12px)</option>
+                                            <option value="14px">Normal (14px)</option>
+                                            <option value="16px">Medium (16px)</option>
+                                            <option value="18px">Large (18px)</option>
+                                            <option value="24px">Heading (24px)</option>
+                                            <option value="32px">Title (32px)</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit">
+                                        <button
+                                            onClick={() => updateStyle('fontWeight', selectedItem.style?.fontWeight === 'bold' ? 'normal' : 'bold')}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontWeight === 'bold' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            title="Bold"
+                                        >
+                                            <Bold size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => updateStyle('fontStyle', selectedItem.style?.fontStyle === 'italic' ? 'normal' : 'italic')}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.fontStyle === 'italic' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            title="Italic"
+                                        >
+                                            <Italic size={16} />
+                                        </button>
+                                        <div className="w-px h-4 bg-slate-300 mx-1" />
+                                        <button
+                                            onClick={() => updateStyle('textAlign', 'left')}
+                                            className={`p-1.5 rounded-md transition-all ${(!selectedItem.style?.textAlign || selectedItem.style?.textAlign === 'left') ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            title="Align Left"
+                                        >
+                                            <AlignLeft size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => updateStyle('textAlign', 'center')}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'center' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            title="Align Center"
+                                        >
+                                            <AlignCenter size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => updateStyle('textAlign', 'right')}
+                                            className={`p-1.5 rounded-md transition-all ${selectedItem.style?.textAlign === 'right' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                            title="Align Right"
+                                        >
+                                            <AlignRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -195,28 +279,28 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
 
                                 {/* Success/Preview */}
                                 {selectedItem.content && (
-                                    <div className="p-3 bg-slate-50 rounded-xl">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <CheckCircle size={14} className="text-emerald-500" />
-                                            <p className="text-xs font-medium text-slate-500">Image loaded</p>
-                                        </div>
-                                        <img
-                                            src={selectedItem.content}
-                                            alt="Preview"
-                                            className="w-full h-24 object-contain rounded-lg bg-white border border-slate-200"
-                                            onError={(e) => {
-                                                (e.target as HTMLImageElement).style.display = 'none';
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => onUpdateContent('')}
-                                            className="mt-2 text-xs text-red-500 hover:text-red-600 transition-colors"
-                                        >
-                                            Remove image
-                                        </button>
-                                    </div>
-                                )}
+                            <div className="p-3 bg-slate-50 rounded-xl">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <CheckCircle size={14} className="text-emerald-500" />
+                                    <p className="text-xs font-medium text-slate-500">Image loaded</p>
+                                </div>
+                                <img
+                                    src={selectedItem.content}
+                                    alt="Preview"
+                                    className="w-full h-24 object-contain rounded-lg bg-white border border-slate-200"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => onUpdateItem({ content: '' })}
+                                    className="mt-2 text-xs text-red-500 hover:text-red-600 transition-colors"
+                                >
+                                    Remove image
+                                </button>
+                            </div>
+                        )}
                             </div>
                         )}
 
@@ -234,6 +318,33 @@ export function DesignerProperties({ items, selectedId, onUpdateContent, onDelet
                                 <p className="text-sm font-medium text-amber-700 mb-1">Auto-Calculated</p>
                                 <p className="text-xs text-amber-600 leading-relaxed">
                                     Displays subtotal, shipping, tax, and grand total. Values are calculated from order data.
+                                </p>
+                            </div>
+                        )}
+
+                        {selectedItem.type === 'customer_details' && (
+                            <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                                <p className="text-sm font-medium text-indigo-700 mb-1">Customer Information</p>
+                                <p className="text-xs text-indigo-600 leading-relaxed">
+                                    Automatically displays the customer's billing and shipping details, including name, address, and contact info.
+                                </p>
+                            </div>
+                        )}
+
+                        {selectedItem.type === 'footer' && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Footer Content</label>
+                                    <textarea
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
+                                        rows={4}
+                                        placeholder="Enter footer text (e.g., Thank you for your business)..."
+                                        value={selectedItem.content}
+                                        onChange={e => onUpdateItem({ content: e.target.value })}
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-400">
+                                    This content will only appear on the last page of the invoice.
                                 </p>
                             </div>
                         )}

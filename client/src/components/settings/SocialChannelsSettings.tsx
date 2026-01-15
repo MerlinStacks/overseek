@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -32,6 +32,15 @@ export function SocialChannelsSettings() {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+    // SMS Settings State
+    const [smsSettings, setSmsSettings] = useState({
+        accountSid: '',
+        authToken: '',
+        fromNumber: '',
+        enabled: true
+    });
+    const [smsLoading, setSmsLoading] = useState(false);
+
     // Check URL params for OAuth callback status
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -50,6 +59,7 @@ export function SocialChannelsSettings() {
             window.history.replaceState({}, '', window.location.pathname + '?tab=channels');
             if (token && currentAccount) {
                 fetchAccounts();
+                fetchSmsSettings();
             }
         }
 
@@ -83,9 +93,41 @@ export function SocialChannelsSettings() {
         }
     };
 
+    const fetchSmsSettings = async () => {
+        if (!token || !currentAccount) return;
+        try {
+            const data = await api.get<any>('/api/sms/settings', token, currentAccount.id);
+            if (data && data.accountSid) {
+                setSmsSettings({
+                    accountSid: data.accountSid,
+                    authToken: data.authToken, // Usually masked or encrypted, but for now...
+                    fromNumber: data.fromNumber,
+                    enabled: data.enabled
+                });
+            }
+        } catch (err) {
+            console.error('Failed to fetch SMS settings', err);
+        }
+    };
+
+    const saveSmsSettings = async () => {
+        if (!token || !currentAccount) return;
+        try {
+            setSmsLoading(true);
+            await api.post('/api/sms/settings', smsSettings, token, currentAccount.id);
+            setSuccessMessage('SMS settings saved successfully.');
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err: any) {
+            setError(err.message || 'Failed to save SMS settings.');
+        } finally {
+            setSmsLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (token && currentAccount) {
             fetchAccounts();
+            fetchSmsSettings();
         }
     }, [currentAccount, token]);
 
@@ -208,6 +250,75 @@ export function SocialChannelsSettings() {
                     </ul>
                 </div>
             )}
+
+            {/* SMS Settings (Twilio) */}
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                    <div>
+                        <h3 className="font-medium text-gray-900">SMS Integration (Twilio)</h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Connect your Twilio account to send and receive SMS messages.
+                        </p>
+                    </div>
+                    <MessageSquare className="text-gray-400" size={20} />
+                </div>
+                <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Account SID</label>
+                            <input
+                                type="text"
+                                value={smsSettings.accountSid}
+                                onChange={(e) => setSmsSettings({ ...smsSettings, accountSid: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="AC..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Auth Token</label>
+                            <input
+                                type="password"
+                                value={smsSettings.authToken}
+                                onChange={(e) => setSmsSettings({ ...smsSettings, authToken: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="••••••••••••••••••••••••"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">From Number</label>
+                            <input
+                                type="text"
+                                value={smsSettings.fromNumber}
+                                onChange={(e) => setSmsSettings({ ...smsSettings, fromNumber: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="+1234567890"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Must be a valid Twilio number in E.164 format.</p>
+                        </div>
+                        <div className="flex items-center pt-6">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={smsSettings.enabled}
+                                    onChange={(e) => setSmsSettings({ ...smsSettings, enabled: e.target.checked })}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">Enable SMS Channel</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div className="pt-2 flex justify-end">
+                        <button
+                            onClick={saveSmsSettings}
+                            disabled={smsLoading}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            {smsLoading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                            Save Twilio Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {/* Available Platforms */}
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">

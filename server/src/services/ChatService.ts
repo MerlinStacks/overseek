@@ -12,6 +12,7 @@ import { EmailIngestion, IncomingEmailData } from './EmailIngestion';
 import { BlockedContactService } from './BlockedContactService';
 import { AutomationEngine } from './AutomationEngine';
 import { EventBus, EVENTS } from './events';
+import { TwilioService } from './TwilioService';
 
 export class ChatService {
     private io: Server;
@@ -149,6 +150,22 @@ export class ChatService {
         if (!conversation) {
             Logger.error('[ChatService] Conversation not found', { conversationId });
             return message;
+        }
+
+        // Handle Outbound SMS (Agent replies)
+        if (senderType === 'AGENT' && !isInternal && conversation.channel === 'SMS') {
+            try {
+                const to = conversation.externalConversationId; // Phone number stored here
+                if (to) {
+                    await TwilioService.sendSms(conversation.accountId, to, content);
+                } else {
+                    Logger.warn('[ChatService] Cannot send SMS, no phone number found', { conversationId });
+                }
+            } catch (error) {
+                Logger.error('[ChatService] Failed to send outbound SMS', { error, conversationId });
+                // We still return the message, but maybe we should mark it as failed?
+                // For now, we'll just log the error.
+            }
         }
 
         // Get the email to check for blocked status

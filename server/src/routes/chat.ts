@@ -11,6 +11,7 @@ import { InboxAIService } from '../services/InboxAIService';
 import { BlockedContactService } from '../services/BlockedContactService';
 import { MetaMessagingService } from '../services/messaging/MetaMessagingService';
 import { TikTokMessagingService } from '../services/messaging/TikTokMessagingService';
+import { TwilioService } from '../services/TwilioService';
 import { LabelService } from '../services/LabelService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
@@ -169,8 +170,19 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     }
                 });
 
-                // 3. Add message to conversation (store full content with subject)
-                const fullContent = `Subject: ${subject}\n\n${body}`;
+                // 3. Add message to conversation (store full content with subject and attachments)
+                let fullContent = `Subject: ${subject}\n\n${body}`;
+                
+                if (attachments.length > 0) {
+                    fullContent += '\n\nAttachments:\n';
+                    attachments.forEach(att => {
+                        // Convert file path to URL
+                        const filename = path.basename(att.path);
+                        const url = `/uploads/attachments/${filename}`;
+                        fullContent += `[${att.filename}](${url})\n`;
+                    });
+                }
+
                 await chatService.addMessage(conversation.id, fullContent, 'AGENT', userId, false);
 
                 // 4. Send email via EmailService
@@ -498,6 +510,12 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                         identifier: conv.socialAccount.name,
                         available: true
                     });
+                } else if (conv.channel === 'SMS' && conv.externalConversationId) {
+                    channels.push({
+                        channel: 'SMS',
+                        identifier: conv.externalConversationId,
+                        available: true
+                    });
                 }
 
                 // Add channels from merged conversations
@@ -515,6 +533,14 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                             channels.push({
                                 channel: 'EMAIL',
                                 identifier: merged.guestEmail,
+                                available: true
+                            });
+                        }
+                    } else if (merged.channel === 'SMS' && merged.externalConversationId) {
+                        if (!channels.find(c => c.channel === 'SMS' && c.identifier === merged.externalConversationId)) {
+                            channels.push({
+                                channel: 'SMS',
+                                identifier: merged.externalConversationId,
                                 available: true
                             });
                         }
@@ -649,6 +675,19 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                             if (result) {
                                 Logger.info('[ChannelRouting] TikTok message sent', { messageId: result.messageId });
                             }
+                        }
+                    } else if (channel === 'SMS') {
+                        // Route via Twilio
+                        let externalId = conversation.channel === 'SMS' ? conversation.externalConversationId : null;
+
+                        if (!externalId) {
+                            const merged = conversation.mergedFrom.find(m => m.channel === 'SMS');
+                            externalId = merged?.externalConversationId || null;
+                        }
+
+                        if (externalId) {
+                            await TwilioService.sendSms(accountId, externalId, content.replace(/<[^>]*>/g, ''));
+                            Logger.info('[ChannelRouting] SMS sent', { to: externalId });
                         }
                     }
                 } catch (routingError: any) {

@@ -114,7 +114,7 @@ export function OrderDetailPage() {
             }
 
             // 2. Generate PDF
-            generateInvoicePDF(order, template.layout?.grid || [], template.layout?.items || [], template.name);
+            await generateInvoicePDF(order, template.layout?.grid || [], template.layout?.items || [], template.name);
 
         } catch (e) {
             console.error(e);

@@ -67,22 +67,53 @@ export function InvoiceDesigner() {
 
     const addItem = (type: string) => {
         const newItemId = generateId();
+        let w = 6;
+        let h = 2;
+
+        if (type === 'order_table') {
+            w = 12;
+            h = 4;
+        } else if (type === 'footer') {
+            w = 12;
+            h = 2;
+        } else if (type === 'header') {
+            w = 12;
+            h = 2;
+        } else if (type === 'customer_details') {
+            w = 6;
+            h = 4;
+        }
+
         const newItem = {
             i: newItemId,
             x: 0,
             y: Infinity,
-            w: type === 'order_table' ? 12 : 6,
-            h: type === 'order_table' ? 4 : 2,
+            w,
+            h,
             minW: 2,
             minH: 1
         };
 
+        const initialItem: any = {
+            id: newItemId,
+            type,
+            content: type === 'text' ? 'Double click to edit' : ''
+        };
+
+        if (type === 'text') {
+            initialItem.style = {
+                fontSize: '14px',
+                fontWeight: 'normal',
+                textAlign: 'left'
+            };
+        }
+
         setLayout(prev => [...prev, newItem]);
-        setItems(prev => [...prev, { id: newItemId, type, content: type === 'text' ? 'Double click to edit' : '' }]);
+        setItems(prev => [...prev, initialItem]);
     };
 
-    const updateContent = (newContent: string) => {
-        setItems(prev => prev.map(i => i.id === selectedId ? { ...i, content: newContent } : i));
+    const updateItem = (updates: any) => {
+        setItems(prev => prev.map(i => i.id === selectedId ? { ...i, ...updates } : i));
     };
 
     const deleteItem = () => {
@@ -245,7 +276,7 @@ export function InvoiceDesigner() {
                     <DesignerProperties
                         items={items}
                         selectedId={selectedId}
-                        onUpdateContent={updateContent}
+                        onUpdateItem={updateItem}
                         onDeleteItem={deleteItem}
                         onClose={() => setSelectedId(null)}
                         token={token}

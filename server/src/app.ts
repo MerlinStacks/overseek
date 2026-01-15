@@ -340,8 +340,10 @@ async function initializeApp() {
     // Mount Chat Routes (native Fastify - require ChatService)
     const { createChatRoutes } = await import('./routes/chat');
     const { createPublicChatRoutes } = await import('./routes/chat-public');
+    const { createSmsRoutes } = await import('./routes/sms');
     await fastify.register(createChatRoutes(chatService), { prefix: '/api/chat' });
     await fastify.register(createPublicChatRoutes(chatService), { prefix: '/api/chat/public' });
+    await fastify.register(createSmsRoutes(chatService), { prefix: '/api/sms' });
 
     // Listen for Automation Events
     EventBus.on(EVENTS.ORDER.CREATED, async (data) => {

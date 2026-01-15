@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mail, MessageSquare, Facebook, Music, ChevronDown } from 'lucide-react';
+import { Mail, MessageSquare, Facebook, Music, ChevronDown, Smartphone } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-export type ConversationChannel = 'EMAIL' | 'CHAT' | 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK';
+export type ConversationChannel = 'EMAIL' | 'CHAT' | 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'SMS';
 
 interface ChannelOption {
     channel: ConversationChannel;
@@ -38,6 +38,7 @@ const CHANNEL_CONFIG: Record<ConversationChannel, { icon: React.ElementType; lab
     FACEBOOK: { icon: Facebook, label: 'Facebook', color: 'text-[#1877F2]' },
     INSTAGRAM: { icon: Instagram, label: 'Instagram', color: 'text-[#E4405F]' },
     TIKTOK: { icon: Music, label: 'TikTok', color: 'text-black' },
+    SMS: { icon: Smartphone, label: 'SMS', color: 'text-purple-600' },
 };
 
 export function ChannelSelector({
