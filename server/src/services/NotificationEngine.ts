@@ -442,19 +442,36 @@ export class NotificationEngine {
                 }
             };
 
+            // Build data with optional fields only if they exist
+            const sanitizedSubscriptionLookup = sanitize(data.subscriptionLookup);
+            const sanitizedPayload = sanitize(data.payload);
+
             await prisma.notificationDelivery.create({
                 data: {
                     accountId: data.accountId,
                     eventType: data.eventType,
                     channels: (sanitize(data.channels) ?? []) as Prisma.InputJsonValue,
                     results: (sanitize(data.results) ?? {}) as Prisma.InputJsonValue,
-                    subscriptionLookup: sanitize(data.subscriptionLookup) as Prisma.InputJsonValue | undefined,
-                    payload: sanitize(data.payload) as Prisma.InputJsonValue | undefined
+                    // Only include optional fields if they have values (not undefined)
+                    ...(sanitizedSubscriptionLookup !== undefined && { subscriptionLookup: sanitizedSubscriptionLookup as Prisma.InputJsonValue }),
+                    ...(sanitizedPayload !== undefined && { payload: sanitizedPayload as Prisma.InputJsonValue })
                 }
             });
-        } catch (error) {
+        } catch (error: any) {
             // Don't fail the notification if logging fails
-            Logger.error('[NotificationEngine] Failed to log delivery', { error });
+            // Log detailed error for debugging Prisma validation issues
+            Logger.error('[NotificationEngine] Failed to log delivery', {
+                error,
+                errorMessage: error?.message || String(error),
+                errorName: error?.name,
+                // Log the sanitized data for debugging
+                debugData: {
+                    accountId: data.accountId,
+                    eventType: data.eventType,
+                    channelsType: typeof data.channels,
+                    resultsType: typeof data.results
+                }
+            });
         }
     }
 }

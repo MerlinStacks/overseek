@@ -414,11 +414,11 @@ export const MessageBubble = memo(function MessageBubble({
 
                     {/* Bubble */}
                     <div className={cn(
-                        "rounded-2xl px-4 py-2.5 relative",
+                        "rounded-2xl px-4 py-2.5 relative shadow-sm",
                         isMe
                             ? "bg-blue-600 text-white rounded-br-md"
-                            : "bg-gray-100 text-gray-900 rounded-bl-md",
-                        message.isInternal && "bg-amber-50 border border-amber-200 text-gray-900"
+                            : "bg-white text-gray-900 rounded-bl-md border border-gray-200",
+                        message.isInternal && "bg-amber-50 border border-amber-200 text-gray-900 shadow-none"
                     )}>
                         {/* Subject line (if present) */}
                         {subject && (
