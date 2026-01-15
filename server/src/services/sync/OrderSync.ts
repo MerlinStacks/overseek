@@ -1,6 +1,6 @@
 import { BaseSync, SyncResult } from './BaseSync';
 import { WooService } from '../woo';
-import { prisma, Prisma } from '../../utils/prisma';
+import { prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
 import { OrderTaggingService } from '../OrderTaggingService';
 import { EventBus, EVENTS } from '../events';
