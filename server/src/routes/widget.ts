@@ -121,16 +121,17 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
     const rgb = hexToRgb(PRIMARY_COLOR);
     const darkerColor = 'rgb(' + Math.max(0, rgb.r - 30) + ',' + Math.max(0, rgb.g - 30) + ',' + Math.max(0, rgb.b - 30) + ')';
 
-    var styles = '#os-chat-widget { --os-primary: ' + PRIMARY_COLOR + '; --os-primary-dark: ' + darkerColor + '; --os-bg: ' + (prefersDark ? '#1e1e2e' : '#ffffff') + '; --os-bg-subtle: ' + (prefersDark ? '#2a2a3e' : '#f8fafc') + '; --os-text: ' + (prefersDark ? '#e2e8f0' : '#1e293b') + '; --os-text-muted: ' + (prefersDark ? '#94a3b8' : '#64748b') + '; --os-border: ' + (prefersDark ? '#3f3f5a' : '#e2e8f0') + '; font-family: Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; position: fixed; bottom: 20px; right: ${rightPos}; left: ${leftPos}; z-index: 999999; }';
-    styles += '${showOnMobile ? '' : '@media (max-width: 640px) { #os-chat-widget { display: none !important; } }'}';
+    var styles = '#os-chat-widget { --os-primary: ' + PRIMARY_COLOR + '; --os-primary-dark: ' + darkerColor + '; --os-bg: ' + (prefersDark ? '#1e1e2e' : '#ffffff') + '; --os-bg-subtle: ' + (prefersDark ? '#2a2a3e' : '#f8fafc') + '; --os-text: ' + (prefersDark ? '#e2e8f0' : '#1e293b') + '; --os-text-muted: ' + (prefersDark ? '#94a3b8' : '#64748b') + '; --os-border: ' + (prefersDark ? '#3f3f5a' : '#e2e8f0') + '; font-family: Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; position: fixed; bottom: 20px; right: ' + '${rightPos}' + '; left: ' + '${leftPos}' + '; z-index: 999999; }';
+    styles += '${showOnMobile ? "" : "@media (max-width: 640px) { #os-chat-widget { display: none !important; } }"}';
+
     styles += '#os-chat-toggle { width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, var(--os-primary), var(--os-primary-dark)); box-shadow: 0 8px 32px rgba(0,0,0,0.25); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }';
     styles += '#os-chat-toggle:hover { transform: scale(1.08) translateY(-2px); }';
-    styles += '#os-chat-window { display: none; position: absolute; bottom: 84px; ${windowRight} width: 400px; height: 600px; background: var(--os-bg); border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); flex-direction: column; overflow: hidden; opacity: 0; transform: translateY(20px) scale(0.95); transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(20px); }';
+    styles += '#os-chat-window { display: none; position: absolute; bottom: 84px; ' + '${windowRight}' + ' width: 400px; height: 600px; background: var(--os-bg); border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); flex-direction: column; overflow: hidden; opacity: 0; transform: translateY(20px) scale(0.95); transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(20px); }';
     styles += '#os-chat-window.open { display: flex; opacity: 1; transform: translateY(0) scale(1); }';
     styles += '@media (max-width: 640px) { #os-chat-window { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0 !important; } #os-chat-widget.open #os-chat-toggle { display: none; } }';
     styles += '.os-header { background: linear-gradient(135deg, var(--os-primary), var(--os-primary-dark)); color: white; padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; }';
     styles += '.os-header-title { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 10px; }';
-    styles += '.os-header-title::before { content: \\'\\'; width: 10px; height: 10px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; animation: os-pulse 2s infinite; }';
+    styles += ".os-header-title::before { content: ''; width: 10px; height: 10px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; animation: os-pulse 2s infinite; }";
     styles += '@keyframes os-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }';
     styles += '.os-close { cursor: pointer; font-size: 24px; opacity: 0.8; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }';
     styles += '.os-close:hover { opacity: 1; background: rgba(255,255,255,0.15); }';
