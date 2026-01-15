@@ -184,6 +184,7 @@ export class OrderSync extends BaseSync {
         }
 
         // After all orders are synced, recalculate customer order counts from local data
+<<<<<<< HEAD
         await this.updateCustomerOrderCounts(accountId, syncId);
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
@@ -220,6 +221,35 @@ export class OrderSync extends BaseSync {
         } catch (error: any) {
             Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
         }
+=======
+        await this.recalculateCustomerCounts(accountId, syncId);
+
+        return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
+>>>>>>> origin/perf-ordersync-oom-9092884426585973898
+    }
+
+    protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
+        Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
+        try {
+            await prisma.$executeRaw`
+                UPDATE "WooCustomer" wc
+                SET "ordersCount" = c.count
+                FROM (
+                    SELECT
+                        ("rawData"->>'customer_id')::int as woo_id,
+                        COUNT(*)::int as count
+                    FROM "WooOrder"
+                    WHERE "accountId" = ${accountId}
+                      AND "rawData"->>'customer_id' IS NOT NULL
+                      AND "rawData"->>'customer_id' != '0'
+                    GROUP BY "rawData"->>'customer_id'
+                ) c
+                WHERE wc."accountId" = ${accountId}
+                  AND wc."wooId" = c.woo_id;
+            `;
+            Logger.info(`Updated customer order counts`, { accountId, syncId });
+        } catch (error: any) {
+            Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
+        }
     }
 }
-

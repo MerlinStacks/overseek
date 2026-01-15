@@ -82,8 +82,8 @@ describe('OrderSync Benchmark', () => {
         await orderSync.sync(mockWooService, accountId, true, undefined, syncId);
 
         // 4. Verify optimization
-        // We expect findMany to be called once (to get all orders)
-        expect(prisma.wooOrder.findMany).toHaveBeenCalledTimes(1);
+        // We expect findMany to be called 0 times (optimized out by direct SQL update)
+        expect(prisma.wooOrder.findMany).toHaveBeenCalledTimes(0);
 
         // We expect updateMany to be called 0 times (replaced by raw query)
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(0);
