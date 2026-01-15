@@ -184,48 +184,9 @@ export class OrderSync extends BaseSync {
         }
 
         // After all orders are synced, recalculate customer order counts from local data
-<<<<<<< HEAD
-        await this.updateCustomerOrderCounts(accountId, syncId);
-
-        return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
-    }
-
-    public async updateCustomerOrderCounts(accountId: string, syncId?: string): Promise<void> {
-        Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
-        try {
-            const ordersWithCustomers = await prisma.wooOrder.findMany({
-                where: { accountId },
-                select: { rawData: true }
-            });
-
-            const customerOrderCounts = new Map<number, number>();
-            for (const order of ordersWithCustomers) {
-                const customerId = (order.rawData as any)?.customer_id;
-                if (customerId && customerId > 0) {
-                    customerOrderCounts.set(customerId, (customerOrderCounts.get(customerId) || 0) + 1);
-                }
-            }
-
-            // Batch update customer order counts
-            if (customerOrderCounts.size > 0) {
-                const values = Array.from(customerOrderCounts.entries()).map(([wooId, count]) => Prisma.sql`(${wooId}::int, ${count}::int)`);
-
-                await prisma.$executeRaw`
-                    UPDATE "WooCustomer" AS c
-                    SET "ordersCount" = v.count
-                    FROM (VALUES ${Prisma.join(values)}) AS v(woo_id, count)
-                    WHERE c."accountId" = ${accountId} AND c."wooId" = v.woo_id
-                `;
-            }
-            Logger.info(`Updated order counts for ${customerOrderCounts.size} customers`, { accountId, syncId });
-        } catch (error: any) {
-            Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
-        }
-=======
         await this.recalculateCustomerCounts(accountId, syncId);
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
->>>>>>> origin/perf-ordersync-oom-9092884426585973898
     }
 
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {

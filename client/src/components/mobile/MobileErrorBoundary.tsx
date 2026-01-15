@@ -36,7 +36,7 @@ export class MobileErrorBoundary extends Component<Props, State> {
         console.error('[MobileErrorBoundary] Error info:', errorInfo.componentStack);
 
         // Send to error monitoring service (e.g., Sentry)
-        Sentry.captureException(error, { extra: errorInfo });
+        Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
     }
 
     handleRetry = (): void => {

@@ -26,6 +26,7 @@ export interface Account {
     features?: { featureKey: string; isEnabled: boolean }[];
     weightUnit?: string;
     dimensionUnit?: string;
+    revenueTaxInclusive?: boolean;
 }
 
 interface AccountContextType {
