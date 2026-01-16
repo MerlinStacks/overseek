@@ -69,6 +69,16 @@ export class EmailIngestion {
         // Check if sender is blocked
         const isBlocked = await BlockedContactService.isBlocked(accountId, fromEmail);
 
+        // IDEMPOTENCY CHECK: Skip if message already exists
+        const existingMessage = await prisma.message.findFirst({
+            where: { emailMessageId: messageId }
+        });
+
+        if (existingMessage) {
+            Logger.info('[EmailIngestion] Skipping duplicate email', { messageId });
+            return;
+        }
+
         let conversation = await this.resolveConversation(accountId, fromEmail, fromName, inReplyTo, references);
 
         // Add message with emailMessageId (even for blocked contacts, for audit trail)

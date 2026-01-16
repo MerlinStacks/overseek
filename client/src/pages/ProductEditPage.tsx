@@ -18,6 +18,7 @@ import { Tabs } from '../components/ui/Tabs';
 import { ImageGallery } from '../components/products/ImageGallery';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
 import { ProductSalesHistory } from '../components/products/ProductSalesHistory';
+import { Toast, ToastType } from '../components/ui/Toast';
 import { Logger } from '../utils/logger';
 
 // Services
@@ -99,6 +100,17 @@ export function ProductEditPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [product, setProduct] = useState<ProductData | null>(null);
 
+    // Toast State
+    const [toast, setToast] = useState<{ isVisible: boolean; message: string; type: ToastType }>({
+        isVisible: false,
+        message: '',
+        type: 'success'
+    });
+
+    const showToast = (message: string, type: ToastType = 'success') => {
+        setToast({ isVisible: true, message, type });
+    };
+
     // Ref to BOMPanel for triggering save from parent
     const bomPanelRef = useRef<BOMPanelRef>(null);
 
@@ -148,9 +160,9 @@ export function ProductEditPage() {
         fetchProduct();
     }, [currentAccount, id, token]);
 
-    const fetchProduct = async () => {
+    const fetchProduct = async (background = false) => {
         if (!currentAccount || !token || !id) return;
-        setIsLoading(true);
+        if (!background) setIsLoading(true);
         try {
             const data = await ProductService.getProduct(id, token, currentAccount.id);
             Logger.debug('Product data loaded', { productId: id, wooId: data.wooId });
@@ -190,7 +202,7 @@ export function ProductEditPage() {
         } catch (error) {
             console.error('Failed to load product', error);
         } finally {
-            setIsLoading(false);
+            if (!background) setIsLoading(false);
         }
     };
 
@@ -252,13 +264,15 @@ export function ProductEditPage() {
             // Also save BOM if the panel is mounted
             const bomSaveResult = await bomPanelRef.current?.save();
             if (bomSaveResult === false) {
-                alert('Product saved, but BOM configuration failed to save.');
+                showToast('Product saved, but BOM configuration failed to save.', 'error');
+            } else {
+                showToast('Product saved successfully');
             }
 
-            fetchProduct(); // Reload
+            fetchProduct(true); // Reload in background
         } catch (error) {
             console.error(error);
-            alert('Failed to save changes');
+            showToast('Failed to save changes', 'error');
         } finally {
             setIsSaving(false);
         }
@@ -270,11 +284,11 @@ export function ProductEditPage() {
         try {
             const updated = await ProductService.syncProduct(id, token, currentAccount.id);
             Logger.debug('Product synced', { productId: id, wooId: updated?.wooId });
-            await fetchProduct();
-            alert('Product synced successfully from WooCommerce.');
+            await fetchProduct(true);
+            showToast('Product synced successfully from WooCommerce.');
         } catch (error: any) {
             console.error('Sync failed:', error);
-            alert(`Sync failed: ${error.message}`);
+            showToast(`Sync failed: ${error.message}`, 'error');
         } finally {
             setIsSyncing(false);
         }
@@ -539,6 +553,13 @@ export function ProductEditPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <Tabs tabs={tabs} />
             </div>
+
+            <Toast
+                message={toast.message}
+                isVisible={toast.isVisible}
+                type={toast.type}
+                onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+            />
         </div>
     );
 }

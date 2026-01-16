@@ -40,6 +40,35 @@ export async function processWebhookPayload(
 ): Promise<void> {
     // Handle Order Events
     if (topic === 'order.created' || topic === 'order.updated') {
+        // Save to database immediately to prevent duplicate notifications from Sync Engine
+        // (Sync Engine checks if order exists in DB to determine if it's "new")
+        try {
+            const order = body as any;
+            await prisma.wooOrder.upsert({
+                where: { accountId_wooId: { accountId, wooId: order.id } },
+                update: {
+                    status: order.status.toLowerCase(),
+                    total: order.total === '' ? '0' : order.total,
+                    currency: order.currency,
+                    dateModified: new Date(order.date_modified || new Date()),
+                    rawData: order
+                },
+                create: {
+                    accountId,
+                    wooId: order.id,
+                    number: order.number,
+                    status: order.status.toLowerCase(),
+                    total: order.total === '' ? '0' : order.total,
+                    currency: order.currency,
+                    dateCreated: new Date(order.date_created || new Date()),
+                    dateModified: new Date(order.date_modified || new Date()),
+                    rawData: order
+                }
+            });
+        } catch (error) {
+            Logger.error('[Webhook] Failed to save order to DB', { accountId, orderId: body.id, error });
+        }
+
         await IndexingService.indexOrder(accountId, body);
 
         if (topic === 'order.created') {

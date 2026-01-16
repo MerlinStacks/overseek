@@ -254,14 +254,18 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                                     {searchResults.map(p => (
                                         <button
                                             key={p.id}
-                                            className="w-full text-left p-3 hover:bg-blue-50 transition-colors flex items-center gap-3 border-b border-gray-50 last:border-b-0"
-                                            onClick={() => handleAddProduct(p)}
+                                            disabled={p.hasBOM}
+                                            className={`w-full text-left p-3 transition-colors flex items-center gap-3 border-b border-gray-50 last:border-b-0 ${p.hasBOM ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'hover:bg-blue-50'}`}
+                                            onClick={() => !p.hasBOM && handleAddProduct(p)}
                                         >
                                             {p.mainImage && (
                                                 <img src={p.mainImage} alt="" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
                                             )}
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-medium text-gray-900 text-sm truncate">{p.name}</div>
+                                                <div className="font-medium text-gray-900 text-sm truncate">
+                                                    {p.name}
+                                                    {p.hasBOM && <span className="ml-2 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">Composite Product</span>}
+                                                </div>
                                                 <div className="text-xs text-gray-500">
                                                     {p.sku && <span className="font-mono">{p.sku}</span>}
                                                     {p.sku && p.stockQuantity !== undefined && <span className="mx-1">•</span>}

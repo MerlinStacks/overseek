@@ -279,7 +279,7 @@ export function InvoiceDesigner() {
                         onUpdateItem={updateItem}
                         onDeleteItem={deleteItem}
                         onClose={() => setSelectedId(null)}
-                        token={token}
+                        token={token || undefined}
                         accountId={currentAccount?.id}
                     />
                 )}

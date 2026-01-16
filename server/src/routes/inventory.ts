@@ -191,7 +191,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 },
                 include: {
                     items: {
-                        include: { supplierItem: { include: { supplier: true } } }
+                        include: {
+                            supplierItem: { include: { supplier: true } },
+                            childProduct: true
+                        }
                     }
                 }
             });
@@ -215,16 +218,19 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 update: {}
             });
 
+            // Prepare items, ensuring undefined/null values are handled correctly
+            const bomItemsData = items.map((item: any) => ({
+                bomId: bom.id,
+                supplierItemId: item.supplierItemId || null,
+                childProductId: item.childProductId || null,
+                quantity: item.quantity,
+                wasteFactor: item.wasteFactor || 0
+            }));
+
             await prisma.$transaction([
                 prisma.bOMItem.deleteMany({ where: { bomId: bom.id } }),
                 prisma.bOMItem.createMany({
-                    data: items.map((item: any) => ({
-                        bomId: bom.id,
-                        supplierItemId: item.supplierItemId,
-                        childProductId: item.childProductId,
-                        quantity: item.quantity,
-                        wasteFactor: item.wasteFactor || 0
-                    }))
+                    data: bomItemsData
                 })
             ]);
 

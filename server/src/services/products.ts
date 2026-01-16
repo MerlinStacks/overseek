@@ -238,10 +238,26 @@ export class ProductsService {
                 // Ensure rawData is available if needed, or map specific fields
             }));
 
+            // Check for BOMs to prevent circular/nested BOMs
+            const productIds = hits.map(h => h.id);
+            const boms = await prisma.bOM.findMany({
+                where: {
+                    productId: { in: productIds }
+                },
+                select: { productId: true }
+            });
+
+            const bomProductIds = new Set(boms.map(b => b.productId));
+
+            const productsWithBomStatus = hits.map(p => ({
+                ...p,
+                hasBOM: bomProductIds.has(p.id)
+            }));
+
             const total = (response.hits.total as any).value || 0;
 
             return {
-                products: hits,
+                products: productsWithBomStatus,
                 total,
                 page,
                 totalPages: Math.ceil(total / limit)
