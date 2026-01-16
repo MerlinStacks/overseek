@@ -219,20 +219,22 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             // Prepare items, ensuring undefined/null values are handled correctly
-            const bomItemsData = items.map((item: any) => ({
-                bomId: bom.id,
-                supplierItemId: item.supplierItemId || null,
-                childProductId: item.childProductId || null,
-                quantity: item.quantity,
-                wasteFactor: item.wasteFactor || 0
-            }));
-
-            await prisma.$transaction([
-                prisma.bOMItem.deleteMany({ where: { bomId: bom.id } }),
-                prisma.bOMItem.createMany({
-                    data: bomItemsData
-                })
-            ]);
+            // We use a transaction with individual creates to ensure better error handling and UUID generation
+            await prisma.$transaction(async (tx) => {
+                await tx.bOMItem.deleteMany({ where: { bomId: bom.id } });
+                
+                for (const item of items) {
+                    await tx.bOMItem.create({
+                        data: {
+                            bomId: bom.id,
+                            supplierItemId: item.supplierItemId || null,
+                            childProductId: item.childProductId || null,
+                            quantity: item.quantity,
+                            wasteFactor: item.wasteFactor || 0
+                        }
+                    });
+                }
+            });
 
             const updated = await prisma.bOM.findUnique({
                 where: { id: bom.id },

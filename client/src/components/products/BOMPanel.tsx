@@ -210,13 +210,6 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                     )}
                 </div>
 
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                >
-                    {saving ? 'Saving...' : 'Save Configuration'}
-                </button>
             </div>
 
             <div className="p-6 space-y-6">

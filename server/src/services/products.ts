@@ -246,19 +246,27 @@ export class ProductsService {
                     .filter(id => typeof id === 'string' && id.length > 0);
 
                 if (productIds.length > 0) {
-                    const boms = await prisma.bOM.findMany({
+                    const productsInfo = await prisma.wooProduct.findMany({
                         where: {
-                            productId: { in: productIds }
+                            id: { in: productIds }
                         },
-                        select: { productId: true }
+                        select: {
+                            id: true,
+                            cogs: true,
+                            boms: { select: { id: true }, take: 1 } // Check if BOM exists
+                        }
                     });
 
-                    const bomProductIds = new Set(boms.map(b => b.productId));
+                    const productMap = new Map(productsInfo.map(p => [p.id, p]));
 
-                    productsWithBomStatus = hits.map(p => ({
-                        ...p,
-                        hasBOM: bomProductIds.has(p.id)
-                    }));
+                    productsWithBomStatus = hits.map(p => {
+                        const info = productMap.get(p.id);
+                        return {
+                            ...p,
+                            cogs: info?.cogs ? Number(info.cogs) : 0,
+                            hasBOM: info ? info.boms.length > 0 : false
+                        };
+                    });
                 }
             } catch (err) {
                 Logger.warn('Failed to check BOM status for products', { error: err });
