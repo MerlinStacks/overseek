@@ -385,7 +385,55 @@ export class SearchCampaignAdvisor {
                 },
                 platform: 'google',
                 source: 'SearchCampaignAdvisor',
-                tags: ['search', 'new-campaign', 'high-intent']
+                tags: ['search', 'new-campaign', 'high-intent'],
+                implementationDetails: {
+                    suggestedKeywords: productKeywords.slice(0, 5).map((keyword, idx) => ({
+                        keyword,
+                        matchType: idx === 0 ? 'exact' as const : 'phrase' as const,
+                        suggestedCpc: avgOrderValue * 0.05,
+                        estimatedClicks: Math.round((dailyBudget * 30 / (avgOrderValue * 0.05)) / productKeywords.length),
+                        source: 'product_data' as const,
+                        adGroupSuggestion: 'Top Products'
+                    })),
+                    budgetSpec: {
+                        dailyBudget,
+                        bidStrategy: 'maximize_conversions',
+                        targetRoas: 2.0,
+                        maxCpc: avgOrderValue * 0.1 // 10% of AOV as max
+                    },
+                    creativeSpec: {
+                        headlines: [
+                            topProducts[0]?.name?.slice(0, 30) || 'Premium Products',
+                            'Shop Now - Free Shipping',
+                            'Trusted by Thousands',
+                            `Starting at $${Math.floor(avgOrderValue * 0.5)}`
+                        ],
+                        descriptions: [
+                            `Explore our top-selling ${topProducts[0]?.name?.split(' ')[0] || 'products'}. Shop with confidence.`,
+                            'Quality craftsmanship. Fast delivery. 100% satisfaction guaranteed.'
+                        ],
+                        callToActions: ['Shop Now', 'Buy Today', 'Order Now']
+                    },
+                    steps: [
+                        'Open Google Ads and click "+ New Campaign"',
+                        'Select "Sales" as your campaign objective',
+                        'Choose "Search" as the campaign type',
+                        `Set your daily budget to $${dailyBudget}`,
+                        'Choose "Maximize Conversions" with a 2.0x target ROAS',
+                        `Add the suggested keywords: ${productKeywords.slice(0, 3).join(', ')}`,
+                        'Create 3-5 responsive search ads using the headline suggestions',
+                        'Enable sitelink extensions with your key product categories',
+                        'Launch and monitor for 7-14 days before optimization'
+                    ],
+                    estimatedTimeMinutes: 30,
+                    difficulty: 'medium',
+                    targetProducts: topProducts.slice(0, 3).map((p, idx) => ({
+                        id: String(idx),
+                        name: p.name || 'Product',
+                        sku: ''
+                    })),
+                    structureNotes: 'Start with a single ad group containing your top keywords. Use phrase and exact match. Add broad match after 2 weeks of data.'
+                }
             };
         } catch (error) {
             Logger.warn('Failed to suggest new search campaign', { error });
@@ -479,7 +527,28 @@ export class SearchCampaignAdvisor {
                 },
                 platform: 'google',
                 source: 'SearchCampaignAdvisor',
-                tags: ['search', 'keyword-expansion', 'site-search']
+                tags: ['search', 'keyword-expansion', 'site-search'],
+                implementationDetails: {
+                    suggestedKeywords: sortedTerms.map(([term, count]) => ({
+                        keyword: term,
+                        matchType: 'phrase' as const,
+                        suggestedCpc: estimatedCpc,
+                        estimatedClicks: Math.round(count * 0.02),
+                        source: 'site_search' as const,
+                        adGroupSuggestion: campaign.name
+                    })),
+                    steps: [
+                        `Open Google Ads and navigate to campaign "${campaign.name}"`,
+                        'Go to Keywords section and click "+ Keywords"',
+                        `Add "${topTerm}" as a phrase match keyword`,
+                        `Set initial CPC bid to $${estimatedCpc.toFixed(2)}`,
+                        'Save and monitor for 100+ impressions before adjusting',
+                        'Consider adding the other suggested keywords from site search as well'
+                    ],
+                    estimatedTimeMinutes: 10,
+                    difficulty: 'easy',
+                    structureNotes: `Add to existing ad group in "${campaign.name}". Start with phrase match to balance reach and relevance.`
+                }
             };
         } catch (error) {
             Logger.warn('Failed to suggest keyword expansion', { error });

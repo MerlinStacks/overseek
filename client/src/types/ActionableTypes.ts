@@ -60,6 +60,54 @@ export interface EstimatedImpact {
     timeframe: '7d' | '30d';
 }
 
+// =============================================================================
+// IMPLEMENTATION DETAILS (For Implementation Guide Modal)
+// =============================================================================
+
+export interface KeywordSpec {
+    keyword: string;
+    matchType: 'exact' | 'phrase' | 'broad';
+    suggestedCpc: number;
+    estimatedVolume?: number;
+    estimatedClicks?: number;
+    adGroupSuggestion?: string;
+    source?: 'site_search' | 'product_data' | 'search_terms' | 'ai_generated';
+}
+
+export interface BudgetSpec {
+    dailyBudget: number;
+    bidStrategy: 'maximize_conversions' | 'maximize_clicks' | 'target_cpa' | 'target_roas' | 'manual_cpc';
+    targetCpa?: number;
+    targetRoas?: number;
+    maxCpc?: number;
+}
+
+export interface CreativeSpec {
+    headlines: string[];
+    descriptions: string[];
+    callToActions?: string[];
+    displayPath?: string[];
+}
+
+export interface ImplementationDetails {
+    /** Suggested keywords with CPCs and match types */
+    suggestedKeywords?: KeywordSpec[];
+    /** Budget and bidding configuration */
+    budgetSpec?: BudgetSpec;
+    /** Ad creative suggestions */
+    creativeSpec?: CreativeSpec;
+    /** Step-by-step implementation guide */
+    steps?: string[];
+    /** Estimated time to implement */
+    estimatedTimeMinutes?: number;
+    /** Difficulty level */
+    difficulty?: 'easy' | 'medium' | 'advanced';
+    /** Target products (for Shopping/PMax campaigns) */
+    targetProducts?: { id: string; name: string; sku: string }[];
+    /** Suggested campaign structure notes */
+    structureNotes?: string;
+}
+
 export interface ActionableRecommendation {
     id: string;
     priority: 1 | 2 | 3;
@@ -73,6 +121,8 @@ export interface ActionableRecommendation {
     platform: 'google' | 'meta' | 'both';
     tags?: string[];
     source: string;
+    /** Detailed implementation guide for the recommendation */
+    implementationDetails?: ImplementationDetails;
 }
 
 // =============================================================================

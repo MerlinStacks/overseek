@@ -27,7 +27,8 @@ import {
     CheckCircle,
     ArrowUpRight,
     Layers,
-    BarChart3
+    BarChart3,
+    FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AdContextModal } from '../components/marketing/AdContextModal';
@@ -36,6 +37,7 @@ import { AddKeywordModal } from '../components/marketing/AddKeywordModal';
 import { RecommendationFeedbackModal } from '../components/marketing/RecommendationFeedbackModal';
 import { ScheduleActionModal } from '../components/marketing/ScheduleActionModal';
 import { CampaignWizard } from '../components/marketing/CampaignWizard/CampaignWizard';
+import { ImplementationGuideModal } from '../components/marketing/ImplementationGuideModal';
 
 // Cache duration: 5 minutes (in milliseconds)
 const CACHE_DURATION_MS = 5 * 60 * 1000;
@@ -119,6 +121,8 @@ export function AdAIPage() {
     const [activeFeedbackRec, setActiveFeedbackRec] = useState<ActionableRecommendation | null>(null);
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [activeScheduleRec, setActiveScheduleRec] = useState<ActionableRecommendation | null>(null);
+    const [guideModalOpen, setGuideModalOpen] = useState(false);
+    const [activeGuideRec, setActiveGuideRec] = useState<ActionableRecommendation | null>(null);
 
     const fetchSuggestions = useCallback(async (isRefresh = false) => {
         if (!currentAccount || !token) return;
@@ -471,6 +475,18 @@ export function AdAIPage() {
                 />
             )}
 
+            {activeGuideRec && (
+                <ImplementationGuideModal
+                    isOpen={guideModalOpen}
+                    onClose={() => { setGuideModalOpen(false); setActiveGuideRec(null); }}
+                    recommendation={activeGuideRec}
+                    onApply={() => {
+                        setGuideModalOpen(false);
+                        handleApply(activeGuideRec);
+                    }}
+                />
+            )}
+
             {/* Error state */}
             {error && (
                 <div className="relative z-20 mx-6 mb-4 bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-red-300 flex items-center gap-3">
@@ -642,6 +658,49 @@ export function AdAIPage() {
                                                     </div>
                                                 )}
 
+                                                {/* Inline Implementation Specs */}
+                                                {rec.implementationDetails && (
+                                                    <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                        {rec.implementationDetails.budgetSpec && (
+                                                            <>
+                                                                <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                                                                    <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Daily Budget</p>
+                                                                    <p className="text-white font-bold text-lg">${rec.implementationDetails.budgetSpec.dailyBudget}</p>
+                                                                </div>
+                                                                {rec.implementationDetails.budgetSpec.targetRoas && (
+                                                                    <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                                                                        <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Target ROAS</p>
+                                                                        <p className="text-emerald-300 font-bold text-lg">{rec.implementationDetails.budgetSpec.targetRoas}x</p>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                        {rec.implementationDetails.suggestedKeywords && rec.implementationDetails.suggestedKeywords.length > 0 && (
+                                                            <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                                                                <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Keywords</p>
+                                                                <p className="text-white font-bold text-lg">{rec.implementationDetails.suggestedKeywords.length} suggested</p>
+                                                            </div>
+                                                        )}
+                                                        {rec.implementationDetails.difficulty && (
+                                                            <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                                                                <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Difficulty</p>
+                                                                <p className={`font-bold text-lg ${rec.implementationDetails.difficulty === 'easy' ? 'text-emerald-300' :
+                                                                        rec.implementationDetails.difficulty === 'medium' ? 'text-amber-300' :
+                                                                            'text-rose-300'
+                                                                    }`}>
+                                                                    {rec.implementationDetails.difficulty.charAt(0).toUpperCase() + rec.implementationDetails.difficulty.slice(1)}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {rec.implementationDetails.estimatedTimeMinutes && (
+                                                            <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                                                                <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Est. Time</p>
+                                                                <p className="text-white font-bold text-lg">~{rec.implementationDetails.estimatedTimeMinutes} min</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 {/* Data Points */}
                                                 {rec.dataPoints.length > 0 && (
                                                     <div className="flex flex-wrap gap-2 mb-6">
@@ -656,21 +715,22 @@ export function AdAIPage() {
                                                 {/* Action Buttons */}
                                                 <div className="flex items-center gap-3">
                                                     <button
-                                                        onClick={() => handleApply(rec)}
+                                                        onClick={() => {
+                                                            setActiveGuideRec(rec);
+                                                            setGuideModalOpen(true);
+                                                        }}
                                                         className="flex-1 py-3.5 px-6 bg-white text-slate-900 font-bold rounded-xl hover:bg-white/90 transition-all shadow-lg flex items-center justify-center gap-2"
                                                     >
-                                                        <CheckCircle size={20} />
-                                                        Apply Now
+                                                        <FileText size={20} />
+                                                        Implementation Guide
                                                     </button>
-                                                    {isBudgetAction(rec.action) && (
-                                                        <button
-                                                            onClick={() => handleSchedule(rec)}
-                                                            className="py-3.5 px-5 bg-white/20 text-white font-medium rounded-xl hover:bg-white/30 transition-all flex items-center gap-2"
-                                                        >
-                                                            <Layers size={18} />
-                                                            Schedule
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        onClick={() => handleApply(rec)}
+                                                        className="py-3.5 px-5 bg-white/20 text-white font-medium rounded-xl hover:bg-white/30 transition-all flex items-center gap-2"
+                                                    >
+                                                        <CheckCircle size={18} />
+                                                        Apply
+                                                    </button>
                                                     <button
                                                         onClick={() => handleDismiss(rec)}
                                                         className="py-3.5 px-5 bg-white/10 text-white/80 font-medium rounded-xl hover:bg-white/20 hover:text-white transition-all"
