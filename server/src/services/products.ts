@@ -239,20 +239,31 @@ export class ProductsService {
             }));
 
             // Check for BOMs to prevent circular/nested BOMs
-            const productIds = hits.map(h => h.id);
-            const boms = await prisma.bOM.findMany({
-                where: {
-                    productId: { in: productIds }
-                },
-                select: { productId: true }
-            });
+            let productsWithBomStatus = hits;
+            try {
+                const productIds = hits
+                    .map(h => h.id)
+                    .filter(id => typeof id === 'string' && id.length > 0);
 
-            const bomProductIds = new Set(boms.map(b => b.productId));
+                if (productIds.length > 0) {
+                    const boms = await prisma.bOM.findMany({
+                        where: {
+                            productId: { in: productIds }
+                        },
+                        select: { productId: true }
+                    });
 
-            const productsWithBomStatus = hits.map(p => ({
-                ...p,
-                hasBOM: bomProductIds.has(p.id)
-            }));
+                    const bomProductIds = new Set(boms.map(b => b.productId));
+
+                    productsWithBomStatus = hits.map(p => ({
+                        ...p,
+                        hasBOM: bomProductIds.has(p.id)
+                    }));
+                }
+            } catch (err) {
+                Logger.warn('Failed to check BOM status for products', { error: err });
+                // Fallback to products without hasBOM flag
+            }
 
             const total = (response.hits.total as any).value || 0;
 
