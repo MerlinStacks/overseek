@@ -176,7 +176,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
 
                 try {
                     await IndexingService.indexProduct(accountId, {
-                        ...p,
+                        ...upsertedProduct,
                         seoScore: seoResult.score,
                         merchantCenterScore: mcResult.score
                     });

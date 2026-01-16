@@ -232,30 +232,33 @@ export class IndexingService {
             }
         });
 
+        // Handle both Prisma object (camelCase) and raw Woo object (snake_case)
+        const rawData = product.rawData || product;
+
         await esClient.index({
             index: 'products',
             id: `${accountId}_${product.id}`,
             document: {
                 accountId,
                 id: product.id,
-                wooId: product.wooId,
+                wooId: product.wooId || product.id,
                 name: product.name,
                 sku: product.sku,
-                stock_status: product.stock_status,
-                stock_quantity: product.stock_quantity ?? null,
+                stock_status: product.stockStatus || product.stock_status,
+                stock_quantity: product.stockQuantity ?? product.stock_quantity ?? null,
                 low_stock_amount: product.low_stock_amount ?? 5,
-                price: parseFloat(product.price || '0'),
-                date_created: product.date_created,
-                mainImage: product.images?.[0]?.src || null,
-                images: product.images?.map((img: any) => ({ src: img.src })) || [],
-                categories: product.categories?.map((cat: any) => ({ name: cat.name })) || [],
+                price: parseFloat(product.price?.toString() || '0'),
+                date_created: product.createdAt || product.date_created,
+                mainImage: product.mainImage || product.images?.[0]?.src || null,
+                images: (Array.isArray(product.images) ? product.images : rawData.images)?.map((img: any) => ({ src: img.src })) || [],
+                categories: rawData.categories?.map((cat: any) => ({ name: cat.name })) || [],
                 seoScore: product.seoScore || 0,
                 merchantCenterScore: product.merchantCenterScore || 0,
                 variations: product.variations?.map((v: any) => ({
                     id: v.id,
-                    stock_status: v.stock_status,
-                    stock_quantity: v.stock_quantity ?? v.manage_stock ? (v.stock_quantity ?? 0) : null,
-                    price: parseFloat(v.price || '0'),
+                    stock_status: v.stockStatus || v.stock_status,
+                    stock_quantity: v.stockQuantity ?? v.stock_quantity ?? null,
+                    price: parseFloat(v.price?.toString() || '0'),
                     sku: v.sku
                 })) || []
             },

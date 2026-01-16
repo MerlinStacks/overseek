@@ -253,7 +253,10 @@ export class ProductsService {
                         select: {
                             id: true,
                             cogs: true,
-                            boms: { select: { id: true }, take: 1 } // Check if BOM exists
+                            boms: {
+                                select: { id: true, items: { take: 1 } },
+                                take: 1
+                            }
                         }
                     });
 
@@ -261,10 +264,12 @@ export class ProductsService {
 
                     productsWithBomStatus = hits.map(p => {
                         const info = productMap.get(p.id);
+                        // Only consider it a BOM if it has items
+                        const hasBOM = info ? (info.boms.length > 0 && info.boms[0].items.length > 0) : false;
                         return {
                             ...p,
                             cogs: info?.cogs ? Number(info.cogs) : 0,
-                            hasBOM: info ? info.boms.length > 0 : false
+                            hasBOM
                         };
                     });
                 }
