@@ -6,6 +6,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { MarketingService } from '../services/MarketingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
 
 const service = new MarketingService();
 
@@ -145,16 +146,31 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
             }
 
-            // Import email service to send the test
-            const { EmailIngestionService } = await import('../services/EmailIngestionService');
-            const emailService = new EmailIngestionService();
+            // Get the primary email account for this account
+            const emailAccount = await prisma.emailAccount.findFirst({
+                where: {
+                    accountId: request.user!.accountId!,
+                    smtpEnabled: true
+                }
+            });
 
-            await emailService.sendEmail(request.user!.accountId!, {
+            if (!emailAccount) {
+                return reply.code(400).send({ error: 'No email account configured. Please set up an email account in Settings.' });
+            }
+
+            // Import email service to send the test
+            const { EmailService } = await import('../services/EmailService');
+            const emailService = new EmailService();
+
+            await emailService.sendEmail(
+                request.user!.accountId!,
+                emailAccount.id,
                 to,
                 subject,
-                html: content,
-                source: 'TEST'
-            });
+                content,
+                undefined,
+                { source: 'TEST' }
+            );
 
             Logger.info('Test email sent', { to, subject: subject.substring(0, 50), accountId: request.user!.accountId });
             return { success: true };

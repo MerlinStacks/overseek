@@ -84,6 +84,7 @@ const MobileSettings = lazy(() => import('./pages/mobile/MobileSettings').then(m
 const MobileCustomers = lazy(() => import('./pages/mobile/MobileCustomers').then(m => ({ default: m.MobileCustomers })));
 const MobileCustomerDetail = lazy(() => import('./pages/mobile/MobileCustomerDetail').then(m => ({ default: m.MobileCustomerDetail })));
 const MobileVisitorDetail = lazy(() => import('./pages/mobile/MobileVisitorDetail').then(m => ({ default: m.MobileVisitorDetail })));
+const MobileShareHandler = lazy(() => import('./pages/mobile/MobileShareHandler').then(m => ({ default: m.default })));
 
 // Loading fallback for lazy routes
 function PageLoader() {
@@ -244,6 +245,7 @@ function App() {
                                                 <Route path="/m/orders/:id" element={<AccountGuard><MobileOrderDetail /></AccountGuard>} />
                                                 <Route path="/m/inbox" element={<AccountGuard><MobileInbox /></AccountGuard>} />
                                                 <Route path="/m/inbox/:id" element={<AccountGuard><MobileChat /></AccountGuard>} />
+                                                <Route path="/m/inbox/share" element={<AccountGuard><MobileShareHandler /></AccountGuard>} />
                                                 <Route path="/m/analytics" element={<AccountGuard><MobileAnalytics /></AccountGuard>} />
                                                 <Route path="/m/inventory" element={<AccountGuard><MobileInventory /></AccountGuard>} />
                                                 <Route path="/m/more" element={<AccountGuard><MobileMore /></AccountGuard>} />

@@ -1,24 +1,91 @@
 /**
  * PWA Service Worker - OverSeek Companion
  * 
- * Handles push notifications and offline caching for the PWA.
+ * Enhanced service worker with:
+ * - Rich offline caching for critical routes
+ * - Background sync for offline actions
+ * - Periodic sync for dashboard refresh
+ * - Push notifications
  * 
  * IMPORTANT: Update CACHE_VERSION on each deployment to bust caches.
  */
 
 // Cache version - UPDATE THIS ON EVERY DEPLOYMENT
-const CACHE_VERSION = '2026-01-14-v1';
+const CACHE_VERSION = '2026-01-17-v1';
 const CACHE_NAME = `overseek-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
+const SYNC_TAG = 'sync-offline-actions';
+const PERIODIC_SYNC_TAG = 'refresh-dashboard';
 
 // Assets to cache for offline app shell
 const PRECACHE_ASSETS = [
     '/',
     '/m/dashboard',
+    '/m/orders',
+    '/m/inbox',
+    '/m/customers',
     '/manifest.json',
     '/icons/icon-192.png',
-    '/icons/icon-512.png'
+    '/icons/icon-512.png',
+    '/offline.html'
 ];
+
+// IndexedDB for offline action queue
+const DB_NAME = 'overseek-offline';
+const DB_VERSION = 1;
+const STORE_NAME = 'pending-actions';
+
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+            }
+        };
+    });
+}
+
+async function queueOfflineAction(action) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.add({
+            ...action,
+            timestamp: Date.now()
+        });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function getPendingActions() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function clearPendingAction(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
 
 // Install event - cache app shell
 self.addEventListener('install', (event) => {
@@ -64,12 +131,16 @@ self.addEventListener('activate', (event) => {
 // Fetch event - network-first with cache fallback for navigation
 self.addEventListener('fetch', (event) => {
     const { request } = event;
+    const url = new URL(request.url);
 
     // Skip non-GET requests
     if (request.method !== 'GET') return;
 
     // Skip API requests - always go to network
     if (request.url.includes('/api/')) return;
+
+    // Skip socket.io requests
+    if (request.url.includes('/socket.io/')) return;
 
     // Navigation requests - network first, cache fallback
     if (request.mode === 'navigate') {
@@ -99,7 +170,9 @@ self.addEventListener('fetch', (event) => {
     if (request.destination === 'image' ||
         request.destination === 'style' ||
         request.destination === 'script' ||
-        request.url.includes('/icons/')) {
+        request.destination === 'font' ||
+        url.pathname.includes('/icons/') ||
+        url.pathname.includes('/screenshots/')) {
         event.respondWith(
             caches.match(request).then((cached) => {
                 if (cached) return cached;
@@ -185,14 +258,124 @@ self.addEventListener('notificationclick', (event) => {
     );
 });
 
-// Background sync for offline actions (future enhancement)
+// Background sync for offline actions
 self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-orders') {
-        event.waitUntil(syncOfflineOrders());
+    console.log('[SW] Sync event:', event.tag);
+
+    if (event.tag === SYNC_TAG) {
+        event.waitUntil(syncOfflineActions());
     }
 });
 
-async function syncOfflineOrders() {
-    // Placeholder for future offline order sync
-    console.log('[SW] Syncing offline orders');
+async function syncOfflineActions() {
+    console.log('[SW] Syncing offline actions...');
+
+    try {
+        const actions = await getPendingActions();
+        console.log('[SW] Pending actions:', actions.length);
+
+        for (const action of actions) {
+            try {
+                const response = await fetch(action.url, {
+                    method: action.method || 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...action.headers
+                    },
+                    body: action.body ? JSON.stringify(action.body) : undefined,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await clearPendingAction(action.id);
+                    console.log('[SW] Synced action:', action.id);
+
+                    // Notify the app about successful sync
+                    const allClients = await self.clients.matchAll({ type: 'window' });
+                    allClients.forEach(client => {
+                        client.postMessage({
+                            type: 'SYNC_COMPLETE',
+                            actionId: action.id,
+                            actionType: action.type
+                        });
+                    });
+                } else {
+                    console.warn('[SW] Action sync failed:', action.id, response.status);
+                }
+            } catch (err) {
+                console.error('[SW] Error syncing action:', action.id, err);
+            }
+        }
+    } catch (err) {
+        console.error('[SW] Error getting pending actions:', err);
+    }
 }
+
+// Periodic background sync for dashboard refresh
+self.addEventListener('periodicsync', (event) => {
+    console.log('[SW] Periodic sync event:', event.tag);
+
+    if (event.tag === PERIODIC_SYNC_TAG) {
+        event.waitUntil(refreshDashboardData());
+    }
+});
+
+async function refreshDashboardData() {
+    console.log('[SW] Refreshing dashboard data...');
+
+    try {
+        // Fetch key dashboard data endpoints and cache the responses
+        const endpoints = [
+            '/api/analytics/kpis?range=today',
+            '/api/orders/summary'
+        ];
+
+        const cache = await caches.open(CACHE_NAME);
+
+        for (const endpoint of endpoints) {
+            try {
+                const response = await fetch(endpoint, { credentials: 'include' });
+                if (response.ok) {
+                    // Store in cache for offline access
+                    await cache.put(endpoint, response.clone());
+                    console.log('[SW] Cached:', endpoint);
+                }
+            } catch (err) {
+                console.warn('[SW] Failed to refresh:', endpoint);
+            }
+        }
+
+        // Notify the app that data was refreshed
+        const allClients = await self.clients.matchAll({ type: 'window' });
+        allClients.forEach(client => {
+            client.postMessage({ type: 'DASHBOARD_REFRESHED' });
+        });
+    } catch (err) {
+        console.error('[SW] Dashboard refresh error:', err);
+    }
+}
+
+// Message handler for app communication
+self.addEventListener('message', (event) => {
+    console.log('[SW] Message received:', event.data);
+
+    if (event.data?.type === 'QUEUE_OFFLINE_ACTION') {
+        queueOfflineAction(event.data.action)
+            .then((id) => {
+                event.source.postMessage({ type: 'ACTION_QUEUED', id });
+                // Request background sync
+                return self.registration.sync.register(SYNC_TAG);
+            })
+            .catch((err) => {
+                console.error('[SW] Failed to queue action:', err);
+            });
+    }
+
+    if (event.data?.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+
+    if (event.data?.type === 'GET_VERSION') {
+        event.source.postMessage({ type: 'VERSION', version: CACHE_VERSION });
+    }
+});

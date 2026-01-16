@@ -1,88 +1,321 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline - OverSeek</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>OverSeek - Offline</title>
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="/manifest.json">
     <style>
+        :root {
+            --sat: env(safe-area-inset-top, 0px);
+            --sab: env(safe-area-inset-bottom, 0px);
+        }
+        
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
             min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            padding-top: calc(24px + var(--sat));
+            padding-bottom: calc(24px + var(--sab));
+            color: #fff;
+            overflow: hidden;
+        }
+        
+        .container {
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .icon-wrapper {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 32px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: pulse 2s ease-in-out infinite;
         }
-
-        .container {
-            text-align: center;
-            color: white;
-            max-width: 400px;
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
         }
-
-        .icon {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 24px;
-            opacity: 0.9;
+        
+        .icon-wrapper svg {
+            width: 64px;
+            height: 64px;
+            color: rgba(255, 255, 255, 0.9);
         }
-
+        
         h1 {
-            font-size: 24px;
-            font-weight: 600;
+            font-size: 28px;
+            font-weight: 700;
             margin-bottom: 12px;
+            letter-spacing: -0.5px;
         }
-
+        
         p {
             font-size: 16px;
-            opacity: 0.8;
+            color: rgba(255, 255, 255, 0.7);
             line-height: 1.5;
+            margin-bottom: 32px;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             margin-bottom: 24px;
         }
-
-        .retry-btn {
-            background: #4f46e5;
-            color: white;
-            border: none;
-            padding: 12px 32px;
-            font-size: 16px;
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            background: #fbbf24;
+            border-radius: 50%;
+            animation: blink 1.5s ease-in-out infinite;
+        }
+        
+        .status-dot.online {
+            background: #10b981;
+            animation: none;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        
+        .status-text {
+            font-size: 14px;
             font-weight: 500;
-            border-radius: 8px;
+        }
+        
+        .retry-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: #fff;
+            border: none;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 12px;
             cursor: pointer;
-            transition: transform 0.2s, background 0.2s;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+            width: 100%;
         }
-
+        
         .retry-btn:hover {
-            background: #4338ca;
-            transform: scale(1.02);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.5);
         }
-
+        
         .retry-btn:active {
-            transform: scale(0.98);
+            transform: translateY(0);
+        }
+        
+        .retry-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .pending-actions {
+            margin-top: 24px;
+            padding: 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            display: none;
+        }
+        
+        .pending-actions.show {
+            display: block;
+        }
+        
+        .pending-actions p {
+            color: #10b981;
+            margin-bottom: 0;
+            font-size: 14px;
+        }
+        
+        .brand {
+            position: fixed;
+            bottom: 24px;
+            bottom: calc(24px + var(--sab));
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+        
+        /* Decorative background elements */
+        .bg-blob {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.3;
+            pointer-events: none;
+        }
+        
+        .bg-blob-1 {
+            top: -100px;
+            right: -100px;
+            width: 300px;
+            height: 300px;
+            background: #818cf8;
+        }
+        
+        .bg-blob-2 {
+            bottom: -150px;
+            left: -150px;
+            width: 400px;
+            height: 400px;
+            background: #6366f1;
         }
     </style>
 </head>
-
 <body>
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+    
     <div class="container">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-        </svg>
+        <div class="icon-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
+            </svg>
+        </div>
+        
         <h1>You're Offline</h1>
-        <p>It looks like you've lost your internet connection. Please check your network and try again.</p>
-        <button class="retry-btn" onclick="window.location.reload()">
+        <p>Don't worry — any actions you take will be saved and synced automatically when you reconnect.</p>
+        
+        <div class="status" id="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span class="status-text" id="statusText">Waiting for connection...</span>
+        </div>
+        
+        <button class="retry-btn" id="retryBtn" onclick="checkConnection()">
             Try Again
         </button>
+        
+        <div class="pending-actions" id="pendingActions">
+            <p>✓ <span id="pendingCount">0</span> pending actions will sync when online</p>
+        </div>
     </div>
+    
+    <div class="brand">OverSeek Companion</div>
+    
+    <script>
+        let isChecking = false;
+        
+        // Check connection status
+        async function checkConnection() {
+            if (isChecking) return;
+            isChecking = true;
+            
+            const btn = document.getElementById('retryBtn');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            btn.disabled = true;
+            btn.textContent = 'Checking...';
+            statusText.textContent = 'Checking connection...';
+            
+            try {
+                const response = await fetch('/api/health', { 
+                    method: 'HEAD',
+                    cache: 'no-store'
+                });
+                
+                if (response.ok || navigator.onLine) {
+                    statusDot.classList.add('online');
+                    statusText.textContent = 'Connected! Redirecting...';
+                    
+                    // Redirect back to app
+                    setTimeout(() => {
+                        window.location.href = '/m/dashboard';
+                    }, 500);
+                    return;
+                }
+            } catch (e) {
+                // Still offline
+            }
+            
+            statusText.textContent = 'Still offline...';
+            btn.disabled = false;
+            btn.textContent = 'Try Again';
+            isChecking = false;
+        }
+        
+        // Check for pending actions in IndexedDB
+        async function checkPendingActions() {
+            try {
+                const request = indexedDB.open('overseek-offline', 1);
+                request.onsuccess = () => {
+                    const db = request.result;
+                    if (db.objectStoreNames.contains('pending-actions')) {
+                        const tx = db.transaction('pending-actions', 'readonly');
+                        const store = tx.objectStore('pending-actions');
+                        const countReq = store.count();
+                        countReq.onsuccess = () => {
+                            const count = countReq.result;
+                            if (count > 0) {
+                                document.getElementById('pendingCount').textContent = count;
+                                document.getElementById('pendingActions').classList.add('show');
+                            }
+                        };
+                    }
+                };
+            } catch (e) {
+                console.log('Could not check pending actions');
+            }
+        }
+        
+        // Listen for online event
+        window.addEventListener('online', () => {
+            document.getElementById('statusDot').classList.add('online');
+            document.getElementById('statusText').textContent = 'Back online! Redirecting...';
+            setTimeout(() => {
+                window.location.href = '/m/dashboard';
+            }, 500);
+        });
+        
+        // Auto-check periodically
+        setInterval(() => {
+            if (!isChecking && navigator.onLine) {
+                checkConnection();
+            }
+        }, 5000);
+        
+        // Initial checks
+        checkPendingActions();
+    </script>
 </body>
-
 </html>

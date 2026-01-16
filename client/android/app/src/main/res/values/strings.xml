@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">OverSeek Companion</string>
-    <string name="title_activity_main">OverSeek Companion</string>
-    <string name="package_name">com.overseek.companion</string>
-    <string name="custom_url_scheme">com.overseek.companion</string>
-</resources>

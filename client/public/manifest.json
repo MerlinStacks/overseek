@@ -2,7 +2,9 @@
     "name": "OverSeek Companion",
     "short_name": "OverSeek",
     "description": "Mobile companion app for OverSeek e-commerce management",
+    "id": "/m/dashboard",
     "start_url": "/m/dashboard",
+    "scope": "/",
     "display": "standalone",
     "orientation": "portrait",
     "background_color": "#1e1b4b",
@@ -11,6 +13,10 @@
         "business",
         "productivity"
     ],
+    "launch_handler": {
+        "client_mode": "navigate-existing"
+    },
+    "handle_links": "preferred",
     "icons": [
         {
             "src": "/icons/icon-72.png",
@@ -59,6 +65,36 @@
             "purpose": "maskable"
         }
     ],
+    "screenshots": [
+        {
+            "src": "/screenshots/dashboard-wide.png",
+            "sizes": "1280x720",
+            "type": "image/png",
+            "form_factor": "wide",
+            "label": "Dashboard overview with key metrics"
+        },
+        {
+            "src": "/screenshots/dashboard-mobile.png",
+            "sizes": "750x1334",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Mobile dashboard view"
+        },
+        {
+            "src": "/screenshots/orders-mobile.png",
+            "sizes": "750x1334",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Orders management"
+        },
+        {
+            "src": "/screenshots/inbox-mobile.png",
+            "sizes": "750x1334",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Unified inbox"
+        }
+    ],
     "shortcuts": [
         {
             "name": "Orders",
@@ -82,5 +118,15 @@
                 }
             ]
         }
-    ]
+    ],
+    "share_target": {
+        "action": "/m/inbox/share",
+        "method": "POST",
+        "enctype": "multipart/form-data",
+        "params": {
+            "title": "subject",
+            "text": "body",
+            "url": "link"
+        }
+    }
 }
