@@ -195,11 +195,11 @@
   border: 1px solid var(--color-slate-200);
   box-shadow: var(--card-shadow);
   transition: box-shadow var(--transition-smooth), transform var(--transition-smooth);
-}
 
-@utility card-premium:hover {
-  box-shadow: var(--card-shadow-hover);
-  transform: translateY(-2px);
+  &:hover {
+    box-shadow: var(--card-shadow-hover);
+    transform: translateY(-2px);
+  }
 }
 
 .dark .card-premium {
@@ -219,35 +219,40 @@
   transition: all var(--transition-base);
   position: relative;
   overflow: hidden;
-}
 
-@utility btn-gradient:hover {
-  background: var(--gradient-primary-hover);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
-  transform: translateY(-1px);
-}
+  &:hover {
+    background: var(--gradient-primary-hover);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
+    transform: translateY(-1px);
+  }
 
-@utility btn-gradient:active {
-  transform: translateY(0);
+  &:active {
+    transform: translateY(0);
+  }
 }
 
 /* Shimmer Effect for Buttons */
-@utility btn-shimmer::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg,
-      transparent,
-      rgba(255, 255, 255, 0.2),
-      transparent);
-  transition: left 0.5s;
-}
+@utility btn-shimmer {
+  position: relative;
+  overflow: hidden;
 
-@utility btn-shimmer:hover::before {
-  left: 100%;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent);
+    transition: left 0.5s;
+  }
+
+  &:hover::before {
+    left: 100%;
+  }
 }
 
 /* Glow Effects */
@@ -266,17 +271,17 @@
 /* Accent Bar (for widget headers) */
 @utility accent-bar {
   position: relative;
-}
 
-@utility accent-bar::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--gradient-primary);
-  border-radius: var(--card-radius) var(--card-radius) 0 0;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gradient-primary);
+    border-radius: var(--card-radius) var(--card-radius) 0 0;
+  }
 }
 
 /* Mesh Background */
