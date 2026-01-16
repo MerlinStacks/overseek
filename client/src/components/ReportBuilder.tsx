@@ -63,7 +63,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
             setIsSaveModalOpen(false);
             if (onTemplateSaved) onTemplateSaved();
         } catch (e) {
-            console.error('Save failed', e);
+            Logger.error('Save failed', { error: e });
             // Optionally set an error state here to show in the modal, 
             // but for now we mirror previous behavior which was just console.error
         }
@@ -90,7 +90,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
 
             setResults(data);
         } catch (error: any) {
-            console.error('Report failed', error);
+            Logger.error('Report failed', { error: error });
             setError(error.message || 'An error occurred while generating the report.');
         } finally {
             setIsLoading(false);

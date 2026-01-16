@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Merge, X, Search, MessageSquare } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
@@ -59,7 +60,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                     setConversations(data.filter((c: Conversation) => c.id !== currentConversationId));
                 }
             } catch (error) {
-                console.error('Failed to fetch conversations:', error);
+                Logger.error('Failed to fetch conversations:', { error: error });
             } finally {
                 setIsLoading(false);
             }

@@ -3,6 +3,7 @@
  * Shows visitors with their recent actions as clickable icons
  */
 import { useEffect, useState, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { Users, Clock, MapPin, FileText, Search, ShoppingCart, Eye, ExternalLink, User, RefreshCw, Globe, Link2, Flag, DollarSign } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
@@ -171,7 +172,7 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
                 setVisitors(json.data);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setLoading(false);
         }

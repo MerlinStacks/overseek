@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, Lightbulb, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -42,7 +43,7 @@ export function AdContextModal({ isOpen, onClose, onSaved }: AdContextModalProps
                 setContext(data.context || '');
             }
         } catch (err) {
-            console.error('Failed to fetch context', err);
+            Logger.error('Failed to fetch context', { error: err });
         } finally {
             setLoading(false);
         }

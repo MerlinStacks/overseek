@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -106,7 +107,7 @@ export function SocialChannelsSettings() {
                 });
             }
         } catch (err) {
-            console.error('Failed to fetch SMS settings', err);
+            Logger.error('Failed to fetch SMS settings', { error: err });
         }
     };
 

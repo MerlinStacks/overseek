@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { GoogleAdsCampaigns } from './GoogleAdsCampaigns';
@@ -43,7 +44,7 @@ export function AdPerformanceView() {
                 setSelectedAccountId(activeAccounts[0].id);
             }
         } catch (err) {
-            console.error('Failed to fetch ad accounts:', err);
+            Logger.error('Failed to fetch ad accounts:', { error: err });
         } finally {
             setIsLoading(false);
         }

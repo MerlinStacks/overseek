@@ -2,6 +2,7 @@
  * FraudBadge - Displays fraud risk score with color-coded indicator.
  */
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { ShieldAlert, ShieldCheck, ShieldQuestion, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -43,7 +44,7 @@ export function FraudBadge({ orderId, className }: FraudBadgeProps) {
                 setResult(await res.json());
             }
         } catch (e) {
-            console.error('Failed to fetch fraud score:', e);
+            Logger.error('Failed to fetch fraud score:', { error: e });
         } finally {
             setIsLoading(false);
         }

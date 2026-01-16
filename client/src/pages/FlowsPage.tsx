@@ -3,6 +3,7 @@
  * Part of the Growth menu in the sidebar.
  */
 import { useState } from 'react';
+import { Logger } from '../utils/logger';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { FlowBuilder } from '../components/marketing/FlowBuilder';
 import { ArrowLeft } from 'lucide-react';
@@ -40,7 +41,7 @@ export function FlowsPage() {
                 alert('Failed to load flow details');
             }
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
             alert('Failed to load flow details');
         }
     };
@@ -69,7 +70,7 @@ export function FlowsPage() {
             });
             alert('Flow saved!');
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Failed to save');
         }
     };

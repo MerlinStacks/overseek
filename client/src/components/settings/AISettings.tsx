@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { Save, Loader2, Bot, Key, ChevronDown, Check, Sparkles } from 'lucide-react';
@@ -99,7 +100,7 @@ export function AISettings() {
                     }
                 }
             } catch (e) {
-                console.error("Failed to fetch models", e);
+                Logger.error('Failed to fetch models', { error: e });
             } finally {
                 setIsLoadingModels(false);
             }
@@ -132,7 +133,7 @@ export function AISettings() {
             alert('AI Settings Saved');
 
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
             alert('Failed to save');
         } finally {
             setIsSaving(false);

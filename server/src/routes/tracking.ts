@@ -23,7 +23,7 @@ const trackingRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/verify-store', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const account = await prisma.account.findUnique({

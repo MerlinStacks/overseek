@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { ShoppingCart, Clock, User as UserIcon, Loader2, Package, Flame } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
@@ -63,7 +64,7 @@ const LiveCartsWidget = ({ className }: WidgetProps) => {
                 setCarts(Array.isArray(data) ? data : []);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setLoading(false);
         }

@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { AlertTriangle, TrendingDown, DollarSign, ExternalLink } from 'lucide-react';
@@ -68,7 +69,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
             if (roadblocksRes.ok) setRoadblocks(await roadblocksRes.json());
             if (funnelRes.ok) setFunnel(await funnelRes.json());
         } catch (e) {
-            console.error('Failed to fetch roadblocks:', e);
+            Logger.error('Failed to fetch roadblocks:', { error: e });
         } finally {
             setLoading(false);
         }

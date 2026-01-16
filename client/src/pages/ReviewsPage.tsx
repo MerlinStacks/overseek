@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
 import { Star, RefreshCw, Search, Loader2, CheckCircle, ExternalLink, Link2 } from 'lucide-react';
@@ -52,7 +53,7 @@ export const ReviewsPage = () => {
             setTotalReviews(data.pagination?.total || 0);
 
         } catch (error) {
-            console.error("Failed to fetch reviews", error);
+            Logger.error('Failed to fetch reviews', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -87,7 +88,7 @@ export const ReviewsPage = () => {
             setTimeout(fetchReviews, 2000);
 
         } catch (error) {
-            console.error("Sync failed", error);
+            Logger.error('Sync failed', { error: error });
             alert('Failed to start sync');
         } finally {
             setIsSyncing(false);
@@ -112,7 +113,7 @@ export const ReviewsPage = () => {
             alert(`Rematch complete!\n\nTotal: ${result.totalReviews}\nMatched: ${result.matchedReviews}\nUpdated: ${result.updatedReviews}\nMatch Rate: ${result.matchRate}`);
             fetchReviews();
         } catch (error) {
-            console.error('Rematch failed', error);
+            Logger.error('Rematch failed', { error: error });
             alert('Failed to rematch reviews');
         } finally {
             setIsRematching(false);

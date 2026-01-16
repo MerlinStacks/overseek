@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -13,6 +14,8 @@ import {
     Loader2,
     User
 } from 'lucide-react';
+import { formatCurrency, formatDate } from '../../utils/format';
+import { getInitials } from '../../utils/string';
 
 /**
  * MobileCustomers - Mobile-optimized customer list with search
@@ -80,7 +83,7 @@ export function MobileCustomers() {
             }
             setHasMore(newCustomers.length === 20);
         } catch (error) {
-            console.error('[MobileCustomers] Error:', error);
+            Logger.error('[MobileCustomers] Error:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -105,22 +108,9 @@ export function MobileCustomers() {
         }
     };
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: currentAccount?.currency || 'USD'
-        }).format(amount);
-    };
-
-    const formatDate = (dateString: string) => {
-        if (!dateString) return '-';
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
-
-    const getInitials = (firstName: string, lastName: string) => {
-        return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase() || '?';
-    };
+    // Currency formatting helper using centralized utility
+    const formatAccountCurrency = (amount: number) =>
+        formatCurrency(amount, currentAccount?.currency || 'USD');
 
     return (
         <div className="space-y-4">
@@ -172,7 +162,7 @@ export function MobileCustomers() {
                             <span className="text-xs font-medium">Total Spent</span>
                         </div>
                         <p className="text-xl font-bold text-gray-900">
-                            {formatCurrency(customers.reduce((sum, c) => sum + c.totalSpent, 0))}
+                            {formatAccountCurrency(customers.reduce((sum, c) => sum + c.totalSpent, 0))}
                         </p>
                     </div>
                 </div>
@@ -201,7 +191,7 @@ export function MobileCustomers() {
                                 {customer.avatarUrl ? (
                                     <img src={customer.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
                                 ) : (
-                                    getInitials(customer.firstName, customer.lastName)
+                                    getInitials(`${customer.firstName} ${customer.lastName}`)
                                 )}
                             </div>
 
@@ -220,7 +210,7 @@ export function MobileCustomers() {
                                         {customer.ordersCount} orders
                                     </span>
                                     <span className="font-medium text-green-600">
-                                        {formatCurrency(customer.totalSpent)}
+                                        {formatAccountCurrency(customer.totalSpent)}
                                     </span>
                                 </div>
                             </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +9,7 @@ import { generateId } from './invoiceUtils';
 import { DesignerSidebar } from './DesignerSidebar';
 import { DesignerCanvas } from './DesignerCanvas';
 import { DesignerProperties } from './DesignerProperties';
+import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
 
 /**
  * InvoiceDesigner - Single template editor for invoice layouts.
@@ -47,7 +49,7 @@ export function InvoiceDesigner() {
                         try {
                             layoutData = JSON.parse(layoutData);
                         } catch (e) {
-                            console.error('Failed to parse layout string', e);
+                            Logger.error('Failed to parse layout string', { error: e });
                         }
                     }
 
@@ -57,7 +59,7 @@ export function InvoiceDesigner() {
                     }
                 }
             } catch (err) {
-                console.error("Failed to load template", err);
+                Logger.error('Failed to load template', { error: err });
             } finally {
                 setIsLoading(false);
             }
@@ -146,7 +148,7 @@ export function InvoiceDesigner() {
             setSaveMessage({ type: 'success', text: 'Template saved successfully!' });
             setTimeout(() => setSaveMessage(null), 3000);
         } catch (err: any) {
-            console.error('Failed to save template', err);
+            Logger.error('Failed to save template', { error: err });
             setSaveMessage({ type: 'error', text: err?.message || 'Failed to save template' });
         } finally {
             setIsSaving(false);
@@ -254,6 +256,54 @@ export function InvoiceDesigner() {
                     >
                         <X size={16} />
                     </button>
+                </div>
+            )}
+
+            {/* Preview Modal */}
+            {showPreview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="relative bg-white rounded-2xl shadow-2xl max-h-[90vh] max-w-[90vw] overflow-auto">
+                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/90 backdrop-blur-md border-b border-slate-200">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                    <Eye className="text-white" size={14} />
+                                </div>
+                                <h2 className="font-bold text-slate-800">Invoice Preview</h2>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowPreview(false)}
+                                className="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 bg-slate-100">
+                            <InvoiceRenderer
+                                layout={layout}
+                                items={items}
+                                data={{
+                                    order_number: 'INV-0001',
+                                    date_created: new Date().toLocaleDateString(),
+                                    billing_first_name: 'John',
+                                    billing_last_name: 'Doe',
+                                    billing_email: 'john.doe@example.com',
+                                    billing_address_1: '123 Example Street',
+                                    billing_city: 'Sydney',
+                                    billing_state: 'NSW',
+                                    billing_postcode: '2000',
+                                    billing_country: 'AU',
+                                    line_items: [
+                                        { name: 'Product A', quantity: 2, price: '25.00', total: '50.00' },
+                                        { name: 'Product B', quantity: 1, price: '75.00', total: '75.00' },
+                                    ],
+                                    subtotal: '125.00',
+                                    total_tax: '12.50',
+                                    total: '137.50'
+                                }}
+                            />
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -1,4 +1,5 @@
 import { Search, Bell, HelpCircle, User, LogOut, Shield, Menu } from 'lucide-react';
+import { Logger } from '../../utils/logger';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -38,7 +39,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                 });
                 if (res.ok) setResults(await res.json());
             } catch (e) {
-                console.error(e);
+                Logger.error('An error occurred', { error: e });
             } finally {
                 setIsLoading(false);
             }
@@ -63,7 +64,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                     setUnreadCount(data.unreadCount);
                 }
             } catch (error) {
-                console.error('Notification poll failed', error);
+                Logger.error('Notification poll failed', { error: error });
             }
         };
 
@@ -81,11 +82,11 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
             });
             setUnreadCount(0);
             setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        } catch (e) { console.error(e); }
+        } catch (e) { Logger.error('An error occurred', { error: e }); }
     };
 
     return (
-        <header className="h-14 md:h-16 bg-white border-b border-gray-200 px-4 md:px-8 flex items-center justify-between sticky top-0 z-40">
+        <header className="h-14 md:h-16 header-frosted px-4 md:px-8 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center gap-4 md:gap-8">
                 {/* Hamburger Menu Button (Mobile) */}
                 {showMenuButton && (

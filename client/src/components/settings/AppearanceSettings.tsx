@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Palette, Check, RefreshCw } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -51,7 +52,7 @@ export function AppearanceSettings() {
             await refreshAccounts();
             alert('Appearance settings saved successfully');
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Failed to save appearance settings');
         } finally {
             setIsSaving(false);

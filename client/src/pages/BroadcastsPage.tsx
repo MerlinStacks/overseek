@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
+import { Logger } from '../utils/logger';
 import { CampaignsList } from '../components/marketing/CampaignsList';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -46,7 +47,7 @@ export function BroadcastsPage() {
             });
             alert('Design saved!');
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Failed to save');
         }
     };

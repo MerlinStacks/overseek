@@ -3,6 +3,7 @@
  * Handles undo delay, quote replies, email signatures, and scheduling.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useSocket } from '../context/SocketContext';
@@ -210,7 +211,7 @@ export function useMessageSend({
             // Show success toast
             alert(`Message scheduled for ${scheduledFor.toLocaleString()}`);
         } catch (error) {
-            console.error('Schedule message error:', error);
+            Logger.error('Schedule message error:', { error: error });
             alert('Failed to schedule message. Please try again.');
         } finally {
             setIsScheduling(false);

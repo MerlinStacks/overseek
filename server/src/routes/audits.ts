@@ -15,7 +15,7 @@ const auditsRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             try {
                 const { resource, resourceId } = request.params;
-                const accountId = request.accountId || request.user?.accountId || request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
 
                 if (!accountId) {
                     return reply.code(400).send({ error: 'No account context provided' });
@@ -33,7 +33,8 @@ const auditsRoutes: FastifyPluginAsync = async (fastify) => {
     // Get recent logs for the account
     fastify.get('/recent', { preHandler: [requireAuthFastify] }, async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account context provided' });
             const query = request.query as { limit?: string };
             const limit = query.limit ? parseInt(query.limit) : 50;
 

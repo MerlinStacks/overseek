@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Globe, LayoutDashboard, Link, FileText, MousePointer, LogOut, LogIn, History, Search, AlertTriangle } from 'lucide-react';
@@ -79,7 +80,7 @@ export function LiveAnalyticsPage() {
             if (vRes.ok) setVisitors(await vRes.json());
             if (cRes.ok) setCarts(await cRes.json());
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
         }
         // finally { setLoadingLive(false); }
     }
@@ -116,7 +117,7 @@ export function LiveAnalyticsPage() {
             if (res.ok) {
                 setReportData(await res.json());
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { Logger.error('An error occurred', { error: e }); }
         finally { setLoadingReport(false); }
     }
 

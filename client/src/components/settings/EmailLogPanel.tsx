@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail } from 'lucide-react';
@@ -55,7 +56,7 @@ export function EmailLogPanel() {
                 setTotal(data.total);
             }
         } catch (error) {
-            console.error('Failed to fetch email logs:', error);
+            Logger.error('Failed to fetch email logs:', { error: error });
         } finally {
             setIsLoading(false);
         }

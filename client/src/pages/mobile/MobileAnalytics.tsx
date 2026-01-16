@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { TrendingUp, DollarSign, ShoppingCart, Users, Eye, ArrowUpRight, ArrowDownRight, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { getDateRange, getComparisonRange, DateRangeOption } from '../../utils/dateUtils';
+import { formatCurrency, formatCompact } from '../../utils/format';
 
 interface AnalyticsData {
     revenue: { value: number; change: number };
@@ -44,7 +46,7 @@ export function MobileAnalytics() {
                     setLiveCount(data.total || 0);
                 }
             } catch (e) {
-                console.error('[MobileAnalytics] Live count refresh error:', e);
+                Logger.error('[MobileAnalytics] Live count refresh error:', { error: e });
             }
         };
 
@@ -151,7 +153,7 @@ export function MobileAnalytics() {
                 avgOrderValue: { value: aov, change: aovChange }
             });
         } catch (error) {
-            console.error('[MobileAnalytics] Error:', error);
+            Logger.error('[MobileAnalytics] Error:', { error: error });
             // Set fallback data on error
             setData({
                 revenue: { value: 0, change: 0 },
@@ -166,20 +168,9 @@ export function MobileAnalytics() {
         }
     };
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-AU', {
-            style: 'currency',
-            currency: currentAccount?.currency || 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(amount);
-    };
-
-    const formatNumber = (num: number) => {
-        if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-        if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-        return num.toString();
-    };
+    // Helper for account-aware currency
+    const formatAccountCurrency = (amount: number) =>
+        formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
     const periodLabels = { today: 'Today', week: 'This Week', month: 'This Month' };
 
@@ -198,12 +189,12 @@ export function MobileAnalytics() {
     }
 
     const metrics = [
-        { key: 'revenue', label: 'Revenue', value: formatCurrency(data?.revenue.value || 0), change: data?.revenue.change || 0, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
-        { key: 'orders', label: 'Orders', value: formatNumber(data?.orders.value || 0), change: data?.orders.change || 0, icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { key: 'visitors', label: 'Visitors', value: formatNumber(data?.visitors.value || 0), change: data?.visitors.change || 0, icon: Eye, color: 'text-purple-600', bg: 'bg-purple-50' },
-        { key: 'customers', label: 'New Customers', value: formatNumber(data?.customers.value || 0), change: data?.customers.change || 0, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+        { key: 'revenue', label: 'Revenue', value: formatAccountCurrency(data?.revenue.value || 0), change: data?.revenue.change || 0, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
+        { key: 'orders', label: 'Orders', value: formatCompact(data?.orders.value || 0), change: data?.orders.change || 0, icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { key: 'visitors', label: 'Visitors', value: formatCompact(data?.visitors.value || 0), change: data?.visitors.change || 0, icon: Eye, color: 'text-purple-600', bg: 'bg-purple-50' },
+        { key: 'customers', label: 'New Customers', value: formatCompact(data?.customers.value || 0), change: data?.customers.change || 0, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
         { key: 'conversion', label: 'Conversion', value: `${(data?.conversionRate.value || 0).toFixed(1)}%`, change: data?.conversionRate.change || 0, icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
-        { key: 'aov', label: 'Avg Order', value: formatCurrency(data?.avgOrderValue.value || 0), change: data?.avgOrderValue.change || 0, icon: DollarSign, color: 'text-teal-600', bg: 'bg-teal-50' }
+        { key: 'aov', label: 'Avg Order', value: formatAccountCurrency(data?.avgOrderValue.value || 0), change: data?.avgOrderValue.change || 0, icon: DollarSign, color: 'text-teal-600', bg: 'bg-teal-50' }
     ];
 
     return (

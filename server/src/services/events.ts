@@ -35,6 +35,9 @@ export const EVENTS = {
     },
     INVENTORY: {
         STOCKOUT_ALERT: 'inventory:stockout_alert', // Predictive Inventory Forecasting
+    },
+    SYNC: {
+        FAILURE_THRESHOLD: 'sync:failure_threshold'
     }
 };
 

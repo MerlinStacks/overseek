@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Database, RefreshCw, HardDrive, Trash2 } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { getCacheStats, clearAccountCache, hotTierDB } from '../../services/db';
@@ -33,7 +34,7 @@ export function HotCacheWidget() {
             const data = await getCacheStats(currentAccount.id);
             setStats(data);
         } catch (error) {
-            console.error('Failed to load cache stats', error);
+            Logger.error('Failed to load cache stats', { error: error });
         } finally {
             setLoading(false);
         }
@@ -52,7 +53,7 @@ export function HotCacheWidget() {
             await clearAccountCache(currentAccount.id);
             await loadStats();
         } catch (error) {
-            console.error('Failed to clear cache', error);
+            Logger.error('Failed to clear cache', { error: error });
         } finally {
             setClearing(false);
         }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
@@ -64,7 +65,7 @@ export function ReportsPage() {
             if (res.ok) {
                 setTemplates(await res.json());
             }
-        } catch (e) { console.error('Failed to load templates', e); }
+        } catch (e) { Logger.error('Failed to load templates', { error: e }); }
     };
 
     const handleSelectTemplate = (template: ReportTemplate) => {
@@ -86,7 +87,7 @@ export function ReportsPage() {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount!.id }
             });
             fetchTemplates();
-        } catch (e) { console.error('Delete failed', e); }
+        } catch (e) { Logger.error('Delete failed', { error: e }); }
     };
 
     const handleTemplateSaved = () => {
@@ -113,7 +114,7 @@ export function ReportsPage() {
             if (customersRes.ok) setCustomerGrowth(await customersRes.json());
 
         } catch (error) {
-            console.error('Failed to load reports', error);
+            Logger.error('Failed to load reports', { error: error });
         } finally {
             setIsLoading(false);
         }

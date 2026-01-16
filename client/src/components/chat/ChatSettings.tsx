@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Save, Loader2, MessageSquare } from 'lucide-react';
@@ -67,7 +68,7 @@ export function ChatSettings() {
                     setConfig(prev => ({ ...prev, ...data }));
                 }
             } catch (e) {
-                console.error(e);
+                Logger.error('An error occurred', { error: e });
             }
         };
         fetchSettings();

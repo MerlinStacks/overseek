@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -101,7 +102,7 @@ export function MobileSettings() {
                 }
             });
         } catch (e) {
-            console.error('[MobileSettings] Sync error:', e);
+            Logger.error('[MobileSettings] Sync error:', { error: e });
         } finally {
             setSyncing(false);
         }

@@ -3,6 +3,7 @@
  * Supports multiple variants and configurable features.
  */
 import { useCallback, useMemo } from 'react';
+import { Logger } from '../../../utils/logger';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -79,7 +80,7 @@ export function RichTextEditor({
 
     // Error handler
     const onError = useCallback((error: Error) => {
-        console.error('RichTextEditor error:', error);
+        Logger.error('RichTextEditor error:', { error: error });
     }, []);
 
     // Initial config with nodes based on features

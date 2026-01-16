@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import './SessionManager.css';
@@ -25,7 +26,7 @@ export const SessionManager: React.FC = () => {
             const data = await api.get<Session[]>('/api/sessions', token);
             setSessions(data);
         } catch (error) {
-            console.error('Failed to fetch sessions:', error);
+            Logger.error('Failed to fetch sessions:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -44,7 +45,7 @@ export const SessionManager: React.FC = () => {
             await api.delete(`/api/sessions/${id}`, token);
             setSessions(prev => prev.filter(s => s.id !== id));
         } catch (error) {
-            console.error('Failed to revoke session:', error);
+            Logger.error('Failed to revoke session:', { error: error });
         } finally {
             setRevoking(null);
         }
@@ -59,7 +60,7 @@ export const SessionManager: React.FC = () => {
             await api.delete('/api/sessions', token);
             await fetchSessions();
         } catch (error) {
-            console.error('Failed to revoke sessions:', error);
+            Logger.error('Failed to revoke sessions:', { error: error });
         } finally {
             setRevoking(null);
         }

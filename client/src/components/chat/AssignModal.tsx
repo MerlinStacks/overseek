@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Users, X, Check } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
@@ -46,7 +47,7 @@ export function AssignModal({ isOpen, onClose, onAssign, currentAssigneeId }: As
                     setTeamMembers(data);
                 }
             } catch (error) {
-                console.error('Failed to fetch team members:', error);
+                Logger.error('Failed to fetch team members:', { error: error });
             } finally {
                 setIsLoading(false);
             }

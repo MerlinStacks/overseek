@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Search, Package, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
@@ -29,7 +30,7 @@ export function QuickProductsWidget() {
                 const found = await searchProductsLocal(currentAccount.id, query);
                 setResults(found.slice(0, 5));
             } catch (error) {
-                console.error('Local search failed', error);
+                Logger.error('Local search failed', { error: error });
             } finally {
                 setSearching(false);
             }

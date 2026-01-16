@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import ReactECharts from 'echarts-for-react';
@@ -76,7 +77,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
             }
 
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         } finally {
             setIsLoading(false);
         }

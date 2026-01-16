@@ -3,6 +3,7 @@
  * Includes rich text editing and label support.
  */
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, Plus, Trash2, Zap, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -60,7 +61,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                 setLabels(await res.json());
             }
         } catch (e) {
-            console.error('Failed to fetch labels', e);
+            Logger.error('Failed to fetch labels', { error: e });
         }
     };
 
@@ -131,7 +132,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
                 onUpdate?.();
             }
         } catch (e) {
-            console.error('Failed to delete', e);
+            Logger.error('Failed to delete', { error: e });
         }
     };
 

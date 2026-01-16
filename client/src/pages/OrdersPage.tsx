@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -139,7 +140,7 @@ export function OrdersPage() {
             if (data.totalPages) setTotalPages(data.totalPages);
             else setTotalPages(1); // Standard fallback
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
@@ -220,7 +221,7 @@ export function OrdersPage() {
             setTimeout(fetchOrders, 2000);
 
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Sync failed. Check backend logs.');
         } finally {
             setIsSyncing(false);
@@ -249,7 +250,7 @@ export function OrdersPage() {
                 alert('Failed to generate picklist');
             }
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Error generating picklist');
         } finally {
             setIsGeneratingPicklist(false);
@@ -275,7 +276,7 @@ export function OrdersPage() {
                 ));
             }
         } catch (err) {
-            console.error('Failed to remove tag', err);
+            Logger.error('Failed to remove tag', { error: err });
         }
     }
 

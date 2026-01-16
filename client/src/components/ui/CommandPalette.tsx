@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
 import { Search, Package, FileText, Settings, LayoutDashboard, Truck, Users, BarChart2, Sparkles } from 'lucide-react';
@@ -114,7 +115,7 @@ export function CommandPalette() {
                     setSemanticResults([]);
                 }
             } catch (err) {
-                console.error("Search failed", err);
+                Logger.error('Search failed', { error: err });
             } finally {
                 setLoading(false);
             }
@@ -136,34 +137,37 @@ export function CommandPalette() {
             onOpenChange={setOpen}
             label="Global Command Menu"
             shouldFilter={false}
-            className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/40 backdrop-blur-xs transition-all animate-in fade-in duration-200"
+            className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-slate-900/40 backdrop-blur-sm transition-all animate-in fade-in duration-200"
             onClick={(e) => {
                 if (e.target === e.currentTarget) setOpen(false);
             }}
         >
-            <div className="w-full max-w-2xl bg-white/90 backdrop-blur-md rounded-xl shadow-2xl border border-white/20 overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-black/5">
-                <div className="flex items-center border-b border-gray-200 px-4">
-                    <Search className="w-5 h-5 text-gray-500 mr-2" />
+            <div className="w-full max-w-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-2xl shadow-2xl shadow-black/20 border border-slate-200/50 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-black/5 dark:ring-white/5 relative transform">
+                {/* Gradient accent top line */}
+                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r transition-all duration-500 ${semanticMode ? 'from-purple-500 via-fuchsia-500 to-purple-500' : 'from-blue-500 via-cyan-500 to-blue-500'}`} />
+
+                <div className="flex items-center border-b border-slate-200/60 dark:border-slate-800 px-5 pt-3 pb-2">
+                    <Search className={`w-5 h-5 mr-3 transition-colors ${semanticMode ? 'text-purple-500' : 'text-slate-400'}`} />
                     <Command.Input
                         value={query}
                         onValueChange={setQuery}
-                        placeholder={semanticMode ? "Describe what you're looking for..." : "Type a command or search..."}
-                        className="flex-1 h-16 bg-transparent outline-hidden text-lg text-gray-900 placeholder:text-gray-400 font-medium w-full"
+                        placeholder={semanticMode ? "Ask AI to find anything..." : "Type a command or search..."}
+                        className="flex-1 h-12 bg-transparent outline-none text-lg text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium w-full border-none focus:ring-0"
                     />
                     <div className="flex gap-2 items-center">
                         <button
                             type="button"
                             onClick={() => setSemanticMode(!semanticMode)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${semanticMode
-                                ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${semanticMode
+                                ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                                 }`}
                             title="Toggle AI Smart Search"
                         >
-                            <Sparkles size={12} />
+                            <Sparkles size={12} className={semanticMode ? 'animate-pulse' : ''} />
                             AI
                         </button>
-                        <kbd className="hidden sm:inline-flex h-6 select-none items-center gap-1 rounded-sm border bg-gray-100 px-2 font-mono text-[10px] font-medium text-gray-500 pointer-events-none">
+                        <kbd className="hidden sm:inline-flex h-6 select-none items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 font-mono text-[10px] font-medium text-slate-500 dark:text-slate-400 pointer-events-none">
                             <span className="text-xs">
                                 {navigator.platform.indexOf('Mac') > -1 ? '⌘' : 'Ctrl'}
                             </span>K
@@ -171,50 +175,50 @@ export function CommandPalette() {
                     </div>
                 </div>
 
-                <Command.List className="max-h-[60vh] overflow-y-auto p-2 scroll-py-2">
+                <Command.List className="max-h-[60vh] overflow-y-auto p-2 scroll-py-2 custom-scrollbar">
                     {loading && (
-                        <div className="py-6 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
-                            <div className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                        <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+                            <div className={`w-5 h-5 border-2 rounded-full animate-spin border-t-transparent ${semanticMode ? 'border-purple-500' : 'border-blue-500'}`} />
                             {semanticMode ? 'AI Searching...' : 'Searching...'}
                         </div>
                     )}
 
                     {!loading && results.length === 0 && semanticResults.length === 0 && query !== '' && (
-                        <Command.Empty className="py-6 text-center text-sm text-gray-500">
-                            {semanticMode ? 'No AI matches found. Try a different description.' : 'No results found.'}
+                        <Command.Empty className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                            {semanticMode ? 'No AI matches found. Try described it differently.' : 'No results found.'}
                         </Command.Empty>
                     )}
 
                     {query === '' && (
-                        <Command.Group heading="Navigation" className="text-xs font-semibold text-gray-500 mb-2 px-2">
+                        <Command.Group heading="Navigation" className="text-xs font-semibold text-slate-400 dark:text-slate-500 mb-2 px-2 uppercase tracking-wider py-2">
                             <div className="space-y-1">
                                 <CommandItem onSelect={() => runCommand(() => navigate('/'))}>
-                                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                                    <LayoutDashboard className="w-4 h-4 mr-3" />
                                     <span>Dashboard</span>
                                 </CommandItem>
 
                                 <CommandItem onSelect={() => runCommand(() => navigate('/inventory'))}>
-                                    <Package className="w-4 h-4 mr-2" />
+                                    <Package className="w-4 h-4 mr-3" />
                                     <span>Inventory</span>
                                 </CommandItem>
 
                                 <CommandItem onSelect={() => runCommand(() => navigate('/orders'))}>
-                                    <FileText className="w-4 h-4 mr-2" />
+                                    <FileText className="w-4 h-4 mr-3" />
                                     <span>Orders</span>
                                 </CommandItem>
 
                                 <CommandItem onSelect={() => runCommand(() => navigate('/customers'))}>
-                                    <Users className="w-4 h-4 mr-2" />
+                                    <Users className="w-4 h-4 mr-3" />
                                     <span>Customers</span>
                                 </CommandItem>
 
                                 <CommandItem onSelect={() => runCommand(() => navigate('/reports'))}>
-                                    <BarChart2 className="w-4 h-4 mr-2" />
+                                    <BarChart2 className="w-4 h-4 mr-3" />
                                     <span>Reports</span>
                                 </CommandItem>
 
                                 <CommandItem onSelect={() => runCommand(() => navigate('/settings'))}>
-                                    <Settings className="w-4 h-4 mr-2" />
+                                    <Settings className="w-4 h-4 mr-3" />
                                     <span>Settings</span>
                                 </CommandItem>
                             </div>
@@ -222,7 +226,7 @@ export function CommandPalette() {
                     )}
 
                     {results.length > 0 && (
-                        <Command.Group heading="Search Results" className="text-xs font-semibold text-gray-500 mt-2 px-2">
+                        <Command.Group heading="Top Results" className="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-2 px-2 uppercase tracking-wider py-2">
                             <div className="space-y-1">
                                 {results.map((result) => (
                                     <CommandItem
@@ -236,13 +240,13 @@ export function CommandPalette() {
                                         })}
                                     >
                                         {result.type === 'product' ? (
-                                            <Package className="w-4 h-4 mr-2 text-blue-500" />
+                                            <Package className="w-4 h-4 mr-3 text-blue-500 dark:text-blue-400" />
                                         ) : (
-                                            <FileText className="w-4 h-4 mr-2 text-green-500" />
+                                            <FileText className="w-4 h-4 mr-3 text-emerald-500 dark:text-emerald-400" />
                                         )}
                                         <div className="flex flex-col">
-                                            <span className="font-medium text-gray-900">{result.title}</span>
-                                            {result.subtitle && <span className="text-xs text-gray-500 font-normal">{result.subtitle}</span>}
+                                            <span className="font-medium text-slate-900 dark:text-white">{result.title}</span>
+                                            {result.subtitle && <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">{result.subtitle}</span>}
                                         </div>
                                     </CommandItem>
                                 ))}
@@ -251,17 +255,17 @@ export function CommandPalette() {
                     )}
 
                     {semanticResults.length > 0 && (
-                        <Command.Group heading="AI Smart Matches" className="text-xs font-semibold text-purple-600 mt-2 px-2">
+                        <Command.Group heading="AI Smart Matches" className="text-xs font-semibold text-purple-600 dark:text-purple-400 mt-2 px-2 uppercase tracking-wider py-2">
                             <div className="space-y-1">
                                 {semanticResults.map((result) => (
                                     <CommandItem
                                         key={`semantic-${result.id}`}
                                         onSelect={() => runCommand(() => navigate(`/inventory/product/${result.id}`))}
                                     >
-                                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
+                                        <Sparkles className="w-4 h-4 mr-3 text-purple-500 dark:text-purple-400" />
                                         <div className="flex flex-col flex-1">
-                                            <span className="font-medium text-gray-900">{result.title}</span>
-                                            <span className="text-xs text-purple-500 font-normal">{result.subtitle}</span>
+                                            <span className="font-medium text-slate-900 dark:text-white">{result.title}</span>
+                                            <span className="text-xs text-purple-600 dark:text-purple-300 font-normal">{result.subtitle}</span>
                                         </div>
                                     </CommandItem>
                                 ))}
@@ -279,7 +283,7 @@ function CommandItem({ children, onSelect }: { children: React.ReactNode, onSele
     return (
         <Command.Item
             onSelect={onSelect}
-            className="flex items-center px-4 py-3 rounded-lg text-sm text-gray-700 cursor-pointer select-none aria-selected:bg-blue-50 aria-selected:text-blue-700 hover:bg-gray-100 transition-colors data-[selected=true]:bg-blue-50 data-[selected=true]:text-blue-700"
+            className="flex items-center px-4 py-3.5 rounded-xl text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none aria-selected:bg-blue-50 dark:aria-selected:bg-blue-900/20 aria-selected:text-blue-700 dark:aria-selected:text-blue-400 data-[selected=true]:bg-blue-50 dark:data-[selected=true]:bg-blue-900/20 data-[selected=true]:text-blue-700 dark:data-[selected=true]:text-blue-400 transition-colors"
         >
             <>{children}</>
         </Command.Item>

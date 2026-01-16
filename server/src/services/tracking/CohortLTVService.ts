@@ -104,8 +104,10 @@ export async function getLTV(accountId: string) {
     const customerOrders = new Map<string, number>();
 
     for (const event of purchaseEvents) {
-        // @ts-ignore - Prisma include type inference not working correctly
-        const session = event.session as { wooCustomerId: number | null; email: string | null };
+        // Session data is properly included from the Prisma query above
+        const session = event.session as { wooCustomerId: number | null; email: string | null } | null;
+        if (!session) continue;
+
         const customerId = (session.wooCustomerId?.toString()) || session.email || 'anonymous';
         const total = (event.payload as any)?.total || 0;
 

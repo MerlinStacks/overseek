@@ -26,22 +26,25 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
     if (!isOpen && !isVisible) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-            {/* Backdrop click to close */}
-            <div className="absolute inset-0" onClick={onClose} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            {/* Backdrop with stronger blur */}
+            <div
+                className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-md"
+                onClick={onClose}
+            />
 
-            <div className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidth} overflow-hidden border border-gray-100 flex flex-col max-h-[90vh] relative z-10 animate-in zoom-in-95 duration-200`}>
+            <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} overflow-hidden border border-slate-200/80 dark:border-slate-700/50 flex flex-col max-h-[90vh] relative z-10 animate-in zoom-in-95 duration-200`}>
 
-                {/* Header */}
+                {/* Header with subtle gradient */}
                 {(title || onClose) && (
-                    <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                        <div className="font-bold text-gray-900 text-lg">
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-800">
+                        <div className="font-bold text-slate-900 dark:text-white text-lg">
                             {title}
                         </div>
                         {onClose && (
                             <button
                                 onClick={onClose}
-                                className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+                                className="p-2 hover:bg-slate-200/80 dark:hover:bg-slate-700 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200"
                             >
                                 <X size={20} />
                             </button>

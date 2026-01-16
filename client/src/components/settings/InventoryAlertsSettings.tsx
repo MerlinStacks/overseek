@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Save, Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -34,7 +35,7 @@ export function InventoryAlertsSettings() {
                 setEmails(data.alertEmails || []);
             }
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -60,7 +61,7 @@ export function InventoryAlertsSettings() {
             if (!res.ok) throw new Error('Failed to save');
             alert('Settings saved successfully');
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Failed to save settings');
         } finally {
             setIsSaving(false);

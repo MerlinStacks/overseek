@@ -153,9 +153,158 @@ export class NotFoundError extends OverseekError {
 }
 
 // ============================================================================
+// Authentication & Authorization Errors
+// ============================================================================
+
+export class AuthenticationError extends OverseekError {
+    constructor(message = 'Authentication required') {
+        super(message, {
+            statusCode: 401,
+            code: 'AUTHENTICATION_ERROR',
+            isRecoverable: true,
+        });
+        this.name = 'AuthenticationError';
+    }
+}
+
+export class AuthorizationError extends OverseekError {
+    constructor(message = 'Not authorized to access this resource') {
+        super(message, {
+            statusCode: 403,
+            code: 'AUTHORIZATION_ERROR',
+            isRecoverable: false,
+        });
+        this.name = 'AuthorizationError';
+    }
+}
+
+// ============================================================================
+// Rate Limiting & Conflicts
+// ============================================================================
+
+export class RateLimitError extends OverseekError {
+    constructor(retryAfterSeconds?: number) {
+        super('Too many requests. Please slow down and try again.', {
+            statusCode: 429,
+            code: 'RATE_LIMIT_ERROR',
+            isRecoverable: true,
+            context: retryAfterSeconds ? { retryAfterSeconds } : undefined,
+        });
+        this.name = 'RateLimitError';
+    }
+}
+
+export class ConflictError extends OverseekError {
+    constructor(resource: string, reason?: string) {
+        super(reason ? `${resource}: ${reason}` : `${resource} already exists or conflicts with existing data`, {
+            statusCode: 409,
+            code: 'CONFLICT_ERROR',
+            isRecoverable: false,
+            context: { resource },
+        });
+        this.name = 'ConflictError';
+    }
+}
+
+export class ServiceUnavailableError extends OverseekError {
+    constructor(service: string, reason?: string) {
+        super(reason || `${service} is temporarily unavailable. Please try again later.`, {
+            statusCode: 503,
+            code: 'SERVICE_UNAVAILABLE',
+            isRecoverable: true,
+            context: { service },
+        });
+        this.name = 'ServiceUnavailableError';
+    }
+}
+
+// ============================================================================
 // Type Guards
 // ============================================================================
 
 export function isOverseekError(error: unknown): error is OverseekError {
     return error instanceof OverseekError;
+}
+
+// ============================================================================
+// User-Friendly Message Mapping
+// ============================================================================
+
+/**
+ * Error code to user-friendly message mapping.
+ * These messages are safe to display directly to end users.
+ */
+const FRIENDLY_MESSAGES: Record<string, string> = {
+    // Authentication & Authorization
+    'AUTHENTICATION_ERROR': 'Please log in to continue.',
+    'AUTHORIZATION_ERROR': 'You don\'t have permission to do this.',
+
+    // Rate Limiting
+    'RATE_LIMIT_ERROR': 'Too many requests. Please wait a moment and try again.',
+
+    // Resource Errors
+    'NOT_FOUND': 'The requested item could not be found.',
+    'CONFLICT_ERROR': 'This action conflicts with existing data.',
+    'VALIDATION_ERROR': 'Please check your input and try again.',
+
+    // AI Service
+    'AI_SERVICE_ERROR': 'AI features are temporarily unavailable. Please try again.',
+    'AI_RATE_LIMITED': 'AI service is busy. Please wait a moment and try again.',
+    'AI_NOT_CONFIGURED': 'AI features are not available for this account.',
+
+    // External Services
+    'EXTERNAL_API_ERROR': 'A connected service is temporarily unavailable.',
+    'SERVICE_UNAVAILABLE': 'This service is temporarily unavailable. Please try again later.',
+
+    // Generic
+    'INTERNAL_ERROR': 'Something went wrong. Please try again or contact support.',
+};
+
+/**
+ * Gets a user-friendly message for an error.
+ * Falls back to a generic message for unknown errors.
+ */
+export function getFriendlyMessage(error: unknown): string {
+    if (isOverseekError(error)) {
+        return FRIENDLY_MESSAGES[error.code] || error.message;
+    }
+
+    if (error instanceof Error) {
+        // Check for common error patterns
+        const msg = error.message.toLowerCase();
+
+        if (msg.includes('network') || msg.includes('fetch')) {
+            return 'Network error. Please check your connection and try again.';
+        }
+        if (msg.includes('timeout')) {
+            return 'The request took too long. Please try again.';
+        }
+    }
+
+    return FRIENDLY_MESSAGES['INTERNAL_ERROR'];
+}
+
+/**
+ * Converts any error to a consistent API response format.
+ */
+export function toErrorResponse(error: unknown): {
+    error: string;
+    code: string;
+    isRecoverable: boolean;
+    context?: Record<string, unknown>;
+} {
+    if (isOverseekError(error)) {
+        return {
+            error: getFriendlyMessage(error),
+            code: error.code,
+            isRecoverable: error.isRecoverable,
+            ...(process.env.NODE_ENV !== 'production' && error.context ? { context: error.context } : {}),
+        };
+    }
+
+    return {
+        error: getFriendlyMessage(error),
+        code: 'INTERNAL_ERROR',
+        isRecoverable: false,
+    };
 }

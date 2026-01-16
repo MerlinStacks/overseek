@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -64,7 +65,7 @@ export function useHotProducts(options: UseHotCacheOptions = {}) {
 
             setProducts(cached);
         } catch (error) {
-            console.error('Failed to sync products:', error);
+            Logger.error('Failed to sync products:', { error: error });
         } finally {
             setSyncing(false);
         }
@@ -142,7 +143,7 @@ export function useHotOrders(options: UseHotCacheOptions = {}) {
 
             setOrders(cached);
         } catch (error) {
-            console.error('Failed to sync orders:', error);
+            Logger.error('Failed to sync orders:', { error: error });
         } finally {
             setSyncing(false);
         }
@@ -220,7 +221,7 @@ export function useHotCustomers(options: UseHotCacheOptions = {}) {
 
             setCustomers(cached);
         } catch (error) {
-            console.error('Failed to sync customers:', error);
+            Logger.error('Failed to sync customers:', { error: error });
         } finally {
             setSyncing(false);
         }

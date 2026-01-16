@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
+import { formatTimeAgo } from '../../utils/format';
+import { getInitials } from '../../utils/string';
 
 interface Conversation {
     id: string;
@@ -82,7 +85,7 @@ export function MobileInbox() {
             });
             setConversations(convos);
         } catch (error) {
-            console.error('[MobileInbox] Error:', error);
+            Logger.error('[MobileInbox] Error:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -103,7 +106,7 @@ export function MobileInbox() {
                 body: JSON.stringify({ status: 'closed' })
             });
         } catch (error) {
-            console.error('[MobileInbox] Archive failed:', error);
+            Logger.error('[MobileInbox] Archive failed:', { error: error });
             fetchConversations(); // Reload if failed
         }
     };
@@ -123,27 +126,12 @@ export function MobileInbox() {
                 }
             });
         } catch (error) {
-            console.error('[MobileInbox] Mark read failed:', error);
+            Logger.error('[MobileInbox] Mark read failed:', { error: error });
         }
-    };
-
-    const formatTimeAgo = (date: string) => {
-        if (!date) return '';
-        const now = new Date();
-        const then = new Date(date);
-        const diff = Math.floor((now.getTime() - then.getTime()) / 1000);
-        if (diff < 60) return 'Now';
-        if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-        if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
-        return then.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
     };
 
     const getChannelConfig = (channel: string) =>
         CHANNEL_CONFIG[channel.toLowerCase()] || CHANNEL_CONFIG.default;
-
-    const getInitials = (name: string) =>
-        name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
     const filteredConversations = conversations.filter(c => {
         if (activeFilter === 'Unread' && !c.unread) return false;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Facebook, Loader2, Trash2, ExternalLink, AlertCircle, RefreshCw, BarChart2 } from 'lucide-react';
@@ -75,7 +76,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                 });
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
@@ -92,11 +93,11 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             if (!data.error) {
                 setInsights(prev => ({ ...prev, [adAccountId]: data }));
             } else {
-                console.error(`Insights fetch error for ${adAccountId}:`, data.error);
+                Logger.error(`Insights fetch error for ${adAccountId}`, { error: data.error });
                 setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
             }
         } catch (err: any) {
-            console.error(`Failed to fetch insights/`, err);
+            Logger.error('Failed to fetch insights', { error: err });
             setInsightErrors(prev => ({ ...prev, [adAccountId]: err.message || 'Connection error' }));
         } finally {
             setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));

@@ -1,11 +1,21 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Trash2, UserPlus, Shield, User } from 'lucide-react';
+import { Trash2, UserPlus, Shield, User, Edit2, Check, X, Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+interface CustomRole {
+    id: string;
+    name: string;
+    permissions: Record<string, boolean>;
+}
 
 interface Member {
     userId: string;
-    role: string;
+    role: 'OWNER' | 'ADMIN' | 'STAFF' | 'VIEWER';
+    roleId: string | null;
+    maxRole: CustomRole | null;
     user: {
         id: string;
         fullName: string;
@@ -14,17 +24,35 @@ interface Member {
     };
 }
 
+const BASE_ROLES = [
+    { value: 'OWNER', label: 'Owner', description: 'Full access, can transfer ownership' },
+    { value: 'ADMIN', label: 'Admin', description: 'Full access, cannot transfer ownership' },
+    { value: 'STAFF', label: 'Staff', description: 'Access based on custom role' },
+    { value: 'VIEWER', label: 'Viewer', description: 'Read-only access' },
+] as const;
+
+/**
+ * Standalone Team Management page.
+ * Provides full team management including user invitation, role editing, and removal.
+ */
 export function TeamPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [members, setMembers] = useState<Member[]>([]);
+    const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
     const [email, setEmail] = useState('');
-    const [role, setRole] = useState('STAFF');
+    const [role, setRole] = useState<string>('STAFF');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
+    const [editingUserId, setEditingUserId] = useState<string | null>(null);
+    const [editValues, setEditValues] = useState<{ role: string; roleId: string | null }>({ role: 'STAFF', roleId: null });
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        if (currentAccount && token) fetchMembers();
+        if (currentAccount && token) {
+            fetchMembers();
+            fetchCustomRoles();
+        }
     }, [currentAccount, token]);
 
     const fetchMembers = async () => {
@@ -34,9 +62,26 @@ export function TeamPage() {
             });
             if (res.ok) setMembers(await res.json());
         } catch (e) {
-            console.error(e);
+            Logger.error('Failed to fetch members', { error: e });
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const fetchCustomRoles = async () => {
+        try {
+            const res = await fetch('/api/roles', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setCustomRoles(data);
+            }
+        } catch (e) {
+            Logger.error('Failed to fetch custom roles', { error: e });
         }
     };
 
@@ -73,7 +118,53 @@ export function TeamPage() {
             });
             fetchMembers();
         } catch (e) {
-            console.error(e);
+            Logger.error('Failed to remove member', { error: e });
+        }
+    };
+
+    const startEdit = (member: Member) => {
+        setEditingUserId(member.userId);
+        setEditValues({ role: member.role, roleId: member.roleId });
+    };
+
+    const cancelEdit = () => {
+        setEditingUserId(null);
+        setEditValues({ role: 'STAFF', roleId: null });
+    };
+
+    const saveEdit = async (userId: string) => {
+        setIsSaving(true);
+        try {
+            const res = await fetch(`/api/accounts/${currentAccount?.id}/users/${userId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    role: editValues.role,
+                    roleId: editValues.roleId
+                })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to update user');
+            }
+
+            setEditingUserId(null);
+            fetchMembers();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const getRoleBadgeClass = (role: string) => {
+        switch (role) {
+            case 'OWNER': return 'bg-purple-100 text-purple-800';
+            case 'ADMIN': return 'bg-blue-100 text-blue-800';
+            case 'STAFF': return 'bg-green-100 text-green-800';
+            case 'VIEWER': return 'bg-gray-100 text-gray-800';
+            default: return 'bg-gray-100 text-gray-800';
         }
     };
 
@@ -86,6 +177,13 @@ export function TeamPage() {
                     <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
                     <p className="text-gray-500">Manage members and their access to {currentAccount?.name}</p>
                 </div>
+                <Link
+                    to="/settings?tab=roles"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                    <Settings size={16} />
+                    Manage Roles
+                </Link>
             </div>
 
             {/* Invite Card */}
@@ -114,6 +212,7 @@ export function TeamPage() {
                     >
                         <option value="STAFF">Staff</option>
                         <option value="ADMIN">Admin</option>
+                        <option value="VIEWER">Viewer</option>
                     </select>
 
                     <button type="submit" className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
@@ -128,53 +227,136 @@ export function TeamPage() {
                     <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
                             <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Base Role</th>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom Role</th>
                             <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {members.map(member => (
-                            <tr key={member.userId} className="hover:bg-gray-50">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 overflow-hidden">
-                                            {member.user.avatarUrl ? (
-                                                <img src={member.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                        {members.map(member => {
+                            const isEditing = editingUserId === member.userId;
+                            const isOwner = member.role === 'OWNER';
+
+                            return (
+                                <tr key={member.userId} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 overflow-hidden">
+                                                {member.user.avatarUrl ? (
+                                                    <img src={member.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <User size={16} />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-gray-900">{member.user.fullName || 'No Name'}</div>
+                                                <div className="text-sm text-gray-500">{member.user.email}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {isEditing && !isOwner ? (
+                                            <select
+                                                value={editValues.role}
+                                                onChange={e => setEditValues({ ...editValues, role: e.target.value })}
+                                                className="px-3 py-1.5 text-sm border rounded-lg bg-white"
+                                            >
+                                                {BASE_ROLES.filter(r => r.value !== 'OWNER').map(r => (
+                                                    <option key={r.value} value={r.value}>{r.label}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeClass(member.role)}`}>
+                                                {isOwner && <Shield size={12} />}
+                                                {member.role}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {isEditing && !isOwner ? (
+                                            <select
+                                                value={editValues.roleId || ''}
+                                                onChange={e => setEditValues({ ...editValues, roleId: e.target.value || null })}
+                                                className="px-3 py-1.5 text-sm border rounded-lg bg-white"
+                                            >
+                                                <option value="">None</option>
+                                                {customRoles.map(r => (
+                                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            member.maxRole ? (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                    {member.maxRole.name}
+                                                </span>
                                             ) : (
-                                                <User size={16} />
+                                                <span className="text-gray-400 text-sm">—</span>
+                                            )
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex items-center justify-end gap-2">
+                                            {isEditing ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => saveEdit(member.userId)}
+                                                        disabled={isSaving}
+                                                        className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                                                        title="Save"
+                                                    >
+                                                        <Check size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={cancelEdit}
+                                                        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors"
+                                                        title="Cancel"
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {!isOwner && (
+                                                        <button
+                                                            onClick={() => startEdit(member)}
+                                                            className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                                            title="Edit Role"
+                                                        >
+                                                            <Edit2 size={16} />
+                                                        </button>
+                                                    )}
+                                                    {!isOwner && (
+                                                        <button
+                                                            onClick={() => handleRemove(member.userId)}
+                                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded transition-colors"
+                                                            title="Remove User"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
-                                        <div>
-                                            <div className="font-medium text-gray-900">{member.user.fullName || 'No Name'}</div>
-                                            <div className="text-sm text-gray-500">{member.user.email}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${member.role === 'OWNER' ? 'bg-purple-100 text-purple-800' :
-                                            member.role === 'ADMIN' ? 'bg-blue-100 text-blue-800' :
-                                                'bg-gray-100 text-gray-800'
-                                        }`}>
-                                        {member.role === 'OWNER' && <Shield size={12} />}
-                                        {member.role}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    {member.role !== 'OWNER' && (
-                                        <button
-                                            onClick={() => handleRemove(member.userId)}
-                                            className="text-gray-400 hover:text-red-600 transition-colors"
-                                            title="Remove User"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
+
+            {/* Custom Roles Info */}
+            {customRoles.length === 0 && (
+                <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <p className="text-sm text-amber-800">
+                        <strong>Tip:</strong> Create custom roles in{' '}
+                        <Link to="/settings?tab=roles" className="underline hover:no-underline">
+                            Settings → Roles
+                        </Link>{' '}
+                        to define granular permissions for STAFF members.
+                    </p>
+                </div>
+            )}
         </div>
     );
 }

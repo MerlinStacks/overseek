@@ -1,4 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Logger } from '../utils/logger';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -117,7 +118,7 @@ export function OrderDetailPage() {
             await generateInvoicePDF(order, template.layout?.grid || [], template.layout?.items || [], template.name);
 
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
             alert("Failed to generate invoice");
         } finally {
             setIsGenerating(false);
@@ -139,7 +140,7 @@ export function OrderDetailPage() {
                 setOrder((prev: any) => ({ ...prev, tags: data.tags }));
             }
         } catch (err) {
-            console.error('Failed to remove tag', err);
+            Logger.error('Failed to remove tag', { error: err });
         }
     }
 

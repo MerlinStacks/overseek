@@ -372,9 +372,13 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
 
         try {
             const { actionType, platform, campaignId, parameters } = request.body;
-            const { amount, status } = parameters || {};
+            // Merge parameters from body top-level match or explicit parameters object
+            // This handles both structured calls and flat calls
+            const safeParams = { ...request.body, ...(parameters || {}) };
+            const { amount, status } = safeParams;
 
-            Logger.info('Executing Ad Action', { accountId, actionType, platform, campaignId, parameters });
+            Logger.info('Executing Ad Action', { accountId, actionType, platform, campaignId, parameters: safeParams });
+
 
             // 1. Find the specific Ad Account for this campaign
             // We need to find which ad account owns this campaign.
@@ -447,27 +451,48 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
                     success = await AdsService.updateGoogleCampaignStatus(targetAccount.id, campaignId, 'PAUSED');
                 } else if (actionType === 'enable') {
                     success = await AdsService.updateGoogleCampaignStatus(targetAccount.id, campaignId, 'ENABLED');
-                } else if (actionType === 'keyword_add') {
+                } else if (actionType === 'keyword_add' || actionType === 'add_keyword') {
                     // Parameters for keyword add
-                    // We need adGroupId, keywordText, matchType, cpcBid
-                    const { adGroupId, keyword, matchType, bid } = parameters;
+                    // Support both 'bid' and 'suggestedCpc' from ActionableTypes
+                    // Use safeParams for correct access
+                    const { adGroupId, keyword, matchType, bid, suggestedCpc } = safeParams;
+
                     if (!adGroupId || !keyword || !matchType) {
                         return reply.code(400).send({ error: 'Missing required fields for keyword add: adGroupId, keyword, matchType' });
                     }
+
+                    const finalBid = bid || suggestedCpc;
+
                     success = await AdsService.addGoogleSearchKeyword(
                         targetAccount.id,
                         campaignId,
                         adGroupId,
                         keyword,
                         matchType,
-                        bid ? parseFloat(bid) : undefined
+                        finalBid ? parseFloat(String(finalBid)) : undefined
                     );
                 }
             }
-
             if (success) {
                 Logger.info('Ad Action Executed Successfully', { campaignId, actionType });
-                // TODO: Insert into ActionLog
+
+                // Insert action into audit log
+                await prisma.adActionLog.create({
+                    data: {
+                        accountId,
+                        adAccountId: targetAccount.id,
+                        campaignId,
+                        actionType,
+                        platform,
+                        parameters: parameters as any,
+                        status: 'completed',
+                        executedAt: new Date()
+                    }
+                }).catch(err => {
+                    // Non-blocking: log failure but don't fail the request
+                    Logger.warn('Failed to log ad action', { error: err.message });
+                });
+
                 return { success: true };
             } else {
                 return reply.code(500).send({ error: 'Failed to execute action' });

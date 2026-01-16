@@ -3,6 +3,7 @@
  * Shows a small shield icon that fetches and displays risk level on hover.
  */
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -49,7 +50,7 @@ export function FraudIcon({ orderId, className }: FraudIconProps) {
                 setResult(await res.json());
             }
         } catch (e) {
-            console.error('Failed to fetch fraud score:', e);
+            Logger.error('Failed to fetch fraud score:', { error: e });
         } finally {
             setIsLoading(false);
             setHasFetched(true);

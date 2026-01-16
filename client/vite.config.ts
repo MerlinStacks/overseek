@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { createRequire } from 'module'
 
@@ -9,7 +10,10 @@ import { createRequire } from 'module'
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '')
     return {
-        plugins: [react()],
+        plugins: [
+            react(),
+            tailwindcss(),
+        ],
         resolve: {
             dedupe: [
                 'react',

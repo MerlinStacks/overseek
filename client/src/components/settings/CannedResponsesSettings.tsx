@@ -3,6 +3,7 @@
  * Full CRUD interface for managing canned response templates with labels (rich text).
  */
 import { useState, useEffect, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { Plus, Trash2, Edit2, Save, X, Zap, Tag, Search, Palette } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -59,7 +60,7 @@ export function CannedResponsesSettings() {
                 setLabels(await res.json());
             }
         } catch (error) {
-            console.error('Failed to fetch labels:', error);
+            Logger.error('Failed to fetch labels:', { error: error });
         }
     }, [currentAccount, token]);
 
@@ -77,7 +78,7 @@ export function CannedResponsesSettings() {
                 setResponses(await res.json());
             }
         } catch (error) {
-            console.error('Failed to fetch canned responses:', error);
+            Logger.error('Failed to fetch canned responses:', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -119,7 +120,7 @@ export function CannedResponsesSettings() {
                 fetchResponses();
             }
         } catch (error) {
-            console.error('Failed to save canned response:', error);
+            Logger.error('Failed to save canned response:', { error: error });
         }
     };
 
@@ -144,7 +145,7 @@ export function CannedResponsesSettings() {
             });
             fetchResponses();
         } catch (error) {
-            console.error('Failed to delete:', error);
+            Logger.error('Failed to delete:', { error: error });
         }
     };
 
@@ -175,7 +176,7 @@ export function CannedResponsesSettings() {
                 alert(err.error || 'Failed to create label');
             }
         } catch (error) {
-            console.error('Failed to create label:', error);
+            Logger.error('Failed to create label:', { error: error });
         }
     };
 
@@ -194,7 +195,7 @@ export function CannedResponsesSettings() {
             fetchLabels();
             fetchResponses(); // Refresh to get updated label info
         } catch (error) {
-            console.error('Failed to update label:', error);
+            Logger.error('Failed to update label:', { error: error });
         }
     };
 
@@ -211,7 +212,7 @@ export function CannedResponsesSettings() {
             fetchLabels();
             fetchResponses();
         } catch (error) {
-            console.error('Failed to delete label:', error);
+            Logger.error('Failed to delete label:', { error: error });
         }
     };
 

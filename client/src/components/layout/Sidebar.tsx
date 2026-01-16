@@ -267,10 +267,10 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                                 key={item.path}
                                 to={item.path!}
                                 className={({ isActive }) => cn(
-                                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActive
-                                        ? "bg-blue-50 text-blue-600 font-medium"
-                                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                                        ? "bg-gradient-to-r from-blue-500/10 to-violet-500/10 text-blue-600 font-medium shadow-sm dark:from-blue-500/20 dark:to-violet-500/20"
+                                        : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                                 )}
                             >
                                 <div className="relative">
@@ -301,10 +301,10 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                             <button
                                 onClick={() => toggleGroup(item.label)}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActiveGroup && !isExpanded
-                                        ? "bg-blue-50/50 text-blue-600"
-                                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                                        ? "bg-gradient-to-r from-blue-500/10 to-violet-500/10 text-blue-600 dark:from-blue-500/20 dark:to-violet-500/20"
+                                        : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                                 )}
                             >
                                 <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-blue-600" : "")} />
@@ -334,17 +334,17 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
 
                             {/* Expanded Children (Only when not collapsed or on mobile) */}
                             {(!collapsed || isMobile) && isExpanded && (
-                                <div className="mt-1 ml-4 border-l-2 border-gray-100 pl-2 space-y-1">
+                                <div className="mt-1 ml-4 border-l-2 border-slate-200/60 dark:border-slate-600/40 pl-2 space-y-0.5">
                                     {item.children?.map(child => (
                                         <NavLink
                                             key={child.path}
                                             to={child.path}
                                             end
                                             className={({ isActive }) => cn(
-                                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm",
+                                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm",
                                                 isActive
-                                                    ? "bg-blue-50 text-blue-600 font-medium"
-                                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                                                    ? "bg-blue-500/10 text-blue-600 font-medium dark:bg-blue-500/20"
+                                                    : "text-slate-500 hover:bg-slate-100/80 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
                                             )}
                                         >
                                             <child.icon size={18} strokeWidth={1.5} />
@@ -358,14 +358,14 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 })}
 
                 {user?.isSuperAdmin && (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
+                    <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-600/40">
                         <NavLink
                             to="/admin"
                             className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative",
+                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                 isActive
-                                    ? "bg-slate-800 text-white font-medium"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                    ? "bg-gradient-to-r from-slate-800 to-slate-700 text-white font-medium shadow-lg shadow-slate-800/25"
+                                    : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                             )}
                         >
                             <ShieldAlert size={22} strokeWidth={1.5} />
@@ -381,15 +381,15 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 )}
             </div>
 
-            <div className="mt-auto px-3 pb-3 space-y-2">
+            <div className="mt-auto px-3 pb-3 space-y-2 border-t border-slate-200/60 dark:border-slate-600/40 pt-3">
                 {/* Settings Link (Pinned Bottom) */}
                 <NavLink
                     to="/settings"
                     className={({ isActive }) => cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative mb-2",
+                        "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative mb-2",
                         isActive
-                            ? "bg-blue-50 text-blue-600 font-medium"
-                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                            ? "bg-gradient-to-r from-blue-500/10 to-violet-500/10 text-blue-600 font-medium dark:from-blue-500/20 dark:to-violet-500/20"
+                            : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
                     )}
                 >
                     <Settings size={22} strokeWidth={1.5} />
@@ -407,7 +407,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 {!isMobile && (
                     <button
                         onClick={() => setCollapsed(!collapsed)}
-                        className="w-full flex items-center justify-center gap-2 p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-lg transition-colors text-sm"
+                        className="w-full flex items-center justify-center gap-2 p-2 text-slate-400 hover:bg-slate-100/80 hover:text-slate-600 rounded-xl transition-all duration-200 text-sm dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
                     >
                         {collapsed ? <ChevronRight size={18} /> : <><ChevronLeft size={18} /><span>Collapse</span></>}
                     </button>
@@ -420,23 +420,26 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     if (isMobile) {
         return (
             <>
-                {/* Backdrop */}
+                {/* Backdrop with blur */}
                 {isOpen && (
                     <div
-                        className="fixed inset-0 bg-black/50 z-40"
+                        className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40 transition-opacity duration-300"
                         onClick={onClose}
                     />
                 )}
                 <aside
                     className={cn(
-                        "fixed inset-y-0 left-0 bg-white border-r border-gray-200 w-72 flex flex-col z-50 transition-transform duration-300 ease-in-out",
+                        "fixed inset-y-0 left-0 w-72 flex flex-col z-50 transition-transform duration-300 ease-out",
+                        "bg-gradient-to-b from-white to-slate-50 dark:from-slate-900 dark:to-slate-950",
+                        "border-r border-slate-200/80 dark:border-slate-700/50",
+                        "shadow-2xl shadow-slate-900/10 dark:shadow-slate-900/50",
                         isOpen ? "translate-x-0" : "-translate-x-full"
                     )}
                 >
                     {/* Close button for mobile */}
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg z-10"
+                        className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl z-10 transition-all duration-200 dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
                     >
                         <X size={20} />
                     </button>
@@ -450,7 +453,9 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     return (
         <aside
             className={cn(
-                "bg-white border-r border-gray-200 h-screen sticky top-0 transition-all duration-300 flex-col z-50",
+                "h-screen sticky top-0 transition-all duration-300 flex-col z-50",
+                "bg-gradient-to-b from-white via-white to-slate-50/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950",
+                "border-r border-slate-200/80 dark:border-slate-700/50",
                 "hidden lg:flex", // Critical: CSS-hide on mobile
                 collapsed ? "w-20" : "w-64"
             )}

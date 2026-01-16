@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
@@ -47,7 +48,7 @@ export function GoldPriceSettings() {
                 alert('Failed to fetch live price');
             }
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
         } finally {
             setIsLoading(false);
         }

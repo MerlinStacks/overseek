@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { Sparkles, Plus, Check, Trash2, Loader2, ListChecks, Star, Clock, AlertCircle, Flame, Trophy, Zap, Target } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -240,7 +241,7 @@ export function AITodoWidget(_props: WidgetProps) {
                 setTodos(data);
             }
         } catch (error) {
-            console.error('Failed to fetch todos:', error);
+            Logger.error('Failed to fetch todos:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -335,7 +336,7 @@ export function AITodoWidget(_props: WidgetProps) {
                 setNewTask('');
             }
         } catch (error) {
-            console.error('Failed to add todo:', error);
+            Logger.error('Failed to add todo:', { error: error });
         } finally {
             setAdding(false);
         }
@@ -428,7 +429,7 @@ export function AITodoWidget(_props: WidgetProps) {
                 }
             }
         } catch (error) {
-            console.error('Failed to get suggestions:', error);
+            Logger.error('Failed to get suggestions:', { error: error });
         } finally {
             setSuggesting(false);
         }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { Copy, Check, Info, Monitor, RefreshCw, AlertCircle, Zap, Store, ExternalLink } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -67,7 +68,7 @@ export function TrackingScriptHelper() {
                 checkConnection();
             }, 1000);
         } catch (error) {
-            console.error('Test Event Failed:', error);
+            Logger.error('Test Event Failed:', { error: error });
             setTestStatus('error');
         }
     };
@@ -91,7 +92,7 @@ export function TrackingScriptHelper() {
                 setLastSignal(null);
             }
         } catch (error) {
-            console.error('Connection Check Failed:', error);
+            Logger.error('Connection Check Failed:', { error: error });
             setCheckStatus('error');
         }
     };
@@ -109,7 +110,7 @@ export function TrackingScriptHelper() {
             setStoreResult(result);
             setStoreStatus(result.success ? 'success' : 'error');
         } catch (error) {
-            console.error('Store Verification Failed:', error);
+            Logger.error('Store Verification Failed:', { error: error });
             setStoreStatus('error');
             setStoreResult({
                 success: false,

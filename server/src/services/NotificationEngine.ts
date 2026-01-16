@@ -74,8 +74,11 @@ export class NotificationEngine {
         // Inventory Stockout Alerts (Predictive Inventory Forecasting)
         EventBus.on(EVENTS.INVENTORY.STOCKOUT_ALERT, this.handleStockoutAlert.bind(this));
 
+        // Sync Failure Alerts
+        EventBus.on(EVENTS.SYNC.FAILURE_THRESHOLD, this.handleSyncFailureThreshold.bind(this));
+
         this.initialized = true;
-        Logger.info('[NotificationEngine] Initialized - listening for 8 event types');
+        Logger.info('[NotificationEngine] Initialized - listening for 9 event types');
     }
 
     /**
@@ -337,6 +340,39 @@ export class NotificationEngine {
                 criticalCount,
                 products: products.map(p => ({ id: p.id, name: p.name, daysLeft: p.daysUntilStockout }))
             }
+        });
+    }
+
+    /**
+     * Handle repeated sync failures for an entity.
+     */
+    private static async handleSyncFailureThreshold(data: {
+        accountId: string;
+        entityType: string;
+        failureCount: number;
+        lastError?: string;
+    }): Promise<void> {
+        const { accountId, entityType, failureCount, lastError } = data;
+        const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
+        const eventType = `SYNC_FAILURE_THRESHOLD_${entityType.toUpperCase()}`;
+
+        await this.sendNotification({
+            accountId,
+            eventType,
+            channels: ['in_app', 'push'],
+            inApp: {
+                title: `${entityLabel} Sync Issues`,
+                message: `${failureCount} failures in the last 24 hours. We will keep retrying automatically.`,
+                type: 'WARNING',
+                link: '/settings?tab=sync'
+            },
+            push: {
+                title: `${entityLabel} Sync Issues`,
+                body: `${failureCount} failures in the last 24 hours. Check sync health for details.`,
+                data: { url: '/settings?tab=sync', entityType, lastError }
+            },
+            pushType: 'order',
+            payload: { entityType, failureCount, lastError }
         });
     }
 

@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, Globe, MapPin, Monitor, Smartphone, Tablet, Eye, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { formatTimeAgo } from '../../utils/format';
 
 interface LiveVisitor {
     id: string;
@@ -58,7 +60,7 @@ export function MobileLiveVisitors() {
                 setLiveCount(liveData.total || 0);
             }
         } catch (error) {
-            console.error('[MobileLiveVisitors] Error:', error);
+            Logger.error('[MobileLiveVisitors] Error:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -83,14 +85,7 @@ export function MobileLiveVisitors() {
         return <Monitor size={14} className="text-gray-500" />;
     };
 
-    const formatTimeAgo = (date: string) => {
-        const now = new Date();
-        const then = new Date(date);
-        const diff = Math.floor((now.getTime() - then.getTime()) / 1000);
-        if (diff < 60) return 'Just now';
-        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-        return `${Math.floor(diff / 3600)}h ago`;
-    };
+
 
     const getVisitorName = (v: LiveVisitor) => {
         if (v.customer) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import {
     Sparkles,
@@ -113,7 +114,7 @@ export function AdminAIPromptsPage() {
             setPrompts(data);
             initializeFormData(data);
         } catch (err) {
-            console.error('Failed to fetch AI prompts:', err);
+            Logger.error('Failed to fetch AI prompts:', { error: err });
             setPrompts([]);
             initializeFormData([]);
         } finally {

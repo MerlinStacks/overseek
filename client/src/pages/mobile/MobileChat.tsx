@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, X, Mail, Instagram, Facebook, Music2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -102,7 +103,7 @@ export function MobileChat() {
                 }
             }
         } catch (error) {
-            console.error('[MobileChat] Error:', error);
+            Logger.error('[MobileChat] Error:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -140,7 +141,7 @@ export function MobileChat() {
                 inputRef.current?.focus();
             }
         } catch (error) {
-            console.error('[MobileChat] Send error:', error);
+            Logger.error('[MobileChat] Send error:', { error: error });
         } finally {
             setSending(false);
         }
@@ -162,7 +163,7 @@ export function MobileChat() {
             });
             navigate('/m/inbox');
         } catch (error) {
-            console.error('[MobileChat] Resolve error:', error);
+            Logger.error('[MobileChat] Resolve error:', { error: error });
         }
     };
 
@@ -182,7 +183,7 @@ export function MobileChat() {
             });
             navigate('/m/inbox');
         } catch (error) {
-            console.error('[MobileChat] Block error:', error);
+            Logger.error('[MobileChat] Block error:', { error: error });
         }
     };
 

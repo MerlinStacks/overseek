@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, FileText, BookOpen, GraduationCap, Trash2, Edit2, EyeOff, Save, ChevronDown, ChevronRight } from 'lucide-react';
@@ -48,7 +49,7 @@ export function PoliciesPage() {
             });
             if (res.ok) setPolicies(await res.json());
         } catch (e) {
-            console.error('Failed to fetch policies:', e);
+            Logger.error('Failed to fetch policies:', { error: e });
         } finally {
             setIsLoading(false);
         }
@@ -114,7 +115,7 @@ export function PoliciesPage() {
                 }
             }
         } catch (e) {
-            console.error('Failed to save policy:', e);
+            Logger.error('Failed to save policy:', { error: e });
         }
     };
 
@@ -134,7 +135,7 @@ export function PoliciesPage() {
                 }
             }
         } catch (e) {
-            console.error('Failed to delete policy:', e);
+            Logger.error('Failed to delete policy:', { error: e });
         }
     };
 

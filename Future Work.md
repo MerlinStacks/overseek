@@ -6,6 +6,56 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ## Implemented
 
+- [x] **UI Overhaul 2026** — Premium Glassmorphism Redesign (Jan 2026)
+  - Comprehensive design system update with `index.css` (variables, gradients, animations)
+  - Upgraded Core UI: `Card`, `Modal`, `Tabs`, `CommandPalette`, `ThemeToggle`, `Skeleton`
+  - Premium redesign of `LoginPage`, `SettingsPage`, and `DashboardPage`
+  - Complete "Glassmorphism" styling for all major widgets: `StatusCenter`, `SalesChart`, `VisitorCount`, etc.
+  - Full Dark Mode optimization across all updated components
+
+- [x] **Unified Status Center Panel** — Single dashboard for monitoring all system health
+  - Sync status and failure rates
+  - Webhook delivery health
+  - WooCommerce store connectivity
+  - Revenue anomaly alerts
+  - Dashboard widget + Settings panel integration
+
+- [x] **Saved Views System** — Filter presets for high-traffic screens (Jan 2026)
+  - Persistent saved filter views in Orders and Customers pages
+  - Zustand store with localStorage persistence (account-scoped)
+  - SavedViewsDropdown component for quick view management
+
+- [x] **Skeleton Loaders** — Improved perceived performance (Jan 2026)
+  - TableSkeleton, SkeletonAvatar, SkeletonText variants
+  - Replaced spinner loading states in data tables
+
+- [x] **Standardized Empty States** — Guided actions for empty screens
+  - EmptyState component with contextual actions
+  - Clear filter buttons, sync prompts, and examples
+
+- [x] **Dark Mode Toggle** — User-controlled theme switching (Jan 2026)
+  - ThemeContext with localStorage persistence
+  - Light/Dark/System preference options
+  - Animated toggle with Sun/Moon icons
+  - CSS variables for consistent theming across all components
+
+- [x] **Code Deduplication Refactoring** — Centralized utilities (Jan 2026)
+  - Unified `utils/format.ts` with formatCurrency, formatNumber, formatCompact, formatPercent, formatDateTime variants
+  - `utils/orderStatus.ts` for order status configuration (icons, colors, labels, next status, badge classes)
+  - `utils/string.ts` for getInitials, truncate, capitalize, toTitleCase, slugify utilities
+  - `utils/conversationStatus.ts` for chat conversation status/priority colors
+  - Updated 35+ files: Mobile pages, desktop pages, widgets, analytics, settings, chat components
+  - Removed ~300 lines of duplicate formatting/utility code
+  - Consistent currency formatting with dynamic account currency support
+  - Eliminated all local getInitials, formatDate, getStatusBadge implementations
+
+- [x] **Team & Permissions Management** — Full user/role management (Jan 2026)
+  - Edit team member roles (ADMIN/STAFF/VIEWER) inline in Team Settings
+  - Assign custom AccountRoles to STAFF members for granular permissions
+  - Added "Roles" tab in Settings with RoleManager for creating/editing custom roles
+  - Backend PATCH endpoint for updating user role and permissions `/api/accounts/:id/users/:userId`
+  - Permission hierarchy: OWNER > ADMIN > Custom Role + User overrides
+
 ---
 
 ## Planned
@@ -30,32 +80,11 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ### PWA Enhancements
 
-- [ ] **Push Notification for Anomalies** — Send push alert when revenue anomaly detected
-- [ ] **Offline Order Viewing** — View recent orders without connection (sync queue on reconnect)
-- [ ] **Quick Actions Widget** — Home screen widget for order count, new messages
+
 
 ---
 
 ### AI & Intelligence
-
-- [ ] **Smart Reorder Suggestions** — Predict optimal reorder quantities from sales velocity
-  - Lead time awareness from supplier data
-  - Cash flow-aware ordering windows
-  
-- [x] **Predictive Inventory Forecasting** — AI-powered demand prediction
-  - Forecast by SKU using historical sales, seasonality, market trends
-  - Stockout risk alerts before they happen (proactive vs reactive)
-  
-- [ ] **Sentiment Analysis (Reviews)** — Auto-categorize review sentiment for prioritization
-  - Theme extraction (identify common complaint/praise topics)
-  - Review trend alerts when sentiment shifts
-  - AI reply suggestions for reviews
-
-- [ ] **Enhanced Inbox AI Drafting**
-  - Intent detection (classify as Refund Request, Shipping Inquiry, Product Question)
-  - Sentiment detection to prioritize upset customers
-  - Suggested actions (e.g., "Customer asking about order #123 - show details")
-  - Keep human-in-the-loop: AI drafts, human sends
 
 ---
 
@@ -94,3 +123,28 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 - [ ] Bulk order status update
 - [ ] Order timeline (events log)
 - [ ] Export customer segments to CSV
+
+
+---
+
+### Fixes & Stabilization
+
+- [ ] **Standardize X-Account-ID API Calls** — Remove mixed header usage patterns
+- [ ] **Friendly Error Messages** — Add consistent error taxonomy and user-facing messages
+- [ ] **System Health Diagnostics Page** — Version, last sync, queue stats, webhook status dashboard
+
+---
+
+### Data Quality & Resilience
+
+- [ ] **Sync Health Timeline** — Full retry metadata visibility across all entities
+- [ ] **Automatic Backfill** — Detect and repair stale cursors, missing sync states
+- [ ] **Schema Audit** — Validate WooCommerce data formats with explicit error codes
+
+---
+
+### Core UX Clarity
+
+- [x] **Unified Status Center Panel** — Sync, Webhooks, Store Health, Revenue Alerts
+- [x] **Standardized Empty States** — Guided actions and examples
+- [x] **Saved Views System** — Rapid filters in high-traffic screens (Orders, Customers)

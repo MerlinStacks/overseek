@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { Users, Server, Activity, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -29,7 +30,7 @@ export function AdminDashboard() {
                 setLoading(false);
             })
             .catch(err => {
-                console.error('AdminDashboard stats fetch error:', err);
+                Logger.error('AdminDashboard stats fetch error:', { error: err });
                 setLoading(false);
             });
     }, [token]);

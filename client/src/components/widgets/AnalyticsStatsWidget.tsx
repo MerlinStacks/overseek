@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -29,7 +30,7 @@ export const AnalyticsStatsWidget: React.FC<AnalyticsStatsWidgetProps> = ({ days
                 const data = await api.get<StatsData>(`/api/tracking/stats?days=${days}`, token, currentAccount.id);
                 setStats(data);
             } catch (error) {
-                console.error('Failed to fetch stats:', error);
+                Logger.error('Failed to fetch stats:', { error: error });
             } finally {
                 setLoading(false);
             }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { Send, AlertTriangle, CheckCircle, Info, MessageSquare, Bell } from 'lucide-react';
 
@@ -41,7 +42,7 @@ export function AdminBroadcastPage() {
                 alert('Failed to send broadcast');
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Error sending broadcast');
         } finally {
             setSending(false);

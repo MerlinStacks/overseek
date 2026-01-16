@@ -117,7 +117,7 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-overseek.plateit.au}
       HOST: "true"
       PORT: "5173"
-      # VITE_API_URL not set so it uses proxy (relative paths)
+      VITE_API_URL: ${VITE_API_URL:-http://api:3000}
       CHOKIDAR_USEPOLLING: "true" # Better for Docker
     depends_on:
       api:

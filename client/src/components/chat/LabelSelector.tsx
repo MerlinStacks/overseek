@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { Tag, Plus, X, Check, Loader2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
@@ -71,7 +72,7 @@ export function LabelSelector({
                 setAllLabels(data.labels || []);
             }
         } catch (error) {
-            console.error('Failed to fetch labels:', error);
+            Logger.error('Failed to fetch labels:', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -102,7 +103,7 @@ export function LabelSelector({
                 onLabelsChange?.(newLabels);
             }
         } catch (error) {
-            console.error('Failed to toggle label:', error);
+            Logger.error('Failed to toggle label:', { error: error });
         } finally {
             setActionLoading(null);
         }

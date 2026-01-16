@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react';
@@ -45,7 +46,7 @@ export function SyncStatus() {
                 setLastSyncs(stateMap);
             }
         } catch (err) {
-            console.error('Failed to fetch sync status', err);
+            Logger.error('Failed to fetch sync status', { error: err });
         }
     };
 
@@ -74,7 +75,7 @@ export function SyncStatus() {
             // Actually API returns immediately.
             setTimeout(fetchStatus, 1000);
         } catch (err) {
-            console.error('Sync trigger failed', err);
+            Logger.error('Sync trigger failed', { error: err });
         } finally {
             setIsSyncing(false);
         }

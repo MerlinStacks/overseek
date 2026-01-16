@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Save, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -77,7 +78,7 @@ export function GeneralSettings() {
             await refreshAccounts(); // Refresh context to reflect changes
             alert('Settings saved successfully');
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Failed to save settings: ' + (error instanceof Error ? error.message : 'Unknown error'));
         } finally {
             setIsSaving(false);
@@ -102,7 +103,7 @@ export function GeneralSettings() {
             await refreshAccounts();
             alert(`Synced from WooCommerce:\n• Weight Unit: ${data.weightUnit}\n• Dimension Unit: ${data.dimensionUnit}\n• Currency: ${data.currency}`);
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Failed to sync settings: ' + (error instanceof Error ? error.message : 'Unknown error'));
         } finally {
             setIsSyncing(false);

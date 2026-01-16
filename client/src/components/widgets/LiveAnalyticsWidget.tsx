@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { Users, ShoppingCart, Activity, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -35,7 +36,7 @@ export function LiveAnalyticsWidget() {
                 setVisitors(data || []);
             }
         } catch (error) {
-            console.error('Failed to fetch live stats', error);
+            Logger.error('Failed to fetch live stats', { error: error });
         } finally {
             setLoading(false);
         }

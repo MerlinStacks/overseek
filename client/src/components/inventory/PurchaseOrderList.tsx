@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -47,7 +48,7 @@ export function PurchaseOrderList() {
                 setOrders(data);
             }
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         } finally {
             setIsLoading(false);
         }

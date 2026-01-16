@@ -13,7 +13,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/models', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             let apiKey = '';
 
             if (accountId) {
@@ -37,10 +37,10 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Body: { message: string, context?: any } }>('/chat', async (request, reply) => {
         try {
             const { message, context } = request.body;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
 
             if (!message) return reply.code(400).send({ error: 'Message required' });
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required header' });
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const response = await AIService.generateResponse(message, accountId, context);
             return response;

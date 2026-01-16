@@ -1,5 +1,6 @@
 // @ts-ignore - Responsive import has type issues with ESM
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
+import { Logger } from '../utils/logger';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +11,7 @@ import { debounce, isEqual } from '../utils/debounce';
 import { useRef, useLayoutEffect, useState, useEffect, useMemo } from 'react';
 import { useMobile } from '../hooks/useMobile';
 import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
+import { api } from '../services/api';
 
 // Custom WidthProvider HOC since the library's export is broken in ESM
 const withWidth = (WrappedComponent: any) => {
@@ -82,14 +84,14 @@ export function DashboardPage() {
         if (!currentAccount) return;
         setIsLoading(true);
         try {
-            const res = await fetch('/api/dashboard', {
+            const data = await api.request<{ widgets: any[] }>('/api/dashboard', {
+                method: 'GET',
+                token: token || undefined,
+                accountId: currentAccount.id,
                 headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
                     'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
                 }
             });
-            const data = await res.json();
 
             // Transform DB widgets to state
             const mapped = data.widgets.map((w: any) => ({
@@ -100,7 +102,7 @@ export function DashboardPage() {
             }));
             setWidgets(mapped);
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
@@ -145,12 +147,11 @@ export function DashboardPage() {
     const debouncedSave = debounce(async (newWidgets: WidgetInstance[]) => {
         setIsSaving(true);
         try {
-            await fetch('/api/dashboard', {
+            await api.request('/api/dashboard', {
                 method: 'POST',
+                token: token || undefined,
+                accountId: currentAccount!.id,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id,
                     'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
                 },
                 body: JSON.stringify({
@@ -162,7 +163,7 @@ export function DashboardPage() {
                 })
             });
         } catch (err) {
-            console.error("Save failed", err);
+            Logger.error('Save failed', { error: err });
         } finally {
             setIsSaving(false);
         }
@@ -221,20 +222,20 @@ export function DashboardPage() {
     if (isLoading) return <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
 
     return (
-        <div className="space-y-4">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-                    <p className="text-sm text-gray-500">Overview of your store performance.</p>
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Overview of your store performance</p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                    {/* Date Logic Controls */}
-                    <div className="flex bg-white border border-gray-200 rounded-lg shadow-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Date Logic Controls - Premium styling */}
+                    <div className="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
                         <select
                             value={dateOption}
                             onChange={(e) => setDateOption(e.target.value as DateRangeOption)}
-                            className="bg-transparent border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 outline-hidden focus:bg-gray-50"
+                            className="bg-transparent border-r border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -247,7 +248,7 @@ export function DashboardPage() {
                         <select
                             value={comparisonOption}
                             onChange={(e) => setComparisonOption(e.target.value as ComparisonOption)}
-                            className="bg-transparent px-3 py-2 text-sm text-gray-500 outline-hidden focus:bg-gray-50"
+                            className="bg-transparent px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer"
                         >
                             <option value="none">No Comparison</option>
                             <option value="previous_period">vs Previous Period</option>
@@ -255,17 +256,16 @@ export function DashboardPage() {
                         </select>
                     </div>
 
+                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden md:block"></div>
 
-                    <div className="h-6 w-px bg-gray-300 mx-2 hidden md:block"></div>
-
-                    {isSaving && <span className="text-xs text-gray-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Saving...</span>}
+                    {isSaving && <span className="text-xs text-slate-400 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Saving...</span>}
 
                     {/* Layout Lock Toggle */}
                     <button
                         onClick={() => setIsLayoutLocked(!isLayoutLocked)}
-                        className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors border ${isLayoutLocked
-                            ? 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                        className={`px-3 py-2.5 rounded-xl text-sm flex items-center gap-2 transition-all duration-200 border font-medium ${isLayoutLocked
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20'
                             }`}
                         title={isLayoutLocked ? 'Unlock to edit layout' : 'Lock layout'}
                     >
@@ -276,23 +276,27 @@ export function DashboardPage() {
                     <div className="relative">
                         <button
                             onClick={() => setShowAddWidget(!showAddWidget)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
+                            className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5"
                         >
                             <Plus size={16} /> Add Widget
                         </button>
 
                         {showAddWidget && (
-                            <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-100 z-50 py-2">
-                                <div className="px-3 py-2 border-b border-gray-50 text-xs font-semibold text-gray-500 uppercase">Available Widgets</div>
-                                {Object.entries(WidgetRegistry).map(([key, entry]) => (
-                                    <button
-                                        key={key}
-                                        onClick={() => addWidget(key)}
-                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors"
-                                    >
-                                        {entry.label}
-                                    </button>
-                                ))}
+                            <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-scale-in">
+                                <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Available Widgets</span>
+                                </div>
+                                <div className="max-h-64 overflow-y-auto py-1">
+                                    {Object.entries(WidgetRegistry).map(([key, entry]) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => addWidget(key)}
+                                            className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                        >
+                                            {entry.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>

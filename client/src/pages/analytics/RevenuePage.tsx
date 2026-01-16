@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useOutletContext } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -32,7 +33,7 @@ export const RevenuePage: React.FC = () => {
                 const result = await api.get<RevenueData>(`/api/tracking/revenue?days=${days}`, token, currentAccount.id);
                 setData(result);
             } catch (error) {
-                console.error('Failed to fetch revenue:', error);
+                Logger.error('Failed to fetch revenue:', { error: error });
             } finally {
                 setLoading(false);
             }

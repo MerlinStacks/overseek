@@ -3,6 +3,7 @@
  * Includes edit functionality to fix broken connections without removing/re-adding.
  */
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
@@ -75,7 +76,7 @@ export function AdAccountSettings() {
                 });
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }

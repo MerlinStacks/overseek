@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -125,7 +126,7 @@ export function MobileOrderDetail() {
             // Fetch attribution data
             fetchAttribution();
         } catch (error) {
-            console.error('[MobileOrderDetail] Error:', error);
+            Logger.error('[MobileOrderDetail] Error:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -162,7 +163,7 @@ export function MobileOrderDetail() {
                 setOrderTags(data.tags);
             }
         } catch (err) {
-            console.error('Failed to remove tag', err);
+            Logger.error('Failed to remove tag', { error: err });
         }
     };
 

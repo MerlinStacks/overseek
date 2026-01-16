@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -54,7 +55,7 @@ export function MobileProfile() {
                 setTimeout(() => setSaved(false), 2000);
             }
         } catch (e) {
-            console.error('[MobileProfile] Save error:', e);
+            Logger.error('[MobileProfile] Save error:', { error: e });
         } finally {
             setSaving(false);
         }
@@ -89,11 +90,11 @@ export function MobileProfile() {
                     }
                     setAvatarPreview(null);
                 } else {
-                    console.error('Failed to upload avatar');
+                    Logger.error('Failed to upload avatar');
                     setAvatarPreview(null);
                 }
             } catch (error) {
-                console.error('Error uploading avatar:', error);
+                Logger.error('Error uploading avatar:', { error: error });
                 setAvatarPreview(null);
             } finally {
                 setUploading(false);

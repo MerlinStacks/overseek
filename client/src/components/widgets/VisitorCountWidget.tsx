@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -30,7 +31,7 @@ export function VisitorCountWidget(_props: WidgetProps) {
                 setCount(Array.isArray(data) ? data.length : 0);
             }
         } catch (error) {
-            console.error('Failed to fetch live visitor count', error);
+            Logger.error('Failed to fetch live visitor count', { error: error });
         } finally {
             setLoading(false);
         }
@@ -43,29 +44,29 @@ export function VisitorCountWidget(_props: WidgetProps) {
     }, [fetchCount]);
 
     return (
-        <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 flex flex-col h-full justify-center items-center relative overflow-hidden">
-            {/* Pulsing Indicator */}
-            <div className="absolute top-4 right-4 flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-700/50 flex flex-col h-full justify-center items-center relative overflow-hidden transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
+            {/* Pulsing Indicator with glow */}
+            <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-full">
+                <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
-                <span className="text-xs font-medium text-green-600">Live</span>
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Live</span>
             </div>
 
             {/* Count Display */}
-            <div className="text-center">
+            <div className="text-center relative z-10">
                 {loading ? (
-                    <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+                    <div className="w-12 h-12 border-4 border-blue-200 dark:border-blue-800 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
                 ) : (
-                    <span className="text-5xl font-bold text-gray-900">{count}</span>
+                    <span className="text-5xl font-bold text-slate-900 dark:text-white tracking-tight">{count}</span>
                 )}
-                <p className="text-sm text-gray-500 mt-2 font-medium">Active Visitors</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Active Visitors</p>
             </div>
 
-            {/* Background Icon */}
-            <div className="absolute -bottom-4 -right-4 text-gray-100 opacity-40 z-0">
-                <Users size={80} />
+            {/* Background Icon with gradient */}
+            <div className="absolute -bottom-6 -right-6 opacity-[0.06] dark:opacity-[0.08] z-0">
+                <Users size={100} className="text-blue-600 dark:text-blue-400" />
             </div>
         </div>
     );

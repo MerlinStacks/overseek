@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Logger } from '../../utils/logger';
 import { render, screen } from '@testing-library/react';
 import { MobileErrorBoundary } from './MobileErrorBoundary';
 import * as Sentry from '@sentry/react';

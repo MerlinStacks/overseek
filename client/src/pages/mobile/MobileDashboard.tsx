@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { getDateRange } from '../../utils/dateUtils';
+import { formatCurrency, formatTimeAgo } from '../../utils/format';
 import { RevenueAnomalyBanner } from '../../components/mobile/RevenueAnomalyBanner';
 
 /**
@@ -130,26 +131,9 @@ export function MobileDashboard() {
         }
     };
 
-    const formatTimeAgo = (date: string) => {
-        if (!date) return '';
-        const now = new Date();
-        const then = new Date(date);
-        const diff = Math.floor((now.getTime() - then.getTime()) / 1000);
-
-        if (diff < 60) return 'Just now';
-        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-        return `${Math.floor(diff / 86400)}d ago`;
-    };
-
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-AU', {
-            style: 'currency',
-            currency: currentAccount?.currency || 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(amount);
-    };
+    // Currency formatting helper using centralized utility with account currency
+    const formatAccountCurrency = (amount: number) =>
+        formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
     const quickActions = [
         { label: 'Orders', icon: ShoppingCart, path: '/m/orders', color: 'bg-blue-500' },
@@ -197,7 +181,7 @@ export function MobileDashboard() {
                 </div>
                 <div className="bg-green-50 rounded-xl p-4 animate-fade-slide-up" style={{ animationDelay: '100ms' }}>
                     <DollarSign size={20} className="text-green-600 mb-2" />
-                    <p className="text-2xl font-bold text-green-600">{formatCurrency(stats?.todayRevenue || 0)}</p>
+                    <p className="text-2xl font-bold text-green-600">{formatAccountCurrency(stats?.todayRevenue || 0)}</p>
                     <p className="text-xs text-gray-600">Today's Revenue</p>
                 </div>
                 <div className="bg-purple-50 rounded-xl p-4 animate-fade-slide-up" style={{ animationDelay: '150ms' }}>

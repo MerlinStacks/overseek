@@ -19,10 +19,9 @@ async function checkMapping() {
 
             if (props.line_items && props.line_items.type === 'nested') {
                 console.log('CONFIRMED: line_items is nested');
-                // @ts-ignore
-                const nameProps = props.line_items.properties.name;
-                // @ts-ignore
-                if (nameProps && nameProps.fields && nameProps.fields.keyword) {
+                const lineItemsProps = props.line_items as { properties?: { name?: { fields?: { keyword?: unknown } } } };
+                const nameProps = lineItemsProps.properties?.name;
+                if (nameProps?.fields?.keyword) {
                     console.log('CONFIRMED: line_items.name.keyword Exists!');
                 } else {
                     console.log('ISSUE: line_items.name.keyword is MISSING');

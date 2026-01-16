@@ -55,7 +55,7 @@ export async function getRevenue(accountId: string, days: number = 30) {
     for (const event of purchaseEvents) {
         const orderId = (event.payload as any)?.orderId;
         if (orderId && event.session) {
-            // @ts-ignore
+            // Session data is correctly typed via the select above
             orderAttributionMap.set(orderId, event.session);
         }
     }

@@ -1,5 +1,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { ShoppingCart, CreditCard, LogOut, CheckCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -42,7 +43,7 @@ const EcommerceLogWidget = () => {
                 setEvents(json.data);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setLoading(false);
         }

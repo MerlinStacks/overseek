@@ -33,7 +33,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.get('/conversations', async (request, reply) => {
             try {
                 const query = request.query as { status?: string; assignedTo?: string };
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const conversations = await chatService.listConversations(accountId, query.status, query.assignedTo);
@@ -48,7 +48,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.get('/conversations/search', async (request, reply) => {
             try {
                 const { q, limit = '20' } = request.query as { q?: string; limit?: string };
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 if (!q || q.trim().length < 2) return reply.code(400).send({ error: 'Search query must be at least 2 characters' });
 
@@ -89,7 +89,13 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // POST /conversations
         fastify.post('/conversations', async (request, reply) => {
-            const { accountId, wooCustomerId, visitorToken } = request.body as any;
+            const { accountId: bodyAccountId, wooCustomerId, visitorToken } = request.body as any;
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            if (bodyAccountId && bodyAccountId !== accountId) {
+                return reply.code(400).send({ error: 'Account ID mismatch' });
+            }
+
             const conv = await chatService.createConversation(accountId, wooCustomerId, visitorToken);
             return conv;
         });
@@ -97,7 +103,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // GET /email-accounts - List configured email accounts for sending
         fastify.get('/email-accounts', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const accounts = await prisma.emailAccount.findMany({
@@ -114,7 +120,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // POST /compose - Create conversation and send new email
         fastify.post('/compose', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 const userId = request.user?.id;
 
                 let to, cc, subject, body, emailAccountId;
@@ -214,7 +220,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // GET /unread-count
         fastify.get('/unread-count', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 const count = await chatService.getUnreadCount(accountId);
                 return { count };
@@ -227,7 +233,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // --- Canned Response Labels ---
         fastify.get('/canned-labels', async (request, reply) => {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return [];
             const labels = await prisma.cannedResponseLabel.findMany({
                 where: { accountId },
@@ -238,7 +244,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.post('/canned-labels', async (request, reply) => {
             const { name, color } = request.body as any;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             if (!name?.trim()) return reply.code(400).send({ error: 'Name is required' });
 
@@ -257,7 +263,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.put<{ Params: { id: string } }>('/canned-labels/:id', async (request, reply) => {
             const { name, color } = request.body as any;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             try {
@@ -294,7 +300,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // --- Canned Responses ---
         fastify.get('/canned-responses', async (request, reply) => {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return [];
             const responses = await prisma.cannedResponse.findMany({
                 where: { accountId },
@@ -306,7 +312,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.post('/canned-responses', async (request, reply) => {
             const { shortcut, content, labelId } = request.body as any;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const resp = await prisma.cannedResponse.create({
                 data: { shortcut, content, labelId: labelId || null, accountId },
@@ -317,7 +323,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.put<{ Params: { id: string } }>('/canned-responses/:id', async (request, reply) => {
             const { shortcut, content, labelId } = request.body as any;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const resp = await prisma.cannedResponse.update({
@@ -367,7 +373,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // --- Inbox Macros ---
         fastify.get('/macros', async (request, reply) => {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return [];
             return prisma.inboxMacro.findMany({
                 where: { accountId },
@@ -376,7 +382,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         });
 
         fastify.post('/macros', async (request, reply) => {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account required' });
             const { name, icon, color, actions } = request.body as any;
             return prisma.inboxMacro.create({
@@ -442,7 +448,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // --- Settings ---
         fastify.get('/settings', async (request, reply) => {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return {};
             const feature = await prisma.accountFeature.findUnique({
                 where: { accountId_featureKey: { accountId, featureKey: 'CHAT_SETTINGS' } }
@@ -451,7 +457,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         });
 
         fastify.post('/settings', async (request, reply) => {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return {};
             const { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;
             const config = { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone };
@@ -558,7 +564,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
             const { content, type, isInternal, channel, emailAccountId } = request.body as any;
             const userId = request.user?.id;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
 
             // Store the message first
             const msg = await chatService.addMessage(request.params.id, content, type || 'AGENT', userId, isInternal);
@@ -731,7 +737,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.post<{ Params: { id: string } }>('/:id/ai-draft', async (request, reply) => {
             try {
                 const conversationId = request.params.id;
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const result = await InboxAIService.generateDraftReply(conversationId, accountId);
@@ -786,7 +792,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // --- Blocked Contacts ---
         fastify.post('/block', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const { email, reason } = request.body as any;
@@ -803,7 +809,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.delete<{ Params: { email: string } }>('/block/:email', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const result = await BlockedContactService.unblockContact(accountId, decodeURIComponent(request.params.email));
@@ -817,7 +823,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.get('/blocked', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 const blocked = await BlockedContactService.listBlocked(accountId);
                 return blocked;
@@ -829,7 +835,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         fastify.get<{ Params: { email: string } }>('/block/check/:email', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
                 const isBlocked = await BlockedContactService.isBlocked(accountId, decodeURIComponent(request.params.email));
@@ -1008,7 +1014,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // POST /conversations/bulk - Perform bulk actions on multiple conversations
         fastify.post('/conversations/bulk', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 const userId = request.user?.id;
                 const { conversationIds, action, labelId, assignToUserId } = request.body as {
                     conversationIds: string[];
@@ -1091,7 +1097,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // POST /conversations/bulk-merge - Merge multiple conversations into one
         fastify.post('/conversations/bulk-merge', async (request, reply) => {
             try {
-                const accountId = request.headers['x-account-id'] as string;
+                const accountId = request.accountId;
                 const userId = request.user?.id;
                 const { targetId, sourceIds } = request.body as {
                     targetId: string;

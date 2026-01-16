@@ -22,6 +22,7 @@ import { EventBus, EVENTS } from './services/events';
 import { AutomationEngine } from './services/AutomationEngine';
 import { setIO } from './socket';
 import { RATE_LIMITS, UPLOAD_LIMITS, SCHEDULER_LIMITS } from './config/limits';
+import { verifyToken } from './utils/auth';
 const { Logger, fastifyLoggerConfig } = require('./utils/logger');
 
 // Init Queues for Bull Board
@@ -48,14 +49,20 @@ async function build() {
         origin: (origin, cb) => {
             // Permissive for tracking endpoints (handled in route-level hook)
             // Strict for dashboard routes
-            const allowedOrigins = process.env.CLIENT_URL
-                ? [process.env.CLIENT_URL, 'http://localhost:5173']
-                : ['http://localhost:5173'];
+            const envOrigins = process.env.CORS_ORIGINS
+                ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
+                : [];
+            const allowedOrigins = envOrigins.length > 0
+                ? envOrigins
+                : (process.env.CLIENT_URL
+                    ? [process.env.CLIENT_URL, 'http://localhost:5173']
+                    : ['http://localhost:5173']);
+            const enforceAllowlist = envOrigins.length > 0;
 
             if (!origin || allowedOrigins.includes(origin) || origin === '*') {
                 cb(null, true);
             } else {
-                cb(null, true); // For now, be permissive during migration
+                cb(null, !enforceAllowlist); // Allow all unless explicit allowlist set
             }
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -197,6 +204,8 @@ async function build() {
     await fastify.register(wooRoutes, { prefix: '/api/woo' });
     const syncRoutes = (await import('./routes/sync')).default;
     await fastify.register(syncRoutes, { prefix: '/api/sync' });
+    const statusCenterRoutes = (await import('./routes/statusCenter')).default;
+    await fastify.register(statusCenterRoutes, { prefix: '/api/status-center' });
     const webhookRoutes = (await import('./routes/webhook')).default;
     await fastify.register(webhookRoutes, { prefix: '/api/webhooks' });
     const adminRoutes = (await import('./routes/admin')).default;
@@ -315,10 +324,49 @@ async function initializeApp() {
     server = fastify.server;
 
     // Setup Socket.IO
+    const socketOrigins = process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
+        : (process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []);
+    const socketOriginSetting = socketOrigins.length > 0 ? socketOrigins : "*";
+
     io = new Server(server, {
         cors: {
-            origin: process.env.CORS_ORIGIN || "*",
+            origin: socketOriginSetting,
             methods: ["GET", "POST"]
+        }
+    });
+
+    // Socket.IO auth middleware
+    io.use(async (socket, next) => {
+        try {
+            const authHeader = socket.handshake.headers?.authorization as string | undefined;
+            const token =
+                socket.handshake.auth?.token ||
+                (authHeader ? authHeader.split(' ')[1] : undefined) ||
+                (socket.handshake.query?.token as string | undefined);
+
+            if (!token) {
+                return next(new Error('Unauthorized'));
+            }
+
+            const decoded = verifyToken(token) as { userId: string };
+            const user = await prisma.user.findUnique({
+                where: { id: decoded.userId },
+                select: { isSuperAdmin: true }
+            });
+            const memberships = await prisma.accountUser.findMany({
+                where: { userId: decoded.userId },
+                select: { accountId: true }
+            });
+
+            socket.data.userId = decoded.userId;
+            socket.data.isSuperAdmin = user?.isSuperAdmin === true;
+            socket.data.accountIds = memberships.map(m => m.accountId);
+
+            return next();
+        } catch (error) {
+            Logger.warn('[Socket.IO] Auth failed', { error });
+            return next(new Error('Unauthorized'));
         }
     });
 
@@ -366,12 +414,37 @@ async function initializeApp() {
     // Socket.io Connection Logic
     io.on('connection', (socket) => {
         socket.on('join:account', (accountId) => {
+            if (!accountId) return;
+            if (!socket.data.isSuperAdmin && !socket.data.accountIds?.includes(accountId)) {
+                Logger.warn('[Socket] Unauthorized account join attempt', { accountId, socketId: socket.id });
+                socket.emit('auth:error', { message: 'Forbidden' });
+                return;
+            }
             Logger.warn(`[Socket] Client joined account room: account:${accountId}`, { socketId: socket.id });
             socket.join(`account:${accountId}`);
         });
 
         // Conversation presence tracking for collision detection
-        socket.on('join:conversation', async ({ conversationId, user }) => {
+        socket.on('join:conversation', async (payload) => {
+            const { conversationId, user } = typeof payload === 'string'
+                ? { conversationId: payload, user: undefined }
+                : (payload || {});
+
+            if (!conversationId) return;
+
+            if (!socket.data.isSuperAdmin) {
+                const conversation = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { accountId: true }
+                });
+
+                if (!conversation || !socket.data.accountIds?.includes(conversation.accountId)) {
+                    Logger.warn('[Socket] Unauthorized conversation join attempt', { conversationId, socketId: socket.id });
+                    socket.emit('auth:error', { message: 'Forbidden' });
+                    return;
+                }
+            }
+
             socket.join(`conversation:${conversationId}`);
 
             // Track viewer presence if user info provided

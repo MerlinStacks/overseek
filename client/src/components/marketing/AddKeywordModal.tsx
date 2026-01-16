@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, CheckCircle, Search, Sparkles } from 'lucide-react';
 import { ActionableRecommendation } from '../../types/ActionableTypes';
 import { useAuth } from '../../context/AuthContext';
@@ -53,7 +54,7 @@ export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: 
                             setAdGroups(data);
                         })
                         .catch(err => {
-                            console.error(err);
+                            Logger.error('An error occurred', { error: err });
                             setAdGroups([]);
                         })
                         .finally(() => {
@@ -81,7 +82,7 @@ export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: 
             });
             onClose();
         } catch (error) {
-            console.error('Failed to add keyword', error);
+            Logger.error('Failed to add keyword', { error: error });
         } finally {
             setLoading(false);
         }

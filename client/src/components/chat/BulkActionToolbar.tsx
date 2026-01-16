@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, CheckCircle, UserPlus, Tag, Loader2, XCircle, FolderOpen, Merge } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
@@ -61,10 +62,10 @@ export function BulkActionToolbar({
                 onClearSelection();
             } else {
                 const data = await res.json();
-                console.error('Bulk action failed:', data.error);
+                Logger.error('Bulk action failed', { error: data.error });
             }
         } catch (error) {
-            console.error('Bulk action error:', error);
+            Logger.error('Bulk action error:', { error: error });
         } finally {
             setIsLoading(false);
             setShowAssignDropdown(false);
@@ -96,10 +97,10 @@ export function BulkActionToolbar({
                 onClearSelection();
             } else {
                 const data = await res.json();
-                console.error('Bulk merge failed:', data.error);
+                Logger.error('Bulk merge failed', { error: data.error });
             }
         } catch (error) {
-            console.error('Bulk merge error:', error);
+            Logger.error('Bulk merge error:', { error: error });
         } finally {
             setIsLoading(false);
             setShowMergeConfirm(false);

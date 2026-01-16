@@ -12,7 +12,7 @@ import { prisma } from '../utils/prisma';
 const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    const getAccountId = (request: any): string | null => request.headers['x-account-id'] as string || null;
+    const getAccountId = (request: any): string | null => request.accountId || null;
 
     fastify.get('/live', async (request, reply) => {
         try {

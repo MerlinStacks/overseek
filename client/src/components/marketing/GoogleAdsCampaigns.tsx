@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import {
@@ -122,7 +123,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                 setSuggestions(data);
             }
         } catch (err) {
-            console.error('Failed to fetch suggestions', err);
+            Logger.error('Failed to fetch suggestions', { error: err });
         } finally {
             setLoadingSuggestions(false);
         }

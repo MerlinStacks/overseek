@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { EmailAccountForm, type EmailAccount } from './EmailAccountForm';
@@ -36,7 +37,7 @@ export function EmailSettings() {
                 setAccounts(data);
             }
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -74,7 +75,7 @@ export function EmailSettings() {
             await fetchAccounts();
             setEditingAccount(null);
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Failed to save account');
         } finally {
             setIsSaving(false);
@@ -95,7 +96,7 @@ export function EmailSettings() {
             });
             setAccounts(accounts.filter(a => a.id !== id));
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Failed to delete account');
         }
     };
@@ -170,7 +171,7 @@ export function EmailSettings() {
                 await fetchAccounts();
             }
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         }
     };
 

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, Calendar, RefreshCw, Package, ChevronRight, DollarSign } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 interface CustomerOrder {
     id: string;
@@ -97,27 +99,15 @@ export function MobileCustomerDetail() {
                 setData(mappedData);
             }
         } catch (error) {
-            console.error('[MobileCustomerDetail] Error:', error);
+            Logger.error('[MobileCustomerDetail] Error:', { error: error });
         } finally {
             setLoading(false);
         }
     };
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-AU', {
-            style: 'currency',
-            currency: currentAccount?.currency || 'USD'
-        }).format(amount);
-    };
-
-    const formatDate = (dateString: string) => {
-        if (!dateString) return '-';
-        return new Date(dateString).toLocaleDateString('en-AU', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-        });
-    };
+    // Currency formatting helper using centralized utility
+    const formatAccountCurrency = (amount: number) =>
+        formatCurrency(amount, currentAccount?.currency || 'USD');
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -224,7 +214,7 @@ export function MobileCustomerDetail() {
                         <DollarSign size={14} />
                         <span className="text-xs font-medium">Total</span>
                     </div>
-                    <p className="text-lg font-bold text-gray-900">{formatCurrency(customer.totalSpent)}</p>
+                    <p className="text-lg font-bold text-gray-900">{formatAccountCurrency(customer.totalSpent)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-3 border border-indigo-100">
                     <div className="flex items-center gap-1 text-indigo-600 mb-1">
@@ -238,7 +228,7 @@ export function MobileCustomerDetail() {
                         <ShoppingBag size={14} />
                         <span className="text-xs font-medium">AOV</span>
                     </div>
-                    <p className="text-lg font-bold text-gray-900">{formatCurrency(avgOrder)}</p>
+                    <p className="text-lg font-bold text-gray-900">{formatAccountCurrency(avgOrder)}</p>
                 </div>
             </div>
 
@@ -268,7 +258,7 @@ export function MobileCustomerDetail() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-medium text-gray-900">{formatCurrency(order.total)}</span>
+                                    <span className="font-medium text-gray-900">{formatAccountCurrency(order.total)}</span>
                                     <ChevronRight size={18} className="text-gray-400" />
                                 </div>
                             </button>

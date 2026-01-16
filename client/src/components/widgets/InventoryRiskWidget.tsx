@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -34,7 +35,7 @@ export function InventoryRiskWidget() {
                 setProducts(await res.json());
             }
         } catch (error) {
-            console.error('Failed to load inventory risk', error);
+            Logger.error('Failed to load inventory risk', { error: error });
         } finally {
             setLoading(false);
         }

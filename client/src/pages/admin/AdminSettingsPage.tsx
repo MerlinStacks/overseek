@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw } from 'lucide-react';
 
@@ -40,7 +41,7 @@ export function AdminSettingsPage() {
                 setStatus(data);
             }
         } catch (e) {
-            console.error('Failed to fetch GeoIP status:', e);
+            Logger.error('Failed to fetch GeoIP status:', { error: e });
         } finally {
             setLoading(false);
         }

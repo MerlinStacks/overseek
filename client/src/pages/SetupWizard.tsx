@@ -82,7 +82,7 @@ export function SetupWizard() {
             await refreshAccounts();
             navigate('/');
         } catch (error) {
-            console.error('Skip failed:', error);
+            Logger.error('Skip failed:', { error: error });
             alert('Failed to set up demo account. Please try connecting a real store.');
         } finally {
             setIsSubmitting(false);
@@ -114,7 +114,7 @@ export function SetupWizard() {
             await refreshAccounts(); // Update context
             navigate('/');
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             alert('Error creating account. Please check your inputs.');
         } finally {
             setIsSubmitting(false);

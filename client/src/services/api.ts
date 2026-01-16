@@ -1,6 +1,5 @@
 
-
-interface RequestOptions extends RequestInit {
+export interface RequestOptions extends RequestInit {
     token?: string;
     accountId?: string;
 }
@@ -103,4 +102,11 @@ export const api = {
 
     put: <T>(endpoint: string, data: any, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data), token, accountId }),
+
+    /**
+     * Generic request method for valid scenarios not covered by the helpers above.
+     * Useful for custom headers or other fetch options.
+     */
+    request: <T>(endpoint: string, options: RequestOptions = {}) =>
+        request<T>(endpoint, options)
 };

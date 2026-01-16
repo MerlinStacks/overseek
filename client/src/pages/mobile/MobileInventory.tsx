@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Search, Package2, AlertTriangle, Grid, List, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { formatCurrency } from '../../utils/format';
 
 interface Product {
     id: string;
@@ -66,7 +68,7 @@ export function MobileInventory() {
 
             setProducts(items);
         } catch (error) {
-            console.error('[MobileInventory] Error:', error);
+            Logger.error('[MobileInventory] Error:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -80,13 +82,9 @@ export function MobileInventory() {
     const isLowStock = (product: Product) => product.stockQuantity <= product.lowStockThreshold;
     const lowStockCount = products.filter(isLowStock).length;
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-AU', {
-            style: 'currency',
-            currency: currentAccount?.currency || 'USD',
-            minimumFractionDigits: 0
-        }).format(amount);
-    };
+    // Currency formatting helper
+    const formatAccountCurrency = (amount: number) =>
+        formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0 });
 
     if (loading) {
         return (
@@ -215,7 +213,7 @@ export function MobileInventory() {
                                 <p className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">{product.name}</p>
                                 <p className="text-xs text-gray-500 mb-2">SKU: {product.sku}</p>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-bold text-gray-900">{formatCurrency(product.price)}</span>
+                                    <span className="text-sm font-bold text-gray-900">{formatAccountCurrency(product.price)}</span>
                                     <span className={`text-sm font-bold ${lowStock ? 'text-amber-600' : 'text-emerald-600'}`}>
                                         {product.stockQuantity}
                                     </span>
@@ -244,7 +242,7 @@ export function MobileInventory() {
                                 <div className="flex-1 min-w-0">
                                     <p className="font-semibold text-gray-900 truncate mb-0.5">{product.name}</p>
                                     <p className="text-sm text-gray-500">SKU: {product.sku}</p>
-                                    <p className="text-sm font-bold text-gray-900 mt-1">{formatCurrency(product.price)}</p>
+                                    <p className="text-sm font-bold text-gray-900 mt-1">{formatAccountCurrency(product.price)}</p>
                                 </div>
                                 <div className="text-right flex-shrink-0">
                                     <p className={`text-2xl font-bold ${lowStock ? 'text-amber-600' : 'text-emerald-600'}`}>

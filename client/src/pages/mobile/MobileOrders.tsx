@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import {
     Search,
@@ -13,6 +14,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
+import { formatCurrency } from '../../utils/format';
 
 interface Order {
     id: string;
@@ -105,7 +107,7 @@ export function MobileOrders() {
             setHasMore(newOrders.length === 20);
             setPage(currentPage + 1);
         } catch (error) {
-            console.error('[MobileOrders] Error fetching orders:', error);
+            Logger.error('[MobileOrders] Error fetching orders:', { error: error });
         } finally {
             setLoading(false);
         }
@@ -127,14 +129,9 @@ export function MobileOrders() {
         return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
     };
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-AU', {
-            style: 'currency',
-            currency: currentAccount?.currency || 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(amount);
-    };
+    // Currency formatting helper using centralized utility
+    const formatAccountCurrency = (amount: number) =>
+        formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
     const getStatusConfig = (status: string) => {
         return STATUS_CONFIG[status.toLowerCase()] || STATUS_CONFIG.pending;
@@ -160,7 +157,7 @@ export function MobileOrders() {
                 body: JSON.stringify({ status: config.next })
             });
         } catch (error) {
-            console.error('[MobileOrders] Status update failed:', error);
+            Logger.error('[MobileOrders] Status update failed:', { error: error });
             fetchOrders(true); // Reload on failure
         }
     };
@@ -271,7 +268,7 @@ export function MobileOrders() {
                                     </div>
 
                                     <div className="flex items-center justify-between">
-                                        <p className="text-xl font-bold text-gray-900">{formatCurrency(order.total)}</p>
+                                        <p className="text-xl font-bold text-gray-900">{formatAccountCurrency(order.total)}</p>
                                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${config.bg}`}>
                                             <StatusIcon size={14} className={config.color} />
                                             <span className={`text-sm font-semibold ${config.color}`}>

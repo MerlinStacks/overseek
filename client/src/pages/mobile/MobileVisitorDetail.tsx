@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, MapPin, Monitor, Smartphone, Tablet, Globe, Clock, ShoppingCart, Eye, Search, CreditCard, Package, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -215,7 +216,7 @@ export function MobileVisitorDetail() {
                 setData(json);
             }
         } catch (error) {
-            console.error('[MobileVisitorDetail] Error:', error);
+            Logger.error('[MobileVisitorDetail] Error:', { error: error });
         } finally {
             setLoading(false);
         }

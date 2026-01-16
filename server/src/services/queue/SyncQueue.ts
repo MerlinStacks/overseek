@@ -3,6 +3,7 @@ export interface SyncJobData {
     incremental?: boolean; // Default true
     types?: string[]; // If generic "sync all" job
     page?: number; // For pagination recursion
+    triggerSource?: 'SYSTEM' | 'MANUAL' | 'RETRY';
 }
 
 export interface SyncQueue {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -103,7 +104,7 @@ export function InventoryPage() {
                 setTotalItems(data.total);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
@@ -119,7 +120,7 @@ export function InventoryPage() {
             const newProduct = await ProductService.createProduct({ name }, token, currentAccount.id);
             navigate(`/inventory/product/${newProduct.id}`);
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Failed to create product');
         } finally {
             setIsCreating(false);

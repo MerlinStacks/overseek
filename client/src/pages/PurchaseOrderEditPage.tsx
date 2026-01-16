@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -59,7 +60,7 @@ export function PurchaseOrderEditPage() {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount!.id }
             });
             if (res.ok) setSuppliers(await res.json());
-        } catch (err) { console.error(err); }
+        } catch (err) { Logger.error('An error occurred', { error: err }); }
     }
 
     async function fetchPO(poId: string) {
@@ -88,7 +89,7 @@ export function PurchaseOrderEditPage() {
                     totalCost: Number(i.totalCost)
                 })));
             }
-        } catch (err) { console.error(err); }
+        } catch (err) { Logger.error('An error occurred', { error: err }); }
         finally { setIsLoading(false); }
     }
 
@@ -153,7 +154,7 @@ export function PurchaseOrderEditPage() {
                 alert('Failed to save');
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Error saving');
         } finally {
             setIsLoading(false);

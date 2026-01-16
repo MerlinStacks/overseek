@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -50,7 +51,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                 setSearches(searchesRes);
                 setExits(exitsRes);
             } catch (error) {
-                console.error('Failed to fetch overview:', error);
+                Logger.error('Failed to fetch overview:', { error: error });
             } finally {
                 setLoading(false);
             }

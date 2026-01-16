@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, Send, Loader2, ChevronDown, ChevronUp, Zap, Paperclip } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -81,7 +82,7 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
                     }
                 }
             } catch (err) {
-                console.error('Failed to fetch email accounts', err);
+                Logger.error('Failed to fetch email accounts', { error: err });
             }
         };
         fetchAccounts();

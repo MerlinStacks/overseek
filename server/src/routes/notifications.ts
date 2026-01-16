@@ -22,7 +22,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     // GET / - List notifications for account
     fastify.get('/', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const query = request.query as { limit?: string };
@@ -48,7 +48,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /read-all - Mark all as read
     fastify.post('/read-all', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             await prisma.notification.updateMany({
@@ -66,7 +66,8 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
         try {
             const { id } = request.params;
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             await prisma.notification.updateMany({
                 where: { id, accountId },
@@ -96,7 +97,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     // GET /push/subscription
     fastify.get('/push/subscription', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             const userId = request.user?.id;
             const { endpoint } = request.query as { endpoint?: string };
 
@@ -116,7 +117,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /push/subscribe
     fastify.post<{ Body: SubscribeBody }>('/push/subscribe', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             const userId = request.user?.id;
             Logger.warn('[notifications] Subscribe request received', { userId, accountId, hasBody: !!request.body });
 
@@ -198,7 +199,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /push/test
     fastify.post('/push/test', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             const userId = request.user?.id;
             Logger.warn('[notifications] Test notification request', { userId, accountId });
 
@@ -224,7 +225,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /push/test-order - Test order notification specifically
     fastify.post('/push/test-order', async (request, reply) => {
         try {
-            const accountId = request.headers['x-account-id'] as string;
+            const accountId = request.accountId;
             const userId = request.user?.id;
             Logger.info('[notifications] Test ORDER notification request', { userId, accountId });
 

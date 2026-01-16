@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Logger } from '../utils/logger';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -49,7 +50,7 @@ export function InboxPage() {
                 setConversations(data);
                 setIsLoading(false);
             } catch (error) {
-                console.error('Failed to load chats', error);
+                Logger.error('Failed to load chats', { error: error });
                 setIsLoading(false);
             }
         };
@@ -112,7 +113,7 @@ export function InboxPage() {
                     });
                 }
             } catch (error) {
-                console.error('Failed to fetch new conversation', error);
+                Logger.error('Failed to fetch new conversation', { error: error });
             }
         };
 
@@ -153,7 +154,7 @@ export function InboxPage() {
                     c.id === selectedId ? { ...c, isRead: true } : c
                 ));
             } catch (error) {
-                console.error('Failed to mark conversation as read', error);
+                Logger.error('Failed to mark conversation as read', { error: error });
             }
         };
         markAsRead();
@@ -172,7 +173,7 @@ export function InboxPage() {
                     setAvailableChannels(data.channels || []);
                 }
             } catch (error) {
-                console.error('Failed to fetch available channels', error);
+                Logger.error('Failed to fetch available channels', { error: error });
                 setAvailableChannels([]);
             }
         };
@@ -219,7 +220,7 @@ export function InboxPage() {
                 c.id === selectedId ? { ...c, status } : c
             ));
         } catch (e) {
-            console.error('Failed to update status', e);
+            Logger.error('Failed to update status', { error: e });
         }
     }, [selectedId, token, currentAccount]);
 

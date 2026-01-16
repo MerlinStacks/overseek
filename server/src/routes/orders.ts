@@ -394,6 +394,89 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to remove tag' });
         }
     });
+
+    /**
+     * Bulk update order status.
+     * Updates status in WooCommerce and syncs back to local database.
+     */
+    fastify.put('/bulk-status', async (request, reply) => {
+        const accountId = request.user?.accountId;
+        if (!accountId) {
+            return reply.code(400).send({ error: 'accountId header is required' });
+        }
+
+        const body = request.body as { orderIds: number[]; status: string };
+
+        if (!body.orderIds || !Array.isArray(body.orderIds) || body.orderIds.length === 0) {
+            return reply.code(400).send({ error: 'orderIds array is required' });
+        }
+
+        if (!body.status || typeof body.status !== 'string') {
+            return reply.code(400).send({ error: 'status is required' });
+        }
+
+        const validStatuses = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
+        if (!validStatuses.includes(body.status)) {
+            return reply.code(400).send({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        }
+
+        // Limit bulk updates to prevent abuse
+        if (body.orderIds.length > 50) {
+            return reply.code(400).send({ error: 'Maximum 50 orders can be updated at once' });
+        }
+
+        try {
+            const { WooService } = await import('../services/woo');
+            const woo = await WooService.forAccount(accountId);
+
+            let updated = 0;
+            let failed = 0;
+            const errors: string[] = [];
+
+            // Process orders in parallel with limited concurrency
+            const batchSize = 5;
+            for (let i = 0; i < body.orderIds.length; i += batchSize) {
+                const batch = body.orderIds.slice(i, i + batchSize);
+
+                await Promise.all(batch.map(async (orderId) => {
+                    try {
+                        // Update in WooCommerce
+                        await woo.updateOrder(orderId, { status: body.status });
+
+                        // Update local database
+                        await prisma.wooOrder.updateMany({
+                            where: { accountId, wooId: orderId },
+                            data: { status: body.status }
+                        });
+
+                        updated++;
+                    } catch (err: any) {
+                        failed++;
+                        errors.push(`Order #${orderId}: ${err.message}`);
+                        Logger.warn('Failed to update order status', { orderId, error: err.message });
+                    }
+                }));
+            }
+
+            Logger.info('Bulk order status update completed', {
+                accountId,
+                status: body.status,
+                updated,
+                failed,
+                total: body.orderIds.length
+            });
+
+            return {
+                updated,
+                failed,
+                total: body.orderIds.length,
+                errors: errors.length > 0 ? errors : undefined
+            };
+        } catch (error: any) {
+            Logger.error('Bulk status update failed', { error: error.message });
+            return reply.code(500).send({ error: 'Failed to update order statuses' });
+        }
+    });
 };
 
 export default ordersRoutes;

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from './AuthContext';
 
 export interface Account {
@@ -80,7 +81,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
                 });
             }
         } catch (error) {
-            console.error('Failed to fetch accounts', error);
+            Logger.error('Failed to fetch accounts', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -105,7 +106,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
                         updateUser(userData);
                     }
                 })
-                .catch(console.error);
+                .catch(e => Logger.error('Failed to fetch user permissions', { error: e }));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount?.id, token]);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useUser } from '../../hooks/useUser';
 import { Plus, Trash2, Edit2, Check, X, Shield } from 'lucide-react';
@@ -41,7 +42,7 @@ export default function RoleManager() {
                 setRoles(data);
             }
         } catch (e) {
-            console.error('Failed to fetch roles', e);
+            Logger.error('Failed to fetch roles', { error: e });
         } finally {
             setIsLoading(false);
         }

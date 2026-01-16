@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { Bell, Trash2, RefreshCw, Send, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -83,7 +84,7 @@ export function AdminDiagnosticsPage() {
                 setAccounts(data.map((a: any) => ({ id: a.id, name: a.name })));
             }
         } catch (e) {
-            console.error('Failed to fetch accounts', e);
+            Logger.error('Failed to fetch accounts', { error: e });
         }
     };
 

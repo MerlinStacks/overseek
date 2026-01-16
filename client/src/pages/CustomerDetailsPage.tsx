@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 // Force reload
 import { ArrowLeft, Mail, ShoppingBag, Calendar, Activity, Zap, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
@@ -53,7 +54,7 @@ export function CustomerDetailsPage() {
                 setData(json);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }

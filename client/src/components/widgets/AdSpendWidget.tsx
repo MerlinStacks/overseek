@@ -1,4 +1,5 @@
 import { WidgetProps } from './WidgetRegistry';
+import { Logger } from '../../utils/logger';
 import { TrendingUp, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -18,7 +19,7 @@ export function AdSpendWidget({ className }: WidgetProps) {
         })
             .then(res => res.json())
             .then(resData => setData(resData))
-            .catch(console.error)
+            .catch(e => Logger.error('Failed to fetch ad spend data', { error: e }))
             .finally(() => setLoading(false));
     }, [currentAccount, token]);
 

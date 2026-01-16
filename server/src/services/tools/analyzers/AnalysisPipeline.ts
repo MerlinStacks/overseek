@@ -24,6 +24,7 @@ import { AudienceAnalyzer } from './AudienceAnalyzer';
 import { ProductOpportunityAnalyzer } from './ProductOpportunityAnalyzer';
 import { KeywordOpportunityAnalyzer } from './KeywordOpportunityAnalyzer';
 import { MarketingStrategyAdvisor } from '../advisors/MarketingStrategyAdvisor';
+import { SearchCampaignAdvisor } from '../advisors/SearchCampaignAdvisor';
 import { getFeedbackContext, shouldFilterRecommendation } from '../feedback/FeedbackService';
 
 // =============================================================================
@@ -52,7 +53,8 @@ export class AnalysisPipeline {
             audience,
             productOpp,
             keywordOpp,
-            strategy
+            strategy,
+            searchCampaigns
         ] = await Promise.all([
             MultiPeriodAnalyzer.analyze(accountId),
             CrossChannelAnalyzer.analyze(accountId),
@@ -61,7 +63,8 @@ export class AnalysisPipeline {
             AudienceAnalyzer.analyze(accountId),
             ProductOpportunityAnalyzer.analyze(accountId),
             KeywordOpportunityAnalyzer.analyze(accountId),
-            MarketingStrategyAdvisor.analyze(accountId)  // Strategic layer
+            MarketingStrategyAdvisor.analyze(accountId),  // Strategic layer
+            SearchCampaignAdvisor.analyze(accountId)       // Search campaign layer
         ]);
 
         // Collect all suggestions
@@ -79,6 +82,9 @@ export class AnalysisPipeline {
 
         // Strategic recommendations (executive-level insights)
         if (strategy.recommendations) allActions.push(...strategy.recommendations);
+
+        // Search campaign recommendations
+        if (searchCampaigns.recommendations) allActions.push(...searchCampaigns.recommendations);
 
         // Collect actionable recommendations from existing updated analyzers
         if (multiPeriod.actionableRecommendations) {
@@ -141,7 +147,8 @@ export class AnalysisPipeline {
         // Build unified result
         const hasData = multiPeriod.hasData || crossChannel.hasData ||
             ltv.hasData || funnel.hasData || audience.hasData ||
-            productOpp.hasData || keywordOpp.hasData || strategy.hasData;
+            productOpp.hasData || keywordOpp.hasData || strategy.hasData ||
+            searchCampaigns.hasData;
 
 
         return {
@@ -161,7 +168,7 @@ export class AnalysisPipeline {
                 importantCount: sortedSuggestions.filter(s => s.priority === 2).length,
                 infoCount: sortedSuggestions.filter(s => s.priority === 3).length,
                 topConfidence: sortedSuggestions[0]?.confidence || 0,
-                analyzersRun: 5,
+                analyzersRun: 9,
                 totalDurationMs: Date.now() - startTime,
             },
             metadata: {

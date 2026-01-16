@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { CheckCircle, XCircle, Clock, RotateCw } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -37,7 +38,7 @@ export function AdminLogsPage() {
                 setLoading(false);
             })
             .catch(err => {
-                console.error(err);
+                Logger.error('An error occurred', { error: err });
                 setLoading(false);
             });
     };

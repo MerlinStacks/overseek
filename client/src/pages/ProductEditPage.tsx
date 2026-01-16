@@ -200,7 +200,7 @@ export function ProductEditPage() {
                 }
             }
         } catch (error) {
-            console.error('Failed to load product', error);
+            Logger.error('Failed to load product', { error: error });
         } finally {
             if (!background) setIsLoading(false);
         }
@@ -212,7 +212,7 @@ export function ProductEditPage() {
             const data = await InventoryService.getSuppliers(token, currentAccount.id);
             setSuppliers(data);
         } catch (e) {
-            console.error('Failed to fetch suppliers', e);
+            Logger.error('Failed to fetch suppliers', { error: e });
         }
     };
 
@@ -271,7 +271,7 @@ export function ProductEditPage() {
 
             fetchProduct(true); // Reload in background
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
             showToast('Failed to save changes', 'error');
         } finally {
             setIsSaving(false);
@@ -287,7 +287,7 @@ export function ProductEditPage() {
             await fetchProduct(true);
             showToast('Product synced successfully from WooCommerce.');
         } catch (error: any) {
-            console.error('Sync failed:', error);
+            Logger.error('Sync failed:', { error: error });
             showToast(`Sync failed: ${error.message}`, 'error');
         } finally {
             setIsSyncing(false);

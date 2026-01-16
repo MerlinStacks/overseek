@@ -8,10 +8,11 @@ export class SyncService {
      * Trigger a sync for an account.
      * This now dispatches jobs to the Queue system.
      */
-    async runSync(accountId: string, options: { types?: string[], incremental?: boolean, priority?: number } = {}) {
+    async runSync(accountId: string, options: { types?: string[], incremental?: boolean, priority?: number, triggerSource?: 'SYSTEM' | 'MANUAL' | 'RETRY' } = {}) {
         const types = options.types || ['orders', 'products', 'customers', 'reviews'];
         const incremental = options.incremental !== false; // Default true
         const priority = options.priority || 10;
+        const triggerSource = options.triggerSource || 'SYSTEM';
 
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
@@ -49,19 +50,19 @@ export class SyncService {
         };
 
         if (types.includes('orders')) {
-            await checkAndAddJob(QUEUES.ORDERS, { accountId, incremental } as SyncJobData, `sync_orders_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.ORDERS, { accountId, incremental, triggerSource } as SyncJobData, `sync_orders_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('products')) {
-            await checkAndAddJob(QUEUES.PRODUCTS, { accountId, incremental } as SyncJobData, `sync_products_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.PRODUCTS, { accountId, incremental, triggerSource } as SyncJobData, `sync_products_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('customers')) {
-            await checkAndAddJob(QUEUES.CUSTOMERS, { accountId, incremental } as SyncJobData, `sync_customers_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.CUSTOMERS, { accountId, incremental, triggerSource } as SyncJobData, `sync_customers_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('reviews')) {
-            await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental, triggerSource } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
         }
 
         await Promise.all(jobs);

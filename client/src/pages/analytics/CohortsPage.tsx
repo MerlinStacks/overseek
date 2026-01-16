@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -27,7 +28,7 @@ export const CohortsPage: React.FC = () => {
                 const result = await api.get<CohortData>('/api/tracking/cohorts', token, currentAccount.id);
                 setData(result);
             } catch (error) {
-                console.error('Failed to fetch cohorts:', error);
+                Logger.error('Failed to fetch cohorts:', { error: error });
             } finally {
                 setLoading(false);
             }

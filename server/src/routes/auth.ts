@@ -14,7 +14,7 @@ import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { pipeline } from 'stream/promises';
+import { redisClient } from '../utils/redis';
 
 // Schemas
 const registerSchema = z.object({
@@ -35,10 +35,10 @@ const resetPasswordSchema = z.object({
     newPassword: z.string().min(8, 'Password must be at least 8 characters')
 });
 
-// Simple in-memory rate limiter (per IP)
+// Simple in-memory rate limiter (per IP) as fallback if Redis is unavailable.
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
 
-function checkLoginRateLimit(ip: string): boolean {
+function checkLoginRateLimitFallback(ip: string): boolean {
     const now = Date.now();
     const windowMs = 60 * 60 * 1000; // 1 hour
     const maxAttempts = 5;
@@ -60,6 +60,65 @@ function checkLoginRateLimit(ip: string): boolean {
 
     record.count++;
     return true;
+}
+
+async function checkLoginRateLimit(ip: string): Promise<boolean> {
+    const windowSeconds = 60 * 60; // 1 hour
+    const maxAttempts = 5;
+    const key = `login:ip:${ip}`;
+
+    try {
+        const count = await redisClient.incr(key);
+        if (count === 1) {
+            await redisClient.expire(key, windowSeconds);
+        }
+        return count <= maxAttempts;
+    } catch (error) {
+        Logger.warn('Login rate limit fallback', { error });
+        return checkLoginRateLimitFallback(ip);
+    }
+}
+
+function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
+    if (buffer.length < 12) return null;
+
+    // JPEG
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+        return { ext: '.jpg', mime: 'image/jpeg' };
+    }
+    // PNG
+    if (
+        buffer[0] === 0x89 &&
+        buffer[1] === 0x50 &&
+        buffer[2] === 0x4e &&
+        buffer[3] === 0x47
+    ) {
+        return { ext: '.png', mime: 'image/png' };
+    }
+    // GIF
+    if (
+        buffer[0] === 0x47 &&
+        buffer[1] === 0x49 &&
+        buffer[2] === 0x46 &&
+        buffer[3] === 0x38
+    ) {
+        return { ext: '.gif', mime: 'image/gif' };
+    }
+    // WEBP (RIFF....WEBP)
+    if (
+        buffer[0] === 0x52 &&
+        buffer[1] === 0x49 &&
+        buffer[2] === 0x46 &&
+        buffer[3] === 0x46 &&
+        buffer[8] === 0x57 &&
+        buffer[9] === 0x45 &&
+        buffer[10] === 0x42 &&
+        buffer[11] === 0x50
+    ) {
+        return { ext: '.webp', mime: 'image/webp' };
+    }
+
+    return null;
 }
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -101,7 +160,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/login', async (request, reply) => {
         try {
             const ip = request.ip;
-            if (!checkLoginRateLimit(ip)) {
+            if (!(await checkLoginRateLimit(ip))) {
                 return reply.code(429).send({ error: 'Too many login attempts, please try again after an hour.' });
             }
 
@@ -187,17 +246,17 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             const data = await request.file();
             if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
-            const allowedTypes = /jpeg|jpg|png|webp|gif/;
-            const ext = path.extname(data.filename).toLowerCase();
-            if (!allowedTypes.test(ext)) {
+            const fileBuffer = await data.toBuffer();
+            const detected = detectImageType(fileBuffer);
+            if (!detected) {
                 return reply.code(400).send({ error: 'Only image files are allowed!' });
             }
 
             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-            const filename = 'avatar-' + uniqueSuffix + ext;
+            const filename = 'avatar-' + uniqueSuffix + detected.ext;
             const filePath = path.join(uploadDir, filename);
 
-            await pipeline(data.file, fs.createWriteStream(filePath));
+            await fs.promises.writeFile(filePath, fileBuffer);
 
             const avatarUrl = `/uploads/${filename}`;
             await prisma.user.update({ where: { id: userId }, data: { avatarUrl } });

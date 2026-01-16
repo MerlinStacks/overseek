@@ -1,5 +1,6 @@
 
 import { formatDistanceToNow } from 'date-fns';
+import { Logger } from '../../utils/logger';
 import { Mail, Filter, ChevronDown, Pencil, Eye, EyeOff, Plus, Search, X, Loader2, Tag, Square, CheckSquare } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useState, useEffect, useCallback } from 'react';
@@ -83,7 +84,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
         })
             .then(res => res.json())
             .then(data => setAllLabels(data.labels || []))
-            .catch(e => console.error('Failed to fetch labels', e));
+            .catch(e => Logger.error('Failed to fetch labels', { error: e }));
     }, [token, currentAccount]);
 
     // Clear selection when conversations change
@@ -135,7 +136,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                     setSearchResults(data.results || []);
                 }
             } catch (e) {
-                console.error('Search failed', e);
+                Logger.error('Search failed', { error: e });
             } finally {
                 setIsSearching(false);
             }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Activity, Download, Trash2, RefreshCw, Server, Mail, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -22,7 +23,7 @@ export function SystemHealth() {
                 setStats(data);
             }
         } catch (error) {
-            console.error("Failed to fetch stats", error);
+            Logger.error('Failed to fetch stats', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -38,7 +39,7 @@ export function SystemHealth() {
                 setLogs(data.files || []);
             }
         } catch (error) {
-            console.error("Failed to fetch logs", error);
+            Logger.error('Failed to fetch logs', { error: error });
         }
     };
 

@@ -9,13 +9,27 @@
         "lint": "eslint .",
         "preview": "vite preview",
         "test": "vitest",
-        "test:run": "vitest run"
+        "test:run": "vitest run",
+        "cap:sync": "npx cap sync",
+        "cap:build": "npm run build && npx cap sync",
+        "cap:android": "npm run cap:build && npx cap open android",
+        "cap:ios": "npm run cap:build && npx cap open ios"
     },
     "overrides": {
         "react": "^19.2.0",
         "react-dom": "^19.2.0"
     },
     "dependencies": {
+        "@capacitor/android": "^8.0.1",
+        "@capacitor/app": "^8.0.0",
+        "@capacitor/cli": "^8.0.1",
+        "@capacitor/core": "^8.0.1",
+        "@capacitor/haptics": "^8.0.0",
+        "@capacitor/ios": "^8.0.1",
+        "@capacitor/keyboard": "^8.0.0",
+        "@capacitor/push-notifications": "^8.0.0",
+        "@capacitor/splash-screen": "^8.0.0",
+        "@capacitor/status-bar": "^8.0.0",
         "@lexical/html": "^0.39.0",
         "@lexical/link": "^0.39.0",
         "@lexical/list": "^0.39.0",
@@ -51,6 +65,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.39.0",
+        "@tailwindcss/vite": "^4.1.18",
         "@tailwindcss/postcss": "^4.1.18",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.1",

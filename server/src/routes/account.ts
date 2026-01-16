@@ -160,7 +160,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
 
             const users = await prisma.accountUser.findMany({
                 where: { accountId },
-                include: { user: { select: { id: true, fullName: true, email: true, avatarUrl: true } } }
+                include: {
+                    user: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+                    maxRole: { select: { id: true, name: true, permissions: true } }
+                }
             });
             return users;
         } catch (e) {
@@ -214,6 +217,73 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true };
         } catch (e) {
             return reply.code(500).send({ error: 'Failed' });
+        }
+    });
+
+    // Update User Role/Permissions
+    fastify.patch<{ Params: { accountId: string; targetUserId: string }; Body: { role?: string; roleId?: string | null; permissions?: Record<string, boolean> } }>('/:accountId/users/:targetUserId', async (request, reply) => {
+        try {
+            const { accountId, targetUserId } = request.params;
+            const { role, roleId, permissions } = request.body;
+            const userId = request.user!.id;
+
+            // Check current user's membership
+            const membership = await prisma.accountUser.findUnique({ where: { userId_accountId: { userId, accountId } } });
+            if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
+                return reply.code(403).send({ error: 'Forbidden - requires OWNER or ADMIN' });
+            }
+
+            // Get target user's current membership
+            const targetMembership = await prisma.accountUser.findUnique({ where: { userId_accountId: { userId: targetUserId, accountId } } });
+            if (!targetMembership) {
+                return reply.code(404).send({ error: 'User not found in account' });
+            }
+
+            // Owners cannot be modified by non-owners
+            if (targetMembership.role === 'OWNER' && membership.role !== 'OWNER') {
+                return reply.code(403).send({ error: 'Cannot modify owner role' });
+            }
+
+            // Admins cannot promote to OWNER or ADMIN
+            if (membership.role === 'ADMIN' && role && (role === 'OWNER' || role === 'ADMIN')) {
+                return reply.code(403).send({ error: 'Admins cannot promote to OWNER or ADMIN' });
+            }
+
+            // Cannot change owner's role (must transfer ownership separately)
+            if (targetMembership.role === 'OWNER' && role && role !== 'OWNER') {
+                return reply.code(400).send({ error: 'Cannot demote owner. Use ownership transfer instead.' });
+            }
+
+            // Validate custom role if provided
+            if (roleId) {
+                const customRole = await prisma.accountRole.findUnique({ where: { id: roleId } });
+                if (!customRole || customRole.accountId !== accountId) {
+                    return reply.code(400).send({ error: 'Invalid custom role' });
+                }
+            }
+
+            // Build update data
+            const updateData: any = {};
+            if (role && ['OWNER', 'ADMIN', 'STAFF', 'VIEWER'].includes(role)) {
+                updateData.role = role;
+            }
+            if (roleId !== undefined) {
+                updateData.roleId = roleId; // null to remove custom role
+            }
+            if (permissions !== undefined) {
+                updateData.permissions = permissions;
+            }
+
+            const updated = await prisma.accountUser.update({
+                where: { userId_accountId: { userId: targetUserId, accountId } },
+                data: updateData,
+                include: { user: { select: { id: true, fullName: true, email: true, avatarUrl: true } }, maxRole: true }
+            });
+
+            return updated;
+        } catch (e) {
+            Logger.error('Failed to update user role', { error: e });
+            return reply.code(500).send({ error: 'Failed to update user' });
         }
     });
 

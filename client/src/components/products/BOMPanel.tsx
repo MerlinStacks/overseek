@@ -1,4 +1,5 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { Plus, Trash2, Calendar, DollarSign, Loader2, GitBranch } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -68,7 +69,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                     setSearchResults(data.products || []);
                 }
             } catch (err) {
-                console.error("Failed to search products", err);
+                Logger.error('Failed to search products', { error: err });
             }
         }, 300);
 
@@ -107,7 +108,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 setBomItems([]);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setLoading(false);
         }
@@ -147,7 +148,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 return false;
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             return false;
         } finally {
             setSaving(false);

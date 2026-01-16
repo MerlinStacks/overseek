@@ -3,6 +3,7 @@
  * Delegates compose, typing, and send logic to extracted hooks and components.
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -111,7 +112,7 @@ export function ChatWindow({
                     }
                 }
             } catch (err) {
-                console.error('Failed to fetch email accounts', err);
+                Logger.error('Failed to fetch email accounts', { error: err });
             }
         };
         fetchEmailAccounts();
@@ -184,7 +185,7 @@ export function ChatWindow({
                 body: JSON.stringify({ emoji })
             });
         } catch (error) {
-            console.error('Reaction toggle error:', error);
+            Logger.error('Reaction toggle error:', { error: error });
         }
     }, [token, currentAccount]);
 
@@ -223,7 +224,7 @@ export function ChatWindow({
                 alert('Failed to upload: ' + error);
             }
         } catch (error) {
-            console.error('Upload failed:', error);
+            Logger.error('Upload failed:', { error: error });
             alert('Upload failed');
         } finally {
             setIsUploading(false);
@@ -260,7 +261,7 @@ export function ChatWindow({
                 messageSend.setInput(data.draft);
             }
         } catch (error) {
-            console.error('AI draft generation failed:', error);
+            Logger.error('AI draft generation failed:', { error: error });
             alert('Failed to generate AI draft. Please try again.');
         } finally {
             setIsGeneratingDraft(false);

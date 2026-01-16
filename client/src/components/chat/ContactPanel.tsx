@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import {
     User, Mail,
     MoreVertical,
@@ -137,7 +138,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
             });
             if (res.ok) setNotes(await res.json());
         } catch (e) {
-            console.error('Failed to fetch notes:', e);
+            Logger.error('Failed to fetch notes:', { error: e });
         }
     };
 
@@ -160,7 +161,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 setNewNote('');
             }
         } catch (e) {
-            console.error('Failed to add note:', e);
+            Logger.error('Failed to add note:', { error: e });
         } finally {
             setIsAddingNote(false);
         }
@@ -178,7 +179,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
             });
             setNotes(notes.filter(n => n.id !== noteId));
         } catch (e) {
-            console.error('Failed to delete note:', e);
+            Logger.error('Failed to delete note:', { error: e });
         }
     };
 
@@ -213,7 +214,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 setPreviousConversations(otherConvs);
             }
         } catch (error) {
-            console.error('Failed to fetch customer data:', error);
+            Logger.error('Failed to fetch customer data:', { error: error });
         } finally {
             setIsLoadingOrders(false);
         }
@@ -234,7 +235,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 setRecentOrders(ordersData.orders || []);
             }
         } catch (error) {
-            console.error('Failed to fetch orders by email:', error);
+            Logger.error('Failed to fetch orders by email:', { error: error });
         } finally {
             setIsLoadingOrders(false);
         }

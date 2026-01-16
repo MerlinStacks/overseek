@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, Save, Box, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -33,7 +34,7 @@ export function ProductEditor({ productId, onClose }: ProductEditorProps) {
                 setLoading(false);
             })
             .catch(err => {
-                console.error(err);
+                Logger.error('An error occurred', { error: err });
                 setLoading(false);
                 alert('Failed to load product');
                 onClose();

@@ -3,6 +3,7 @@
  * Flows/Automations moved to dedicated FlowsPage.
  */
 import { useState, useEffect, lazy, Suspense } from 'react';
+import { Logger } from '../utils/logger';
 import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
 import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
@@ -84,7 +85,7 @@ export function MarketingPage() {
             });
             alert('Design saved!');
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Failed to save');
         }
     };

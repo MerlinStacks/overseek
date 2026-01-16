@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import ReactDOM from 'react-dom';
 import { X, User, MapPin, Clock, Smartphone, Monitor, ShoppingBag, Search, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { format, formatDistanceStrict } from 'date-fns';
@@ -250,7 +251,7 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                     setData(json);
                 }
             } catch (err) {
-                console.error(err);
+                Logger.error('An error occurred', { error: err });
             } finally {
                 setLoading(false);
             }

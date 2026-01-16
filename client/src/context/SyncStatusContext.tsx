@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { Logger } from '../utils/logger';
 import { useAccount } from './AccountContext';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
@@ -75,7 +76,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
                 setLogs(data.logs || []);
             }
         } catch (error) {
-            console.error('Failed to fetch sync status', error);
+            Logger.error('Failed to fetch sync status', { error: error });
         }
     }, [currentAccount?.id, token]);
 
@@ -138,7 +139,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
             // Immediately fetch status update
             fetchStatus();
         } catch (error) {
-            console.error(`Failed to ${action} sync`, error);
+            Logger.error(`Failed to ${action} sync`, { error });
             throw error;
         }
     };
@@ -160,7 +161,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
             });
             fetchStatus();
         } catch (error) {
-            console.error('Failed to start sync', error);
+            Logger.error('Failed to start sync', { error: error });
             throw error;
         }
     };

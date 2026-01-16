@@ -53,3 +53,20 @@ walkthrough.md
 *.crt
 secrets/
 credentials/
+
+# Capacitor / Native Builds
+client/android/.gradle/
+client/android/build/
+client/android/app/build/
+client/android/.idea/
+client/android/*.iml
+client/android/local.properties
+client/ios/Pods/
+client/ios/DerivedData/
+client/ios/*.xcworkspace
+client/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+client/ios/App/App.xcodeproj/xcuserdata/
+
+# Firebase config (add these but track the examples)
+client/android/app/google-services.json
+client/ios/App/App/GoogleService-Info.plist

@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, Users, Edit2, Trash2 } from 'lucide-react';
@@ -44,7 +45,7 @@ export function SegmentsPage() {
                 setSegments(data);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
@@ -100,7 +101,7 @@ export function SegmentsPage() {
                 alert(err.error || 'Failed to save segment');
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         }
     }
 
@@ -119,7 +120,7 @@ export function SegmentsPage() {
                 fetchSegments();
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         }
     }
 

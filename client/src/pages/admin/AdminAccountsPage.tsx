@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useNavigate } from 'react-router-dom';
@@ -48,7 +49,7 @@ export function AdminAccountsPage() {
                 setLoading(false);
             })
             .catch(err => {
-                console.error('AdminAccountsPage fetch error:', err);
+                Logger.error('AdminAccountsPage fetch error:', { error: err });
                 setLoading(false);
             });
     };
@@ -107,7 +108,7 @@ export function AdminAccountsPage() {
                 alert('Impersonation failed: ' + data.error);
             }
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
             alert('Failed to start impersonation');
         }
     };
@@ -143,7 +144,7 @@ export function AdminAccountsPage() {
                 }
             }
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
         }
     };
 
@@ -170,7 +171,7 @@ export function AdminAccountsPage() {
                 alert('Delete failed: ' + data.error);
             }
         } catch (e) {
-            console.error(e);
+            Logger.error('An error occurred', { error: e });
             alert('Failed to delete account');
         } finally {
             setDeleting(false);

@@ -1,48 +1,90 @@
 /**
- * AI Ad Management Page
+ * AI Co-Pilot Page
  * 
- * Dedicated page for AI-powered ad optimization with priority-sorted suggestions.
- * Features glassmorphism UI and actionable recommendation cards.
+ * Premium "card hand" style interface for AI-powered ad recommendations.
+ * Non-scrollable viewport with horizontal card carousel for recommendations.
+ * Each card shows projected revenue impact backed by real data.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import {
-    AlertTriangle,
-    Lightbulb,
-    RefreshCw,
     ArrowLeft,
-    CheckCircle,
-    AlertCircle,
-    Info,
+    RefreshCw,
     MessageCirclePlus,
     Sparkles,
-    Zap
+    Zap,
+    ChevronLeft,
+    ChevronRight,
+    DollarSign,
+    TrendingUp,
+    Search,
+    ShoppingBag,
+    Target,
+    AlertTriangle,
+    CheckCircle,
+    ArrowUpRight,
+    Layers,
+    BarChart3
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AdContextModal } from '../components/marketing/AdContextModal';
-import { ActionableRecommendationCard } from '../components/marketing/ActionableRecommendationCard';
-import { ActionableRecommendation } from '../types/ActionableTypes';
+import { ActionableRecommendation, isBudgetAction, isKeywordAction, isProductAction } from '../types/ActionableTypes';
 import { AddKeywordModal } from '../components/marketing/AddKeywordModal';
 import { RecommendationFeedbackModal } from '../components/marketing/RecommendationFeedbackModal';
 import { ScheduleActionModal } from '../components/marketing/ScheduleActionModal';
-
 import { CampaignWizard } from '../components/marketing/CampaignWizard/CampaignWizard';
 
-interface PrioritizedSuggestion {
-    text: string;
-    priority: 1 | 2 | 3;
-    category: string;
-}
-
 interface SuggestionsData {
-    suggestions: string[]; // Legacy
-    prioritized: PrioritizedSuggestion[]; // Legacy
-    actionableRecommendations?: ActionableRecommendation[]; // New structured data
+    suggestions: string[];
+    prioritized: { text: string; priority: 1 | 2 | 3; category: string }[];
+    actionableRecommendations?: ActionableRecommendation[];
     summary?: any;
     action_items?: string[];
     message?: string;
+}
+
+/**
+ * Calculate the total potential revenue from all recommendations.
+ */
+function calculateTotalPotentialRevenue(recs: ActionableRecommendation[]): number {
+    return recs.reduce((sum, rec) => {
+        return sum + (rec.estimatedImpact?.revenueChange || 0);
+    }, 0);
+}
+
+/**
+ * Get a color scheme based on the recommendation type and priority.
+ */
+function getCardGradient(rec: ActionableRecommendation): string {
+    if (rec.priority === 1) {
+        return 'from-rose-500 via-red-500 to-orange-500';
+    }
+    if (isKeywordAction(rec.action)) {
+        return 'from-violet-500 via-purple-500 to-indigo-500';
+    }
+    if (isProductAction(rec.action)) {
+        return 'from-emerald-500 via-teal-500 to-cyan-500';
+    }
+    if (isBudgetAction(rec.action)) {
+        if (rec.action.changeAmount > 0) {
+            return 'from-green-500 via-emerald-500 to-teal-500';
+        }
+        return 'from-amber-500 via-orange-500 to-yellow-500';
+    }
+    return 'from-blue-500 via-indigo-500 to-purple-500';
+}
+
+/**
+ * Get the icon component for a recommendation.
+ */
+function getCardIcon(rec: ActionableRecommendation) {
+    if (isKeywordAction(rec.action)) return Search;
+    if (isProductAction(rec.action)) return ShoppingBag;
+    if (isBudgetAction(rec.action)) return DollarSign;
+    return Target;
 }
 
 export function AdAIPage() {
@@ -57,15 +99,14 @@ export function AdAIPage() {
     const [showContextModal, setShowContextModal] = useState(false);
     const [showCampaignWizard, setShowCampaignWizard] = useState(false);
 
-    // Keyword Modal State
+    // Active card index for the carousel
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    // Modal states
     const [keywordModalOpen, setKeywordModalOpen] = useState(false);
     const [activeKeywordRec, setActiveKeywordRec] = useState<ActionableRecommendation | null>(null);
-
-    // Feedback Modal State
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
     const [activeFeedbackRec, setActiveFeedbackRec] = useState<ActionableRecommendation | null>(null);
-
-    // Schedule Modal State
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [activeScheduleRec, setActiveScheduleRec] = useState<ActionableRecommendation | null>(null);
 
@@ -86,6 +127,7 @@ export function AdAIPage() {
                 const result = await res.json();
                 setData(result);
                 setError(null);
+                setActiveIndex(0); // Reset to first card on refresh
             } else {
                 setError('Failed to load suggestions');
             }
@@ -101,17 +143,42 @@ export function AdAIPage() {
         fetchSuggestions();
     }, [fetchSuggestions]);
 
+    // Get actionable recommendations, sorted by priority and potential impact
+    const recommendations = useMemo(() => {
+        const recs = data?.actionableRecommendations || [];
+        return recs.sort((a, b) => {
+            // Priority first
+            if (a.priority !== b.priority) return a.priority - b.priority;
+            // Then by revenue impact
+            const aRev = a.estimatedImpact?.revenueChange || 0;
+            const bRev = b.estimatedImpact?.revenueChange || 0;
+            return bRev - aRev;
+        });
+    }, [data?.actionableRecommendations]);
+
+    // Calculate total potential revenue
+    const totalPotentialRevenue = useMemo(() => calculateTotalPotentialRevenue(recommendations), [recommendations]);
+
+    // Navigation handlers
+    const goToPrevious = () => {
+        setActiveIndex(prev => (prev > 0 ? prev - 1 : recommendations.length - 1));
+    };
+
+    const goToNext = () => {
+        setActiveIndex(prev => (prev < recommendations.length - 1 ? prev + 1 : 0));
+    };
+
+    // Action handlers
     const handleKeywordConfirm = async (rec: ActionableRecommendation, keywordData: { keyword: string; matchType: string; bid: number; adGroupId: string }) => {
         if (!token || !currentAccount) return;
 
-        // Optimistic update
         const originalData = data;
         if (data && data.actionableRecommendations) {
-            const newData = {
-                ...data,
-                actionableRecommendations: data.actionableRecommendations.filter(r => r.id !== rec.id)
-            };
-            setData(newData);
+            const newRecs = data.actionableRecommendations.filter(r => r.id !== rec.id);
+            setData({ ...data, actionableRecommendations: newRecs });
+            if (activeIndex >= newRecs.length && newRecs.length > 0) {
+                setActiveIndex(newRecs.length - 1);
+            }
         }
 
         try {
@@ -132,7 +199,7 @@ export function AdAIPage() {
                         matchType: keywordData.matchType,
                         bid: keywordData.bid,
                         adGroupId: keywordData.adGroupId,
-                        adAccountId: (rec as any).adAccountId // If available, otherwise backend finds it
+                        adAccountId: (rec as any).adAccountId
                     }
                 })
             });
@@ -141,10 +208,10 @@ export function AdAIPage() {
                 const err = await res.json();
                 throw new Error(err.error || 'Failed to add keyword');
             }
-            console.log('Keyword added successfully');
+            Logger.info('Keyword added successfully');
         } catch (err: any) {
-            console.error('Failed to add keyword', err);
-            setData(originalData); // Revert
+            Logger.error('Failed to add keyword', { error: err });
+            setData(originalData);
             alert(`Failed to add keyword: ${err.message}`);
         }
     };
@@ -152,41 +219,32 @@ export function AdAIPage() {
     const handleApply = async (rec: ActionableRecommendation) => {
         if (!token || !currentAccount) return;
 
-        // Special handling for keyword additions - needs modal
         if (rec.action.actionType === 'add_keyword') {
             setActiveKeywordRec(rec);
             setKeywordModalOpen(true);
             return;
         }
 
-        // Optimistically remove from UI to feel instant
-        // In a real app, we might show a spinner on the card instead
         const originalData = data;
-
-        // Remove the item from the list visually
         if (data && data.actionableRecommendations) {
-            const newData = {
-                ...data,
-                actionableRecommendations: data.actionableRecommendations.filter(r => r.id !== rec.id)
-            };
-            setData(newData);
+            const newRecs = data.actionableRecommendations.filter(r => r.id !== rec.id);
+            setData({ ...data, actionableRecommendations: newRecs });
+            if (activeIndex >= newRecs.length && newRecs.length > 0) {
+                setActiveIndex(newRecs.length - 1);
+            }
         }
 
         try {
             let parameters: any = {};
             let actionType = '';
 
-            // Map frontend action to backend parameters
             if (rec.action.actionType === 'budget_increase' || rec.action.actionType === 'budget_decrease') {
-                // TS check or cast - we know it's BudgetAction if types match
                 const budgetAction = rec.action as any;
                 parameters.amount = budgetAction.suggestedBudget;
                 actionType = budgetAction.actionType;
             } else if (rec.action.actionType === 'pause' || rec.action.actionType === 'enable') {
                 actionType = rec.action.actionType;
             } else {
-                console.warn('Action type not yet supported for execution:', rec.action.actionType);
-                // Revert optimistic update
                 setData(originalData);
                 alert('This action type is not yet fully connected to the API.');
                 return;
@@ -201,9 +259,9 @@ export function AdAIPage() {
                 },
                 body: JSON.stringify({
                     recommendationId: rec.id,
-                    actionType: actionType,
+                    actionType,
                     platform: rec.platform,
-                    campaignId: (rec.action as any).campaignId, // BudgetAction has campaignId
+                    campaignId: (rec.action as any).campaignId,
                     parameters
                 })
             });
@@ -213,32 +271,26 @@ export function AdAIPage() {
                 throw new Error(err.error || 'Failed to execute action');
             }
 
-            // Success - maybe show a toast
-            console.log('Action executed successfully');
-
+            Logger.info('Action executed successfully');
         } catch (err: any) {
-            console.error('Failed to apply recommendation', err);
-            // Revert optimistic update on error
+            Logger.error('Failed to apply recommendation', { error: err });
             setData(originalData);
             alert(`Failed to apply action: ${err.message}`);
         }
     };
 
     const handleDismiss = (rec: ActionableRecommendation) => {
-        // Open feedback modal instead of just dismissing
         setActiveFeedbackRec(rec);
         setFeedbackModalOpen(true);
     };
 
     const handleFeedbackSubmitted = () => {
-        // Remove the dismissed item from the list
         if (data && data.actionableRecommendations && activeFeedbackRec) {
-            setData({
-                ...data,
-                actionableRecommendations: data.actionableRecommendations.filter(
-                    r => r.id !== activeFeedbackRec.id
-                )
-            });
+            const newRecs = data.actionableRecommendations.filter(r => r.id !== activeFeedbackRec.id);
+            setData({ ...data, actionableRecommendations: newRecs });
+            if (activeIndex >= newRecs.length && newRecs.length > 0) {
+                setActiveIndex(newRecs.length - 1);
+            }
         }
         setActiveFeedbackRec(null);
     };
@@ -249,270 +301,373 @@ export function AdAIPage() {
     };
 
     const handleScheduleComplete = () => {
-        // Optionally remove from list or show success toast
         if (data && data.actionableRecommendations && activeScheduleRec) {
-            setData({
-                ...data,
-                actionableRecommendations: data.actionableRecommendations.filter(
-                    r => r.id !== activeScheduleRec.id
-                )
-            });
+            const newRecs = data.actionableRecommendations.filter(r => r.id !== activeScheduleRec.id);
+            setData({ ...data, actionableRecommendations: newRecs });
+            if (activeIndex >= newRecs.length && newRecs.length > 0) {
+                setActiveIndex(newRecs.length - 1);
+            }
         }
         setActiveScheduleRec(null);
     };
 
-    // Separate recommendations by priority
-    const actionableRecs = data?.actionableRecommendations || [];
-    const urgentItems = actionableRecs.filter(s => s.priority === 1);
-    const importantItems = actionableRecs.filter(s => s.priority === 2);
-    const opportunityItems = actionableRecs.filter(s => s.priority === 3);
-
-    // Fallback to legacy items if no actionable ones (backward compatibility)
-    const hasLegacyOnly = actionableRecs.length === 0 && (data?.prioritized?.length || 0) > 0;
-
+    // Loading state with premium animation
     if (loading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-8 flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
+            <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center overflow-hidden">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent" />
+                <div className="relative flex flex-col items-center gap-6 z-10">
                     <div className="relative">
-                        <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                        <div className="w-20 h-20 rounded-full border-4 border-indigo-500/30 border-t-indigo-400 animate-spin" />
                         <div className="absolute inset-0 flex items-center justify-center">
-                            <Sparkles className="w-6 h-6 text-blue-500 animate-pulse" />
+                            <Sparkles className="w-8 h-8 text-indigo-400 animate-pulse" />
                         </div>
                     </div>
-                    <p className="text-gray-500 font-medium">Analyzing campaign performance...</p>
+                    <div className="text-center">
+                        <p className="text-xl font-semibold text-white mb-2">Analyzing Your Campaigns</p>
+                        <p className="text-indigo-300/70">Finding revenue opportunities...</p>
+                    </div>
                 </div>
             </div>
         );
     }
 
+    // Main render
+    const currentRec = recommendations[activeIndex];
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 md:p-8">
-            <div className="max-w-5xl mx-auto space-y-8">
+        <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 overflow-hidden">
+            {/* Ambient background effects */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-purple-500/10 to-transparent rounded-full blur-3xl" />
+                <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-blue-500/10 to-transparent rounded-full blur-3xl" />
+                <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl animate-pulse" />
+            </div>
 
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => navigate('/marketing?tab=ads')}
-                            className="p-2 hover:bg-white rounded-xl transition-all shadow-sm hover:shadow text-gray-600"
-                        >
-                            <ArrowLeft size={20} />
-                        </button>
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-lg text-white shadow-lg shadow-blue-500/20">
-                                    <Zap size={24} fill="currentColor" />
-                                </div>
-                                AI Co-pilot
-                            </h1>
-                            <p className="text-gray-500 mt-1">Real-time actionable insights for your campaigns</p>
-                        </div>
+            {/* Header */}
+            <header className="relative z-20 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => navigate('/marketing?tab=ads')}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all border border-white/10"
+                    >
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/25">
+                                <Zap size={20} fill="currentColor" />
+                            </div>
+                            AI Co-Pilot
+                        </h1>
                     </div>
+                </div>
 
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => setShowCampaignWizard(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                        >
-                            <Sparkles size={18} />
-                            Create Campaign
-                        </button>
-                        <button
-                            onClick={() => setShowContextModal(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all border border-gray-200 shadow-sm"
-                        >
-                            <MessageCirclePlus size={18} />
-                            Add Context
-                        </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setShowCampaignWizard(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg shadow-indigo-500/25"
+                    >
+                        <Sparkles size={18} />
+                        Create Campaign
+                    </button>
+                    <button
+                        onClick={() => setShowContextModal(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white font-medium rounded-xl hover:bg-white/15 transition-all border border-white/10"
+                    >
+                        <MessageCirclePlus size={18} />
+                        Context
+                    </button>
+                    <button
+                        onClick={() => fetchSuggestions(true)}
+                        disabled={refreshing}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white font-medium rounded-xl hover:bg-white/15 transition-all border border-white/10 disabled:opacity-50"
+                    >
+                        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+                        {refreshing ? 'Analyzing...' : 'Refresh'}
+                    </button>
+                </div>
+            </header>
+
+            {/* Modals */}
+            <CampaignWizard isOpen={showCampaignWizard} onClose={() => setShowCampaignWizard(false)} />
+            <AdContextModal isOpen={showContextModal} onClose={() => setShowContextModal(false)} onSaved={() => fetchSuggestions(true)} />
+
+            {activeKeywordRec && (
+                <AddKeywordModal
+                    isOpen={keywordModalOpen}
+                    onClose={() => setKeywordModalOpen(false)}
+                    recommendation={activeKeywordRec}
+                    onConfirm={async (d) => {
+                        await handleKeywordConfirm(activeKeywordRec, d);
+                        setKeywordModalOpen(false);
+                        setActiveKeywordRec(null);
+                    }}
+                />
+            )}
+
+            {activeFeedbackRec && (
+                <RecommendationFeedbackModal
+                    isOpen={feedbackModalOpen}
+                    onClose={() => { setFeedbackModalOpen(false); setActiveFeedbackRec(null); }}
+                    recommendation={activeFeedbackRec}
+                    action="dismiss"
+                    onSubmitted={handleFeedbackSubmitted}
+                />
+            )}
+
+            {activeScheduleRec && (
+                <ScheduleActionModal
+                    isOpen={scheduleModalOpen}
+                    onClose={() => { setScheduleModalOpen(false); setActiveScheduleRec(null); }}
+                    recommendation={activeScheduleRec}
+                    onScheduled={handleScheduleComplete}
+                />
+            )}
+
+            {/* Error state */}
+            {error && (
+                <div className="relative z-20 mx-6 mb-4 bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-red-300 flex items-center gap-3">
+                    <AlertTriangle size={20} />
+                    <span>{error}</span>
+                </div>
+            )}
+
+            {/* Main Content */}
+            {recommendations.length === 0 ? (
+                /* Empty State */
+                <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6">
+                    <div className="text-center max-w-md">
+                        <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center">
+                            <CheckCircle className="w-12 h-12 text-emerald-400" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-white mb-3">All Systems Optimized</h2>
+                        <p className="text-white/60 mb-8">
+                            Your campaigns are running smoothly. The AI Co-pilot monitors your data 24/7 and will alert you when new opportunities arise.
+                        </p>
                         <button
                             onClick={() => fetchSuggestions(true)}
-                            disabled={refreshing}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:translate-y-0"
+                            className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10"
                         >
-                            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                            {refreshing ? 'Analyzing...' : 'Refresh Analysis'}
+                            Force Re-analysis
                         </button>
                     </div>
                 </div>
-
-                <CampaignWizard
-                    isOpen={showCampaignWizard}
-                    onClose={() => setShowCampaignWizard(false)}
-                />
-
-                <AdContextModal
-                    isOpen={showContextModal}
-                    onClose={() => setShowContextModal(false)}
-                    onSaved={() => fetchSuggestions(true)}
-                />
-
-                {/* Keyword Addition Modal */}
-                {activeKeywordRec && (
-                    <AddKeywordModal
-                        isOpen={keywordModalOpen}
-                        onClose={() => setKeywordModalOpen(false)}
-                        recommendation={activeKeywordRec}
-                        onConfirm={async (data) => {
-                            await handleKeywordConfirm(activeKeywordRec, data);
-                            setKeywordModalOpen(false);
-                            setActiveKeywordRec(null);
-                        }}
-                    />
-                )}
-
-                {/* Recommendation Feedback Modal */}
-                {activeFeedbackRec && (
-                    <RecommendationFeedbackModal
-                        isOpen={feedbackModalOpen}
-                        onClose={() => {
-                            setFeedbackModalOpen(false);
-                            setActiveFeedbackRec(null);
-                        }}
-                        recommendation={activeFeedbackRec}
-                        action="dismiss"
-                        onSubmitted={handleFeedbackSubmitted}
-                    />
-                )}
-
-                {/* Schedule Action Modal */}
-                {activeScheduleRec && (
-                    <ScheduleActionModal
-                        isOpen={scheduleModalOpen}
-                        onClose={() => {
-                            setScheduleModalOpen(false);
-                            setActiveScheduleRec(null);
-                        }}
-                        recommendation={activeScheduleRec}
-                        onScheduled={handleScheduleComplete}
-                    />
-                )}
-
-                {/* Error state */}
-                {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700 flex items-start gap-3">
-                        <AlertCircle className="shrink-0 mt-0.5" />
-                        <div>
-                            <h3 className="font-semibold">Analysis Failed</h3>
-                            <p className="text-sm opacity-90">{error}</p>
+            ) : (
+                /* Card Carousel */
+                <div className="relative z-10 flex-1 flex flex-col">
+                    {/* Revenue Summary Bar */}
+                    <div className="px-6 py-4">
+                        <div className="flex items-center justify-between bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10 rounded-2xl p-4 border border-emerald-500/20">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 rounded-xl bg-emerald-500/20">
+                                    <TrendingUp className="w-6 h-6 text-emerald-400" />
+                                </div>
+                                <div>
+                                    <p className="text-white/60 text-sm">Total Potential Revenue Increase</p>
+                                    <p className="text-3xl font-bold text-white">
+                                        +${totalPotentialRevenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                                <div className="text-center">
+                                    <p className="text-2xl font-bold text-white">{recommendations.length}</p>
+                                    <p className="text-white/60 text-sm">Opportunities</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-2xl font-bold text-rose-400">{recommendations.filter(r => r.priority === 1).length}</p>
+                                    <p className="text-white/60 text-sm">Urgent</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                )}
 
-                {/* Main Content */}
-                <div className="space-y-8">
-
-                    {/* Urgent Section */}
-                    {urgentItems.length > 0 && (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-red-600 font-bold uppercase tracking-wider text-sm ml-1">
-                                <AlertTriangle size={16} />
-                                Requires Attention
-                            </div>
-                            <div className="grid gap-4">
-                                {urgentItems.map(rec => (
-                                    <ActionableRecommendationCard
-                                        key={rec.id}
-                                        recommendation={rec}
-                                        onApply={handleApply}
-                                        onDismiss={handleDismiss}
-                                        onSchedule={handleSchedule}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Important Section */}
-                    {importantItems.length > 0 && (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-amber-600 font-bold uppercase tracking-wider text-sm ml-1">
-                                <Zap size={16} />
-                                High Impact Opportunities
-                            </div>
-                            <div className="grid gap-4">
-                                {importantItems.map(rec => (
-                                    <ActionableRecommendationCard
-                                        key={rec.id}
-                                        recommendation={rec}
-                                        onApply={handleApply}
-                                        onDismiss={handleDismiss}
-                                        onSchedule={handleSchedule}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Optimization Section */}
-                    {opportunityItems.length > 0 && (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-blue-600 font-bold uppercase tracking-wider text-sm ml-1">
-                                <Lightbulb size={16} />
-                                Optimizations & Insights
-                            </div>
-                            <div className="grid gap-4">
-                                {opportunityItems.map(rec => (
-                                    <ActionableRecommendationCard
-                                        key={rec.id}
-                                        recommendation={rec}
-                                        onApply={handleApply}
-                                        onDismiss={handleDismiss}
-                                        onSchedule={handleSchedule}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Empty State */}
-                    {!loading && !error && actionableRecs.length === 0 && !hasLegacyOnly && (
-                        <div className="bg-white/50 backdrop-blur-sm border border-white/60 rounded-3xl p-12 text-center shadow-sm">
-                            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <CheckCircle size={40} />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">All Systems Optimized</h3>
-                            <p className="text-gray-500 max-w-md mx-auto">
-                                Your campaigns are running smoothly. The AI Co-pilot analyzes your data 24/7 and will alert you when opportunities arise.
-                            </p>
+                    {/* Cards Area */}
+                    <div className="flex-1 flex items-center justify-center px-6 pb-6">
+                        <div className="relative w-full max-w-4xl h-full flex items-center">
+                            {/* Previous Button */}
                             <button
-                                onClick={() => fetchSuggestions(true)}
-                                className="mt-8 text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                                onClick={goToPrevious}
+                                disabled={recommendations.length <= 1}
+                                className="absolute left-0 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-2xl backdrop-blur-sm border border-white/10"
                             >
-                                Force Re-analysis
+                                <ChevronLeft size={28} />
                             </button>
-                        </div>
-                    )}
 
-                    {/* Legacy Items Fallback */}
-                    {hasLegacyOnly && (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-gray-500 font-bold uppercase tracking-wider text-sm ml-1">
-                                <Info size={16} />
-                                General Suggestions
-                            </div>
-                            <div className="grid gap-4">
-                                {data?.prioritized?.map((item, idx) => (
-                                    <div key={idx} className="bg-white/80 backdrop-blur border border-white/20 p-6 rounded-2xl shadow-sm">
-                                        <div className="flex gap-4">
-                                            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl h-fit">
-                                                <Info size={24} />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-medium text-gray-900 mb-1">{item.text}</h3>
-                                                <span className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded-md uppercase tracking-wider">
-                                                    {item.category}
-                                                </span>
+                            {/* Card Stack */}
+                            <div className="flex-1 flex justify-center items-center perspective-1000 mx-16">
+                                {recommendations.map((rec, index) => {
+                                    const offset = index - activeIndex;
+                                    const isActive = index === activeIndex;
+                                    const isVisible = Math.abs(offset) <= 2;
+
+                                    if (!isVisible) return null;
+
+                                    const Icon = getCardIcon(rec);
+                                    const gradient = getCardGradient(rec);
+                                    const revenueImpact = rec.estimatedImpact?.revenueChange || 0;
+
+                                    return (
+                                        <div
+                                            key={rec.id}
+                                            className="absolute w-full max-w-2xl transition-all duration-500 ease-out"
+                                            style={{
+                                                transform: `
+                                                    translateX(${offset * 60}px) 
+                                                    translateZ(${-Math.abs(offset) * 100}px) 
+                                                    rotateY(${offset * -5}deg)
+                                                    scale(${1 - Math.abs(offset) * 0.1})
+                                                `,
+                                                zIndex: 10 - Math.abs(offset),
+                                                opacity: 1 - Math.abs(offset) * 0.3,
+                                                pointerEvents: isActive ? 'auto' : 'none',
+                                            }}
+                                        >
+                                            <div
+                                                className={`
+                                                    relative rounded-3xl p-8 backdrop-blur-xl
+                                                    ${isActive ? 'shadow-2xl' : 'shadow-lg'}
+                                                    bg-gradient-to-br ${gradient}
+                                                    transition-shadow duration-300
+                                                `}
+                                            >
+                                                {/* Card Header */}
+                                                <div className="flex items-start justify-between mb-6">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+                                                            <Icon className="w-7 h-7 text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="text-white/80 text-sm font-medium uppercase tracking-wider">
+                                                                    {rec.platform} • {rec.category}
+                                                                </span>
+                                                                {rec.priority === 1 && (
+                                                                    <span className="px-2 py-0.5 bg-white/20 rounded-full text-xs font-bold text-white flex items-center gap-1">
+                                                                        <AlertTriangle size={12} /> URGENT
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-white/60 text-xs uppercase tracking-wider mb-1">Confidence</p>
+                                                        <div className="flex items-center gap-1">
+                                                            <div className="w-16 h-2 rounded-full bg-white/20 overflow-hidden">
+                                                                <div
+                                                                    className="h-full bg-white rounded-full"
+                                                                    style={{ width: `${rec.confidence}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-white font-bold text-sm">{rec.confidence}%</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Headline */}
+                                                <h3 className="text-2xl font-bold text-white mb-3 leading-tight">
+                                                    {rec.headline.replace(/^[^\w]+/, '')}
+                                                </h3>
+
+                                                {/* Explanation */}
+                                                <p className="text-white/80 text-base mb-6 leading-relaxed">
+                                                    {rec.explanation}
+                                                </p>
+
+                                                {/* Revenue Impact */}
+                                                {revenueImpact > 0 && (
+                                                    <div className="mb-6 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <ArrowUpRight className="w-6 h-6 text-white" />
+                                                                <div>
+                                                                    <p className="text-white/60 text-sm">Projected Revenue Increase</p>
+                                                                    <p className="text-3xl font-bold text-white">
+                                                                        +${revenueImpact.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="text-white/60 text-sm">Timeframe</p>
+                                                                <p className="text-white font-medium">{rec.estimatedImpact?.timeframe === '7d' ? '7 Days' : '30 Days'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Data Points */}
+                                                {rec.dataPoints.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2 mb-6">
+                                                        {rec.dataPoints.slice(0, 4).map((dp, i) => (
+                                                            <span key={i} className="px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-sm font-medium backdrop-blur-sm">
+                                                                {dp}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Action Buttons */}
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => handleApply(rec)}
+                                                        className="flex-1 py-3.5 px-6 bg-white text-slate-900 font-bold rounded-xl hover:bg-white/90 transition-all shadow-lg flex items-center justify-center gap-2"
+                                                    >
+                                                        <CheckCircle size={20} />
+                                                        Apply Now
+                                                    </button>
+                                                    {isBudgetAction(rec.action) && (
+                                                        <button
+                                                            onClick={() => handleSchedule(rec)}
+                                                            className="py-3.5 px-5 bg-white/20 text-white font-medium rounded-xl hover:bg-white/30 transition-all flex items-center gap-2"
+                                                        >
+                                                            <Layers size={18} />
+                                                            Schedule
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleDismiss(rec)}
+                                                        className="py-3.5 px-5 bg-white/10 text-white/80 font-medium rounded-xl hover:bg-white/20 hover:text-white transition-all"
+                                                    >
+                                                        Skip
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
+
+                            {/* Next Button */}
+                            <button
+                                onClick={goToNext}
+                                disabled={recommendations.length <= 1}
+                                className="absolute right-0 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-2xl backdrop-blur-sm border border-white/10"
+                            >
+                                <ChevronRight size={28} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Card Indicators */}
+                    {recommendations.length > 1 && (
+                        <div className="flex justify-center gap-2 pb-6">
+                            {recommendations.map((_, index) => (
+                                <button
+                                    key={index}
+                                    onClick={() => setActiveIndex(index)}
+                                    className={`
+                                        w-2.5 h-2.5 rounded-full transition-all
+                                        ${index === activeIndex
+                                            ? 'bg-white w-8'
+                                            : 'bg-white/30 hover:bg-white/50'}
+                                    `}
+                                />
+                            ))}
                         </div>
                     )}
-
                 </div>
-            </div>
+            )}
         </div>
     );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -25,7 +26,7 @@ export const FunnelWidget: React.FC<FunnelWidgetProps> = ({ days = 30 }) => {
                 const data = await api.get<FunnelData>(`/api/tracking/funnel?days=${days}`, token, currentAccount.id);
                 setFunnel(data);
             } catch (error) {
-                console.error('Failed to fetch funnel:', error);
+                Logger.error('Failed to fetch funnel:', { error: error });
             } finally {
                 setLoading(false);
             }

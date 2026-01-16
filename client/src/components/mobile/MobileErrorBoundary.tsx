@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react';
+import { Logger } from '../../utils/logger';
 import { WifiOff, RefreshCw, Home } from 'lucide-react';
 import * as Sentry from '@sentry/react';
 
@@ -32,7 +33,7 @@ export class MobileErrorBoundary extends Component<Props, State> {
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
         // Log error for debugging
-        console.error('[MobileErrorBoundary] Caught error:', error);
+        Logger.error('[MobileErrorBoundary] Caught error:', { error: error });
         console.error('[MobileErrorBoundary] Error info:', errorInfo.componentStack);
 
         // Send to error monitoring service (e.g., Sentry)

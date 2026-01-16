@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import { Logger } from '../../utils/logger';
 import { AlertCircle, RotateCw } from 'lucide-react';
 
 interface Props {

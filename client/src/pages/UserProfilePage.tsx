@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { User, Mail, Shield, Building, LogOut, Camera, Clock, Save, X, FileSignature } from 'lucide-react';
@@ -42,7 +43,7 @@ export function UserProfilePage() {
                 setIsEditing(false);
             }
         } catch (error) {
-            console.error('Failed to update profile', error);
+            Logger.error('Failed to update profile', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -69,7 +70,7 @@ export function UserProfilePage() {
                 updateUser({ ...user, avatarUrl });
             }
         } catch (error) {
-            console.error('Failed to upload avatar', error);
+            Logger.error('Failed to upload avatar', { error: error });
         }
     };
 

@@ -3,12 +3,13 @@ import { ChatService } from '../services/ChatService';
 import { TwilioService } from '../services/TwilioService';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { requireAuthFastify } from '../middleware/auth';
 
 export const createSmsRoutes = (chatService: ChatService) => async (fastify: FastifyInstance) => {
     
     // Get SMS Settings
-    fastify.get('/settings', async (request, reply) => {
-        const accountId = request.headers['x-account-id'] as string;
+    fastify.get('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
         if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
 
         const settings = await TwilioService.getSettings(accountId);
@@ -16,8 +17,8 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
     });
 
     // Update SMS Settings
-    fastify.post('/settings', async (request, reply) => {
-        const accountId = request.headers['x-account-id'] as string;
+    fastify.post('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
         if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
 
         const data = request.body as any;

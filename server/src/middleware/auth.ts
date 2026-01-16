@@ -63,12 +63,33 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
 
     try {
         const decoded = verifyToken(token) as JwtPayload;
-        const accountId = request.headers['x-account-id'] as string;
+        const accountId = request.headers['x-account-id'] as string | undefined;
+        let isSuperAdmin = false;
+
+        if (accountId) {
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId: decoded.userId, accountId } },
+                select: { id: true }
+            });
+
+            if (!membership) {
+                const user = await prisma.user.findUnique({
+                    where: { id: decoded.userId },
+                    select: { isSuperAdmin: true }
+                });
+                isSuperAdmin = user?.isSuperAdmin === true;
+
+                if (!isSuperAdmin) {
+                    return reply.code(403).send({ error: 'Forbidden for this account' });
+                }
+            }
+        }
 
         request.user = {
             id: decoded.userId,
             sessionId: decoded.sessionId,
-            accountId: accountId
+            accountId: accountId,
+            isSuperAdmin
         };
         request.accountId = accountId;
 

@@ -1,5 +1,6 @@
 
 import jsPDF from 'jspdf';
+import { Logger } from './logger';
 import autoTable from 'jspdf-autotable';
 
 interface InvoiceLayoutItem {
@@ -134,7 +135,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                     const img = await loadImage(content);
                     doc.addImage(img, 'PNG', x, y, w, h, undefined, 'FAST');
                 } catch (e) {
-                    console.error("Failed to load image", e);
+                    Logger.error('Failed to load image', { error: e });
                     // Fallback
                     doc.setFillColor(240, 240, 240);
                     doc.rect(x, y, w, h, 'F');

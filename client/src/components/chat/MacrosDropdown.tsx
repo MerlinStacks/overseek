@@ -3,6 +3,7 @@
  * Displays available macros and executes on click.
  */
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { Zap, ChevronDown, Play } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -43,7 +44,7 @@ export function MacrosDropdown({ conversationId, onExecuted }: MacrosDropdownPro
             });
             if (res.ok) setMacros(await res.json());
         } catch (e) {
-            console.error('Failed to fetch macros:', e);
+            Logger.error('Failed to fetch macros:', { error: e });
         }
     };
 
@@ -64,7 +65,7 @@ export function MacrosDropdown({ conversationId, onExecuted }: MacrosDropdownPro
                 onExecuted?.();
             }
         } catch (e) {
-            console.error('Failed to execute macro:', e);
+            Logger.error('Failed to execute macro:', { error: e });
         } finally {
             setIsExecuting(null);
         }

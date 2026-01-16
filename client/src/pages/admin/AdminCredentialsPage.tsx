@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe, Facebook, Bell } from 'lucide-react';
 
@@ -142,7 +143,7 @@ export function AdminCredentialsPage() {
             setFormData(initialForm);
             setNotes(initialNotes);
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setLoading(false);
         }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Loader2, ChevronDown, ChevronRight, Pencil, Trash2, X, Check } from 'lucide-react';
@@ -64,7 +65,7 @@ export function SuppliersList() {
             const data = await res.json();
             setSuppliers(data);
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         } finally {
             setLoading(false);
         }

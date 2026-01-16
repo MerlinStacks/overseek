@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { ShoppingCart, ExternalLink, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -56,7 +57,7 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
                     setData(await res.json());
                 }
             } catch (error) {
-                console.error('Failed to fetch sales history', error);
+                Logger.error('Failed to fetch sales history', { error: error });
             } finally {
                 setLoading(false);
             }

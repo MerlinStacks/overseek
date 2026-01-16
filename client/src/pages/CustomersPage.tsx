@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -66,7 +67,7 @@ export function CustomersPage() {
                 setTotalItems(data.total);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Loader2, Save, Tag, Plus, X, ChevronDown, Search } from 'lucide-react';
@@ -66,7 +67,7 @@ export function OrderTagSettings() {
             setProductTags(tagsData.tags || []);
             setMappings(mappingsData.mappings || []);
         } catch (error) {
-            console.error('Failed to load tag settings', error);
+            Logger.error('Failed to load tag settings', { error: error });
         } finally {
             setIsLoading(false);
         }

@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Loader2, Trash2 } from 'lucide-react';
@@ -33,9 +34,9 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
             if (res.ok) {
                 setSegments(await res.json());
             } else {
-                console.error("Failed to fetch segments:", res.status, await res.text());
+                Logger.error('Failed to fetch segments', { status: res.status });
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { Logger.error('An error occurred', { error: e }); }
     }
 
     async function fetchData() {
@@ -53,15 +54,15 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 if (Array.isArray(data)) {
                     setCampaigns(data);
                 } else {
-                    console.error("Campaigns data is not an array:", data);
+                    Logger.error('Campaigns data is not an array:', { error: data });
                     setCampaigns([]);
                 }
             } else {
-                console.error("Failed to fetch campaigns:", res.status, await res.text());
+                Logger.error('Failed to fetch campaigns', { status: res.status });
                 setCampaigns([]);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             setCampaigns([]);
         } finally {
             setIsLoading(false);
@@ -88,7 +89,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 onEdit(data.id, data.name, data.subject);
             } else {
                 const errorData = await res.json().catch(() => ({}));
-                console.error("Campaign create error:", errorData);
+                Logger.error('Campaign create error:', { error: errorData });
                 alert(`Failed to create campaign: ${errorData.error || 'Unknown error'} \n\nCheck console for details.`);
             }
         } catch (err) { alert('Error creating campaign'); }

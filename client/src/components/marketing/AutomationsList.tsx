@@ -3,6 +3,7 @@
  * Simplified creation: just name, then visual builder handles triggers/actions.
  */
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Zap, Play, Pause, Trash2, Loader2, GitBranch } from 'lucide-react';
@@ -35,10 +36,10 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                 if (Array.isArray(data)) setFlows(data);
                 else setFlows([]);
             } else {
-                console.error("Failed to fetch flows:", res.status);
+                Logger.error('Failed to fetch flows', { status: res.status });
                 setFlows([]);
             }
-        } catch (err) { console.error(err); setFlows([]); }
+        } catch (err) { Logger.error('An error occurred', { error: err }); setFlows([]); }
         finally { setIsLoading(false); }
     }
 

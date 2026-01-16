@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { Modal } from '../ui/Modal';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -62,7 +63,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
             });
             onSuccess(newSupplier);
         } catch (error) {
-            console.error('Error creating supplier:', error);
+            Logger.error('Error creating supplier:', { error: error });
             alert('Failed to create supplier. Please try again.');
         } finally {
             setIsSubmitting(false);

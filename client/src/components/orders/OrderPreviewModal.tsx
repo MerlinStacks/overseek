@@ -1,4 +1,5 @@
 import { X, ExternalLink, Package } from 'lucide-react';
+import { Logger } from '../../utils/logger';
 import { formatDate } from '../../utils/format';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
@@ -40,7 +41,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                 setOrder(data);
             }
         } catch (error) {
-            console.error('Failed to load order', error);
+            Logger.error('Failed to load order', { error: error });
         } finally {
             setIsLoading(false);
         }

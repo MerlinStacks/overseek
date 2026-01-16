@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { Clock, User, Package, Bot } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -49,7 +50,7 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                     setLogs(await res.json());
                 }
             } catch (error) {
-                console.error('Failed to fetch history', error);
+                Logger.error('Failed to fetch history', { error: error });
             } finally {
                 setLoading(false);
             }

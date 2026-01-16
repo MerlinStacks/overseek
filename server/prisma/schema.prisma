@@ -438,6 +438,8 @@ model SyncLog {
 
   entityType String // "orders", "products", "customers", "reviews"
   status     String // "SUCCESS", "FAILED", "IN_PROGRESS"
+  triggerSource String @default("SYSTEM") // SYSTEM, MANUAL, RETRY
+  retryCount Int @default(0)
 
   itemsProcessed Int     @default(0)
   errorMessage   String?
@@ -833,6 +835,25 @@ model ScheduledAdAction {
   
   @@index([accountId, status])
   @@index([scheduledFor, status])
+}
+
+/// Audit log for executed ad actions (budget changes, status changes, etc.)
+model AdActionLog {
+  id           String   @id @default(uuid())
+  accountId    String
+  adAccountId  String
+  campaignId   String
+  actionType   String   // budget_increase, budget_decrease, pause, enable, keyword_add
+  platform     String   // google, meta
+  parameters   Json     // Action parameters (amount, status, etc.)
+  status       String   // completed, failed
+  executedAt   DateTime
+  error        String?  @db.Text
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([accountId, executedAt])
+  @@index([campaignId])
 }
 
 model WooCustomer {
@@ -1865,3 +1886,4 @@ model NotificationDelivery {
   @@index([accountId, createdAt])
   @@index([eventType, createdAt])
 }
+

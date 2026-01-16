@@ -12,9 +12,18 @@ import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
 
 /** Verify WooCommerce HMAC signature */
-const verifySignature = (payload: unknown, signature: string, secret: string): boolean => {
+const verifySignature = (
+    payload: unknown,
+    signature: string,
+    secret: string,
+    rawBody?: Buffer | string
+): boolean => {
+    const bodyBuffer = rawBody !== undefined
+        ? (Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, 'utf8'))
+        : Buffer.from(JSON.stringify(payload), 'utf8');
+
     const hash = crypto.createHmac('sha256', secret)
-        .update(JSON.stringify(payload))
+        .update(bodyBuffer)
         .digest('base64');
 
     try {
@@ -99,25 +108,19 @@ export async function processWebhookPayload(
 }
 
 const webhookRoutes: FastifyPluginAsync = async (fastify) => {
-    // WooCommerce may send webhooks with non-standard content types
-    // Add parser to handle text/plain and other variations
-    fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (req, body, done) => {
-        try {
-            const json = JSON.parse(body as string);
-            done(null, json);
-        } catch (err) {
-            done(err as Error, undefined);
-        }
-    });
+    // WooCommerce may send webhooks with non-standard content types.
+    // Capture the raw body for signature verification and parse JSON if possible.
+    fastify.addContentTypeParser('*', { parseAs: 'buffer' }, (req, body, done) => {
+        const rawBody = body as Buffer;
+        (req as any).rawBody = rawBody;
 
-    // Also handle cases where content-type might be missing or unusual
-    fastify.addContentTypeParser('*', { parseAs: 'string' }, (req, body, done) => {
+        const text = rawBody.toString('utf8');
         try {
-            const json = JSON.parse(body as string);
+            const json = JSON.parse(text);
             done(null, json);
-        } catch (err) {
+        } catch {
             // If it's not JSON, just pass the raw string
-            done(null, body);
+            done(null, text);
         }
     });
 
@@ -126,7 +129,8 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
         const { accountId } = request.params;
         const signature = request.headers['x-wc-webhook-signature'] as string;
         const topic = request.headers['x-wc-webhook-topic'] as string;
-        const body = request.body as Record<string, unknown>;
+        const body = request.body as Record<string, unknown> | string;
+        const rawBody = (request as any).rawBody as Buffer | undefined;
 
         // WooCommerce sends a ping request to verify the URL when creating a webhook
         // These requests may not have the signature/topic headers
@@ -156,6 +160,11 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(404).send('Account not found');
         }
 
+        if (typeof body !== 'object' || body === null) {
+            Logger.warn('[Webhook] Invalid payload format', { accountId, topic });
+            return reply.code(400).send('Invalid payload');
+        }
+
         // Verify signature
         const secret = account.webhookSecret || account.wooConsumerSecret;
         if (!secret) {
@@ -163,7 +172,7 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(401).send('No Webhook Secret Configured');
         }
 
-        if (!verifySignature(body, signature, secret)) {
+        if (!verifySignature(body, signature, secret, rawBody)) {
             Logger.warn(`Invalid Webhook Signature`, { accountId });
             return reply.code(401).send('Invalid Signature');
         }
