@@ -8,3 +8,6 @@ export type { StepType } from './StepTypePopup';
 export { ActionSelectorModal } from './ActionSelectorModal';
 export { RecipeSelectorModal } from './RecipeSelectorModal';
 export type { AutomationRecipe } from './RecipeSelectorModal';
+export { EmailTemplateSelectorModal } from './EmailTemplateSelectorModal';
+export { SaveAsTemplateModal } from './SaveAsTemplateModal';
+export { EmailPreviewModal } from './EmailPreviewModal';

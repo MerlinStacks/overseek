@@ -290,6 +290,7 @@ export class InventoryForecastService {
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
 
+            // Use a simple, reliable aggregation structure
             const response = await esClient.search({
                 index: 'orders',
                 size: 0,
@@ -304,44 +305,36 @@ export class InventoryForecastService {
                                         gte: startDate.toISOString()
                                     }
                                 }
+                            },
+                            {
+                                nested: {
+                                    path: 'line_items',
+                                    query: {
+                                        terms: { 'line_items.productId': productWooIds }
+                                    }
+                                }
                             }
                         ]
                     }
                 },
                 aggs: {
-                    products: {
-                        nested: { path: 'line_items' },
+                    by_day: {
+                        date_histogram: {
+                            field: 'date_created',
+                            calendar_interval: 'day'
+                        },
                         aggs: {
-                            by_product: {
-                                terms: {
-                                    field: 'line_items.productId',
-                                    size: 10000
-                                },
+                            line_items_nested: {
+                                nested: { path: 'line_items' },
                                 aggs: {
-                                    sales_over_time: {
-                                        reverse_nested: {},
+                                    by_product: {
+                                        terms: {
+                                            field: 'line_items.productId',
+                                            size: 10000
+                                        },
                                         aggs: {
-                                            by_day: {
-                                                date_histogram: {
-                                                    field: 'date_created',
-                                                    calendar_interval: 'day'
-                                                },
-                                                aggs: {
-                                                    daily_qty: {
-                                                        nested: { path: 'line_items' },
-                                                        aggs: {
-                                                            qty: {
-                                                                filter: {
-                                                                    // Re-filter to this product within the nested context
-                                                                    bool: { must: [] }
-                                                                },
-                                                                aggs: {
-                                                                    total: { sum: { field: 'line_items.quantity' } }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                            total_qty: {
+                                                sum: { field: 'line_items.quantity' }
                                             }
                                         }
                                     }
@@ -352,24 +345,25 @@ export class InventoryForecastService {
                 }
             });
 
-            // Parse aggregation results
-            const productBuckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
+            // Parse aggregation results - structure: by_day -> line_items_nested -> by_product
+            const dayBuckets = (response.aggregations as any)?.by_day?.buckets || [];
 
-            for (const bucket of productBuckets) {
-                const productId = bucket.key as number;
-                if (!productWooIds.includes(productId)) continue;
+            for (const dayBucket of dayBuckets) {
+                const date = new Date(dayBucket.key_as_string || dayBucket.key).toISOString().split('T')[0];
+                const productBuckets = dayBucket.line_items_nested?.by_product?.buckets || [];
 
-                const dayBuckets = bucket.sales_over_time?.by_day?.buckets || [];
-                const sales: Array<{ date: string; quantity: number }> = [];
+                for (const productBucket of productBuckets) {
+                    const productId = productBucket.key as number;
+                    if (!productWooIds.includes(productId)) continue;
 
-                for (const dayBucket of dayBuckets) {
-                    const date = new Date(dayBucket.key_as_string || dayBucket.key).toISOString().split('T')[0];
-                    // Simplified: use doc_count as quantity proxy (actual qty aggregation is complex)
-                    const quantity = dayBucket.doc_count || 0;
-                    sales.push({ date, quantity });
+                    const quantity = productBucket.total_qty?.value || 0;
+                    if (quantity <= 0) continue;
+
+                    if (!salesMap.has(productId)) {
+                        salesMap.set(productId, []);
+                    }
+                    salesMap.get(productId)!.push({ date, quantity });
                 }
-
-                salesMap.set(productId, sales);
             }
 
         } catch (error: any) {

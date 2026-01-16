@@ -8,17 +8,37 @@
 import { prisma } from '../../utils/prisma';
 
 /**
+ * Calculate proper date range based on days parameter.
+ */
+function getDateRangeForDays(days: number): { startDate: Date; endDate: Date } {
+    const now = new Date();
+
+    if (days === 1) {
+        const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        return { startDate, endDate: now };
+    } else if (days === -1) {
+        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        const startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+        const endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+        return { startDate, endDate };
+    } else {
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        return { startDate, endDate: now };
+    }
+}
+
+/**
  * Get search analytics: top queries.
  * Handles both 'search' events AND pageview events with page_type='search'.
  */
 export async function getSearches(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     const events = await prisma.analyticsEvent.findMany({
         where: {
             session: { accountId },
             type: { in: ['search', 'pageview'] },
-            createdAt: { gte: startDate }
+            createdAt: { gte: startDate, lte: endDate }
         },
         select: { type: true, payload: true }
     });
@@ -55,10 +75,10 @@ export async function getSearches(accountId: string, days: number = 30) {
  * Get exit pages: where users leave.
  */
 export async function getExitPages(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     const sessions = await prisma.analyticsSession.findMany({
-        where: { accountId, createdAt: { gte: startDate } },
+        where: { accountId, createdAt: { gte: startDate, lte: endDate } },
         select: { currentPath: true }
     });
 

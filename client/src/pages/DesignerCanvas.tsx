@@ -26,14 +26,35 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
             case 'header':
                 return (
                     <div className="p-4 h-full bg-linear-to-br from-slate-50 to-gray-50 flex flex-col rounded-lg border border-dashed border-slate-300">
-                        <div className="flex items-center gap-2 text-slate-600 mb-2">
+                        <div className="flex items-center gap-2 text-slate-600 mb-3">
                             <Heading size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Header (First Page Only)</span>
+                            <span className="text-xs font-semibold uppercase tracking-wider">Header Block</span>
                         </div>
-                        <div className="flex-1 flex items-center justify-center text-center">
-                            <p className="text-xs text-slate-500 italic">
-                                {itemConfig.content || 'Header content goes here...'}
-                            </p>
+                        <div className="flex-1 flex gap-4">
+                            {/* Logo Section */}
+                            <div className="w-1/3 flex items-center justify-center bg-white rounded-lg border border-dashed border-slate-200 overflow-hidden">
+                                {itemConfig.logo ? (
+                                    <img src={itemConfig.logo} alt="Logo" className="w-full h-full object-contain" />
+                                ) : (
+                                    <div className="text-center p-2">
+                                        <ImageIcon size={24} className="mx-auto text-slate-300 mb-1" />
+                                        <span className="text-[10px] text-slate-400">Logo</span>
+                                    </div>
+                                )}
+                            </div>
+                            {/* Business Details Section */}
+                            <div className="flex-1 flex flex-col justify-center text-sm text-slate-600 leading-relaxed">
+                                {itemConfig.businessDetails ? (
+                                    <div className="whitespace-pre-wrap">{itemConfig.businessDetails}</div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        <div className="h-3 w-32 bg-slate-200/50 rounded-sm"></div>
+                                        <div className="h-2.5 w-40 bg-slate-200/50 rounded-sm"></div>
+                                        <div className="h-2.5 w-28 bg-slate-200/50 rounded-sm"></div>
+                                        <div className="h-2.5 w-36 bg-slate-200/50 rounded-sm"></div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );

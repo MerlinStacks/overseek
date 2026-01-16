@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Save, ArrowLeft, Loader2, CheckCircle, AlertCircle, X, FileText, Palette, Eye } from 'lucide-react';
+import { Save, ArrowLeft, Loader2, CheckCircle, AlertCircle, X, FileText, Eye, ChevronDown, FileStack, File } from 'lucide-react';
 import { api } from '../services/api';
 import { generateId } from './invoiceUtils';
 import { DesignerSidebar } from './DesignerSidebar';
@@ -29,6 +29,14 @@ export function InvoiceDesigner() {
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [showPreview, setShowPreview] = useState(false);
+
+    // Preview state
+    const [recentOrders, setRecentOrders] = useState<any[]>([]);
+    const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+    const [previewOrder, setPreviewOrder] = useState<any>(null);
+    const [loadingOrders, setLoadingOrders] = useState(false);
+    const [loadingOrder, setLoadingOrder] = useState(false);
+    const [pageMode, setPageMode] = useState<'single' | 'multi'>('single');
 
     // Load existing template on mount
     useEffect(() => {
@@ -66,6 +74,82 @@ export function InvoiceDesigner() {
         };
         fetchTemplate();
     }, [currentAccount, token]);
+
+    // Fetch recent orders when preview opens
+    useEffect(() => {
+        const fetchOrders = async () => {
+            if (!showPreview || !currentAccount || !token) return;
+            setLoadingOrders(true);
+            try {
+                const res = await fetch('/api/orders?limit=20', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setRecentOrders(data.orders || []);
+                }
+            } catch (err) {
+                Logger.error('Failed to fetch orders for preview', { error: err });
+            } finally {
+                setLoadingOrders(false);
+            }
+        };
+        fetchOrders();
+    }, [showPreview, currentAccount, token]);
+
+    // Fetch selected order details
+    useEffect(() => {
+        const fetchOrderDetails = async () => {
+            if (!selectedOrderId || !currentAccount || !token) {
+                setPreviewOrder(null);
+                return;
+            }
+            setLoadingOrder(true);
+            try {
+                const res = await fetch(`/api/orders/${selectedOrderId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setPreviewOrder(data);
+                }
+            } catch (err) {
+                Logger.error('Failed to fetch order details', { error: err });
+            } finally {
+                setLoadingOrder(false);
+            }
+        };
+        fetchOrderDetails();
+    }, [selectedOrderId, currentAccount, token]);
+
+    // Demo data for when no order is selected
+    const demoData = {
+        number: 'DEMO-0001',
+        date_created: new Date().toISOString(),
+        billing: {
+            first_name: 'John',
+            last_name: 'Doe',
+            email: 'john.doe@example.com',
+            address_1: '123 Example Street',
+            city: 'Sydney',
+            state: 'NSW',
+            postcode: '2000',
+            country: 'AU'
+        },
+        line_items: [
+            { name: 'Product A', quantity: 2, price: '25.00', total: '50.00' },
+            { name: 'Product B', quantity: 1, price: '75.00', total: '75.00' },
+        ],
+        subtotal: '125.00',
+        total_tax: '12.50',
+        total: '137.50'
+    };
 
     const addItem = (type: string) => {
         const newItemId = generateId();
@@ -262,47 +346,111 @@ export function InvoiceDesigner() {
             {/* Preview Modal */}
             {showPreview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="relative bg-white rounded-2xl shadow-2xl max-h-[90vh] max-w-[90vw] overflow-auto">
-                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/90 backdrop-blur-md border-b border-slate-200">
+                    <div className="relative bg-white rounded-2xl shadow-2xl max-h-[90vh] w-[900px] max-w-[95vw] overflow-hidden flex flex-col">
+                        {/* Modal Header */}
+                        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 backdrop-blur-md border-b border-slate-200">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                                     <Eye className="text-white" size={14} />
                                 </div>
                                 <h2 className="font-bold text-slate-800">Invoice Preview</h2>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setShowPreview(false)}
-                                className="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
-                            >
-                                <X size={20} />
-                            </button>
+
+                            {/* Controls */}
+                            <div className="flex items-center gap-3">
+                                {/* Order Selection */}
+                                <div className="relative">
+                                    <select
+                                        value={selectedOrderId || ''}
+                                        onChange={(e) => setSelectedOrderId(e.target.value || null)}
+                                        disabled={loadingOrders}
+                                        className="appearance-none px-4 py-2 pr-10 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 cursor-pointer hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all min-w-[200px]"
+                                    >
+                                        <option value="">Demo Data</option>
+                                        {recentOrders.map((order) => (
+                                            <option key={order.id} value={order.wooId || order.id}>
+                                                #{order.number} - ${order.total} ({order.status})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
+
+                                {/* Page Mode Toggle */}
+                                <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPageMode('single')}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${pageMode === 'single'
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        <File size={14} />
+                                        Single
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPageMode('multi')}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${pageMode === 'multi'
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        <FileStack size={14} />
+                                        Multi-Page
+                                    </button>
+                                </div>
+
+                                {/* Close Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPreview(false)}
+                                    className="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
                         </div>
-                        <div className="p-8 bg-slate-100">
-                            <InvoiceRenderer
-                                layout={layout}
-                                items={items}
-                                data={{
-                                    order_number: 'INV-0001',
-                                    date_created: new Date().toLocaleDateString(),
-                                    billing_first_name: 'John',
-                                    billing_last_name: 'Doe',
-                                    billing_email: 'john.doe@example.com',
-                                    billing_address_1: '123 Example Street',
-                                    billing_city: 'Sydney',
-                                    billing_state: 'NSW',
-                                    billing_postcode: '2000',
-                                    billing_country: 'AU',
-                                    line_items: [
-                                        { name: 'Product A', quantity: 2, price: '25.00', total: '50.00' },
-                                        { name: 'Product B', quantity: 1, price: '75.00', total: '75.00' },
-                                    ],
-                                    subtotal: '125.00',
-                                    total_tax: '12.50',
-                                    total: '137.50'
-                                }}
-                            />
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-auto p-8 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100">
+                            {loadingOrder ? (
+                                <div className="flex items-center justify-center py-16">
+                                    <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                    <span className="ml-3 text-slate-600">Loading order data...</span>
+                                </div>
+                            ) : (
+                                <InvoiceRenderer
+                                    layout={layout}
+                                    items={items}
+                                    data={previewOrder || demoData}
+                                    pageMode={pageMode}
+                                />
+                            )}
                         </div>
+
+                        {/* Order Info Bar */}
+                        {previewOrder && (
+                            <div className="px-6 py-3 bg-indigo-50 border-t border-indigo-100 flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-4">
+                                    <span className="font-medium text-indigo-700">Order #{previewOrder.number}</span>
+                                    <span className="text-indigo-600">
+                                        {new Date(previewOrder.date_created).toLocaleDateString()}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${previewOrder.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                                            previewOrder.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                                                previewOrder.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-slate-100 text-slate-600'
+                                        }`}>
+                                        {previewOrder.status}
+                                    </span>
+                                </div>
+                                <div className="text-indigo-600">
+                                    {previewOrder.line_items?.length || 0} items • ${previewOrder.total}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

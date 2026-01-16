@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-01-17
+
+### ✨ Enhancements
+- **AI Co-Pilot Optimization**: Implemented 5-minute TTL localStorage caching to prevent redundant per-visit analysis.
+- **Email Message Rendering**: Enhanced quote detection for Gmail, Outlook, and iOS Mail with collapsible "View more" for long threads.
+- **Inbox Composer**: Added "From" dropdown for agents to select sending email account when replying.
+- **Product Editor**: BOM products now correctly update Cost of Goods Sold (COGS) calculations.
+- **Product History**: Edit history now correctly displays all changes including BOM and COGS modifications.
+
+### 🐛 Bug Fixes
+- **Analytics Date Range**: Fixed "yesterday" always appearing blank; default time period now correctly set to "today".
+- **Auto-Reply Sender**: Auto-replies now send from the email account that received the original message.
+- **Email Ingestion**: Improved IMAP reliability with parallel polling, batch limits, and exponential backoff.
+- **Guest Order Linking**: Inbox now correctly links conversations to WooCommerce orders via billing email for guests.
+- **Layout Containment**: Resolved fixed positioning conflicts on AI Co-Pilot page.
+- **React Hook Errors**: Fixed "Invalid hook call" errors in FlowsPage and AdminDashboard components.
+
+### ⚙️ Infrastructure
+- **Docker GeoIP**: GeoIP databases now persisted across container rebuilds via named volume.
+- **Build Fixes**: Resolved server-side Prisma type mismatches and client-side Vite build failures.
+- **Tailwind CSS v4**: Fixed `@utility` naming convention errors for hover states.
+- **Prisma Transactions**: Resolved timeout issues in CustomerSync with batch size optimization.
+
+---
+
 ## [2.0.0] - 2026-01-14
 
 ### 🤖 AI Marketing Co-Pilot

@@ -17,8 +17,22 @@ import {
     Panel,
     useReactFlow,
     NodeTypes,
+    MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+// Custom edge styles for solid connected lines
+const defaultEdgeOptions = {
+    type: 'smoothstep',
+    animated: false,
+    style: { stroke: '#3b82f6', strokeWidth: 2 },
+    markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: '#3b82f6',
+        width: 20,
+        height: 20,
+    },
+};
 import { TriggerNode, ActionNode, DelayNode, ConditionNode } from './FlowNodes';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import {
@@ -357,8 +371,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                 id: `e_${parentId}_${newNode.id}`,
                 source: parentId,
                 target: newNode.id,
-                type: 'smoothstep',
-                animated: true,
+                ...defaultEdgeOptions,
             },
         ]);
         setPendingNodeParent(null);
@@ -381,7 +394,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                     onPaneClick={onPaneClick}
                     nodeTypes={nodeTypes}
                     fitView
-                    defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
+                    defaultEdgeOptions={defaultEdgeOptions}
                     snapToGrid
                 >
                     <Controls />

@@ -8,18 +8,38 @@
 import { prisma } from '../../utils/prisma';
 
 /**
+ * Calculate proper date range based on days parameter.
+ */
+function getDateRangeForDays(days: number): { startDate: Date; endDate: Date } {
+    const now = new Date();
+
+    if (days === 1) {
+        const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        return { startDate, endDate: now };
+    } else if (days === -1) {
+        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        const startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+        const endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+        return { startDate, endDate };
+    } else {
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        return { startDate, endDate: now };
+    }
+}
+
+/**
  * Get revenue analytics: AOV, total, by source.
  * Uses WooCommerce orders as the primary source of truth for revenue totals,
  * enriched with analytics session data for attribution when available.
  */
 export async function getRevenue(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     // Primary source: WooCommerce orders
     const orders = await prisma.wooOrder.findMany({
         where: {
             accountId,
-            dateCreated: { gte: startDate },
+            dateCreated: { gte: startDate, lte: endDate },
             status: { in: ['completed', 'processing'] }
         },
         select: { wooId: true, total: true, rawData: true }
@@ -30,7 +50,7 @@ export async function getRevenue(accountId: string, days: number = 30) {
         where: {
             session: { accountId },
             type: 'purchase',
-            createdAt: { gte: startDate }
+            createdAt: { gte: startDate, lte: endDate }
         },
         include: {
             session: {

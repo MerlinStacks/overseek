@@ -19,6 +19,7 @@ interface BOMPanelProps {
     variants?: any[]; // Passed from parent
     fixedVariationId?: number; // If set, locks to this ID
     onSaveComplete?: () => void; // Optional callback after save completes
+    onCOGSUpdate?: (cogs: number) => void; // Optional callback to update parent COGS
 }
 
 /**
@@ -28,7 +29,7 @@ export interface BOMPanelRef {
     save: () => Promise<boolean>;
 }
 
-export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete }, ref) {
+export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete, onCOGSUpdate }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [bomItems, setBomItems] = useState<BOMItem[]>([]);
@@ -142,6 +143,12 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
 
             if (res.ok) {
                 fetchBOM(); // Refresh
+                // Notify parent of the new COGS calculated from BOM
+                const currentTotalCost = bomItems.reduce((sum, item) => {
+                    const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
+                    return sum + itemCost;
+                }, 0);
+                onCOGSUpdate?.(currentTotalCost);
                 onSaveComplete?.();
                 return true;
             } else {

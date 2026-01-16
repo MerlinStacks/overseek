@@ -136,6 +136,34 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // Test Email (standalone, for flow builder)
+    fastify.post<{ Body: { to: string; subject: string; content: string } }>('/test-email', async (request, reply) => {
+        try {
+            const { to, subject, content } = request.body;
+
+            if (!to || !subject || !content) {
+                return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
+            }
+
+            // Import email service to send the test
+            const { EmailIngestionService } = await import('../services/EmailIngestionService');
+            const emailService = new EmailIngestionService();
+
+            await emailService.sendEmail(request.user!.accountId!, {
+                to,
+                subject,
+                html: content,
+                source: 'TEST'
+            });
+
+            Logger.info('Test email sent', { to, subject: subject.substring(0, 50), accountId: request.user!.accountId });
+            return { success: true };
+        } catch (e) {
+            Logger.error('Error sending test email', { error: e });
+            return reply.code(500).send({ error: 'Failed to send test email', message: (e as Error).message });
+        }
+    });
+
     // Campaign Analytics / ROI Tracking
     fastify.get<{ Params: { id: string } }>('/campaigns/:id/analytics', async (request, reply) => {
         try {

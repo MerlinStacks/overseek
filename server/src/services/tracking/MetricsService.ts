@@ -12,13 +12,39 @@ export { getRevenue } from './RevenueMetrics';
 export { getSearches, getExitPages } from './EngagementMetrics';
 
 /**
+ * Calculate proper date range based on days parameter.
+ * - days = 1: Today only (from midnight local time to now)
+ * - days = -1: Yesterday only (full yesterday in local time)
+ * - days > 1: Last N days
+ */
+function getDateRangeForDays(days: number): { startDate: Date; endDate: Date } {
+    const now = new Date();
+
+    if (days === 1) {
+        // Today: from start of today to now
+        const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        return { startDate, endDate: now };
+    } else if (days === -1) {
+        // Yesterday: full day
+        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        const startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+        const endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+        return { startDate, endDate };
+    } else {
+        // Last N days: from N days ago to now
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        return { startDate, endDate: now };
+    }
+}
+
+/**
  * Get aggregated stats for dashboard.
  */
 export async function getStats(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     const sessions = await prisma.analyticsSession.findMany({
-        where: { accountId, createdAt: { gte: startDate } },
+        where: { accountId, createdAt: { gte: startDate, lte: endDate } },
         select: {
             country: true, deviceType: true, browser: true, os: true,
             createdAt: true, lastActiveAt: true
@@ -56,10 +82,10 @@ export async function getStats(accountId: string, days: number = 30) {
  * Get funnel data for dashboard.
  */
 export async function getFunnel(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     const events = await prisma.analyticsEvent.findMany({
-        where: { session: { accountId }, createdAt: { gte: startDate } },
+        where: { session: { accountId }, createdAt: { gte: startDate, lte: endDate } },
         select: { type: true, sessionId: true }
     });
 
@@ -89,10 +115,10 @@ export async function getFunnel(accountId: string, days: number = 30) {
  * Get attribution data: first-touch vs last-touch.
  */
 export async function getAttribution(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     const sessions = await prisma.analyticsSession.findMany({
-        where: { accountId, createdAt: { gte: startDate } },
+        where: { accountId, createdAt: { gte: startDate, lte: endDate } },
         select: { firstTouchSource: true, lastTouchSource: true, cartValue: true }
     });
 
@@ -117,12 +143,12 @@ export async function getAttribution(accountId: string, days: number = 30) {
  * Get cart abandonment rate.
  */
 export async function getAbandonmentRate(accountId: string, days: number = 30) {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { startDate, endDate } = getDateRangeForDays(days);
 
     const events = await prisma.analyticsEvent.findMany({
         where: {
             session: { accountId },
-            createdAt: { gte: startDate },
+            createdAt: { gte: startDate, lte: endDate },
             type: { in: ['add_to_cart', 'purchase'] }
         },
         select: { type: true, sessionId: true }

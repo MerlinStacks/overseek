@@ -88,7 +88,7 @@ export function StockVelocityReport() {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
-            const res = await fetch('/api/analytics/stock-velocity', {
+            const res = await fetch('/api/analytics/inventory/stock-velocity', {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             if (!res.ok) throw new Error('Failed to fetch data');

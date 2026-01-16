@@ -29,7 +29,7 @@ interface ExitData {
 }
 
 export const AnalyticsOverviewPage: React.FC = () => {
-    const [days, setDays] = useState(30);
+    const [days, setDays] = useState(1); // Default to Today
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const [abandonment, setAbandonment] = useState<AbandonmentData | null>(null);

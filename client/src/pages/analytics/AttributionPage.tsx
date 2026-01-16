@@ -14,7 +14,7 @@ interface AttributionData {
 }
 
 export const AttributionPage: React.FC = () => {
-    const [days, setDays] = useState(30);
+    const [days, setDays] = useState(1); // Default to Today
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const [data, setData] = useState<AttributionData | null>(null);

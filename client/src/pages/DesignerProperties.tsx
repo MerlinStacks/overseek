@@ -145,19 +145,120 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                         </div>
 
                         {selectedItem.type === 'header' && (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
+                                {/* Logo Upload */}
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Header Content</label>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Logo Image</label>
+                                    <div
+                                        className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer
+                                            ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-400 hover:bg-purple-50/50'}
+                                            ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
+                                        onClick={() => fileInputRef.current?.click()}
+                                        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                        onDragLeave={() => setIsDragging(false)}
+                                        onDrop={async (e) => {
+                                            e.preventDefault();
+                                            setIsDragging(false);
+                                            const file = e.dataTransfer.files?.[0];
+                                            if (file && token && accountId) {
+                                                setIsUploading(true);
+                                                setUploadError(null);
+                                                try {
+                                                    const formData = new FormData();
+                                                    formData.append('file', file);
+                                                    const response = await fetch('/api/invoices/templates/upload-image', {
+                                                        method: 'POST',
+                                                        headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId },
+                                                        body: formData
+                                                    });
+                                                    if (response.ok) {
+                                                        const result = await response.json();
+                                                        onUpdateItem({ logo: result.url });
+                                                    }
+                                                } catch (err) {
+                                                    setUploadError('Upload failed');
+                                                } finally {
+                                                    setIsUploading(false);
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file && token && accountId) {
+                                                    setIsUploading(true);
+                                                    setUploadError(null);
+                                                    try {
+                                                        const formData = new FormData();
+                                                        formData.append('file', file);
+                                                        const response = await fetch('/api/invoices/templates/upload-image', {
+                                                            method: 'POST',
+                                                            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId },
+                                                            body: formData
+                                                        });
+                                                        if (response.ok) {
+                                                            const result = await response.json();
+                                                            onUpdateItem({ logo: result.url });
+                                                        }
+                                                    } catch (err) {
+                                                        setUploadError('Upload failed');
+                                                    } finally {
+                                                        setIsUploading(false);
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                        {isUploading ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <Loader2 size={20} className="text-purple-500 animate-spin" />
+                                                <span className="text-xs text-purple-600">Uploading...</span>
+                                            </div>
+                                        ) : selectedItem.logo ? (
+                                            <div className="flex flex-col items-center gap-2">
+                                                <img src={selectedItem.logo} alt="Logo" className="w-20 h-16 object-contain rounded border border-slate-200" />
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); onUpdateItem({ logo: '' }); }}
+                                                    className="text-xs text-red-500 hover:text-red-600"
+                                                >
+                                                    Remove logo
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <Upload size={20} className="text-slate-400" />
+                                                <span className="text-xs text-slate-500">Drop logo or click to upload</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Business Details */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Business Details</label>
                                     <textarea
                                         className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 resize-none transition-all"
-                                        rows={4}
-                                        placeholder="Enter header text..."
-                                        value={selectedItem.content}
-                                        onChange={e => onUpdateItem({ content: e.target.value })}
+                                        rows={5}
+                                        placeholder={"Company Name\n123 Street Address\nCity, State ZIP\nABN: 12 345 678 901\nPh: (02) 1234 5678"}
+                                        value={selectedItem.businessDetails || ''}
+                                        onChange={e => onUpdateItem({ businessDetails: e.target.value })}
                                     />
                                 </div>
+
+                                {uploadError && (
+                                    <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg border border-red-100">
+                                        <AlertCircle size={14} className="text-red-500" />
+                                        <span className="text-xs text-red-600">{uploadError}</span>
+                                    </div>
+                                )}
+
                                 <p className="text-xs text-slate-400">
-                                    This content will only appear on the first page of the invoice.
+                                    Header with logo and business info appears on first page only.
                                 </p>
                             </div>
                         )}
@@ -279,28 +380,28 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
 
                                 {/* Success/Preview */}
                                 {selectedItem.content && (
-                            <div className="p-3 bg-slate-50 rounded-xl">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <CheckCircle size={14} className="text-emerald-500" />
-                                    <p className="text-xs font-medium text-slate-500">Image loaded</p>
-                                </div>
-                                <img
-                                    src={selectedItem.content}
-                                    alt="Preview"
-                                    className="w-full h-24 object-contain rounded-lg bg-white border border-slate-200"
-                                    onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => onUpdateItem({ content: '' })}
-                                    className="mt-2 text-xs text-red-500 hover:text-red-600 transition-colors"
-                                >
-                                    Remove image
-                                </button>
-                            </div>
-                        )}
+                                    <div className="p-3 bg-slate-50 rounded-xl">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <CheckCircle size={14} className="text-emerald-500" />
+                                            <p className="text-xs font-medium text-slate-500">Image loaded</p>
+                                        </div>
+                                        <img
+                                            src={selectedItem.content}
+                                            alt="Preview"
+                                            className="w-full h-24 object-contain rounded-lg bg-white border border-slate-200"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = 'none';
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => onUpdateItem({ content: '' })}
+                                            className="mt-2 text-xs text-red-500 hover:text-red-600 transition-colors"
+                                        >
+                                            Remove image
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
 

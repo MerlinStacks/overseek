@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { Loader2, TrendingUp, DollarSign, Users, Package, BarChart3, PieChart, FileText, LayoutGrid, Lock } from 'lucide-react';
-import { ForecastChart } from '../components/ForecastChart';
+
 import { ReportBuilder } from '../components/ReportBuilder';
 
 import { ReportsSidebar } from '../components/analytics/ReportsSidebar';
@@ -44,7 +44,7 @@ export function ReportsPage() {
     const [customerGrowth, setCustomerGrowth] = useState<CustomerGrowth[]>([]);
 
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'forecast' | 'stock_velocity' | 'profitability' | 'premade' | 'custom'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'stock_velocity' | 'profitability' | 'premade' | 'custom'>('overview');
 
     // Template State
     const [templates, setTemplates] = useState<ReportTemplate[]>([]);
@@ -140,12 +140,7 @@ export function ReportsPage() {
                     >
                         Overview
                     </button>
-                    <button
-                        onClick={() => setActiveTab('forecast')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'forecast' ? 'bg-linear-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
-                    >
-                        Forecasting
-                    </button>
+
                     <button
                         onClick={() => setActiveTab('stock_velocity')}
                         className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'stock_velocity' ? 'bg-linear-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
@@ -174,7 +169,7 @@ export function ReportsPage() {
                         Custom Builder
                         {!isAdvancedReportsEnabled && <Lock size={12} className="ml-1 inline-block" />}
                     </button>
-                    {!isAdvancedReportsEnabled && (activeTab === 'premade' || activeTab === 'custom' || activeTab === 'forecast' || activeTab === 'stock_velocity') && (
+                    {!isAdvancedReportsEnabled && (activeTab === 'premade' || activeTab === 'custom' || activeTab === 'stock_velocity') && (
                         <div className="absolute inset-x-0 -bottom-12 flex justify-center pointer-events-none">
                             <div className="bg-gray-900 text-white text-xs py-1 px-3 rounded-full shadow-lg opacity-0 transition-opacity peer-hover:opacity-100">
                                 This feature requires the Advanced Reports addon.
@@ -185,7 +180,7 @@ export function ReportsPage() {
             </div>
 
             {/* Date Range Selector (for applicable tabs) */}
-            {(activeTab === 'overview' || activeTab === 'forecast' || activeTab === 'profitability' || activeTab === 'premade') && (
+            {(activeTab === 'overview' || activeTab === 'profitability' || activeTab === 'premade') && (
                 <div className="flex justify-end">
                     <div className="flex bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden">
                         <select
@@ -303,11 +298,7 @@ export function ReportsPage() {
                 )
             }
 
-            {
-                activeTab === 'forecast' && (
-                    <ForecastChart dateRange={getDateRange(dateOption)} />
-                )
-            }
+
 
             {
                 activeTab === 'stock_velocity' && (

@@ -87,11 +87,31 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
         }
 
         if (type === 'header') {
-            const content = itemConfig.content || '';
-            doc.setFontSize(20);
-            doc.setFont("helvetica", "bold");
-            doc.text(content, x + 2, y + 8, { maxWidth: w });
-            doc.setFont("helvetica", "normal");
+            // Render logo if available (left side)
+            if (itemConfig.logo) {
+                try {
+                    const img = await loadImage(itemConfig.logo);
+                    const logoWidth = w * 0.3; // 30% of header width for logo
+                    const logoHeight = h;
+                    doc.addImage(img, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
+                } catch (e) {
+                    Logger.error('Failed to load logo image', { error: e });
+                }
+            }
+
+            // Render business details (right side)
+            if (itemConfig.businessDetails) {
+                const textX = x + (w * 0.35); // Start after logo area
+                const textWidth = w * 0.65;
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                const lines = itemConfig.businessDetails.split('\n');
+                let currentY = y + 5;
+                lines.forEach((line: string) => {
+                    doc.text(line, textX, currentY, { maxWidth: textWidth });
+                    currentY += 4;
+                });
+            }
         }
         else if (type === 'text') {
             let text = content || '';

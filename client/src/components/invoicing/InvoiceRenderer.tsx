@@ -1,11 +1,7 @@
 
 import * as React from 'react';
 import { clsx } from 'clsx';
-// React Grid Layout for static display? Or just absolute positioning/grid css.
-// Since we used RGL in designer, we should probably use a static RGL layout or map to styles.
-// For robust PDF generation, mapping to standard HTML/CSS grid is better than relying on JS layout lib if possible,
-// but for 1:1 fidelity, using the same layout engine (RGL with isDraggable=false) is safest.
-
+import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading } from 'lucide-react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -13,110 +9,398 @@ import 'react-resizable/css/styles.css';
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 interface InvoiceRendererProps {
-    layout: any[]; // The Grid Layout
-    items: any[];  // The content configuration
-    data?: any;    // The Order Data
+    layout: any[];
+    items: any[];
+    data?: any;
     readOnly?: boolean;
+    pageMode?: 'single' | 'multi';
 }
 
-export function InvoiceRenderer({ layout, items, data, readOnly = true }: InvoiceRendererProps) {
+/**
+ * InvoiceRenderer - Renders the invoice template with order data.
+ * Matches the visual styling of DesignerCanvas for consistent preview.
+ */
+export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode = 'single' }: InvoiceRendererProps) {
 
-    // Helper to render content based on data
+    // Helper to render content based on type - mirroring DesignerCanvas styling
     const renderContent = (itemConfig: any) => {
+        if (!itemConfig) return <div className="p-3 text-red-500 text-sm">Error: Item config missing</div>;
+
         switch (itemConfig.type) {
+            case 'header':
+                return (
+                    <div className="p-4 h-full bg-linear-to-br from-slate-50 to-gray-50 flex flex-col rounded-lg border border-dashed border-slate-300">
+                        <div className="flex items-center gap-2 text-slate-600 mb-3">
+                            <Heading size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Header Block</span>
+                        </div>
+                        <div className="flex-1 flex gap-4">
+                            {/* Logo Section */}
+                            <div className="w-1/3 flex items-center justify-center bg-white rounded-lg border border-dashed border-slate-200 overflow-hidden">
+                                {itemConfig.logo ? (
+                                    <img src={itemConfig.logo} alt="Logo" className="w-full h-full object-contain" />
+                                ) : (
+                                    <div className="text-center p-2">
+                                        <ImageIcon size={24} className="mx-auto text-slate-300 mb-1" />
+                                        <span className="text-[10px] text-slate-400">Logo</span>
+                                    </div>
+                                )}
+                            </div>
+                            {/* Business Details Section */}
+                            <div className="flex-1 flex flex-col justify-center text-sm text-slate-600 leading-relaxed">
+                                {itemConfig.businessDetails ? (
+                                    <div className="whitespace-pre-wrap">{itemConfig.businessDetails}</div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        <div className="h-3 w-32 bg-slate-200/50 rounded-sm"></div>
+                                        <div className="h-2.5 w-40 bg-slate-200/50 rounded-sm"></div>
+                                        <div className="h-2.5 w-28 bg-slate-200/50 rounded-sm"></div>
+                                        <div className="h-2.5 w-36 bg-slate-200/50 rounded-sm"></div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+
             case 'text':
-                // Simple handlebars-style replacement
+                const style = itemConfig.style || {};
                 let text = itemConfig.content || '';
+
+                // Handlebars-style replacement with data
                 if (data) {
                     text = text.replace(/{{(.*?)}}/g, (_: any, key: string) => {
                         const k = key.trim();
+                        // Support nested keys like billing.email
+                        if (k.includes('.')) {
+                            const parts = k.split('.');
+                            let value = data;
+                            for (const part of parts) {
+                                value = value?.[part];
+                            }
+                            return value || `{{${k}}}`;
+                        }
                         return data[k] || `{{${k}}}`;
                     });
                 }
-                return <div className="p-2 h-full text-sm">{text}</div>;
+
+                return (
+                    <div className="p-4 h-full overflow-hidden flex flex-col">
+                        <div className="flex items-start gap-2 text-purple-500 mb-2 shrink-0">
+                            <Type size={14} className="shrink-0 mt-0.5" />
+                            <span className="text-xs font-medium uppercase tracking-wider">Text Block</span>
+                        </div>
+                        <div
+                            className="flex-1 whitespace-pre-wrap leading-relaxed overflow-hidden text-slate-700"
+                            style={{
+                                fontSize: style.fontSize || '14px',
+                                fontWeight: style.fontWeight || 'normal',
+                                textAlign: style.textAlign || 'left',
+                            }}
+                        >
+                            {text}
+                        </div>
+                    </div>
+                );
 
             case 'image':
-                return <div className="h-full w-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">Image</div>;
+                return (
+                    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-linear-to-br from-slate-50 to-slate-100 rounded-lg relative">
+                        {itemConfig.content ? (
+                            <img
+                                src={itemConfig.content}
+                                alt="Invoice"
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                    (e.target as HTMLImageElement).parentElement?.classList.add('image-error');
+                                }}
+                            />
+                        ) : (
+                            <div className="text-slate-400 flex flex-col items-center gap-2">
+                                <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
+                                    <ImageIcon size={24} className="text-purple-500" />
+                                </div>
+                                <span className="text-xs font-medium">Image</span>
+                            </div>
+                        )}
+                    </div>
+                );
+
+            case 'customer_details':
+                const billing = data?.billing || {};
+                const hasCustomerData = billing.first_name || billing.email;
+
+                return (
+                    <div className="p-4 h-full bg-linear-to-br from-indigo-50 to-blue-50 flex flex-col rounded-lg border border-dashed border-indigo-300">
+                        <div className="flex items-center gap-2 text-indigo-600 mb-3">
+                            <User size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Customer Details</span>
+                        </div>
+                        {hasCustomerData ? (
+                            <div className="space-y-1 text-sm text-slate-700">
+                                {(billing.first_name || billing.last_name) && (
+                                    <div className="font-medium">{billing.first_name} {billing.last_name}</div>
+                                )}
+                                {billing.company && <div>{billing.company}</div>}
+                                {billing.address_1 && <div>{billing.address_1}</div>}
+                                {billing.address_2 && <div>{billing.address_2}</div>}
+                                {(billing.city || billing.state || billing.postcode) && (
+                                    <div>{billing.city}{billing.city && billing.state ? ', ' : ''}{billing.state} {billing.postcode}</div>
+                                )}
+                                {billing.country && <div>{billing.country}</div>}
+                                {billing.email && <div className="text-indigo-600">{billing.email}</div>}
+                                {billing.phone && <div>{billing.phone}</div>}
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="h-4 w-32 bg-indigo-200/50 rounded-sm"></div>
+                                <div className="h-3 w-48 bg-indigo-200/50 rounded-sm"></div>
+                                <div className="h-3 w-40 bg-indigo-200/50 rounded-sm"></div>
+                                <div className="h-3 w-24 bg-indigo-200/50 rounded-sm"></div>
+                            </div>
+                        )}
+                    </div>
+                );
 
             case 'order_table':
+                const lineItems = data?.line_items || [];
+                const hasItems = lineItems.length > 0;
+
                 return (
-                    <div className="h-full w-full overflow-hidden p-2">
-                        <table className="min-w-full text-xs text-left">
-                            <thead className="bg-gray-50 border-b">
-                                <tr>
-                                    <th className="py-1 px-2">Item</th>
-                                    <th className="py-1 px-2 text-right">Qty</th>
-                                    <th className="py-1 px-2 text-right">Price</th>
-                                    <th className="py-1 px-2 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data?.line_items?.map((item: any, i: number) => (
-                                    <tr key={i} className="border-b last:border-0">
-                                        <td className="py-1 px-2">{item.name}</td>
-                                        <td className="py-1 px-2 text-right">{item.quantity}</td>
-                                        <td className="py-1 px-2 text-right">${item.price}</td>
-                                        <td className="py-1 px-2 text-right">${item.total}</td>
-                                    </tr>
-                                )) || (
-                                        <tr>
-                                            <td className="py-1 px-2">Example Product</td>
-                                            <td className="py-1 px-2 text-right">1</td>
-                                            <td className="py-1 px-2 text-right">$50.00</td>
-                                            <td className="py-1 px-2 text-right">$50.00</td>
+                    <div className="p-4 h-full bg-linear-to-br from-emerald-50 to-teal-50 flex flex-col rounded-lg border border-dashed border-emerald-300">
+                        <div className="flex items-center gap-2 text-emerald-600 mb-3">
+                            <Table size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Order Items Table</span>
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            {hasItems ? (
+                                <table className="min-w-full text-sm">
+                                    <thead>
+                                        <tr className="text-emerald-600 font-medium border-b border-emerald-200">
+                                            <th className="text-left py-2">Product</th>
+                                            <th className="text-center py-2 w-16">Qty</th>
+                                            <th className="text-right py-2 w-20">Price</th>
                                         </tr>
-                                    )}
-                            </tbody>
-                        </table>
+                                    </thead>
+                                    <tbody>
+                                        {lineItems.map((item: any, i: number) => (
+                                            <tr key={i} className="border-b border-emerald-100 last:border-0">
+                                                <td className="py-2 text-slate-700">{item.name}</td>
+                                                <td className="py-2 text-center text-slate-600">{item.quantity}</td>
+                                                <td className="py-2 text-right text-slate-700">${parseFloat(item.total || 0).toFixed(2)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="space-y-2">
+                                    <div className="flex gap-4 text-xs text-emerald-600 font-medium pb-2 border-b border-emerald-200">
+                                        <span className="flex-1">Product</span>
+                                        <span className="w-12 text-center">Qty</span>
+                                        <span className="w-16 text-right">Price</span>
+                                    </div>
+                                    <div className="flex gap-4 text-xs text-emerald-500">
+                                        <span className="flex-1 bg-emerald-100 rounded-sm h-3"></span>
+                                        <span className="w-12 bg-emerald-100 rounded-sm h-3"></span>
+                                        <span className="w-16 bg-emerald-100 rounded-sm h-3"></span>
+                                    </div>
+                                    <div className="flex gap-4 text-xs text-emerald-500">
+                                        <span className="flex-1 bg-emerald-100 rounded-sm h-3"></span>
+                                        <span className="w-12 bg-emerald-100 rounded-sm h-3"></span>
+                                        <span className="w-16 bg-emerald-100 rounded-sm h-3"></span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 );
 
             case 'totals':
+                const hasData = data?.total !== undefined;
+                const formatCurrency = (val: any) => {
+                    const num = parseFloat(val || 0);
+                    return `$${num.toFixed(2)}`;
+                };
+
                 return (
-                    <div className="h-full w-full p-2 flex flex-col justify-end items-end text-sm">
-                        <div className="flex gap-4">
-                            <span className="text-gray-500">Subtotal:</span>
-                            <span>${data?.subtotal || '0.00'}</span>
+                    <div className="p-4 h-full bg-linear-to-br from-amber-50 to-orange-50 flex flex-col rounded-lg border border-dashed border-amber-300">
+                        <div className="flex items-center gap-2 text-amber-600 mb-3">
+                            <DollarSign size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Totals</span>
                         </div>
-                        <div className="flex gap-4">
-                            <span className="text-gray-500">Tax:</span>
-                            <span>${data?.total_tax || '0.00'}</span>
+                        {hasData ? (
+                            <div className="flex-1 flex flex-col justify-center space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-amber-600">Subtotal:</span>
+                                    <span className="text-slate-700">{formatCurrency(parseFloat(data.total) - parseFloat(data.total_tax || 0))}</span>
+                                </div>
+                                {data.shipping_total && parseFloat(data.shipping_total) > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-600">Shipping:</span>
+                                        <span className="text-slate-700">{formatCurrency(data.shipping_total)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-amber-600">Tax:</span>
+                                    <span className="text-slate-700">{formatCurrency(data.total_tax)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm font-bold pt-2 border-t border-amber-200">
+                                    <span className="text-amber-700">Total:</span>
+                                    <span className="text-amber-700">{formatCurrency(data.total)}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col justify-center space-y-2">
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-amber-600">Subtotal:</span>
+                                    <span className="w-20 bg-amber-100 rounded-sm h-3"></span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-amber-600">Shipping:</span>
+                                    <span className="w-16 bg-amber-100 rounded-sm h-3"></span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-amber-600">Tax:</span>
+                                    <span className="w-14 bg-amber-100 rounded-sm h-3"></span>
+                                </div>
+                                <div className="flex justify-between text-xs font-bold pt-2 border-t border-amber-200">
+                                    <span className="text-amber-700">Total:</span>
+                                    <span className="w-24 bg-amber-200 rounded-sm h-4"></span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+
+            case 'footer':
+                return (
+                    <div className="p-4 h-full bg-linear-to-br from-slate-50 to-gray-50 flex flex-col rounded-lg border border-dashed border-slate-300">
+                        <div className="flex items-center gap-2 text-slate-600 mb-2">
+                            <LayoutTemplate size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Footer (Last Page Only)</span>
                         </div>
-                        <div className="flex gap-4 font-bold border-t mt-1 pt-1">
-                            <span>Total:</span>
-                            <span>${data?.total || '0.00'}</span>
+                        <div className="flex-1 flex items-center justify-center text-center">
+                            <p className="text-xs text-slate-500 italic">
+                                {itemConfig.content || 'Footer content goes here...'}
+                            </p>
                         </div>
                     </div>
                 );
 
             default:
-                return <div className="p-2 text-xs text-red-400">Unknown Item</div>;
+                return <div className="p-3 text-slate-500 text-sm">{itemConfig.type}</div>;
         }
     };
 
+    // For multipage mode, calculate approximate page breaks
+    // A4 is roughly 297mm tall, with ~257mm usable content area
+    const PAGE_HEIGHT_ROWS = 32; // Approximate rows per page at rowHeight 30
+
+    // Group items by page for multipage mode
+    const getPagedLayout = () => {
+        if (pageMode !== 'multi') return [layout];
+
+        const sortedLayout = [...layout].sort((a, b) => a.y - b.y);
+        const pages: any[][] = [];
+        let currentPage: any[] = [];
+        let pageStartY = 0;
+
+        for (const item of sortedLayout) {
+            const itemBottom = item.y + item.h;
+            const relativeBottom = itemBottom - pageStartY;
+
+            if (relativeBottom > PAGE_HEIGHT_ROWS && currentPage.length > 0) {
+                pages.push(currentPage);
+                currentPage = [];
+                pageStartY = item.y;
+            }
+
+            currentPage.push({
+                ...item,
+                y: item.y - pageStartY
+            });
+        }
+
+        if (currentPage.length > 0) {
+            pages.push(currentPage);
+        }
+
+        return pages.length > 0 ? pages : [layout];
+    };
+
+    const pages = getPagedLayout();
+
     return (
-        <div className="bg-white" style={{ minHeight: '297mm', width: '210mm' }}>
-            <ResponsiveGridLayout
-                className="layout"
-                layouts={{ lg: layout }}
-                breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-                rowHeight={30}
-                // @ts-ignore - WidthProvider types match mismatch
-                width={794} // approx A4 width in px at 96dpi
-                isDraggable={!readOnly}
-                isResizable={!readOnly}
-                margin={[0, 0]} // Tight packing for print?
-            >
-                {layout.map(l => {
-                    const itemConfig = items.find(i => i.id === l.i);
-                    return (
-                        <div key={l.i} className={clsx("bg-white", { "border border-dashed border-gray-200": !readOnly })}>
-                            {itemConfig && renderContent(itemConfig)}
+        <div className="space-y-8">
+            {pages.map((pageLayout, pageIndex) => (
+                <div key={pageIndex} className="relative">
+                    {/* Page Number Indicator for multipage */}
+                    {pageMode === 'multi' && pages.length > 1 && (
+                        <div className="absolute -top-6 right-0 text-xs text-slate-400 font-medium">
+                            Page {pageIndex + 1} of {pages.length}
                         </div>
-                    );
-                })}
-            </ResponsiveGridLayout>
+                    )}
+
+                    {/* Paper Container */}
+                    <div className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-lg relative ring-1 ring-slate-200/50" style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}>
+                        {/* Paper Texture Overlay */}
+                        <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIvPjwvc3ZnPg==')]" />
+
+                        {/* Grid Layout */}
+                        {/* @ts-ignore - ResponsiveGridLayout has prop type mismatch */}
+                        <ResponsiveGridLayout
+                            className="layout"
+                            layouts={{ lg: pageLayout }}
+                            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                            cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+                            rowHeight={30}
+                            // @ts-ignore - width prop type mismatch
+                            width={794}
+                            isDraggable={!readOnly}
+                            isResizable={!readOnly}
+                            margin={[8, 8]}
+                        >
+                            {pageLayout.map((l: any) => {
+                                const itemConfig = items.find(i => i.id === l.i);
+
+                                // Hide headers on pages after the first
+                                if (pageMode === 'multi' && pageIndex > 0 && itemConfig?.type === 'header') {
+                                    return <div key={l.i} className="hidden"></div>;
+                                }
+
+                                // Hide footers on pages before the last
+                                if (pageMode === 'multi' && pageIndex < pages.length - 1 && itemConfig?.type === 'footer') {
+                                    return <div key={l.i} className="hidden"></div>;
+                                }
+
+                                return (
+                                    <div
+                                        key={l.i}
+                                        className={clsx(
+                                            "bg-white border-2 rounded-lg transition-all duration-150",
+                                            readOnly
+                                                ? "border-transparent"
+                                                : "border-slate-200 hover:border-indigo-300 hover:shadow-md"
+                                        )}
+                                    >
+                                        {itemConfig && renderContent(itemConfig)}
+                                    </div>
+                                );
+                            })}
+                        </ResponsiveGridLayout>
+                    </div>
+
+                    {/* Page Break Indicator */}
+                    {pageMode === 'multi' && pageIndex < pages.length - 1 && (
+                        <div className="flex items-center justify-center py-4">
+                            <div className="flex-1 border-t-2 border-dashed border-slate-300"></div>
+                            <span className="px-4 text-xs text-slate-400 font-medium uppercase tracking-wide">Page Break</span>
+                            <div className="flex-1 border-t-2 border-dashed border-slate-300"></div>
+                        </div>
+                    )}
+                </div>
+            ))}
         </div>
     );
 }
