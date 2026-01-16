@@ -55,7 +55,7 @@ export function MobileInventory() {
                 stockQuantity: p.stock_quantity ?? p.stockQuantity ?? 0,
                 lowStockThreshold: p.low_stock_amount ?? p.lowStockThreshold ?? 5,
                 price: p.price || 0,
-                image: p.images?.[0]?.src
+                image: p.mainImage || p.images?.[0]?.src
             }));
 
             if (filter === 'low') {

@@ -1,0 +1,23 @@
+﻿node.exe : npm warn 
+config ignoring 
+workspace config at C:
+\Users\ratte\Desktop\O
+verSeekv2\client/.npmr
+c
+At C:\Program Files\no
+dejs\npx.ps1:29 char:3
++   & $NODE_EXE 
+$NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (npm warn c   
+ onfig...2\client/    
+.npmrc:String) []    
+, RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+src/components/common/RichTextEditor/plugins/InitialValuePlugin.tsx(45,35): error TS2339: Property 'getEditorState' does not exist on type 'LexicalEditor'.

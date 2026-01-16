@@ -222,7 +222,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             // We use a transaction with individual creates to ensure better error handling and UUID generation
             await prisma.$transaction(async (tx) => {
                 await tx.bOMItem.deleteMany({ where: { bomId: bom.id } });
-                
+
                 for (const item of items) {
                     // Prevent self-linking
                     if (item.childProductId === productId) {
@@ -245,6 +245,43 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: bom.id },
                 include: { items: { include: { supplierItem: true, childProduct: true } } }
             });
+
+            // Calculate total COGS from BOM
+            let totalCogs = 0;
+            if (updated && updated.items) {
+                totalCogs = updated.items.reduce((sum, item) => {
+                    // Get unit cost from Child Product (cogs) or Supplier Item (cost)
+                    const unitCost = item.childProduct?.cogs
+                        ? Number(item.childProduct.cogs)
+                        : (item.supplierItem?.cost ? Number(item.supplierItem.cost) : 0);
+
+                    const quantity = Number(item.quantity);
+                    const waste = Number(item.wasteFactor);
+
+                    return sum + (unitCost * quantity * (1 + waste));
+                }, 0);
+            }
+
+            // Update the parent Product or Variation with new COGS
+            if (variationId === 0) {
+                // Update Main Product
+                await prisma.wooProduct.update({
+                    where: { id: productId },
+                    data: { cogs: totalCogs }
+                });
+                // Also trigger re-indexing/scoring if needed (optional optimization)
+            } else {
+                // Update specific Variation
+                // We need to find the specific variation record to update.
+                // The variationId passed here is the WooID (integer), but distinct local Variations are keyed by productId_wooId
+                await prisma.productVariation.updateMany({
+                    where: {
+                        productId: productId,
+                        wooId: Number(variationId)
+                    },
+                    data: { cogs: totalCogs }
+                });
+            }
 
             return updated;
         } catch (error) {

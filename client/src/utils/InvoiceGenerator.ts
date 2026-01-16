@@ -68,7 +68,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
 
     // Sort items by Y to render top-down
     const sortedGrid = [...grid].sort((a, b) => a.y - b.y);
-    
+
     const footerItems: any[] = [];
 
     for (const layoutItem of sortedGrid) {
@@ -105,10 +105,10 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             const fontSize = parseInt(style.fontSize || '14px');
             // Convert px to pt roughly (1px = 0.75pt)
             doc.setFontSize(fontSize * 0.75);
-            
+
             const fontWeight = style.fontWeight === 'bold' ? 'bold' : 'normal';
             const fontStyle = style.fontStyle === 'italic' ? 'italic' : 'normal';
-            
+
             if (fontWeight === 'bold' && fontStyle === 'italic') {
                 doc.setFont("helvetica", "bolditalic");
             } else if (fontWeight === 'bold') {
@@ -120,7 +120,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             }
 
             const align = style.textAlign || 'left';
-            
+
             // Calculate X based on alignment
             let textX = x + 2;
             if (align === 'center') textX = x + (w / 2);
@@ -158,10 +158,10 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             doc.setFont("helvetica", "bold");
             doc.text("Bill To:", x + 2, y + 5);
             doc.setFont("helvetica", "normal");
-            
+
             let currentY = y + 10;
             const billing = order.billing || {};
-            
+
             const lines = [
                 `${billing.first_name || ''} ${billing.last_name || ''}`,
                 billing.company,
@@ -216,16 +216,16 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
 
     // Render Footer on Last Page
     if (footerItems.length > 0) {
-        const pageCount = doc.internal.getNumberOfPages();
+        const pageCount = (doc.internal as any).getNumberOfPages();
         doc.setPage(pageCount);
-        
+
         footerItems.forEach(({ layoutItem, itemConfig }) => {
             const { x, y, w } = getRect(layoutItem);
             const content = itemConfig.content || '';
-            
+
             doc.setFontSize(8);
             doc.setTextColor(100);
-            doc.text(content, x + (w/2), y + 5, { align: 'center', maxWidth: w });
+            doc.text(content, x + (w / 2), y + 5, { align: 'center', maxWidth: w });
             doc.setTextColor(0);
         });
     }

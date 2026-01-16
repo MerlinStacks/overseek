@@ -32,9 +32,9 @@ export class IndexingService {
                     // If mapping update fails due to type conflict, recreate the index
                     if (mappingError.message?.includes('cannot be changed from type') ||
                         mappingError.meta?.body?.error?.type === 'illegal_argument_exception') {
-                        
+
                         Logger.warn(`Mapping conflict detected for index '${indexName}'. Recreating index...`, { error: mappingError.message });
-                        
+
                         await esClient.indices.delete({ index: indexName });
                         await esClient.indices.create({
                             index: indexName,
@@ -93,7 +93,8 @@ export class IndexingService {
                 images: { type: 'nested', properties: { src: { type: 'keyword' } } },
                 categories: { type: 'nested', properties: { name: { type: 'keyword' } } },
                 seoScore: { type: 'integer' },
-                merchantCenterScore: { type: 'integer' }
+                merchantCenterScore: { type: 'integer' },
+                cogs: { type: 'float' }
             }
         });
 
@@ -254,6 +255,7 @@ export class IndexingService {
                 categories: rawData.categories?.map((cat: any) => ({ name: cat.name })) || [],
                 seoScore: product.seoScore || 0,
                 merchantCenterScore: product.merchantCenterScore || 0,
+                cogs: product.cogs ? parseFloat(product.cogs.toString()) : 0,
                 variations: product.variations?.map((v: any) => ({
                     id: v.id,
                     stock_status: v.stockStatus || v.stock_status,

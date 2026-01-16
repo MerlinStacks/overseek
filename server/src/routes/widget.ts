@@ -19,7 +19,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = query.id;
 
         if (!accountId) {
-            reply.header('Content-Type', 'application/javascript');
+            reply.header('Content-Type', 'application/javascript; charset=utf-8');
             reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
             return '';
         }
@@ -49,7 +49,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
             const windowRight = position === 'bottom-right' ? 'right: 0;' : 'left: 0;';
 
             if (!enabled) {
-                reply.header('Content-Type', 'application/javascript');
+                reply.header('Content-Type', 'application/javascript; charset=utf-8');
                 reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 return '';
             }
@@ -498,12 +498,12 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
 })();
 `;
 
-            reply.header('Content-Type', 'application/javascript');
+            reply.header('Content-Type', 'application/javascript; charset=utf-8');
             reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
             return script;
         } catch (e) {
             Logger.error('Widget script error', { error: e });
-            reply.header('Content-Type', 'application/javascript');
+            reply.header('Content-Type', 'application/javascript; charset=utf-8');
             return '';
         }
     });

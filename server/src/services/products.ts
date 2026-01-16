@@ -280,6 +280,11 @@ export class ProductsService {
 
             const total = (response.hits.total as any).value || 0;
 
+            if (total === 0) {
+                Logger.info('Elasticsearch returned 0 results, attempting DB fallback', { accountId, query });
+                return this.searchProductsFromDB(accountId, query, page, limit);
+            }
+
             return {
                 products: productsWithBomStatus,
                 total,
@@ -287,8 +292,76 @@ export class ProductsService {
                 totalPages: Math.ceil(total / limit)
             };
         } catch (error) {
-            Logger.error('Elasticsearch Product Search Error', { error });
-            // Return empty result on error (or if index doesn't exist yet)
+            Logger.error('Elasticsearch Product Search Error, falling back to DB', { error });
+            return this.searchProductsFromDB(accountId, query, page, limit);
+        }
+    }
+
+    private static async searchProductsFromDB(accountId: string, query: string, page: number, limit: number) {
+        const skip = (page - 1) * limit;
+
+        const where: any = { accountId };
+
+        if (query) {
+            where.OR = [
+                { name: { contains: query, mode: 'insensitive' } },
+                { sku: { contains: query, mode: 'insensitive' } }
+            ];
+        }
+
+        try {
+            const [total, products] = await Promise.all([
+                prisma.wooProduct.count({ where }),
+                prisma.wooProduct.findMany({
+                    where,
+                    skip,
+                    take: limit,
+                    orderBy: { createdAt: 'desc' }
+                })
+            ]);
+
+            const mappedProducts = products.map(p => {
+                const raw = p.rawData as any || {};
+
+                // Map images from JSON format if needed
+                let images = [];
+                if (Array.isArray(p.images)) {
+                    images = p.images;
+                } else if (Array.isArray(raw.images)) {
+                    images = raw.images;
+                }
+
+                return {
+                    id: p.id,
+                    wooId: p.wooId,
+                    name: p.name,
+                    sku: p.sku,
+                    stock_status: p.stockStatus,
+                    stock_quantity: raw.stock_quantity ?? null,
+                    low_stock_amount: raw.low_stock_amount ?? 5,
+                    price: p.price ? Number(p.price) : 0,
+                    date_created: p.createdAt,
+                    mainImage: p.mainImage,
+                    images,
+                    categories: raw.categories || [],
+                    seoScore: p.seoScore || 0,
+                    merchantCenterScore: p.merchantCenterScore || 0,
+                    cogs: p.cogs ? Number(p.cogs) : 0,
+                    // Basic variation support for list view
+                    variations: [],
+                    // DB fallback doesn't calculate hasBOM efficiently without extra queries, can add if needed but skipping for robustness
+                    hasBOM: false
+                };
+            });
+
+            return {
+                products: mappedProducts,
+                total,
+                page,
+                totalPages: Math.ceil(total / limit)
+            };
+        } catch (dbError) {
+            Logger.error('Database Product Search Error', { error: dbError });
             return { products: [], total: 0, page, totalPages: 0 };
         }
     }

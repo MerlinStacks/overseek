@@ -116,7 +116,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             try {
                 const accountId = request.headers['x-account-id'] as string;
                 const userId = request.user?.id;
-                
+
                 let to, cc, subject, body, emailAccountId;
                 const attachments: any[] = [];
 
@@ -172,7 +172,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
                 // 3. Add message to conversation (store full content with subject and attachments)
                 let fullContent = `Subject: ${subject}\n\n${body}`;
-                
+
                 if (attachments.length > 0) {
                     fullContent += '\n\nAttachments:\n';
                     attachments.forEach(att => {
@@ -453,8 +453,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.post('/settings', async (request, reply) => {
             const accountId = request.headers['x-account-id'] as string;
             if (!accountId) return {};
-            const { businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;
-            const config = { businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone };
+            const { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;
+            const config = { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone };
 
             await prisma.accountFeature.upsert({
                 where: { accountId_featureKey: { accountId, featureKey: 'CHAT_SETTINGS' } },

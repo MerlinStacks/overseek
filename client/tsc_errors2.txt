@@ -22,6 +22,4 @@ $NPX_CLI_JS $args
  
 src/components/common/RichTextEditor/plugins/InitialValuePlugin.tsx(45,16): error TS2339: Property 'getEditorState' does not exist on type 'LexicalEditor'.
 src/components/common/RichTextEditor/plugins/InitialValuePlugin.tsx(82,49): error TS2339: Property 'tags' does not exist on type '{ editorState: EditorState; }'.
-src/components/mobile/MobileErrorBoundary.tsx(3,25): error TS2307: Cannot find module '@sentry/react' or its corresponding type declarations.
-src/main.tsx(3,25): error TS2307: Cannot find module '@sentry/react' or its corresponding type declarations.
 src/utils/InvoiceGenerator.ts(219,40): error TS2339: Property 'getNumberOfPages' does not exist on type '{ events: PubSub; scaleFactor: number; pageSize: { width: number; getWidth: () => number; height: number; getHeight: () => number; }; pages: number[]; getEncryptor(objectId: number): (data: string) => string; }'.

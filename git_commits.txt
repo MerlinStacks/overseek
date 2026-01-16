@@ -1,0 +1,17 @@
+﻿03c26ea | feat: enhance product indexing and retrieval with improved data handling and BOM checks
+d94e239 | feat: add initial sync trigger for empty products index during startup
+8d1f51d | feat: add self-linking prevention in BOMPanel and inventory routes, enhance index handling in IndexingService, and implement reset indices script
+51bff94 | feat: update product ID handling in InventoryPage and IndexingService to support wooId as a keyword
+cf7be05 | feat: improve BOM handling in inventory routes and enhance product retrieval with detailed product info
+0acda58 | feat: enhance product retrieval with BOM status checking and error handling
+34caa99 | feat: enhance BOMPanel and ProductEditPage with BOM status indication and toast notifications
+4d1f5f2 | feat: add SMS option to ConversationChannel enum
+ca141cc | feat: Add new components for header, footer, and customer details in DesignerProperties
+b75d6ea | feat: add file size formatting for attachments in NewEmailModal and update Vite config for React package resolution
+415669d | feat: implement caching for policy retrieval in InboxAIService and add cache invalidation in policies routes
+c308244 | feat: enhance PushNotificationService to send notifications to admins for testing and ensure user-specific subscription security
+640f253 | feat: add file attachment functionality to email modal and update chat routes to handle attachments
+b869373 | feat: add notification deliveries to Account model and establish relation in NotificationDelivery model
+3c06395 | feat: add diagnostics page for push subscriptions and notification testing
+9a7f999 | Inbox working correctly now!
+9e8dd6b | email fixes

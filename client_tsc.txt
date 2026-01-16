@@ -1,0 +1,3 @@
+﻿client/src/components/common/RichTextEditor/plugins/InitialValuePlugin.tsx(45,16): error TS2339: Property 'getEditorState' does not exist on type 'LexicalEditor'.
+client/src/components/common/RichTextEditor/plugins/InitialValuePlugin.tsx(82,49): error TS2339: Property 'tags' does not exist on type '{ editorState: EditorState; }'.
+client/src/utils/InvoiceGenerator.ts(219,40): error TS2339: Property 'getNumberOfPages' does not exist on type '{ events: PubSub; scaleFactor: number; pageSize: { width: number; getWidth: () => number; height: number; getHeight: () => number; }; pages: number[]; getEncryptor(objectId: number): (data: string) => string; }'.
