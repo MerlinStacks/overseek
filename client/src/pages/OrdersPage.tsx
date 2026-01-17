@@ -4,7 +4,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { formatDate } from '../utils/format';
-import { Loader2, RefreshCw, Search, Tag, TrendingUp, Filter, X } from 'lucide-react';
+import { Loader2, RefreshCw, Search, Tag, TrendingUp, Filter, X, Eye } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderPreviewModal } from '../components/orders/OrderPreviewModal';
 import { FraudIcon } from '../components/orders/FraudIcon';
@@ -429,13 +429,25 @@ export function OrdersPage() {
                                 orders.map((order) => (
                                     <tr
                                         key={order.id}
-                                        className="hover:bg-gray-50 transition-colors cursor-pointer"
-                                        onClick={() => setSelectedOrderId(order.id)}
+                                        className="hover:bg-gray-50 transition-colors"
                                     >
-                                        <td className="px-3 md:px-6 py-3 md:py-4 font-medium text-blue-600 outline-hidden">
+                                        <td className="px-3 md:px-6 py-3 md:py-4 font-medium outline-hidden">
                                             <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setSelectedOrderId(order.id)}
+                                                    className="p-1 hover:bg-blue-100 rounded text-gray-400 hover:text-blue-600 transition-colors"
+                                                    title="Quick preview"
+                                                >
+                                                    <Eye size={16} />
+                                                </button>
                                                 <FraudIcon orderId={order.id} />
-                                                #{order.id}
+                                                <Link
+                                                    to={`/orders/${order.id}`}
+                                                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    #{order.id}
+                                                </Link>
                                             </div>
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-gray-600 text-sm">{formatDate(order.date_created)}</td>

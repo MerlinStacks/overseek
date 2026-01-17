@@ -259,7 +259,7 @@ export function ChatWindow({
                     'x-account-id': currentAccount.id,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({})
+                body: JSON.stringify({ currentDraft: messageSend.input || '' })
             });
 
             if (!res.ok) {

@@ -27,8 +27,9 @@ export class InboxAIService {
      * Generates an AI draft reply for a conversation.
      * @param conversationId - The conversation to generate a draft for
      * @param accountId - The account ID for fetching policies and AI config
+     * @param currentDraft - Optional current draft content to continue/refine
      */
-    static async generateDraftReply(conversationId: string, accountId: string): Promise<DraftResult> {
+    static async generateDraftReply(conversationId: string, accountId: string, currentDraft?: string): Promise<DraftResult> {
         try {
             // 1. Fetch account AI configuration
             const account = await prisma.account.findUnique({
@@ -88,6 +89,17 @@ export class InboxAIService {
             const apiKey = account.openRouterApiKey;
             const model = account.aiModel || 'openai/gpt-4o';
 
+            // 7. Build user message - include current draft if available
+            let userMessage = 'Generate a draft reply for this customer conversation.';
+            if (currentDraft?.trim()) {
+                userMessage = `The agent has already started drafting a reply. Continue, expand, or refine this draft while maintaining the same tone and intent:
+
+CURRENT DRAFT:
+${this.stripHtmlTags(currentDraft.trim())}
+
+Generate a complete reply that incorporates and improves upon the current draft.`;
+            }
+
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -100,7 +112,7 @@ export class InboxAIService {
                     model,
                     messages: [
                         { role: 'system', content: fullPrompt },
-                        { role: 'user', content: 'Generate a draft reply for this customer conversation.' }
+                        { role: 'user', content: userMessage }
                     ]
                 })
             });

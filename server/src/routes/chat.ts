@@ -738,9 +738,10 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             try {
                 const conversationId = request.params.id;
                 const accountId = request.accountId;
+                const { currentDraft } = request.body as { currentDraft?: string };
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
-                const result = await InboxAIService.generateDraftReply(conversationId, accountId);
+                const result = await InboxAIService.generateDraftReply(conversationId, accountId, currentDraft);
                 if (result.error) return reply.code(400).send({ error: result.error });
                 return { draft: result.draft };
             } catch (error) {

@@ -276,20 +276,14 @@ export function MobileChat() {
         if ('vibrate' in navigator) navigator.vibrate(10);
 
         try {
-            const res = await fetch(`/api/ai/generate-draft`, {
+            const res = await fetch(`/api/chat/${id}/ai-draft`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    conversationId: id,
-                    messages: messages.slice(-10).map(m => ({
-                        role: m.direction === 'inbound' ? 'customer' : 'agent',
-                        content: m.body
-                    }))
-                })
+                body: JSON.stringify({ currentDraft: newMessage || '' })
             });
 
             if (res.ok) {
