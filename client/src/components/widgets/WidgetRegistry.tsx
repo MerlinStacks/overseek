@@ -16,6 +16,7 @@ import { VisitorCountWidget } from './VisitorCountWidget';
 import { OpenInboxWidget } from './OpenInboxWidget';
 import { AdSuggestionsWidget } from './AdSuggestionsWidget';
 import { AITodoWidget } from './AITodoWidget';
+import { CartAbandonmentWidget } from './CartAbandonmentWidget';
 
 export interface WidgetProps {
     settings?: any;
@@ -41,7 +42,8 @@ export const WidgetRegistry: Record<string, { component: React.FC<WidgetProps>, 
     'visitor-count': { component: VisitorCountWidget, label: 'Live Visitors', defaultW: 3, defaultH: 2 },
     'open-inbox': { component: OpenInboxWidget, label: 'Open Inbox', defaultW: 3, defaultH: 2 },
     'ad-suggestions': { component: AdSuggestionsWidget, label: 'Ad Suggestions', defaultW: 4, defaultH: 5 },
-    'ai-todo': { component: AITodoWidget, label: 'AI Todo List', defaultW: 4, defaultH: 5 }
+    'ai-todo': { component: AITodoWidget, label: 'AI Todo List', defaultW: 4, defaultH: 5 },
+    'cart-abandonment': { component: CartAbandonmentWidget, label: 'Cart Abandonment', defaultW: 4, defaultH: 6 }
 };
 
 export function renderWidget(key: string, props: WidgetProps): ReactNode {

@@ -215,7 +215,7 @@ export class AdAlertService {
     /**
      * Send critical alerts via the notification system.
      */
-    private static async sendCriticalAlerts(accountId: string, alerts: AdAlert[]): Promise<void> {
+    static async sendCriticalAlerts(accountId: string, alerts: AdAlert[]): Promise<void> {
         for (const alert of alerts) {
             try {
                 // Emit event for NotificationEngine to handle

@@ -1027,8 +1027,14 @@ class OverSeek_Server_Tracking
         $payload = array();
 
         if ($removed_item) {
+            $product = $this->get_product_safely($removed_item['product_id']);
+            
             $payload['productId'] = $removed_item['product_id'];
+            $payload['variationId'] = $removed_item['variation_id'] ?? 0;
             $payload['quantity'] = $removed_item['quantity'];
+            $payload['name'] = $product ? $product->get_name() : '';
+            $payload['sku'] = $product ? $product->get_sku() : '';
+            $payload['price'] = $product ? floatval($product->get_price()) : 0;
         }
 
         // Use safe cart wrapper

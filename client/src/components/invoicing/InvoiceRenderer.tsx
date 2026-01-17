@@ -185,6 +185,21 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     ? parseFloat(data.total) - parseFloat(data.total_tax || 0) - parseFloat(data.shipping_total || 0)
                     : 0;
 
+                // Helper to safely convert any value to a displayable string
+                const safeStringify = (val: any): string => {
+                    if (val === null || val === undefined) return '';
+                    if (typeof val === 'string') return val;
+                    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+                    if (Array.isArray(val)) return val.map(v => safeStringify(v)).join(', ');
+                    if (typeof val === 'object') {
+                        // Check if it's a simple {key: value} structure - flatten it
+                        const entries = Object.entries(val);
+                        if (entries.length === 0) return '';
+                        return entries.map(([k, v]) => safeStringify(v)).filter(Boolean).join(', ');
+                    }
+                    return String(val);
+                };
+
                 // Helper to extract item metadata
                 const getItemMeta = (item: any) => {
                     const meta: { label: string; value: string }[] = [];
@@ -199,7 +214,8 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         ) || [];
                         attrs.forEach((attr: any) => {
                             const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
-                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: attr.display_value || attr.value });
+                            const rawValue = attr.display_value || attr.value;
+                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: safeStringify(rawValue) });
                         });
                     }
 
@@ -210,7 +226,8 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     customMeta.forEach((m: any) => {
                         if (m.display_value || m.value) {
                             const label = m.display_key || m.key.replace(/_/g, ' ');
-                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: m.display_value || m.value });
+                            const rawValue = m.display_value || m.value;
+                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: safeStringify(rawValue) });
                         }
                     });
 

@@ -310,6 +310,225 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             }
         }
     );
+
+    // =========================================================================
+    // Marketing Learnings (AI Marketing Co-Pilot Phase 4)
+    // =========================================================================
+
+    /**
+     * List learnings for the account
+     */
+    fastify.get<{ Querystring: { includeInactive?: string; includePending?: string } }>(
+        '/learnings',
+        async (request, reply) => {
+            try {
+                const { LearningService } = await import('../services/tools/knowledge/LearningService');
+                const learnings = await LearningService.list(request.user!.accountId!, {
+                    includeInactive: request.query.includeInactive === 'true',
+                    includePending: request.query.includePending === 'true'
+                });
+                return learnings;
+            } catch (e) {
+                Logger.error('Error fetching learnings', { error: e });
+                return reply.code(500).send({ error: e });
+            }
+        }
+    );
+
+    /**
+     * Get pending AI-derived learnings awaiting approval
+     */
+    fastify.get('/learnings/pending', async (request, reply) => {
+        try {
+            const { LearningService } = await import('../services/tools/knowledge/LearningService');
+            const pending = await LearningService.getPending(request.user!.accountId!);
+            return pending;
+        } catch (e) {
+            Logger.error('Error fetching pending learnings', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    /**
+     * Create a new learning
+     */
+    fastify.post<{ Body: { platform: string; category: string; condition: string; recommendation: string; explanation?: string } }>(
+        '/learnings',
+        async (request, reply) => {
+            try {
+                const { LearningService } = await import('../services/tools/knowledge/LearningService');
+                const { platform, category, condition, recommendation, explanation } = request.body;
+
+                if (!platform || !category || !condition || !recommendation) {
+                    return reply.code(400).send({ error: 'Missing required fields' });
+                }
+
+                const learning = await LearningService.create(request.user!.accountId!, {
+                    platform: platform as any,
+                    category: category as any,
+                    condition,
+                    recommendation,
+                    explanation,
+                    source: 'user'
+                });
+                return learning;
+            } catch (e) {
+                Logger.error('Error creating learning', { error: e });
+                return reply.code(500).send({ error: e });
+            }
+        }
+    );
+
+    /**
+     * Update a learning
+     */
+    fastify.put<{ Params: { id: string }; Body: { condition?: string; recommendation?: string; explanation?: string; isActive?: boolean } }>(
+        '/learnings/:id',
+        async (request, reply) => {
+            try {
+                const { LearningService } = await import('../services/tools/knowledge/LearningService');
+                const updated = await LearningService.update(
+                    request.params.id,
+                    request.user!.accountId!,
+                    request.body
+                );
+
+                if (!updated) {
+                    return reply.code(404).send({ error: 'Learning not found' });
+                }
+                return updated;
+            } catch (e) {
+                Logger.error('Error updating learning', { error: e });
+                return reply.code(500).send({ error: e });
+            }
+        }
+    );
+
+    /**
+     * Delete a learning
+     */
+    fastify.delete<{ Params: { id: string } }>('/learnings/:id', async (request, reply) => {
+        try {
+            const { LearningService } = await import('../services/tools/knowledge/LearningService');
+            const deleted = await LearningService.delete(request.params.id, request.user!.accountId!);
+
+            if (!deleted) {
+                return reply.code(404).send({ error: 'Learning not found' });
+            }
+            return { success: true };
+        } catch (e) {
+            Logger.error('Error deleting learning', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    /**
+     * Approve a pending AI-derived learning
+     */
+    fastify.post<{ Params: { id: string } }>('/learnings/:id/approve', async (request, reply) => {
+        try {
+            const { LearningService } = await import('../services/tools/knowledge/LearningService');
+            const approved = await LearningService.approvePending(request.params.id, request.user!.accountId!);
+
+            if (!approved) {
+                return reply.code(404).send({ error: 'Pending learning not found' });
+            }
+            return { success: true };
+        } catch (e) {
+            Logger.error('Error approving learning', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    /**
+     * Derive new learnings from successful recommendation patterns
+     */
+    fastify.post('/learnings/derive', async (request, reply) => {
+        try {
+            const { LearningService } = await import('../services/tools/knowledge/LearningService');
+            const derived = await LearningService.deriveFromOutcomes(request.user!.accountId!);
+            return { derived, count: derived.length };
+        } catch (e) {
+            Logger.error('Error deriving learnings', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    // =========================================================================
+    // Ad Alerts (AI Marketing Co-Pilot Phase 6)
+    // =========================================================================
+
+    /**
+     * Get recent ad alerts
+     */
+    fastify.get<{ Querystring: { limit?: string; unacknowledgedOnly?: string } }>(
+        '/alerts',
+        async (request, reply) => {
+            try {
+                const limit = parseInt(request.query.limit || '20', 10);
+                const unacknowledgedOnly = request.query.unacknowledgedOnly === 'true';
+
+                const alerts = await prisma.adAlert.findMany({
+                    where: {
+                        accountId: request.user!.accountId!,
+                        ...(unacknowledgedOnly ? { isAcknowledged: false } : {})
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: limit
+                });
+                return alerts;
+            } catch (e) {
+                Logger.error('Error fetching alerts', { error: e });
+                return reply.code(500).send({ error: e });
+            }
+        }
+    );
+
+    /**
+     * Acknowledge an alert
+     */
+    fastify.post<{ Params: { id: string } }>('/alerts/:id/acknowledge', async (request, reply) => {
+        try {
+            const alert = await prisma.adAlert.findFirst({
+                where: { id: request.params.id, accountId: request.user!.accountId! }
+            });
+
+            if (!alert) {
+                return reply.code(404).send({ error: 'Alert not found' });
+            }
+
+            await prisma.adAlert.update({
+                where: { id: request.params.id },
+                data: {
+                    isAcknowledged: true,
+                    acknowledgedAt: new Date(),
+                    acknowledgedBy: request.user!.id
+                }
+            });
+
+            return { success: true };
+        } catch (e) {
+            Logger.error('Error acknowledging alert', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    /**
+     * Get alert counts (for badge display)
+     */
+    fastify.get('/alerts/count', async (request, reply) => {
+        try {
+            const [total, unacknowledged, critical] = await Promise.all([
+                prisma.adAlert.count({ where: { accountId: request.user!.accountId! } }),
+                prisma.adAlert.count({ where: { accountId: request.user!.accountId!, isAcknowledged: false } }),
+                prisma.adAlert.count({ where: { accountId: request.user!.accountId!, isAcknowledged: false, severity: 'critical' } })
+            ]);
+            return { total, unacknowledged, critical };
+        } catch (e) {
+            Logger.error('Error fetching alert counts', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
 };
 
 export default marketingRoutes;

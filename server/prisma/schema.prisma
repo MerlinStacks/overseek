@@ -800,6 +800,75 @@ model RecommendationLog {
 }
 
 // --------------------------------------
+// Marketing Knowledge Base (AI Marketing Co-Pilot Phase 4)
+// --------------------------------------
+
+/// Account-specific marketing learnings and optimization rules.
+/// These are user-created or AI-suggested rules that extend the static knowledge base.
+model MarketingLearning {
+  id          String   @id @default(uuid())
+  accountId   String
+  
+  platform    String   // google, meta, both
+  category    String   // bid_strategy, audience, creative, budget, structure, optimization
+  condition   String   @db.Text  // Human-readable condition description
+  recommendation String @db.Text
+  explanation String?  @db.Text
+  
+  source      String   @default("user") // user, ai_derived
+  isActive    Boolean  @default(true)
+  isPending   Boolean  @default(false) // AI-derived rules awaiting user approval
+  
+  appliedCount Int     @default(0)  // Times this rule has triggered
+  successCount Int     @default(0)  // Times the outcome was positive
+  
+  // Source tracking for AI-derived rules
+  derivedFromRecommendationIds Json?  // Array of recommendation IDs that led to this learning
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([accountId, isActive])
+  @@index([accountId, isPending])
+}
+
+// --------------------------------------
+// Ad Alerts (AI Marketing Co-Pilot Phase 6)
+// --------------------------------------
+
+/// Stores proactive ad performance alerts for audit and deduplication.
+model AdAlert {
+  id          String   @id @default(uuid())
+  accountId   String
+  
+  severity    String   // critical, warning, info
+  type        String   // roas_crash, zero_conversions, ctr_crash, budget_depleting, anomaly
+  title       String
+  message     String   @db.Text
+  
+  platform    String?  // google, meta
+  adAccountId String?
+  campaignId  String?
+  campaignName String?
+  
+  data        Json?    // Supporting data (metrics, thresholds, etc.)
+  
+  // Status
+  isAcknowledged Boolean @default(false)
+  acknowledgedAt DateTime?
+  acknowledgedBy String?  // User ID
+  
+  // Notification tracking
+  notificationSent Boolean @default(false)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([accountId, createdAt])
+  @@index([accountId, isAcknowledged])
+  @@index([accountId, type, createdAt])
+}
+
+// --------------------------------------
 // Scheduled Ad Actions
 // --------------------------------------
 

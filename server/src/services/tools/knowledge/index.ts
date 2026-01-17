@@ -12,3 +12,6 @@ export type { ExplainableRecommendation, RecommendationSummary } from './Recomme
 
 export { RecommendationTracker } from './RecommendationTracker';
 export type { RecommendationStatus, RecommendationFeedback, RecommendationStats } from './RecommendationTracker';
+
+export { LearningService } from './LearningService';
+export type { LearningPlatform, LearningCategory, LearningWithStats, CreateLearningInput, UpdateLearningInput } from './LearningService';

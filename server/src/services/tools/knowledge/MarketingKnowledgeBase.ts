@@ -394,4 +394,126 @@ export class MarketingKnowledgeBase {
     static get entryCount(): number {
         return KNOWLEDGE_BASE.length;
     }
+
+    /**
+     * Find matches including dynamic learnings from the database.
+     * This merges account-specific rules with the static knowledge base.
+     */
+    static async findMatchesWithLearnings(
+        context: AnalysisContext,
+        accountId: string
+    ): Promise<MatchedRecommendation[]> {
+        // Get static matches first
+        const staticMatches = this.findMatches(context);
+
+        try {
+            // Dynamically import to avoid circular dependencies
+            const { LearningService } = await import('./LearningService');
+
+            // Load active learnings for this account
+            const learnings = await LearningService.list(accountId, {
+                platform: context.platform as any,
+                includeInactive: false,
+                includePending: false
+            });
+
+            // Convert learnings to matched recommendations
+            // Note: Learning conditions are stored as text, so we do simple keyword matching
+            const dynamicMatches: MatchedRecommendation[] = [];
+
+            for (const learning of learnings) {
+                // Simple heuristic matching based on condition text
+                // In production, you might want more sophisticated matching
+                const matchScore = this.evaluateLearningCondition(learning, context);
+
+                if (matchScore > 0.5) {
+                    dynamicMatches.push({
+                        id: `learning_${learning.id}`,
+                        text: learning.recommendation,
+                        explanation: learning.explanation || `Custom rule: ${learning.condition}`,
+                        confidence: learning.successRate > 60 ? 'high' : learning.successRate > 30 ? 'medium' : 'low',
+                        priority: 2, // Default to important
+                        category: learning.category,
+                        platform: learning.platform,
+                        dataPoints: [
+                            `Applied: ${learning.appliedCount} times`,
+                            `Success Rate: ${learning.successRate}%`
+                        ],
+                        tags: ['custom', learning.source]
+                    });
+
+                    // Record that this learning was applied
+                    await LearningService.recordApplication(learning.id);
+                }
+            }
+
+            // Merge and deduplicate (static rules take precedence by appearing first)
+            const allMatches = [...staticMatches, ...dynamicMatches];
+
+            // Sort by priority
+            allMatches.sort((a, b) => a.priority - b.priority);
+
+            return allMatches;
+        } catch (error) {
+            // Fall back to static matches if dynamic loading fails
+            console.error('Error loading dynamic learnings:', error);
+            return staticMatches;
+        }
+    }
+
+    /**
+     * Evaluate if a learning's condition matches the current context.
+     * Returns a score from 0-1 indicating match strength.
+     */
+    private static evaluateLearningCondition(
+        learning: { condition: string; platform: string; category: string },
+        context: AnalysisContext
+    ): number {
+        const condition = learning.condition.toLowerCase();
+        let score = 0;
+        let checks = 0;
+
+        // Check for ROAS mentions
+        if (condition.includes('roas')) {
+            checks++;
+            if (condition.includes('low') && context.roas < 2) score++;
+            else if (condition.includes('high') && context.roas > 3) score++;
+            else if (condition.includes('declining') && context.roasTrend === 'declining') score++;
+        }
+
+        // Check for CTR mentions
+        if (condition.includes('ctr')) {
+            checks++;
+            if (condition.includes('low') && context.ctr < 1) score++;
+            else if (condition.includes('declining') && context.ctrTrend === 'declining') score++;
+        }
+
+        // Check for CPA mentions
+        if (condition.includes('cpa')) {
+            checks++;
+            if (condition.includes('high') && context.cpa > 50) score++;
+        }
+
+        // Check for conversion mentions
+        if (condition.includes('conversion')) {
+            checks++;
+            if (condition.includes('low') && context.conversions < 20) score++;
+            else if (condition.includes('high') && context.conversions > 50) score++;
+        }
+
+        // Check for funnel stage
+        if (condition.includes(context.funnelStage)) {
+            checks++;
+            score++;
+        }
+
+        // Check for campaign type
+        if (condition.includes(context.campaignType)) {
+            checks++;
+            score++;
+        }
+
+        // Return normalized score
+        return checks > 0 ? score / checks : 0;
+    }
 }

@@ -5,6 +5,7 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { TrackingService } from '../services/TrackingService';
+import { getCartAbandonmentStats } from '../services/analytics/CartAbandonmentService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
@@ -173,6 +174,33 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('LTV Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch LTV' });
+        }
+    });
+
+    // Product-level cart abandonment analytics
+    fastify.get('/cart-abandonment', async (request, reply) => {
+        try {
+            const accountId = getAccountId(request);
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+            const query = request.query as { startDate?: string; endDate?: string; days?: string };
+
+            let startDate: Date;
+            let endDate: Date = new Date();
+
+            if (query.startDate && query.endDate) {
+                startDate = new Date(query.startDate);
+                endDate = new Date(query.endDate);
+            } else {
+                const days = parseInt(query.days || '30');
+                startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+            }
+
+            return await getCartAbandonmentStats(accountId, startDate, endDate);
+        } catch (error) {
+            Logger.error('Cart Abandonment Error', { error });
+            return reply.code(500).send({ error: 'Failed to fetch cart abandonment stats' });
         }
     });
 

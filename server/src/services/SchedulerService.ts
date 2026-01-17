@@ -277,6 +277,26 @@ export class SchedulerService {
 
         Logger.info('Scheduled Gold Price Update (Daily at 6 AM UTC)');
 
+        // AI Marketing Co-Pilot Phase 5: Outcome Assessment (Daily at 3 AM UTC)
+        await queue.add('outcome-assessment', {}, {
+            repeat: {
+                pattern: '0 3 * * *', // Daily at 3 AM UTC
+            },
+            jobId: 'outcome-assessment-daily'
+        });
+
+        Logger.info('Scheduled Recommendation Outcome Assessment (Daily at 3 AM UTC)');
+
+        // AI Marketing Co-Pilot Phase 6: Ad Alerts (Every 4 hours)
+        await queue.add('ad-alerts', {}, {
+            repeat: {
+                pattern: '0 */4 * * *', // Every 4 hours at :00
+            },
+            jobId: 'ad-alerts-4h'
+        });
+
+        Logger.info('Scheduled Ad Alert Check (Every 4 hours)');
+
         QueueFactory.createWorker('scheduler', async (job) => {
             if (job.name === 'orchestrate-sync') {
                 await this.dispatchToAllAccounts();
@@ -284,6 +304,10 @@ export class SchedulerService {
                 await this.dispatchInventoryAlerts();
             } else if (job.name === 'gold-price-update') {
                 await this.dispatchGoldPriceUpdates();
+            } else if (job.name === 'outcome-assessment') {
+                await this.dispatchOutcomeAssessment();
+            } else if (job.name === 'ad-alerts') {
+                await this.dispatchAdAlerts();
             }
         });
 
@@ -515,6 +539,181 @@ export class SchedulerService {
             } catch (error) {
                 Logger.error(`[Scheduler] Failed to reopen conversation ${conversation.id}`, { error });
             }
+        }
+    }
+
+    /**
+     * AI Marketing Co-Pilot Phase 5: Assess outcomes of implemented recommendations.
+     * Runs daily to check recommendations implemented 7+ days ago and calculate ROAS changes.
+     */
+    private static async dispatchOutcomeAssessment() {
+        Logger.info('[Scheduler] Starting recommendation outcome assessment');
+
+        try {
+            const { RecommendationTracker } = await import('./tools/knowledge/RecommendationTracker');
+            const { MultiPeriodAnalyzer } = await import('./tools/analyzers');
+
+            // Find implemented recommendations that are 7+ days old without outcome data
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+            const pendingOutcomes = await prisma.recommendationLog.findMany({
+                where: {
+                    status: 'implemented',
+                    implementedAt: {
+                        lte: sevenDaysAgo,
+                        gte: thirtyDaysAgo // Don't assess very old recommendations
+                    },
+                    outcomeRecordedAt: null
+                },
+                take: 50
+            });
+
+            if (pendingOutcomes.length === 0) {
+                Logger.info('[Scheduler] No recommendations pending outcome assessment');
+                return;
+            }
+
+            Logger.info(`[Scheduler] Assessing outcomes for ${pendingOutcomes.length} recommendations`);
+
+            // Group by account for efficient analysis
+            const byAccount = new Map<string, typeof pendingOutcomes>();
+            for (const rec of pendingOutcomes) {
+                const list = byAccount.get(rec.accountId) || [];
+                list.push(rec);
+                byAccount.set(rec.accountId, list);
+            }
+
+            for (const [accountId, recommendations] of byAccount) {
+                try {
+                    // Get current performance metrics
+                    const analysis = await MultiPeriodAnalyzer.analyze(accountId);
+                    const currentRoas = analysis.combined?.['7d']?.roas || 0;
+
+                    for (const rec of recommendations) {
+                        // Calculate ROAS before (stored at time of generation via dataPoints)
+                        const dataPoints = rec.dataPoints as any;
+                        let roasBefore = 0;
+                        if (dataPoints && Array.isArray(dataPoints)) {
+                            const roasPoint = dataPoints.find((d: string) => d.includes('ROAS'));
+                            if (roasPoint) {
+                                const match = roasPoint.match(/[\d.]+/);
+                                roasBefore = match ? parseFloat(match[0]) : 0;
+                            }
+                        }
+
+                        // Record outcome
+                        await RecommendationTracker.recordOutcome(rec.id, {
+                            roasBefore,
+                            roasAfter: currentRoas,
+                            notes: 'Auto-assessed by scheduler'
+                        });
+
+                        Logger.info(`[Scheduler] Recorded outcome for recommendation ${rec.id}`, {
+                            roasBefore,
+                            roasAfter: currentRoas,
+                            change: roasBefore > 0 ? ((currentRoas - roasBefore) / roasBefore * 100).toFixed(1) + '%' : 'N/A'
+                        });
+                    }
+                } catch (error) {
+                    Logger.error(`[Scheduler] Outcome assessment failed for account ${accountId}`, { error });
+                }
+            }
+
+            // Also trigger learning derivation for accounts with sufficient data
+            const { LearningService } = await import('./tools/knowledge/LearningService');
+            const accountsWithOutcomes = Array.from(byAccount.keys());
+
+            for (const accountId of accountsWithOutcomes) {
+                try {
+                    const derived = await LearningService.deriveFromOutcomes(accountId);
+                    if (derived.length > 0) {
+                        Logger.info(`[Scheduler] Derived ${derived.length} new learnings for account ${accountId}`);
+                    }
+                } catch (error) {
+                    Logger.error(`[Scheduler] Learning derivation failed for account ${accountId}`, { error });
+                }
+            }
+
+        } catch (error) {
+            Logger.error('[Scheduler] Outcome assessment dispatch failed', { error });
+        }
+    }
+
+    /**
+     * AI Marketing Co-Pilot Phase 6: Check for ad performance alerts.
+     * Runs every 4 hours to detect ROAS crashes, zero conversions, etc.
+     */
+    private static async dispatchAdAlerts() {
+        Logger.info('[Scheduler] Starting ad alert check');
+
+        try {
+            const { AdAlertService } = await import('./tools/AdAlertService');
+            const { EventBus, EVENTS } = await import('./events');
+
+            // Get all accounts with ad accounts
+            const accountsWithAds = await prisma.adAccount.findMany({
+                select: { accountId: true },
+                distinct: ['accountId']
+            });
+
+            Logger.info(`[Scheduler] Checking ad alerts for ${accountsWithAds.length} accounts`);
+
+            for (const { accountId } of accountsWithAds) {
+                try {
+                    // Check for alerts
+                    const alerts = await AdAlertService.checkForAlerts(accountId);
+
+                    if (alerts.length > 0) {
+                        // Deduplicate against recent alerts (24h window)
+                        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                        const recentAlerts = await prisma.adAlert.findMany({
+                            where: {
+                                accountId,
+                                createdAt: { gte: dayAgo }
+                            },
+                            select: { type: true, campaignId: true }
+                        });
+
+                        const recentKeys = new Set(
+                            recentAlerts.map(a => `${a.type}:${a.campaignId || 'all'}`)
+                        );
+
+                        const newAlerts = alerts.filter(
+                            a => !recentKeys.has(`${a.type}:${a.campaignId || 'all'}`)
+                        );
+
+                        if (newAlerts.length > 0) {
+                            // Persist new alerts
+                            for (const alert of newAlerts) {
+                                await prisma.adAlert.create({
+                                    data: {
+                                        accountId,
+                                        severity: alert.severity,
+                                        type: alert.type,
+                                        title: alert.title,
+                                        message: alert.message,
+                                        platform: alert.platform,
+                                        campaignId: alert.campaignId,
+                                        campaignName: alert.campaignName,
+                                        data: alert.data as any
+                                    }
+                                });
+                            }
+
+                            // Send critical alerts via notification engine
+                            await AdAlertService.sendCriticalAlerts(accountId, newAlerts);
+
+                            Logger.info(`[Scheduler] Created ${newAlerts.length} new ad alerts`, { accountId });
+                        }
+                    }
+                } catch (error) {
+                    Logger.error(`[Scheduler] Ad alert check failed for account ${accountId}`, { error });
+                }
+            }
+
+        } catch (error) {
+            Logger.error('[Scheduler] Ad alerts dispatch failed', { error });
         }
     }
 }

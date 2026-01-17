@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate } from '../utils/format';
-import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, X } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, X, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
@@ -216,11 +216,7 @@ export function OrderDetailPage() {
                                                 <div className="font-medium text-gray-900">{item.name}</div>
                                                 <div className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</div>
                                                 {item.meta_data && item.meta_data.length > 0 && (
-                                                    <div className="mt-1 space-y-0.5">
-                                                        {item.meta_data.map((meta: any, idx: number) => (
-                                                            <OrderMetaItem key={idx} meta={meta} onImageClick={setSelectedImage} />
-                                                        ))}
-                                                    </div>
+                                                    <OrderMetaSection metaData={item.meta_data} onImageClick={setSelectedImage} />
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-right text-gray-600">
@@ -524,47 +520,205 @@ const extractImageUrl = (value: string): string | null => {
     return null;
 };
 
-function OrderMetaItem({ meta, onImageClick }: { meta: any, onImageClick: (url: string) => void }) {
-    const [imgError, setImgError] = useState(false);
+interface MetaCategory {
+    id: string;
+    label: string;
+    icon: React.ReactNode;
+    color: string;
+    bgColor: string;
+    items: Array<{ key: string; value: string; imageUrl?: string | null }>;
+}
 
-    // Filter out hidden meta (starts with _)
-    if (meta.key.startsWith('_')) return null;
+function OrderMetaSection({ metaData, onImageClick }: { metaData: any[], onImageClick: (url: string) => void }) {
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['variations']));
 
-    const imageUrl = extractImageUrl(meta.value);
-    const showImage = imageUrl && !imgError;
+    // Filter out hidden meta and categorize
+    const filteredMeta = metaData.filter(m => !m.key.startsWith('_'));
+
+    if (filteredMeta.length === 0) return null;
+
+    // Categorize metadata
+    const categories: MetaCategory[] = [];
+
+    // Variations/Attributes (pa_ prefix or common variation keys)
+    const variations = filteredMeta.filter(m =>
+        m.key.startsWith('pa_') ||
+        ['size', 'color', 'colour', 'variant', 'style', 'material', 'weight'].some(k =>
+            m.key.toLowerCase().includes(k)
+        )
+    );
+
+    // Uploads/Images
+    const uploads = filteredMeta.filter(m => {
+        const url = extractImageUrl(m.value);
+        return url !== null;
+    });
+
+    // Custom fields (everything else)
+    const customFields = filteredMeta.filter(m =>
+        !variations.includes(m) && !uploads.includes(m)
+    );
+
+    if (variations.length > 0) {
+        categories.push({
+            id: 'variations',
+            label: 'Product Options',
+            icon: <Palette size={12} />,
+            color: 'text-purple-700',
+            bgColor: 'bg-purple-50 border-purple-200',
+            items: variations.map(m => ({
+                key: m.display_key || m.key.replace('pa_', '').replace(/_/g, ' '),
+                value: m.display_value || m.value,
+                imageUrl: null
+            }))
+        });
+    }
+
+    if (customFields.length > 0) {
+        categories.push({
+            id: 'custom',
+            label: 'Custom Fields',
+            icon: <Settings size={12} />,
+            color: 'text-blue-700',
+            bgColor: 'bg-blue-50 border-blue-200',
+            items: customFields.map(m => ({
+                key: m.display_key || m.key.replace(/_/g, ' '),
+                value: m.display_value || m.value,
+                imageUrl: null
+            }))
+        });
+    }
+
+    if (uploads.length > 0) {
+        categories.push({
+            id: 'uploads',
+            label: 'Uploaded Files',
+            icon: <ImageIcon size={12} />,
+            color: 'text-amber-700',
+            bgColor: 'bg-amber-50 border-amber-200',
+            items: uploads.map(m => ({
+                key: m.display_key || m.key.replace(/_/g, ' '),
+                value: m.display_value || m.value,
+                imageUrl: extractImageUrl(m.value)
+            }))
+        });
+    }
+
+    const toggleCategory = (id: string) => {
+        setExpandedCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
 
     return (
-        <div className="text-xs text-gray-500 flex flex-col gap-1 mt-1">
-            <div className="flex gap-1">
-                <span className="font-medium bg-gray-100 px-1 rounded-sm">{meta.key}:</span>
-                {/* Show text if it's not an image, OR if the image failed to load */}
-                {!showImage && (
-                    <span className="break-all">
-                        {/* If it looks like a URL, make it clickable */}
-                        {meta.value.startsWith('http') ? (
-                            <a href={meta.value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                {meta.value}
-                            </a>
-                        ) : (
-                            meta.value
-                        )}
-                    </span>
-                )}
-            </div>
+        <div className="mt-3 space-y-2">
+            {categories.map(category => {
+                const isExpanded = expandedCategories.has(category.id);
 
-            {showImage && (
-                <div
-                    className="mt-1 cursor-zoom-in border border-gray-200 rounded-md overflow-hidden inline-block w-fit"
-                    onClick={() => onImageClick(imageUrl)}
-                >
-                    <img
-                        src={imageUrl}
-                        alt={meta.key}
-                        onError={() => setImgError(true)}
-                        className="h-24 w-auto object-cover hover:opacity-90 transition-opacity"
-                    />
-                </div>
-            )}
+                return (
+                    <div key={category.id} className={`rounded-lg border overflow-hidden ${category.bgColor}`}>
+                        {/* Category Header */}
+                        <button
+                            onClick={() => toggleCategory(category.id)}
+                            className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/30 transition-colors"
+                        >
+                            <div className={`flex items-center gap-2 text-xs font-semibold ${category.color}`}>
+                                {category.icon}
+                                <span className="capitalize">{category.label}</span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-white/60 text-[10px] font-bold">
+                                    {category.items.length}
+                                </span>
+                            </div>
+                            {isExpanded ? (
+                                <ChevronUp size={14} className={category.color} />
+                            ) : (
+                                <ChevronDown size={14} className={category.color} />
+                            )}
+                        </button>
+
+                        {/* Category Content */}
+                        {isExpanded && (
+                            <div className="px-3 pb-3 bg-white/40">
+                                {category.id === 'uploads' ? (
+                                    // Image Gallery View
+                                    <div className="flex flex-wrap gap-2 pt-2">
+                                        {category.items.map((item, idx) => (
+                                            <ImageThumbnail
+                                                key={idx}
+                                                item={item}
+                                                onImageClick={onImageClick}
+                                            />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    // Key-Value List View
+                                    <div className="grid gap-1.5 pt-2">
+                                        {category.items.map((item, idx) => (
+                                            <div key={idx} className="flex items-baseline gap-2 text-xs">
+                                                <span className="font-medium text-gray-600 capitalize min-w-[80px]">
+                                                    {item.key}:
+                                                </span>
+                                                <span className="text-gray-900 break-all">
+                                                    {item.value.startsWith('http') ? (
+                                                        <a
+                                                            href={item.value}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-blue-600 hover:underline"
+                                                        >
+                                                            {item.value.length > 40 ? item.value.slice(0, 40) + '...' : item.value}
+                                                        </a>
+                                                    ) : (
+                                                        item.value
+                                                    )}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function ImageThumbnail({ item, onImageClick }: { item: { key: string; value: string; imageUrl?: string | null }, onImageClick: (url: string) => void }) {
+    const [imgError, setImgError] = useState(false);
+
+    if (!item.imageUrl || imgError) {
+        return (
+            <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs text-gray-500">
+                <FileText size={12} />
+                <span>{item.key}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="group relative">
+            <div
+                className="cursor-zoom-in rounded-lg overflow-hidden border-2 border-transparent hover:border-purple-400 transition-all shadow-sm hover:shadow-md"
+                onClick={() => onImageClick(item.imageUrl!)}
+            >
+                <img
+                    src={item.imageUrl}
+                    alt={item.key}
+                    onError={() => setImgError(true)}
+                    className="h-16 w-16 object-cover hover:scale-105 transition-transform"
+                />
+            </div>
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-gray-900/80 text-white text-[9px] rounded capitalize opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                {item.key}
+            </div>
         </div>
     );
 }
