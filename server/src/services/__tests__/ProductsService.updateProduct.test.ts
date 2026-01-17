@@ -9,6 +9,9 @@ vi.mock('../../utils/prisma', () => ({
             findUnique: vi.fn(),
             update: vi.fn(),
         },
+        productVariation: {
+            upsert: vi.fn(),
+        },
     }
 }));
 

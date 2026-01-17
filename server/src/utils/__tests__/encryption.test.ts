@@ -45,12 +45,14 @@ describe('Encryption Utilities', () => {
     });
 
     describe('decrypt error handling', () => {
-        it('should throw on invalid format (no colons)', () => {
-            expect(() => decrypt('invalidciphertext')).toThrow('Invalid encrypted text format');
+        it('should return original string on invalid format (no colons)', () => {
+            const input = 'invalidciphertext';
+            expect(decrypt(input)).toBe(input);
         });
 
-        it('should throw on invalid format (wrong number of parts)', () => {
-            expect(() => decrypt('part1:part2')).toThrow('Invalid encrypted text format');
+        it('should return original string on invalid format (wrong number of parts)', () => {
+            const input = 'part1:part2';
+            expect(decrypt(input)).toBe(input);
         });
     });
 });
