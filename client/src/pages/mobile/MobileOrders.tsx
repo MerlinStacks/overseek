@@ -16,6 +16,21 @@ import { useAccount } from '../../context/AccountContext';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatCurrency } from '../../utils/format';
 
+interface OrderApiResponse {
+    id: string;
+    orderNumber?: string;
+    billing?: {
+        first_name?: string;
+        last_name?: string;
+        email?: string;
+    };
+    total?: number;
+    status?: string;
+    date_created?: string;
+    createdAt?: string;
+    line_items?: unknown[];
+}
+
 interface Order {
     id: string;
     orderNumber: string;
@@ -86,7 +101,7 @@ export function MobileOrders() {
             if (!res.ok) throw new Error('Failed to fetch orders');
 
             const data = await res.json();
-            const newOrders = (data.orders || data || []).map((o: any) => ({
+            const newOrders = (data.orders || data || []).map((o: OrderApiResponse) => ({
                 id: o.id,
                 orderNumber: o.orderNumber || `#${String(o.id).slice(-6).toUpperCase()}`,
                 customerName: o.billing?.first_name
@@ -94,7 +109,7 @@ export function MobileOrders() {
                     : o.billing?.email || 'Guest',
                 total: o.total || 0,
                 status: o.status || 'pending',
-                createdAt: o.date_created || o.createdAt,
+                createdAt: o.date_created || o.createdAt || '',
                 itemCount: o.line_items?.length || 0
             }));
 

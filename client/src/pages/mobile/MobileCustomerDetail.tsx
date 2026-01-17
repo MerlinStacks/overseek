@@ -6,6 +6,20 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 
+interface OrderApiResponse {
+    id: string;
+    rawData?: {
+        number?: string;
+        status?: string;
+        total?: string | number;
+        date_created?: string;
+    };
+    wooId?: string;
+    status?: string;
+    total?: string | number;
+    dateCreated?: string;
+}
+
 interface CustomerOrder {
     id: string;
     number: string;
@@ -35,7 +49,7 @@ interface CustomerDetails {
         };
     };
     orders: CustomerOrder[];
-    activity: any[];
+    activity: { id: string; type: string; message: string; timestamp: string }[];
 }
 
 /**
@@ -87,7 +101,7 @@ export function MobileCustomerDetail() {
                         dateCreated: json.customer?.dateCreated || json.customer?.createdAt || '',
                         rawData: json.customer?.rawData
                     },
-                    orders: (json.orders || []).map((order: any) => ({
+                    orders: (json.orders || []).map((order: OrderApiResponse) => ({
                         id: order.id,
                         number: order.rawData?.number || order.wooId || order.id,
                         status: order.rawData?.status || order.status || 'unknown',

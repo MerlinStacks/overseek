@@ -5,6 +5,25 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency } from '../../utils/format';
 
+interface ProductVariation {
+    stock_quantity?: number;
+    stockQuantity?: number;
+}
+
+interface ProductApiResponse {
+    id: string;
+    name?: string;
+    sku?: string;
+    variations?: ProductVariation[];
+    stock_quantity?: number;
+    stockQuantity?: number;
+    low_stock_amount?: number;
+    lowStockThreshold?: number;
+    price?: number;
+    mainImage?: string;
+    images?: { src?: string }[];
+}
+
 interface Product {
     id: string;
     name: string;
@@ -50,12 +69,12 @@ export function MobileInventory() {
             if (!response.ok) throw new Error('Failed to fetch');
 
             const data = await response.json();
-            let items = (data.products || data || []).map((p: any) => ({
+            let items = (data.products || data || []).map((p: ProductApiResponse) => ({
                 id: p.id,
                 name: p.name || 'Unnamed Product',
                 sku: p.sku || '-',
                 stockQuantity: (p.variations && p.variations.length > 0)
-                    ? p.variations.reduce((sum: number, v: any) => sum + (v.stock_quantity || v.stockQuantity || 0), 0)
+                    ? p.variations.reduce((sum: number, v: ProductVariation) => sum + (v.stock_quantity || v.stockQuantity || 0), 0)
                     : (p.stock_quantity ?? p.stockQuantity ?? 0),
                 lowStockThreshold: p.low_stock_amount ?? p.lowStockThreshold ?? 5,
                 price: p.price || 0,

@@ -8,6 +8,21 @@ import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatTimeAgo } from '../../utils/format';
 import { getInitials } from '../../utils/string';
 
+interface ConversationApiResponse {
+    id: string;
+    wooCustomer?: {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+    };
+    guestName?: string;
+    guestEmail?: string;
+    messages?: { content?: string }[];
+    channel?: string;
+    isRead?: boolean;
+    updatedAt?: string;
+}
+
 interface Conversation {
     id: string;
     customerName: string;
@@ -65,7 +80,7 @@ export function MobileInbox() {
             const data = await response.json();
             // API returns array directly or { conversations } - handle both
             const rawConvos = Array.isArray(data) ? data : (data.conversations || []);
-            const convos = rawConvos.map((c: any) => {
+            const convos = rawConvos.map((c: ConversationApiResponse) => {
                 // Get customer name from wooCustomer or guest info
                 const customerName = c.wooCustomer
                     ? `${c.wooCustomer.firstName || ''} ${c.wooCustomer.lastName || ''}`.trim() || c.wooCustomer.email
@@ -76,11 +91,11 @@ export function MobileInbox() {
 
                 return {
                     id: c.id,
-                    customerName,
+                    customerName: customerName || 'Unknown',
                     lastMessage,
                     channel: c.channel || 'CHAT',
                     unread: !c.isRead,
-                    updatedAt: c.updatedAt
+                    updatedAt: c.updatedAt || ''
                 };
             });
             setConversations(convos);

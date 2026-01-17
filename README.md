@@ -13,6 +13,23 @@
 
 ---
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="Sample Screenshots/Analytics Examples.png" alt="Analytics Dashboard" width="48%">
+  <img src="Sample Screenshots/Default Reports.png" alt="Reports" width="48%">
+</p>
+<p align="center">
+  <img src="Sample Screenshots/Product List.png" alt="Product List" width="48%">
+  <img src="Sample Screenshots/Visitor Profile.png" alt="Visitor Profile" width="48%">
+</p>
+<p align="center">
+  <img src="Sample Screenshots/Report Builder.png" alt="Report Builder" width="48%">
+  <img src="Sample Screenshots/Invoice Generator.png" alt="Invoice Generator" width="48%">
+</p>
+
+---
+
 ## What is OverSeek?
 
 **OverSeek puts you back in control of your e-commerce data.**

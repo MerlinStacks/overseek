@@ -1,9 +1,8 @@
 /**
- * AI Co-Pilot Page
+ * AI Co-Pilot Page - Strategic Insight Deck
  * 
- * Premium "card hand" style interface for AI-powered ad recommendations.
- * Non-scrollable viewport with horizontal card carousel for recommendations.
- * Each card shows projected revenue impact backed by real data.
+ * Light mode dashboard with horizontal Strategic Themes and Actionable Changes grid.
+ * Provides detailed implementation guidance for each recommendation.
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
@@ -13,22 +12,13 @@ import { useAccount } from '../context/AccountContext';
 import {
     ArrowLeft,
     RefreshCw,
-    MessageCirclePlus,
     Sparkles,
-    Zap,
+    Calendar,
+    Download,
+    FileText,
     ChevronLeft,
     ChevronRight,
-    DollarSign,
-    TrendingUp,
-    Search,
-    ShoppingBag,
-    Target,
-    AlertTriangle,
-    CheckCircle,
-    ArrowUpRight,
-    Layers,
-    BarChart3,
-    FileText
+    AlertTriangle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AdContextModal } from '../components/marketing/AdContextModal';
@@ -38,6 +28,8 @@ import { RecommendationFeedbackModal } from '../components/marketing/Recommendat
 import { ScheduleActionModal } from '../components/marketing/ScheduleActionModal';
 import { CampaignWizard } from '../components/marketing/CampaignWizard/CampaignWizard';
 import { ImplementationGuideModal } from '../components/marketing/ImplementationGuideModal';
+import { StrategicThemeCard, StrategicTheme } from '../components/marketing/StrategicThemeCard';
+import { ActionableChangeCard } from '../components/marketing/ActionableChangeCard';
 
 // Cache duration: 5 minutes (in milliseconds)
 const CACHE_DURATION_MS = 5 * 60 * 1000;
@@ -59,44 +51,70 @@ interface SuggestionsData {
 }
 
 /**
- * Calculate the total potential revenue from all recommendations.
+ * Group recommendations into strategic themes by category
  */
-function calculateTotalPotentialRevenue(recs: ActionableRecommendation[]): number {
-    return recs.reduce((sum, rec) => {
-        return sum + (rec.estimatedImpact?.revenueChange || 0);
-    }, 0);
-}
+function groupIntoThemes(recs: ActionableRecommendation[]): StrategicTheme[] {
+    const categoryGroups: Record<string, ActionableRecommendation[]> = {};
 
-/**
- * Get a color scheme based on the recommendation type and priority.
- */
-function getCardGradient(rec: ActionableRecommendation): string {
-    if (rec.priority === 1) {
-        return 'from-rose-500 via-red-500 to-orange-500';
-    }
-    if (isKeywordAction(rec.action)) {
-        return 'from-violet-500 via-purple-500 to-indigo-500';
-    }
-    if (isProductAction(rec.action)) {
-        return 'from-emerald-500 via-teal-500 to-cyan-500';
-    }
-    if (isBudgetAction(rec.action)) {
-        if (rec.action.changeAmount > 0) {
-            return 'from-green-500 via-emerald-500 to-teal-500';
+    recs.forEach(rec => {
+        const cat = rec.category || 'optimization';
+        if (!categoryGroups[cat]) categoryGroups[cat] = [];
+        categoryGroups[cat].push(rec);
+    });
+
+    const themes: StrategicTheme[] = [];
+
+    // Map categories to strategic themes
+    const categoryMeta: Record<string, { title: string; description: string }> = {
+        budget: {
+            title: 'Budget Optimization',
+            description: 'Reallocate spend to high-performing campaigns and reduce waste on underperformers.'
+        },
+        keywords: {
+            title: 'Search Intent Harvesting',
+            description: 'Capture high-intent search traffic with targeted keyword expansion.'
+        },
+        optimization: {
+            title: 'Performance Tuning',
+            description: 'Fine-tune campaigns for better conversion rates and ROAS.'
+        },
+        creative: {
+            title: 'Creative Refresh',
+            description: 'Update ad creatives to improve engagement and click-through rates.'
+        },
+        audience: {
+            title: 'Audience Expansion',
+            description: 'Reach new customer segments with refined targeting.'
+        },
+        structure: {
+            title: 'Campaign Structure',
+            description: 'Create new campaigns to capture untapped opportunities.'
         }
-        return 'from-amber-500 via-orange-500 to-yellow-500';
-    }
-    return 'from-blue-500 via-indigo-500 to-purple-500';
-}
+    };
 
-/**
- * Get the icon component for a recommendation.
- */
-function getCardIcon(rec: ActionableRecommendation) {
-    if (isKeywordAction(rec.action)) return Search;
-    if (isProductAction(rec.action)) return ShoppingBag;
-    if (isBudgetAction(rec.action)) return DollarSign;
-    return Target;
+    Object.entries(categoryGroups).forEach(([cat, catRecs]) => {
+        if (catRecs.length === 0) return;
+
+        const meta = categoryMeta[cat] || { title: cat, description: '' };
+        const platforms = [...new Set(catRecs.map(r => r.platform === 'both' ? ['google', 'meta'] : [r.platform]).flat())] as ('google' | 'meta')[];
+        const totalRevenue = catRecs.reduce((sum, r) => sum + (r.estimatedImpact?.revenueChange || 0), 0);
+        const avgConfidence = Math.round(catRecs.reduce((sum, r) => sum + r.confidence, 0) / catRecs.length);
+
+        themes.push({
+            id: cat,
+            category: cat as any,
+            title: meta.title,
+            description: meta.description,
+            platforms,
+            estimatedImprovement: {
+                value: totalRevenue > 0 ? `+$${(totalRevenue).toLocaleString()}` : `${avgConfidence}% conf.`,
+                label: totalRevenue > 0 ? 'Revenue' : 'Confidence'
+            },
+            recommendationCount: catRecs.length
+        });
+    });
+
+    return themes.sort((a, b) => b.recommendationCount - a.recommendationCount);
 }
 
 export function AdAIPage() {
@@ -110,9 +128,7 @@ export function AdAIPage() {
     const [error, setError] = useState<string | null>(null);
     const [showContextModal, setShowContextModal] = useState(false);
     const [showCampaignWizard, setShowCampaignWizard] = useState(false);
-
-    // Active card index for the carousel
-    const [activeIndex, setActiveIndex] = useState(0);
+    const [activeTheme, setActiveTheme] = useState<string | null>(null);
 
     // Modal states
     const [keywordModalOpen, setKeywordModalOpen] = useState(false);
@@ -137,7 +153,6 @@ export function AdAIPage() {
                     const parsedCache: CachedData = JSON.parse(cached);
                     const now = Date.now();
 
-                    // Use cached data if it's still valid and for the same account
                     if (parsedCache.accountId === currentAccount.id &&
                         (now - parsedCache.timestamp) < CACHE_DURATION_MS) {
                         setData(parsedCache.data);
@@ -165,9 +180,7 @@ export function AdAIPage() {
                 const result = await res.json();
                 setData(result);
                 setError(null);
-                setActiveIndex(0); // Reset to first card on refresh
 
-                // Cache the result
                 try {
                     const cacheEntry: CachedData = {
                         data: result,
@@ -197,26 +210,21 @@ export function AdAIPage() {
     const recommendations = useMemo(() => {
         const recs = data?.actionableRecommendations || [];
         return recs.sort((a, b) => {
-            // Priority first
             if (a.priority !== b.priority) return a.priority - b.priority;
-            // Then by revenue impact
             const aRev = a.estimatedImpact?.revenueChange || 0;
             const bRev = b.estimatedImpact?.revenueChange || 0;
             return bRev - aRev;
         });
     }, [data?.actionableRecommendations]);
 
-    // Calculate total potential revenue
-    const totalPotentialRevenue = useMemo(() => calculateTotalPotentialRevenue(recommendations), [recommendations]);
+    // Group into strategic themes
+    const themes = useMemo(() => groupIntoThemes(recommendations), [recommendations]);
 
-    // Navigation handlers
-    const goToPrevious = () => {
-        setActiveIndex(prev => (prev > 0 ? prev - 1 : recommendations.length - 1));
-    };
-
-    const goToNext = () => {
-        setActiveIndex(prev => (prev < recommendations.length - 1 ? prev + 1 : 0));
-    };
+    // Filter recommendations by active theme
+    const filteredRecommendations = useMemo(() => {
+        if (!activeTheme) return recommendations;
+        return recommendations.filter(r => r.category === activeTheme);
+    }, [recommendations, activeTheme]);
 
     // Action handlers
     const handleKeywordConfirm = async (rec: ActionableRecommendation, keywordData: { keyword: string; matchType: string; bid: number; adGroupId: string }) => {
@@ -226,9 +234,6 @@ export function AdAIPage() {
         if (data && data.actionableRecommendations) {
             const newRecs = data.actionableRecommendations.filter(r => r.id !== rec.id);
             setData({ ...data, actionableRecommendations: newRecs });
-            if (activeIndex >= newRecs.length && newRecs.length > 0) {
-                setActiveIndex(newRecs.length - 1);
-            }
         }
 
         try {
@@ -279,9 +284,6 @@ export function AdAIPage() {
         if (data && data.actionableRecommendations) {
             const newRecs = data.actionableRecommendations.filter(r => r.id !== rec.id);
             setData({ ...data, actionableRecommendations: newRecs });
-            if (activeIndex >= newRecs.length && newRecs.length > 0) {
-                setActiveIndex(newRecs.length - 1);
-            }
         }
 
         try {
@@ -338,115 +340,59 @@ export function AdAIPage() {
         if (data && data.actionableRecommendations && activeFeedbackRec) {
             const newRecs = data.actionableRecommendations.filter(r => r.id !== activeFeedbackRec.id);
             setData({ ...data, actionableRecommendations: newRecs });
-            if (activeIndex >= newRecs.length && newRecs.length > 0) {
-                setActiveIndex(newRecs.length - 1);
-            }
         }
         setActiveFeedbackRec(null);
-    };
-
-    const handleSchedule = (rec: ActionableRecommendation) => {
-        setActiveScheduleRec(rec);
-        setScheduleModalOpen(true);
     };
 
     const handleScheduleComplete = () => {
         if (data && data.actionableRecommendations && activeScheduleRec) {
             const newRecs = data.actionableRecommendations.filter(r => r.id !== activeScheduleRec.id);
             setData({ ...data, actionableRecommendations: newRecs });
-            if (activeIndex >= newRecs.length && newRecs.length > 0) {
-                setActiveIndex(newRecs.length - 1);
-            }
         }
         setActiveScheduleRec(null);
     };
 
-    // Loading state with premium animation
+    // Loading state 
     if (loading) {
         return (
-            <div className="-m-4 md:-m-6 lg:-m-8 min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center overflow-hidden relative">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent" />
-                <div className="relative flex flex-col items-center gap-6 z-10">
+            <div className="-m-4 md:-m-6 lg:-m-8 min-h-[calc(100vh-4rem)] bg-gray-50 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
                     <div className="relative">
-                        <div className="w-20 h-20 rounded-full border-4 border-indigo-500/30 border-t-indigo-400 animate-spin" />
+                        <div className="w-16 h-16 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
                         <div className="absolute inset-0 flex items-center justify-center">
-                            <Sparkles className="w-8 h-8 text-indigo-400 animate-pulse" />
+                            <Sparkles className="w-6 h-6 text-indigo-600" />
                         </div>
                     </div>
                     <div className="text-center">
-                        <p className="text-xl font-semibold text-white mb-2">Analyzing Your Campaigns</p>
-                        <p className="text-indigo-300/70">Finding revenue opportunities...</p>
+                        <p className="text-lg font-semibold text-gray-900">Analyzing Your Campaigns</p>
+                        <p className="text-gray-500">Finding revenue opportunities...</p>
                     </div>
                 </div>
             </div>
         );
     }
 
-    // Main render
-    const currentRec = recommendations[activeIndex];
-
     return (
-        <div className="-m-4 md:-m-6 lg:-m-8 min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 overflow-hidden relative flex flex-col">
-            {/* Ambient background effects */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-purple-500/10 to-transparent rounded-full blur-3xl" />
-                <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-blue-500/10 to-transparent rounded-full blur-3xl" />
-                <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl animate-pulse" />
-            </div>
-
-            {/* Header */}
-            <header className="relative z-20 px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate('/marketing?tab=ads')}
-                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all border border-white/10"
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-                            <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/25">
-                                <Zap size={20} fill="currentColor" />
-                            </div>
-                            AI Co-Pilot
-                        </h1>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setShowCampaignWizard(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg shadow-indigo-500/25"
-                    >
-                        <Sparkles size={18} />
-                        Create Campaign
-                    </button>
-                    <button
-                        onClick={() => setShowContextModal(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white font-medium rounded-xl hover:bg-white/15 transition-all border border-white/10"
-                    >
-                        <MessageCirclePlus size={18} />
-                        Context
-                    </button>
-                    <button
-                        onClick={() => fetchSuggestions(true)}
-                        disabled={refreshing}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white font-medium rounded-xl hover:bg-white/15 transition-all border border-white/10 disabled:opacity-50"
-                    >
-                        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                        {refreshing ? 'Analyzing...' : 'Refresh'}
-                    </button>
-                </div>
-            </header>
-
+        <div className="-m-4 md:-m-6 lg:-m-8 min-h-[calc(100vh-4rem)] bg-gray-50">
             {/* Modals */}
-            <CampaignWizard isOpen={showCampaignWizard} onClose={() => setShowCampaignWizard(false)} />
-            <AdContextModal isOpen={showContextModal} onClose={() => setShowContextModal(false)} onSaved={() => fetchSuggestions(true)} />
+            {showContextModal && (
+                <AdContextModal
+                    isOpen={showContextModal}
+                    onClose={() => setShowContextModal(false)}
+                />
+            )}
+
+            {showCampaignWizard && (
+                <CampaignWizard
+                    isOpen={showCampaignWizard}
+                    onClose={() => setShowCampaignWizard(false)}
+                />
+            )}
 
             {activeKeywordRec && (
                 <AddKeywordModal
                     isOpen={keywordModalOpen}
-                    onClose={() => setKeywordModalOpen(false)}
+                    onClose={() => { setKeywordModalOpen(false); setActiveKeywordRec(null); }}
                     recommendation={activeKeywordRec}
                     onConfirm={async (d) => {
                         await handleKeywordConfirm(activeKeywordRec, d);
@@ -487,293 +433,125 @@ export function AdAIPage() {
                 />
             )}
 
+            {/* Header */}
+            <header className="bg-white border-b border-gray-200 px-6 py-5">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate('/marketing')}
+                            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">Strategic Insight Deck</h1>
+                            <p className="text-gray-500 text-sm">High-level optimization themes for the current billing cycle</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-medium transition-colors">
+                            <Calendar className="w-4 h-4" />
+                            Last 7 Days
+                        </button>
+                        <button
+                            onClick={() => fetchSuggestions(true)}
+                            disabled={refreshing}
+                            className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 transition-colors disabled:opacity-50"
+                        >
+                            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+            </header>
+
             {/* Error state */}
             {error && (
-                <div className="relative z-20 mx-6 mb-4 bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-red-300 flex items-center gap-3">
+                <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 flex items-center gap-3">
                     <AlertTriangle size={20} />
                     <span>{error}</span>
                 </div>
             )}
 
-            {/* Main Content */}
-            {recommendations.length === 0 ? (
-                /* Empty State */
-                <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6">
-                    <div className="text-center max-w-md">
-                        <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center">
-                            <CheckCircle className="w-12 h-12 text-emerald-400" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-white mb-3">All Systems Optimized</h2>
-                        <p className="text-white/60 mb-8">
-                            Your campaigns are running smoothly. The AI Co-pilot monitors your data 24/7 and will alert you when new opportunities arise.
-                        </p>
-                        <button
-                            onClick={() => fetchSuggestions(true)}
-                            className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10"
-                        >
-                            Force Re-analysis
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                /* Card Carousel */
-                <div className="relative z-10 flex-1 flex flex-col">
-                    {/* Revenue Summary Bar */}
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10 rounded-2xl p-4 border border-emerald-500/20">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 rounded-xl bg-emerald-500/20">
-                                    <TrendingUp className="w-6 h-6 text-emerald-400" />
-                                </div>
-                                <div>
-                                    <p className="text-white/60 text-sm">Total Potential Revenue Increase</p>
-                                    <p className="text-3xl font-bold text-white">
-                                        +${totalPotentialRevenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-6">
-                                <div className="text-center">
-                                    <p className="text-2xl font-bold text-white">{recommendations.length}</p>
-                                    <p className="text-white/60 text-sm">Opportunities</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-2xl font-bold text-rose-400">{recommendations.filter(r => r.priority === 1).length}</p>
-                                    <p className="text-white/60 text-sm">Urgent</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Cards Area */}
-                    <div className="flex-1 flex items-center justify-center px-6 pb-6">
-                        <div className="relative w-full max-w-4xl h-full flex items-center">
-                            {/* Previous Button */}
-                            <button
-                                onClick={goToPrevious}
-                                disabled={recommendations.length <= 1}
-                                className="absolute left-0 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-2xl backdrop-blur-sm border border-white/10"
-                            >
-                                <ChevronLeft size={28} />
-                            </button>
-
-                            {/* Card Stack */}
-                            <div className="flex-1 flex justify-center items-center perspective-1000 mx-16">
-                                {recommendations.map((rec, index) => {
-                                    const offset = index - activeIndex;
-                                    const isActive = index === activeIndex;
-                                    const isVisible = Math.abs(offset) <= 2;
-
-                                    if (!isVisible) return null;
-
-                                    const Icon = getCardIcon(rec);
-                                    const gradient = getCardGradient(rec);
-                                    const revenueImpact = rec.estimatedImpact?.revenueChange || 0;
-
-                                    return (
-                                        <div
-                                            key={rec.id}
-                                            className="absolute w-full max-w-2xl transition-all duration-500 ease-out"
-                                            style={{
-                                                transform: `
-                                                    translateX(${offset * 60}px) 
-                                                    translateZ(${-Math.abs(offset) * 100}px) 
-                                                    rotateY(${offset * -5}deg)
-                                                    scale(${1 - Math.abs(offset) * 0.1})
-                                                `,
-                                                zIndex: 10 - Math.abs(offset),
-                                                opacity: 1 - Math.abs(offset) * 0.3,
-                                                pointerEvents: isActive ? 'auto' : 'none',
-                                            }}
-                                        >
-                                            <div
-                                                className={`
-                                                    relative rounded-3xl p-8 backdrop-blur-xl
-                                                    ${isActive ? 'shadow-2xl' : 'shadow-lg'}
-                                                    bg-gradient-to-br ${gradient}
-                                                    transition-shadow duration-300
-                                                `}
-                                            >
-                                                {/* Card Header */}
-                                                <div className="flex items-start justify-between mb-6">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
-                                                            <Icon className="w-7 h-7 text-white" />
-                                                        </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                <span className="text-white/80 text-sm font-medium uppercase tracking-wider">
-                                                                    {rec.platform} • {rec.category}
-                                                                </span>
-                                                                {rec.priority === 1 && (
-                                                                    <span className="px-2 py-0.5 bg-white/20 rounded-full text-xs font-bold text-white flex items-center gap-1">
-                                                                        <AlertTriangle size={12} /> URGENT
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-white/60 text-xs uppercase tracking-wider mb-1">Confidence</p>
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="w-16 h-2 rounded-full bg-white/20 overflow-hidden">
-                                                                <div
-                                                                    className="h-full bg-white rounded-full"
-                                                                    style={{ width: `${rec.confidence}%` }}
-                                                                />
-                                                            </div>
-                                                            <span className="text-white font-bold text-sm">{rec.confidence}%</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Headline */}
-                                                <h3 className="text-2xl font-bold text-white mb-3 leading-tight">
-                                                    {rec.headline.replace(/^[^\w]+/, '')}
-                                                </h3>
-
-                                                {/* Explanation */}
-                                                <p className="text-white/80 text-base mb-6 leading-relaxed">
-                                                    {rec.explanation}
-                                                </p>
-
-                                                {/* Revenue Impact */}
-                                                {revenueImpact > 0 && (
-                                                    <div className="mb-6 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-3">
-                                                                <ArrowUpRight className="w-6 h-6 text-white" />
-                                                                <div>
-                                                                    <p className="text-white/60 text-sm">Projected Revenue Increase</p>
-                                                                    <p className="text-3xl font-bold text-white">
-                                                                        +${revenueImpact.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <p className="text-white/60 text-sm">Timeframe</p>
-                                                                <p className="text-white font-medium">{rec.estimatedImpact?.timeframe === '7d' ? '7 Days' : '30 Days'}</p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Inline Implementation Specs */}
-                                                {rec.implementationDetails && (
-                                                    <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                        {rec.implementationDetails.budgetSpec && (
-                                                            <>
-                                                                <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
-                                                                    <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Daily Budget</p>
-                                                                    <p className="text-white font-bold text-lg">${rec.implementationDetails.budgetSpec.dailyBudget}</p>
-                                                                </div>
-                                                                {rec.implementationDetails.budgetSpec.targetRoas && (
-                                                                    <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
-                                                                        <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Target ROAS</p>
-                                                                        <p className="text-emerald-300 font-bold text-lg">{rec.implementationDetails.budgetSpec.targetRoas}x</p>
-                                                                    </div>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                        {rec.implementationDetails.suggestedKeywords && rec.implementationDetails.suggestedKeywords.length > 0 && (
-                                                            <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
-                                                                <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Keywords</p>
-                                                                <p className="text-white font-bold text-lg">{rec.implementationDetails.suggestedKeywords.length} suggested</p>
-                                                            </div>
-                                                        )}
-                                                        {rec.implementationDetails.difficulty && (
-                                                            <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
-                                                                <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Difficulty</p>
-                                                                <p className={`font-bold text-lg ${rec.implementationDetails.difficulty === 'easy' ? 'text-emerald-300' :
-                                                                        rec.implementationDetails.difficulty === 'medium' ? 'text-amber-300' :
-                                                                            'text-rose-300'
-                                                                    }`}>
-                                                                    {rec.implementationDetails.difficulty.charAt(0).toUpperCase() + rec.implementationDetails.difficulty.slice(1)}
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                        {rec.implementationDetails.estimatedTimeMinutes && (
-                                                            <div className="px-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
-                                                                <p className="text-white/50 text-xs uppercase tracking-wider mb-0.5">Est. Time</p>
-                                                                <p className="text-white font-bold text-lg">~{rec.implementationDetails.estimatedTimeMinutes} min</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Data Points */}
-                                                {rec.dataPoints.length > 0 && (
-                                                    <div className="flex flex-wrap gap-2 mb-6">
-                                                        {rec.dataPoints.slice(0, 4).map((dp, i) => (
-                                                            <span key={i} className="px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-sm font-medium backdrop-blur-sm">
-                                                                {dp}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {/* Action Buttons */}
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => {
-                                                            setActiveGuideRec(rec);
-                                                            setGuideModalOpen(true);
-                                                        }}
-                                                        className="flex-1 py-3.5 px-6 bg-white text-slate-900 font-bold rounded-xl hover:bg-white/90 transition-all shadow-lg flex items-center justify-center gap-2"
-                                                    >
-                                                        <FileText size={20} />
-                                                        Implementation Guide
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleApply(rec)}
-                                                        className="py-3.5 px-5 bg-white/20 text-white font-medium rounded-xl hover:bg-white/30 transition-all flex items-center gap-2"
-                                                    >
-                                                        <CheckCircle size={18} />
-                                                        Apply
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDismiss(rec)}
-                                                        className="py-3.5 px-5 bg-white/10 text-white/80 font-medium rounded-xl hover:bg-white/20 hover:text-white transition-all"
-                                                    >
-                                                        Skip
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Next Button */}
-                            <button
-                                onClick={goToNext}
-                                disabled={recommendations.length <= 1}
-                                className="absolute right-0 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-2xl backdrop-blur-sm border border-white/10"
-                            >
-                                <ChevronRight size={28} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Card Indicators */}
-                    {recommendations.length > 1 && (
-                        <div className="flex justify-center gap-2 pb-6">
-                            {recommendations.map((_, index) => (
-                                <button
-                                    key={index}
-                                    onClick={() => setActiveIndex(index)}
-                                    className={`
-                                        w-2.5 h-2.5 rounded-full transition-all
-                                        ${index === activeIndex
-                                            ? 'bg-white w-8'
-                                            : 'bg-white/30 hover:bg-white/50'}
-                                    `}
+            {/* Strategic Themes Section */}
+            {themes.length > 0 && (
+                <section className="px-6 py-6">
+                    <div className="relative">
+                        {/* Horizontal scroll container */}
+                        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                            {themes.map(theme => (
+                                <StrategicThemeCard
+                                    key={theme.id}
+                                    theme={theme}
+                                    isActive={activeTheme === theme.id}
+                                    onClick={() => setActiveTheme(activeTheme === theme.id ? null : theme.id)}
                                 />
                             ))}
                         </div>
-                    )}
-                </div>
+                    </div>
+                </section>
             )}
+
+            {/* Actionable Changes Section */}
+            <section className="px-6 pb-8">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-bold text-gray-900">Actionable Changes</h2>
+                        <span className="px-2.5 py-1 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
+                            {filteredRecommendations.length} PENDING
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                            <Download className="w-4 h-4" />
+                            Export CSV
+                        </button>
+                        <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors">
+                            <FileText className="w-4 h-4" />
+                            Implementation Log
+                        </button>
+                    </div>
+                </div>
+
+                {/* Cards Grid */}
+                {filteredRecommendations.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {filteredRecommendations.map(rec => (
+                            <ActionableChangeCard
+                                key={rec.id}
+                                recommendation={rec}
+                                onImplementationGuide={() => {
+                                    setActiveGuideRec(rec);
+                                    setGuideModalOpen(true);
+                                }}
+                                onApply={() => handleApply(rec)}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+                        <div className="w-16 h-16 rounded-full bg-gray-100 mx-auto mb-4 flex items-center justify-center">
+                            <Sparkles className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                            {activeTheme ? 'No recommendations in this category' : 'No recommendations available'}
+                        </h3>
+                        <p className="text-gray-500 mb-4">
+                            {activeTheme
+                                ? 'Try selecting a different theme or clear the filter.'
+                                : 'We\'ll analyze your campaigns and surface opportunities here.'
+                            }
+                        </p>
+                        {activeTheme && (
+                            <button
+                                onClick={() => setActiveTheme(null)}
+                                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                            >
+                                Clear Filter
+                            </button>
+                        )}
+                    </div>
+                )}
+            </section>
         </div>
     );
 }

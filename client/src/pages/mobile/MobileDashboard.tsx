@@ -33,6 +33,20 @@ import { Sparkline, TrendBadge } from '../../components/mobile/Sparkline';
  * - Smooth staggered animations
  */
 
+interface TrendDataDay {
+    orders?: number;
+    revenue?: number;
+}
+
+interface OrderApiResponse {
+    id: string;
+    orderNumber?: string;
+    total?: string | number;
+    date_created?: string;
+    createdAt?: string;
+    status?: string;
+}
+
 interface DashboardStats {
     todayOrders: number;
     todayRevenue: number;
@@ -165,8 +179,8 @@ export function MobileDashboard() {
                 const trendData = await trendRes.json();
                 if (trendData.daily) {
                     setSparklines({
-                        orders: trendData.daily.map((d: any) => d.orders || 0),
-                        revenue: trendData.daily.map((d: any) => d.revenue || 0)
+                        orders: trendData.daily.map((d: TrendDataDay) => d.orders || 0),
+                        revenue: trendData.daily.map((d: TrendDataDay) => d.revenue || 0)
                     });
                 }
             } else {
@@ -184,12 +198,12 @@ export function MobileDashboard() {
                 const ordersData = await ordersRes.json();
                 const recentActivities: RecentActivity[] = (ordersData.orders || ordersData || [])
                     .slice(0, 5)
-                    .map((order: any) => ({
+                    .map((order: OrderApiResponse) => ({
                         id: order.id,
                         type: 'order' as const,
                         title: `Order #${order.orderNumber || String(order.id).slice(-6)}`,
                         subtitle: `${formatCurrency(Number(order.total || 0), currentAccount?.currency || 'USD')}`,
-                        time: formatTimeAgo(order.date_created || order.createdAt),
+                        time: formatTimeAgo(order.date_created || order.createdAt || ''),
                         status: order.status
                     }));
                 setActivities(recentActivities);

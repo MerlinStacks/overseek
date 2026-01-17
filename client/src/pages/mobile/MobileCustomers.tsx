@@ -22,6 +22,23 @@ import { getInitials } from '../../utils/string';
  * Displays customers with key metrics and links to details
  */
 
+interface CustomerApiResponse {
+    id: string;
+    firstName?: string;
+    first_name?: string;
+    lastName?: string;
+    last_name?: string;
+    email?: string;
+    totalSpent?: number;
+    total_spent?: number;
+    ordersCount?: number;
+    orders_count?: number;
+    dateCreated?: string;
+    date_created?: string;
+    createdAt?: string;
+    avatarUrl?: string;
+}
+
 interface Customer {
     id: string;
     firstName: string;
@@ -64,14 +81,14 @@ export function MobileCustomers() {
             if (!res.ok) throw new Error('Failed to fetch');
 
             const data = await res.json();
-            const newCustomers = (data.customers || data || []).map((c: any) => ({
+            const newCustomers = (data.customers || data || []).map((c: CustomerApiResponse) => ({
                 id: c.id,
                 firstName: c.firstName || c.first_name || '',
                 lastName: c.lastName || c.last_name || '',
                 email: c.email || '',
                 totalSpent: Number(c.totalSpent || c.total_spent) || 0,
                 ordersCount: c.ordersCount || c.orders_count || 0,
-                dateCreated: c.dateCreated || c.date_created || c.createdAt,
+                dateCreated: c.dateCreated || c.date_created || c.createdAt || '',
                 avatarUrl: c.avatarUrl
             }));
 

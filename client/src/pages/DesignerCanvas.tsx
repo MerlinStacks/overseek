@@ -5,9 +5,25 @@ import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, Layout
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
+interface InvoiceItemStyle {
+    fontSize?: string;
+    fontWeight?: string;
+    textAlign?: 'left' | 'center' | 'right';
+}
+
+interface InvoiceItem {
+    id: string;
+    type: 'header' | 'text' | 'image' | 'order_details' | 'customer_details' | 'order_table' | 'totals' | 'footer';
+    content?: string;
+    logo?: string;
+    businessDetails?: string;
+    style?: InvoiceItemStyle;
+}
+
+// Note: layout uses any[] due to react-grid-layout/legacy type export incompatibilities
 interface DesignerCanvasProps {
     layout: any[];
-    items: any[];
+    items: InvoiceItem[];
     selectedId: string | null;
     onLayoutChange: (layout: any) => void;
     onSelect: (id: string | null) => void;
@@ -19,7 +35,7 @@ interface DesignerCanvasProps {
  */
 export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSelect }: DesignerCanvasProps) {
 
-    const renderItemContent = (itemConfig: any) => {
+    const renderItemContent = (itemConfig: InvoiceItem) => {
         if (!itemConfig) return <div className="p-3 text-red-500 text-sm">Error: Item config missing</div>;
 
         switch (itemConfig.type) {
@@ -231,15 +247,12 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                 <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIvPjwvc3ZnPg==')]" />
 
                 {/* Grid Layout */}
-                {/* @ts-ignore - ResponsiveGridLayout has prop type mismatch */}
                 <ResponsiveGridLayout
                     className="layout"
                     layouts={{ lg: layout }}
                     breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                     cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                     rowHeight={30}
-                    // @ts-ignore - width prop type mismatch
-                    width={794}
                     onLayoutChange={onLayoutChange}
                     isDroppable={true}
                 >

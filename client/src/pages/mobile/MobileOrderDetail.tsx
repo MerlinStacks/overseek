@@ -5,6 +5,17 @@ import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, M
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
+interface OrderApiLineItem {
+    id: string;
+    name?: string;
+    quantity?: number;
+    total?: string | number;
+    price?: string | number;
+    image?: { src?: string };
+    sku?: string;
+    meta_data?: OrderMetaData[];
+}
+
 interface Attribution {
     firstTouchSource: string;
     lastTouchSource: string;
@@ -106,7 +117,7 @@ export function MobileOrderDetail() {
                 },
                 billing: { address1: o.billing?.address_1 || '', city: o.billing?.city || '', state: o.billing?.state || '', postcode: o.billing?.postcode || '', country: o.billing?.country || '' },
                 shipping: { address1: o.shipping?.address_1 || o.billing?.address_1 || '', city: o.shipping?.city || o.billing?.city || '', state: o.shipping?.state || o.billing?.state || '', postcode: o.shipping?.postcode || o.billing?.postcode || '', country: o.shipping?.country || o.billing?.country || '' },
-                lineItems: (o.line_items || []).map((item: any) => ({
+                lineItems: (o.line_items || []).map((item: OrderApiLineItem) => ({
                     id: item.id,
                     name: item.name || 'Unknown',
                     quantity: item.quantity || 1,

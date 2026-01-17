@@ -6,6 +6,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import DOMPurify from 'dompurify';
 
+interface MessageApiResponse {
+    id: string;
+    content?: string;
+    senderType?: 'AGENT' | 'CUSTOMER';
+    createdAt?: string;
+    sender?: { fullName?: string };
+}
+
 interface Message {
     id: string;
     body: string;
@@ -93,11 +101,11 @@ export function MobileChat() {
 
                 // Messages are included in the conversation response
                 if (conv.messages && Array.isArray(conv.messages)) {
-                    setMessages(conv.messages.map((m: any) => ({
+                    setMessages(conv.messages.map((m: MessageApiResponse) => ({
                         id: m.id,
                         body: m.content || '',
                         direction: m.senderType === 'AGENT' ? 'outbound' : 'inbound',
-                        createdAt: m.createdAt,
+                        createdAt: m.createdAt || '',
                         senderName: m.sender?.fullName || (m.senderType === 'AGENT' ? 'Agent' : 'Customer')
                     })));
                 }
