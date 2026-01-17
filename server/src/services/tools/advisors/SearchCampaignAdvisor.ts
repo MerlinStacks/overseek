@@ -15,6 +15,8 @@ import {
     KeywordAction,
     BudgetAction
 } from '../types/ActionableTypes';
+import { AdCopyGenerator } from '../AdCopyGenerator';
+import { GoogleAdsService } from '../../ads/GoogleAdsService';
 
 // =============================================================================
 // TYPES
@@ -311,13 +313,26 @@ export class SearchCampaignAdvisor {
                 return null; // Not enough data to recommend
             }
 
+            // Get the account to get store URL
+            const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: {
+                    wooUrl: true,
+                    name: true,
+                    domain: true
+                }
+            });
+
+            const storeUrl = account?.wooUrl || 'https://yourstore.com';
+            const storeName = account?.name || 'Your Store';
+            const storeDomain = account?.domain || new URL(storeUrl).hostname.replace('www.', '');
+
             const avgOrderValue = totalRevenue / orderCount;
-            const suggestedBudget = Math.round(avgOrderValue * 0.2 * (orderCount / 30)); // 20% of daily AOV × daily orders
-            const minBudget = 10; // Minimum $10/day
+            const suggestedBudget = Math.round(avgOrderValue * 0.2 * (orderCount / 30));
+            const minBudget = 10;
             const dailyBudget = Math.max(minBudget, Math.min(100, suggestedBudget));
 
-            // Get top products for keyword ideas
-            // Get top products for keyword ideas from recent orders
+            // Get top products with more details
             const recentOrders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
@@ -327,7 +342,13 @@ export class SearchCampaignAdvisor {
                 select: { rawData: true }
             });
 
-            const productFrequency: Record<string, { name: string, total: number }> = {};
+            const productFrequency: Record<string, {
+                id: string;
+                name: string;
+                total: number;
+                sku?: string;
+                permalink?: string;
+            }> = {};
 
             for (const order of recentOrders) {
                 const data = order.rawData as any;
@@ -335,7 +356,13 @@ export class SearchCampaignAdvisor {
                     for (const item of data.line_items) {
                         const pid = String(item.product_id || item.id || 'unknown');
                         if (!productFrequency[pid]) {
-                            productFrequency[pid] = { name: item.name, total: 0 };
+                            productFrequency[pid] = {
+                                id: pid,
+                                name: item.name,
+                                total: 0,
+                                sku: item.sku || '',
+                                permalink: item.permalink || `${storeUrl}/product/${pid}`
+                            };
                         }
                         productFrequency[pid].total += Number(item.total || 0);
                     }
@@ -346,12 +373,123 @@ export class SearchCampaignAdvisor {
                 .sort((a, b) => b.total - a.total)
                 .slice(0, 5);
 
+            // Get product categories for sitelinks from order rawData
+            const categorySet = new Set<string>();
+            for (const order of recentOrders) {
+                const data = order.rawData as any;
+                if (data.line_items && Array.isArray(data.line_items)) {
+                    for (const item of data.line_items) {
+                        const cats = item.categories as any[] | undefined;
+                        if (cats && Array.isArray(cats)) {
+                            cats.slice(0, 2).forEach((c: any) => {
+                                if (c.name) categorySet.add(c.name);
+                            });
+                        }
+                    }
+                }
+            }
+            const categories = [...categorySet].slice(0, 4).map(name => ({
+                name,
+                slug: name.toLowerCase().replace(/\s+/g, '-')
+            }));
+
             const productKeywords = topProducts
                 .filter(p => p.name)
                 .map(p => p.name!.split(' ').slice(0, 3).join(' '));
 
-            // Estimate conservative 2x ROAS for search
-            const projectedRevenue = dailyBudget * 30 * 2;
+            // Try to get real CPC data from Google Keyword Planner
+            let suggestedCpc: number;
+            let maxCpc: number;
+            let cpcSource: 'keyword_planner' | 'estimated' = 'estimated';
+            let keywordPlannerData: { keyword: string; avgCpc: number; avgMonthlySearches: number; competitionLevel: string }[] = [];
+
+            // Check if there's a connected Google Ads account
+            const adAccount = await prisma.adAccount.findFirst({
+                where: {
+                    accountId,
+                    platform: 'GOOGLE',
+                    refreshToken: { not: null }
+                }
+            });
+
+            const targetRoas = 2.0;
+            const estimatedConversionRate = 0.02;
+
+            if (adAccount && productKeywords.length > 0) {
+                try {
+                    const keywordIdeas = await GoogleAdsService.getKeywordIdeas(
+                        adAccount.id,
+                        productKeywords.slice(0, 5)
+                    );
+
+                    if (keywordIdeas.length > 0) {
+                        // Use real CPC data from Keyword Planner
+                        const avgCpcFromPlanner = keywordIdeas.reduce((sum, k) => sum + k.avgCpc, 0) / keywordIdeas.length;
+
+                        if (avgCpcFromPlanner > 0) {
+                            suggestedCpc = avgCpcFromPlanner;
+                            maxCpc = Math.max(...keywordIdeas.map(k => k.highTopOfPageBidMicros / 1_000_000));
+                            cpcSource = 'keyword_planner';
+
+                            // Store for display
+                            keywordPlannerData = keywordIdeas.slice(0, 5).map(k => ({
+                                keyword: k.keyword,
+                                avgCpc: k.avgCpc,
+                                avgMonthlySearches: k.avgMonthlySearches,
+                                competitionLevel: k.competitionLevel
+                            }));
+
+                            Logger.info('[SearchCampaignAdvisor] Using Keyword Planner CPC', {
+                                suggestedCpc,
+                                maxCpc,
+                                keywordCount: keywordIdeas.length
+                            });
+                        }
+                    }
+                } catch (error) {
+                    Logger.warn('[SearchCampaignAdvisor] Keyword Planner lookup failed, using estimate', { error });
+                }
+            }
+
+            // Fallback to AOV-based estimate if no Keyword Planner data
+            if (cpcSource === 'estimated') {
+                // Formula: CPC = AOV * conversion_rate / target_ROAS
+                suggestedCpc = (avgOrderValue * estimatedConversionRate) / targetRoas;
+                maxCpc = suggestedCpc * 2;
+            }
+
+            const projectedRevenue = dailyBudget * 30 * targetRoas;
+
+            // Generate AI-powered ad copy (falls back to templates if AI unavailable)
+            const adCopy = await AdCopyGenerator.generate(accountId, {
+                storeName,
+                storeUrl,
+                topProducts: topProducts.map(p => ({
+                    name: p.name || 'Product',
+                    price: p.total / 10 // Rough estimate
+                })),
+                avgOrderValue,
+                categories: categories.map(c => c.name)
+            });
+
+            const headlines = adCopy.headlines;
+            const descriptions = adCopy.descriptions;
+
+            // Generate sitelinks from categories
+            const sitelinks = categories.map(cat => ({
+                text: cat.name.slice(0, 25),
+                description1: `Shop our ${cat.name} collection`,
+                description2: 'Free shipping available',
+                finalUrl: `${storeUrl}/product-category/${cat.slug}`
+            }));
+
+            // Add a "Best Sellers" sitelink
+            sitelinks.unshift({
+                text: 'Best Sellers',
+                description1: 'Our most popular products',
+                description2: 'Loved by customers',
+                finalUrl: `${storeUrl}/shop?orderby=popularity`
+            });
 
             return {
                 id: `search_new_campaign_${Date.now()}`,
@@ -367,15 +505,15 @@ export class SearchCampaignAdvisor {
                     `Average order value: $${avgOrderValue.toFixed(0)}`,
                     `Suggested daily budget: $${dailyBudget}/day`,
                     `Target products: ${productKeywords.slice(0, 3).join(', ')}`,
-                    `Est. 2x ROAS (conservative for search)`
+                    `Est. ${targetRoas}x ROAS (conservative for search)`
                 ],
                 action: {
                     actionType: 'add_keyword',
                     keyword: productKeywords[0] || 'your top product',
                     matchType: 'phrase',
-                    suggestedCpc: avgOrderValue * 0.05, // 5% of AOV
-                    estimatedRoas: 2,
-                    estimatedClicks: Math.round(dailyBudget * 30 / (avgOrderValue * 0.05))
+                    suggestedCpc: suggestedCpc,
+                    estimatedRoas: targetRoas,
+                    estimatedClicks: Math.round(dailyBudget * 30 / suggestedCpc)
                 } as KeywordAction,
                 confidence: 70,
                 estimatedImpact: {
@@ -387,52 +525,66 @@ export class SearchCampaignAdvisor {
                 source: 'SearchCampaignAdvisor',
                 tags: ['search', 'new-campaign', 'high-intent'],
                 implementationDetails: {
+                    campaignName: `${storeName} - Search - Top Products`,
+                    adGroupName: 'Best Sellers',
                     suggestedKeywords: productKeywords.slice(0, 5).map((keyword, idx) => ({
                         keyword,
                         matchType: idx === 0 ? 'exact' as const : 'phrase' as const,
-                        suggestedCpc: avgOrderValue * 0.05,
-                        estimatedClicks: Math.round((dailyBudget * 30 / (avgOrderValue * 0.05)) / productKeywords.length),
+                        suggestedCpc: suggestedCpc,
+                        estimatedClicks: Math.round((dailyBudget * 30 / suggestedCpc) / productKeywords.length),
                         source: 'product_data' as const,
-                        adGroupSuggestion: 'Top Products'
+                        adGroupSuggestion: 'Best Sellers'
                     })),
                     budgetSpec: {
                         dailyBudget,
                         bidStrategy: 'maximize_conversions',
-                        targetRoas: 2.0,
-                        maxCpc: avgOrderValue * 0.1 // 10% of AOV as max
+                        targetRoas: targetRoas,
+                        maxCpc: maxCpc
                     },
-                    creativeSpec: {
-                        headlines: [
-                            topProducts[0]?.name?.slice(0, 30) || 'Premium Products',
-                            'Shop Now - Free Shipping',
-                            'Trusted by Thousands',
-                            `Starting at $${Math.floor(avgOrderValue * 0.5)}`
-                        ],
-                        descriptions: [
-                            `Explore our top-selling ${topProducts[0]?.name?.split(' ')[0] || 'products'}. Shop with confidence.`,
-                            'Quality craftsmanship. Fast delivery. 100% satisfaction guaranteed.'
-                        ],
-                        callToActions: ['Shop Now', 'Buy Today', 'Order Now']
+                    adSpec: {
+                        headlines: headlines.slice(0, 15),
+                        descriptions: descriptions.slice(0, 4),
+                        finalUrl: storeUrl,
+                        displayPath: ['Shop', topProducts[0]?.name?.split(' ')[0]?.slice(0, 15) || 'Products'],
+                        sitelinks: sitelinks.slice(0, 4)
                     },
                     steps: [
                         'Open Google Ads and click "+ New Campaign"',
                         'Select "Sales" as your campaign objective',
                         'Choose "Search" as the campaign type',
+                        `Name your campaign: "${storeName} - Search - Top Products"`,
                         `Set your daily budget to $${dailyBudget}`,
-                        'Choose "Maximize Conversions" with a 2.0x target ROAS',
-                        `Add the suggested keywords: ${productKeywords.slice(0, 3).join(', ')}`,
-                        'Create 3-5 responsive search ads using the headline suggestions',
-                        'Enable sitelink extensions with your key product categories',
-                        'Launch and monitor for 7-14 days before optimization'
+                        `Choose "Maximize Conversions" with ${targetRoas}x target ROAS`,
+                        `Create ad group named "Best Sellers"`,
+                        `Add keywords: ${productKeywords.slice(0, 3).join(', ')} (use phrase and exact match)`,
+                        'Create Responsive Search Ad with the provided headlines and descriptions',
+                        `Set Final URL to: ${storeUrl}`,
+                        'Add the suggested sitelink extensions',
+                        'Review and launch - monitor for 7-14 days before optimization'
                     ],
                     estimatedTimeMinutes: 30,
                     difficulty: 'medium',
-                    targetProducts: topProducts.slice(0, 3).map((p, idx) => ({
-                        id: String(idx),
+                    targetProducts: topProducts.slice(0, 3).map(p => ({
+                        id: p.id,
                         name: p.name || 'Product',
-                        sku: ''
+                        sku: p.sku || '',
+                        permalink: p.permalink
                     })),
-                    structureNotes: 'Start with a single ad group containing your top keywords. Use phrase and exact match. Add broad match after 2 weeks of data.'
+                    structureNotes: `Campaign: "${storeName} - Search - Top Products" → Ad Group: "Best Sellers" → Keywords targeting your top-selling products. Start with phrase and exact match, add broad match after 2 weeks of data.`,
+
+                    // Data source transparency
+                    copySource: adCopy.source,
+                    dataSourceNotes: {
+                        cpc: cpcSource === 'keyword_planner'
+                            ? `✓ Validated via Google Keyword Planner. Avg CPC: $${suggestedCpc.toFixed(2)}, Max bid: $${maxCpc.toFixed(2)}`
+                            : `Estimated from your $${avgOrderValue.toFixed(0)} AOV × 2% conversion ÷ 2x ROAS. Connect Google Ads for real market data.`,
+                        keywords: cpcSource === 'keyword_planner'
+                            ? `✓ Validated via Keyword Planner with search volume data.`
+                            : `Derived from top-selling products. Connect Google Ads to validate search volume.`,
+                        copy: adCopy.source === 'ai'
+                            ? 'AI-generated based on your store and products. Review and customize before use.'
+                            : 'Generated from templates. Configure OpenRouter API key in Settings for AI-powered copy.'
+                    }
                 }
             };
         } catch (error) {

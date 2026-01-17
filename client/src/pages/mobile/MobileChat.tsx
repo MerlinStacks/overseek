@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, X, Mail, Instagram, Facebook, Music2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, X, Mail, Instagram, Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useCannedResponses } from '../../hooks/useCannedResponses';
 import DOMPurify from 'dompurify';
 
 interface MessageApiResponse {
@@ -40,7 +41,7 @@ const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: str
 export function MobileChat() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { currentAccount } = useAccount();
 
     const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -49,9 +50,31 @@ export function MobileChat() {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Canned responses
+    const {
+        cannedResponses,
+        filteredCanned,
+        showCanned,
+        handleInputForCanned,
+        selectCanned,
+        setShowCanned
+    } = useCannedResponses();
+
+    // Build customer context for canned response placeholders
+    const customerContext = conversation ? {
+        firstName: conversation.customerName.split(' ')[0],
+        lastName: conversation.customerName.split(' ').slice(1).join(' '),
+        email: conversation.customerEmail,
+        agentFirstName: user?.fullName?.split(' ')[0],
+        agentFullName: user?.fullName ?? undefined
+    } : undefined;
 
     useEffect(() => {
         fetchConversation();
@@ -195,8 +218,94 @@ export function MobileChat() {
         }
     };
 
+    /** Handle input change and detect canned response trigger */
+    const handleInputChange = (value: string) => {
+        setNewMessage(value);
+        handleInputForCanned(value);
+    };
+
+    /** Handle canned response selection */
+    const handleSelectCanned = (response: typeof cannedResponses[0]) => {
+        const content = selectCanned(response, customerContext);
+        setNewMessage(content);
+        setShowCanned(false);
+        inputRef.current?.focus();
+    };
+
+    /** Handle file upload */
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !currentAccount || !token) return;
+
+        setIsUploading(true);
+        if ('vibrate' in navigator) navigator.vibrate(10);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await fetch(`/api/chat/${id}/attachments`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: formData
+            });
+
+            if (res.ok) {
+                const { url, filename } = await res.json();
+                // Add attachment as a message with file link
+                const attachmentMsg = `📎 [${filename}](${url})`;
+                setNewMessage(prev => prev ? `${prev}\n${attachmentMsg}` : attachmentMsg);
+                inputRef.current?.focus();
+            }
+        } catch (error) {
+            Logger.error('[MobileChat] Upload error:', { error });
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    /** Generate AI draft reply */
+    const handleGenerateAIDraft = async () => {
+        if (!currentAccount || !token || isGeneratingDraft) return;
+
+        setIsGeneratingDraft(true);
+        if ('vibrate' in navigator) navigator.vibrate(10);
+
+        try {
+            const res = await fetch(`/api/ai/generate-draft`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    conversationId: id,
+                    messages: messages.slice(-10).map(m => ({
+                        role: m.direction === 'inbound' ? 'customer' : 'agent',
+                        content: m.body
+                    }))
+                })
+            });
+
+            if (res.ok) {
+                const { draft } = await res.json();
+                setNewMessage(draft);
+                inputRef.current?.focus();
+            }
+        } catch (error) {
+            Logger.error('[MobileChat] AI draft error:', { error });
+        } finally {
+            setIsGeneratingDraft(false);
+        }
+    };
+
     const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !showCanned) {
             e.preventDefault();
             handleSend();
         }
@@ -368,20 +477,89 @@ export function MobileChat() {
 
             {/* Message Composer */}
             <div
-                className="bg-white border-t border-gray-200 p-3"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+                className="bg-white border-t border-gray-200"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
-                <div className="flex items-end gap-2">
-                    <button className="p-2 rounded-full hover:bg-gray-100 flex-shrink-0">
-                        <Paperclip size={22} className="text-gray-500" />
+                {/* Canned Responses Dropdown */}
+                {showCanned && (
+                    <div className="border-b border-gray-100 bg-gray-50 max-h-48 overflow-y-auto">
+                        <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-100 bg-white sticky top-0">
+                            Type to filter • {filteredCanned.length} response{filteredCanned.length !== 1 ? 's' : ''}
+                        </div>
+                        {filteredCanned.length > 0 ? (
+                            filteredCanned.map(r => (
+                                <button
+                                    key={r.id}
+                                    onClick={() => handleSelectCanned(r)}
+                                    className="w-full text-left px-4 py-3 hover:bg-indigo-50 active:bg-indigo-100 border-b border-gray-50 last:border-0"
+                                >
+                                    <span className="text-xs font-mono bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
+                                        /{r.shortcut}
+                                    </span>
+                                    <p className="text-sm text-gray-700 mt-1 line-clamp-2">{r.content}</p>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="px-4 py-6 text-center text-gray-500 text-sm">
+                                {cannedResponses.length === 0 ? 'No canned responses yet' : 'No matches found'}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Hidden File Input */}
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+                />
+
+                {/* Toolbar */}
+                <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-50">
+                    <button
+                        onClick={handleGenerateAIDraft}
+                        disabled={isGeneratingDraft || messages.length === 0}
+                        className="p-2 rounded-full hover:bg-purple-50 active:bg-purple-100 transition-colors disabled:opacity-40"
+                        title="Generate AI Draft"
+                    >
+                        {isGeneratingDraft ? (
+                            <Loader2 size={20} className="text-purple-500 animate-spin" />
+                        ) : (
+                            <Sparkles size={20} className="text-purple-500" />
+                        )}
                     </button>
+                    <button
+                        onClick={() => handleInputChange('/')}
+                        className="p-2 rounded-full hover:bg-amber-50 active:bg-amber-100 transition-colors"
+                        title="Canned Responses"
+                    >
+                        <Zap size={20} className="text-amber-500" />
+                    </button>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-40"
+                        title="Attach File"
+                    >
+                        {isUploading ? (
+                            <Loader2 size={20} className="text-gray-500 animate-spin" />
+                        ) : (
+                            <Paperclip size={20} className="text-gray-500" />
+                        )}
+                    </button>
+                </div>
+
+                {/* Input Area */}
+                <div className="flex items-end gap-2 p-3">
                     <div className="flex-1 bg-gray-100 rounded-2xl px-4 py-2">
                         <textarea
                             ref={inputRef}
                             value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
+                            onChange={(e) => handleInputChange(e.target.value)}
                             onKeyDown={handleKeyPress}
-                            placeholder="Type a message..."
+                            placeholder="Type a message... (/ for templates)"
                             rows={1}
                             className="w-full bg-transparent resize-none focus:outline-none text-base max-h-32"
                             style={{ minHeight: '24px' }}
@@ -389,13 +567,17 @@ export function MobileChat() {
                     </div>
                     <button
                         onClick={handleSend}
-                        disabled={!newMessage.trim() || sending}
-                        className={`p-3 rounded-full flex-shrink-0 transition-all ${newMessage.trim() && !sending
+                        disabled={!newMessage.trim() || sending || showCanned}
+                        className={`p-3 rounded-full flex-shrink-0 transition-all ${newMessage.trim() && !sending && !showCanned
                             ? 'bg-indigo-600 text-white active:scale-95'
                             : 'bg-gray-200 text-gray-400'
                             }`}
                     >
-                        <Send size={20} />
+                        {sending ? (
+                            <Loader2 size={20} className="animate-spin" />
+                        ) : (
+                            <Send size={20} />
+                        )}
                     </button>
                 </div>
             </div>

@@ -106,7 +106,30 @@ export interface CreativeSpec {
     headlines: string[];
     descriptions: string[];
     callToActions?: string[];
+    finalUrl?: string;
     displayPath?: string[];
+}
+
+/** Sitelink extension spec */
+export interface SitelinkSpec {
+    text: string;
+    description1?: string;
+    description2?: string;
+    finalUrl: string;
+}
+
+/** Full ad specifications for campaign creation */
+export interface AdSpec {
+    /** Responsive Search Ad headlines (up to 15) */
+    headlines: string[];
+    /** Responsive Search Ad descriptions (up to 4) */
+    descriptions: string[];
+    /** Final URL */
+    finalUrl: string;
+    /** Display path segments */
+    displayPath: string[];
+    /** Sitelink extensions */
+    sitelinks?: SitelinkSpec[];
 }
 
 export interface ImplementationDetails {
@@ -114,8 +137,10 @@ export interface ImplementationDetails {
     suggestedKeywords?: KeywordSpec[];
     /** Budget and bidding configuration */
     budgetSpec?: BudgetSpec;
-    /** Ad creative suggestions */
+    /** Ad creative suggestions (deprecated, use adSpec) */
     creativeSpec?: CreativeSpec;
+    /** Full ad specifications for new campaigns */
+    adSpec?: AdSpec;
     /** Step-by-step implementation guide */
     steps?: string[];
     /** Estimated time to implement */
@@ -123,9 +148,23 @@ export interface ImplementationDetails {
     /** Difficulty level */
     difficulty?: 'easy' | 'medium' | 'advanced';
     /** Target products (for Shopping/PMax campaigns) */
-    targetProducts?: { id: string; name: string; sku: string }[];
+    targetProducts?: { id: string; name: string; sku: string; permalink?: string }[];
     /** Suggested campaign structure notes */
     structureNotes?: string;
+    /** Campaign name suggestion */
+    campaignName?: string;
+    /** Ad group name suggestion */
+    adGroupName?: string;
+
+    // Data source transparency
+    /** How ad copy was generated: 'ai' or 'template' */
+    copySource?: 'ai' | 'template';
+    /** Notes about data sources and limitations */
+    dataSourceNotes?: {
+        cpc?: string;
+        keywords?: string;
+        copy?: string;
+    };
 }
 
 /**

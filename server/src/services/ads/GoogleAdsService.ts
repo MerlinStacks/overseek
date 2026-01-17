@@ -7,7 +7,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
-import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, formatDateISO, formatDateGAQL } from './types';
+import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, KeywordIdea, formatDateISO, formatDateGAQL } from './types';
 import { createGoogleAdsClient, parseGoogleAdsError } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
 
@@ -550,5 +550,95 @@ export class GoogleAdsService {
             Logger.error('Failed to add Google Ads keyword', { error: error.message, fullError: error });
             throw error;
         }
+    }
+
+    /**
+     * Fetch keyword ideas from Google Keyword Planner.
+     * Returns search volume, competition, and CPC estimates for seed keywords.
+     * 
+     * Note: Requires Standard access or higher for the developer token.
+     */
+    static async getKeywordIdeas(
+        adAccountId: string,
+        keywords: string[],
+        options?: {
+            language?: string;  // Language ID, default: 1000 (English)
+            location?: string;  // Geo target ID, default: 2840 (United States)
+        }
+    ): Promise<KeywordIdea[]> {
+        try {
+            const { customer } = await createGoogleAdsClient(adAccountId);
+
+            // Get the customer ID for request
+            const customerId = customer.credentials?.customer_id || '';
+
+            Logger.info('[GoogleAds] Fetching keyword ideas', {
+                adAccountId,
+                keywordCount: keywords.length,
+                sampleKeywords: keywords.slice(0, 3)
+            });
+
+            // Use the KeywordPlanIdeaService via customer.keywordPlanIdeas.generateKeywordIdeas
+            // The google-ads-api library exposes services as methods on customer
+            const response = await customer.keywordPlanIdeas.generateKeywordIdeas({
+                customer_id: customerId,
+                language: options?.language || 'languageConstants/1000', // English
+                geo_target_constants: [options?.location || 'geoTargetConstants/2840'], // United States
+                keyword_plan_network: 'GOOGLE_SEARCH',
+                keyword_seed: {
+                    keywords: keywords.slice(0, 10) // Limit to avoid quota issues
+                }
+            });
+
+            // Parse the results
+            const ideas: KeywordIdea[] = [];
+
+            for (const result of response || []) {
+                const metrics = result.keyword_idea_metrics || {};
+                const lowBidMicros = metrics.low_top_of_page_bid_micros || 0;
+                const highBidMicros = metrics.high_top_of_page_bid_micros || 0;
+                const avgCpc = (lowBidMicros + highBidMicros) / 2 / 1_000_000;
+
+                ideas.push({
+                    keyword: result.text || '',
+                    avgMonthlySearches: metrics.avg_monthly_searches || 0,
+                    competitionLevel: this.mapCompetition(metrics.competition),
+                    competitionIndex: metrics.competition_index || 0,
+                    lowTopOfPageBidMicros: lowBidMicros,
+                    highTopOfPageBidMicros: highBidMicros,
+                    avgCpc
+                });
+            }
+
+            Logger.info('[GoogleAds] Keyword ideas fetched', { count: ideas.length });
+            return ideas;
+
+        } catch (error: any) {
+            // Handle specific errors gracefully
+            const errorMsg = error.message || '';
+
+            if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('not authorized')) {
+                Logger.warn('Keyword Planner access denied - requires Standard access', { adAccountId });
+                return []; // Return empty, let caller use fallback
+            }
+
+            if (errorMsg.includes('UNIMPLEMENTED') || errorMsg.includes('not enabled')) {
+                Logger.warn('Keyword Planner not available for this account', { adAccountId });
+                return [];
+            }
+
+            Logger.error('Failed to fetch keyword ideas', { error: errorMsg, adAccountId });
+            return []; // Return empty to allow graceful fallback
+        }
+    }
+
+    /**
+     * Map competition enum to readable level.
+     */
+    private static mapCompetition(competition: any): 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN' {
+        if (competition === 2 || competition === 'LOW') return 'LOW';
+        if (competition === 3 || competition === 'MEDIUM') return 'MEDIUM';
+        if (competition === 4 || competition === 'HIGH') return 'HIGH';
+        return 'UNKNOWN';
     }
 }

@@ -40,11 +40,28 @@ logs.txt
 
 # Agent & Debug (development artifacts)
 .agent/
+.gemini/
 debug_logs.txt
 bugs.md
 task.md
 implementation_plan.md
 walkthrough.md
+
+# Temp & Cache
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+.cache/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# GeoIP Databases
+*.mmdb
 
 # Sensitive files
 *.local

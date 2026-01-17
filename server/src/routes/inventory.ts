@@ -248,7 +248,9 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Calculate total COGS from BOM
             let totalCogs = 0;
-            if (updated && updated.items) {
+            const hasBOMItems = updated && updated.items && updated.items.length > 0;
+
+            if (hasBOMItems) {
                 totalCogs = updated.items.reduce((sum, item) => {
                     // Get unit cost from Child Product (cogs) or Supplier Item (cost)
                     const unitCost = item.childProduct?.cogs
@@ -262,25 +264,25 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 }, 0);
             }
 
-            // Update the parent Product or Variation with new COGS
-            if (variationId === 0) {
-                // Update Main Product
-                await prisma.wooProduct.update({
-                    where: { id: productId },
-                    data: { cogs: totalCogs }
-                });
-                // Also trigger re-indexing/scoring if needed (optional optimization)
-            } else {
-                // Update specific Variation
-                // We need to find the specific variation record to update.
-                // The variationId passed here is the WooID (integer), but distinct local Variations are keyed by productId_wooId
-                await prisma.productVariation.updateMany({
-                    where: {
-                        productId: productId,
-                        wooId: Number(variationId)
-                    },
-                    data: { cogs: totalCogs }
-                });
+            // Only update COGS from BOM if there are actually BOM items
+            // This preserves manually-entered COGS for products without BOM
+            if (hasBOMItems) {
+                if (variationId === 0) {
+                    // Update Main Product
+                    await prisma.wooProduct.update({
+                        where: { id: productId },
+                        data: { cogs: totalCogs }
+                    });
+                } else {
+                    // Update specific Variation
+                    await prisma.productVariation.updateMany({
+                        where: {
+                            productId: productId,
+                            wooId: Number(variationId)
+                        },
+                        data: { cogs: totalCogs }
+                    });
+                }
             }
 
             return updated;

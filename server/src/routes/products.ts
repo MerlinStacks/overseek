@@ -442,11 +442,21 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             const data = await response.json();
             const generatedDescription = data.choices?.[0]?.message?.content || '';
 
+            Logger.info('AI rewrite response received', {
+                hasContent: !!generatedDescription,
+                contentLength: generatedDescription?.length
+            });
+
             if (!generatedDescription) {
                 return reply.code(500).send({ error: 'AI returned empty response' });
             }
 
-            const formattedDescription = marked.parse(generatedDescription.trim()) as string;
+            // marked.parse returns a Promise in newer versions
+            const formattedDescription = await marked.parse(generatedDescription.trim());
+
+            Logger.info('AI rewrite complete', {
+                formattedLength: formattedDescription?.length
+            });
 
             return { description: formattedDescription };
 

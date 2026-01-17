@@ -111,6 +111,21 @@ export interface SearchKeywordInsight {
     dateStop: string;
 }
 
+/**
+ * Keyword Planner idea result.
+ * Contains search volume and CPC estimates from Google Keyword Planner.
+ */
+export interface KeywordIdea {
+    keyword: string;
+    avgMonthlySearches: number;
+    competitionLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+    competitionIndex: number; // 0-100
+    lowTopOfPageBidMicros: number;
+    highTopOfPageBidMicros: number;
+    /** Calculated average CPC in dollars */
+    avgCpc: number;
+}
+
 // =============================================================================
 // CREDENTIAL MANAGEMENT
 // =============================================================================

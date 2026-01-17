@@ -20,7 +20,9 @@ import {
     Zap,
     TrendingUp,
     Tag,
-    Check
+    Check,
+    AlertTriangle,
+    Wand2
 } from 'lucide-react';
 import {
     ActionableRecommendation,
@@ -270,8 +272,81 @@ export function ImplementationGuideModal({
                             </section>
                         )}
 
-                        {/* Creative Suggestions */}
-                        {details?.creativeSpec && (
+                        {/* Full Ad Spec (for new campaigns) */}
+                        {details?.adSpec && (
+                            <section>
+                                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-3">
+                                    <Sparkles className="w-5 h-5 text-purple-600" />
+                                    Ad Creative Specification
+                                </h3>
+                                <div className="space-y-4">
+                                    {/* Final URL & Display Path */}
+                                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Final URL</p>
+                                                <p className="text-sm font-medium text-blue-600 break-all">{details.adSpec.finalUrl}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Display Path</p>
+                                                <p className="text-sm font-medium text-gray-700">
+                                                    {new URL(details.adSpec.finalUrl).hostname.replace('www.', '')}/<span className="text-emerald-600">{details.adSpec.displayPath.join('/')}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Headlines */}
+                                    {details.adSpec.headlines.length > 0 && (
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-600 mb-2">Headlines (RSA - use 3-15)</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {details.adSpec.headlines.map((h, idx) => (
+                                                    <span key={idx} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium border border-indigo-100">
+                                                        {h}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Descriptions */}
+                                    {details.adSpec.descriptions.length > 0 && (
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-600 mb-2">Descriptions (RSA - use 2-4)</p>
+                                            <div className="space-y-2">
+                                                {details.adSpec.descriptions.map((d, idx) => (
+                                                    <p key={idx} className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm border border-gray-200">
+                                                        {d}
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Sitelinks */}
+                                    {details.adSpec.sitelinks && details.adSpec.sitelinks.length > 0 && (
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-600 mb-2">Sitelink Extensions</p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {details.adSpec.sitelinks.map((sl, idx) => (
+                                                    <div key={idx} className="p-3 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 transition-colors">
+                                                        <p className="font-medium text-indigo-600 mb-1">{sl.text}</p>
+                                                        {sl.description1 && (
+                                                            <p className="text-xs text-gray-500">{sl.description1}</p>
+                                                        )}
+                                                        <p className="text-xs text-blue-500 mt-1 truncate">{sl.finalUrl}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Legacy Creative Suggestions (fallback) */}
+                        {!details?.adSpec && details?.creativeSpec && (
                             <section>
                                 <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-3">
                                     <Sparkles className="w-5 h-5 text-purple-600" />
@@ -331,6 +406,48 @@ export function ImplementationGuideModal({
                                     Campaign Structure Notes
                                 </h3>
                                 <p className="text-sm text-blue-700">{details.structureNotes}</p>
+                            </section>
+                        )}
+
+                        {/* Data Source Notes */}
+                        {details?.dataSourceNotes && (
+                            <section className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                                <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-800 mb-3">
+                                    <AlertTriangle className="w-4 h-4" />
+                                    Data Source Notes
+                                    {details.copySource === 'ai' && (
+                                        <span className="ml-auto flex items-center gap-1 text-xs text-purple-600 font-normal">
+                                            <Wand2 className="w-3 h-3" />
+                                            AI Generated
+                                        </span>
+                                    )}
+                                </h3>
+                                <div className="space-y-2 text-sm">
+                                    {details.dataSourceNotes.cpc && (
+                                        <div className="flex items-start gap-2">
+                                            <DollarSign className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                            <p className="text-amber-800">
+                                                <span className="font-medium">CPC:</span> {details.dataSourceNotes.cpc}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {details.dataSourceNotes.keywords && (
+                                        <div className="flex items-start gap-2">
+                                            <Search className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                            <p className="text-amber-800">
+                                                <span className="font-medium">Keywords:</span> {details.dataSourceNotes.keywords}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {details.dataSourceNotes.copy && (
+                                        <div className="flex items-start gap-2">
+                                            <Sparkles className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                            <p className="text-amber-800">
+                                                <span className="font-medium">Ad Copy:</span> {details.dataSourceNotes.copy}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             </section>
                         )}
 

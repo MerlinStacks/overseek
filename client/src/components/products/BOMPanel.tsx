@@ -143,12 +143,15 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
 
             if (res.ok) {
                 fetchBOM(); // Refresh
-                // Notify parent of the new COGS calculated from BOM
-                const currentTotalCost = bomItems.reduce((sum, item) => {
-                    const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
-                    return sum + itemCost;
-                }, 0);
-                onCOGSUpdate?.(currentTotalCost);
+                // Only notify parent of COGS update if there are BOM items
+                // This preserves manually-entered COGS for products without BOM
+                if (bomItems.length > 0) {
+                    const currentTotalCost = bomItems.reduce((sum, item) => {
+                        const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
+                        return sum + itemCost;
+                    }, 0);
+                    onCOGSUpdate?.(currentTotalCost);
+                }
                 onSaveComplete?.();
                 return true;
             } else {
