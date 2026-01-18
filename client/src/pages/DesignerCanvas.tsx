@@ -1,7 +1,7 @@
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText } from 'lucide-react';
+import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText, Rows, Plus } from 'lucide-react';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
@@ -15,11 +15,12 @@ interface InvoiceItemStyle {
 
 interface InvoiceItem {
     id: string;
-    type: 'header' | 'text' | 'image' | 'order_details' | 'customer_details' | 'order_table' | 'totals' | 'footer';
+    type: 'header' | 'text' | 'image' | 'order_details' | 'customer_details' | 'order_table' | 'totals' | 'footer' | 'row';
     content?: string;
     logo?: string;
     businessDetails?: string;
     style?: InvoiceItemStyle;
+    children?: string[];  // IDs of nested items for 'row' type
 }
 
 // Note: layout uses any[] due to react-grid-layout/legacy type export incompatibilities
@@ -29,13 +30,28 @@ interface DesignerCanvasProps {
     selectedId: string | null;
     onLayoutChange: (layout: any) => void;
     onSelect: (id: string | null) => void;
+    onDropItem?: (type: string, targetRowId?: string) => void;
 }
 
 /**
  * DesignerCanvas - Visual drag-and-drop canvas for invoice layout.
  * Renders a paper-like preview with resizable grid items.
  */
-export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSelect }: DesignerCanvasProps) {
+export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSelect, onDropItem }: DesignerCanvasProps) {
+
+    // Handle drop on the canvas area
+    const handleCanvasDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('text/plain');
+        if (type && onDropItem) {
+            onDropItem(type);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    };
 
     const renderItemContent = (itemConfig: InvoiceItem) => {
         if (!itemConfig) return <div className="p-3 text-red-500 text-sm">Error: Item config missing</div>;
@@ -246,6 +262,71 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         </div>
                     </div>
                 );
+            case 'row':
+                // Row container - renders children horizontally
+                const childItems = (itemConfig.children || []).map(childId =>
+                    items.find(i => i.id === childId)
+                ).filter(Boolean) as InvoiceItem[];
+
+                return (
+                    <div
+                        className="p-4 h-full bg-linear-to-br from-violet-50 to-purple-50 flex flex-col rounded-lg border-2 border-dashed border-violet-300"
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.currentTarget.classList.add('ring-2', 'ring-violet-500');
+                        }}
+                        onDragLeave={(e) => {
+                            e.currentTarget.classList.remove('ring-2', 'ring-violet-500');
+                        }}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.currentTarget.classList.remove('ring-2', 'ring-violet-500');
+                            const type = e.dataTransfer.getData('text/plain');
+                            if (type && type !== 'row' && onDropItem) {
+                                onDropItem(type, itemConfig.id);
+                            }
+                        }}
+                    >
+                        <div className="flex items-center gap-2 text-violet-600 mb-3">
+                            <Rows size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Row Container</span>
+                            <span className="text-[10px] text-violet-400 ml-auto">
+                                {childItems.length} item{childItems.length !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <div className="flex-1 flex gap-3 min-h-[60px]">
+                            {childItems.length > 0 ? (
+                                childItems.map((child, idx) => (
+                                    <div
+                                        key={child.id}
+                                        className="flex-1 bg-white rounded-lg border border-violet-200 overflow-hidden shadow-sm p-2"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onSelect(child.id);
+                                        }}
+                                    >
+                                        <div className="text-xs text-violet-500 font-medium mb-1 flex items-center gap-1">
+                                            <span className="w-4 h-4 bg-violet-100 rounded text-center text-[10px] leading-4">{idx + 1}</span>
+                                            {child.type}
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 truncate">
+                                            {child.content || child.businessDetails || `${child.type} block`}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center border-2 border-dashed border-violet-200 rounded-lg bg-white/50">
+                                    <div className="text-center text-violet-400">
+                                        <Plus size={20} className="mx-auto mb-1 opacity-50" />
+                                        <span className="text-xs">Drop blocks here</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
             default:
                 return <div className="p-3 text-slate-500 text-sm">{itemConfig.type}</div>;
         }
@@ -255,6 +336,8 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
         <div
             className="flex-1 overflow-y-auto p-8 bg-linear-to-br from-slate-100 via-slate-50 to-slate-100"
             onClick={() => onSelect(null)}
+            onDrop={handleCanvasDrop}
+            onDragOver={handleDragOver}
         >
             {/* Paper Container */}
             <div className="max-w-[210mm] mx-auto min-h-[297mm] bg-white shadow-2xl rounded-lg relative origin-top ring-1 ring-slate-200/50">

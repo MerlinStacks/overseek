@@ -126,7 +126,7 @@ export class InvoiceService {
     }
 
     /**
-     * Create PDF file using PDFKit
+     * Create PDF file using PDFKit based on the saved template layout
      */
     private createPdf(filePath: string, order: any, billing: any, lineItems: any[], template: any): Promise<void> {
         return new Promise((resolve, reject) => {
@@ -136,98 +136,313 @@ export class InvoiceService {
 
             doc.pipe(stream);
 
-            // Helpers
-            const formatCurrency = (val: any) => `$${parseFloat(val || 0).toFixed(2)}`;
-            const formatDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            // Parse template layout
+            let layoutData = template.layout;
+            Logger.info('Template layout raw type', { type: typeof layoutData, hasLayout: !!layoutData });
 
-            // --- Header ---
-            doc.fontSize(20).text('INVOICE', { align: 'right' });
-            doc.fontSize(10).text(`#${order.number}`, { align: 'right' });
-            doc.text(`Date: ${formatDate(order.createdAt)}`, { align: 'right' });
-            doc.moveDown();
-
-            // Company Name
-            doc.fontSize(16).text(template.name || 'Your Company', 50, 50);
-            doc.moveDown();
-
-            // --- Bill To ---
-            const startY = 150;
-            doc.fontSize(12).text('Bill To:', 50, startY);
-            doc.fontSize(10)
-                .text(`${billing.first_name || ''} ${billing.last_name || ''}`, 50, startY + 20)
-                .text(billing.address_1 || '', 50, startY + 35)
-                .text(billing.address_2 || '', 50, startY + 50)
-                .text(`${billing.city || ''}, ${billing.state || ''} ${billing.postcode || ''}`, 50, startY + 65)
-                .text(billing.country || '', 50, startY + 80)
-                .text(billing.email || '', 50, startY + 95);
-
-            // --- Items Table Header ---
-            const tableTop = 300;
-            const itemX = 50;
-            const qtyX = 300;
-            const priceX = 370;
-            const totalX = 450;
-
-            doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('Item', itemX, tableTop);
-            doc.text('Qty', qtyX, tableTop);
-            doc.text('Price', priceX, tableTop, { width: 70, align: 'right' });
-            doc.text('Total', totalX, tableTop, { width: 70, align: 'right' });
-
-            doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
-
-            // --- Items ---
-            let y = tableTop + 25;
-            doc.font('Helvetica');
-
-            lineItems.forEach((item: any) => {
-                const name = item.name || 'Product';
-                const qty = item.quantity || 1;
-                const price = formatCurrency(item.price);
-                const total = formatCurrency(item.total);
-
-                // Check for page break
-                if (y > 700) {
-                    doc.addPage();
-                    y = 50;
+            if (typeof layoutData === 'string') {
+                try {
+                    layoutData = JSON.parse(layoutData);
+                    Logger.info('Parsed layout from string');
+                } catch (e) {
+                    Logger.error('Failed to parse template layout', { error: e });
                 }
+            }
 
-                doc.text(name, itemX, y, { width: 240 });
-                doc.text(String(qty), qtyX, y);
-                doc.text(price, priceX, y, { width: 70, align: 'right' });
-                doc.text(total, totalX, y, { width: 70, align: 'right' });
+            const grid = layoutData?.grid || [];
+            const items = layoutData?.items || [];
 
-                y += 20;
+            Logger.info('Template layout extracted', {
+                gridCount: grid.length,
+                itemsCount: items.length,
+                itemTypes: items.map((i: any) => i.type)
             });
 
-            doc.moveTo(50, y + 10).lineTo(550, y + 10).stroke();
+            // Helpers
+            const formatCurrency = (val: any) => `$${parseFloat(val || 0).toFixed(2)}`;
+            const formatDate = (d: Date) => d.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-            // --- Totals ---
-            y += 20;
-            const totalLabelX = 350;
-            const totalValueX = 450;
+            // Page dimensions (A4 with 50pt margins)
+            const pageWidth = 495; // 595 - 100 (margins)
+            const colWidth = pageWidth / 12;
+            const rowHeight = 30;
+            const marginLeft = 50;
+            const marginTop = 50;
 
-            doc.font('Helvetica-Bold');
+            // Sort grid items by Y position
+            const sortedGrid = [...grid].sort((a: any, b: any) => a.y - b.y);
 
-            doc.text('Subtotal:', totalLabelX, y, { width: 90, align: 'right' });
-            doc.text(formatCurrency(order.subtotal), totalValueX, y, { width: 70, align: 'right' });
-            y += 20;
+            let currentY = marginTop;
 
-            doc.text('Shipping:', totalLabelX, y, { width: 90, align: 'right' });
-            doc.text(formatCurrency(order.shippingTotal), totalValueX, y, { width: 70, align: 'right' });
-            y += 20;
+            // Find item config by ID
+            const getItemConfig = (id: string) => items.find((i: any) => i.id === id);
 
-            doc.text('Tax:', totalLabelX, y, { width: 90, align: 'right' });
-            doc.text(formatCurrency(order.taxTotal), totalValueX, y, { width: 70, align: 'right' });
-            y += 25;
+            // Render a single block
+            const renderBlock = (itemConfig: any, x: number, width: number, startY: number): number => {
+                if (!itemConfig) return 0;
 
-            doc.fontSize(12);
-            doc.text('Total:', totalLabelX, y, { width: 90, align: 'right' });
-            doc.text(formatCurrency(order.total), totalValueX, y, { width: 70, align: 'right' });
+                let blockHeight = 0;
+                const type = itemConfig.type;
 
-            // --- Footer ---
-            const bottom = doc.page.height - 50;
-            doc.fontSize(10).text('Thank you for your business!', 50, bottom, { align: 'center', width: 500 });
+                switch (type) {
+                    case 'header':
+                        // Header with logo and business details
+                        doc.fontSize(10);
+                        if (itemConfig.businessDetails) {
+                            const lines = itemConfig.businessDetails.split('\n');
+                            lines.forEach((line: string, i: number) => {
+                                doc.text(line, x + width - 200, startY + (i * 12), { width: 200, align: 'right' });
+                            });
+                            blockHeight = Math.max(blockHeight, lines.length * 12 + 10);
+                        }
+                        if (itemConfig.logo) {
+                            try {
+                                // Logo handling would require fetching the image
+                                // For now, skip logo in PDF
+                            } catch (e) {
+                                // Ignore logo errors
+                            }
+                        }
+                        blockHeight = Math.max(blockHeight, 60);
+                        break;
+
+                    case 'customer_details':
+                        doc.fontSize(10).font('Helvetica-Bold');
+                        doc.text('Bill To:', x, startY);
+                        doc.font('Helvetica').fontSize(9);
+                        let custY = startY + 15;
+                        if (billing.first_name || billing.last_name) {
+                            doc.text(`${billing.first_name || ''} ${billing.last_name || ''}`, x, custY);
+                            custY += 12;
+                        }
+                        if (billing.company) {
+                            doc.text(billing.company, x, custY);
+                            custY += 12;
+                        }
+                        if (billing.address_1) {
+                            doc.text(billing.address_1, x, custY);
+                            custY += 12;
+                        }
+                        if (billing.address_2) {
+                            doc.text(billing.address_2, x, custY);
+                            custY += 12;
+                        }
+                        if (billing.city || billing.state || billing.postcode) {
+                            doc.text(`${billing.city || ''}${billing.city && billing.state ? ', ' : ''}${billing.state || ''} ${billing.postcode || ''}`, x, custY);
+                            custY += 12;
+                        }
+                        if (billing.country) {
+                            doc.text(billing.country, x, custY);
+                            custY += 12;
+                        }
+                        if (billing.email) {
+                            doc.fillColor('#4f46e5').text(billing.email, x, custY);
+                            doc.fillColor('black');
+                            custY += 12;
+                        }
+                        if (billing.phone) {
+                            doc.text(billing.phone, x, custY);
+                            custY += 12;
+                        }
+                        blockHeight = custY - startY + 10;
+                        break;
+
+                    case 'order_details':
+                        doc.fontSize(9);
+                        const rawData = order.rawData as any || {};
+                        const shippingMethod = rawData.shipping_lines?.[0]?.method_title || 'N/A';
+                        const paymentMethod = rawData.payment_method_title || order.paymentMethod || 'N/A';
+
+                        const detailsData = [
+                            ['Order Number:', order.number],
+                            ['Order Date:', formatDate(order.createdAt)],
+                            ['Payment Method:', paymentMethod],
+                            ['Shipping Method:', shippingMethod]
+                        ];
+
+                        let detY = startY;
+                        detailsData.forEach(([label, value]) => {
+                            doc.font('Helvetica').fillColor('#64748b').text(label, x, detY, { continued: false });
+                            doc.font('Helvetica-Bold').fillColor('black').text(value, x + 100, detY);
+                            detY += 14;
+                        });
+                        blockHeight = detY - startY + 10;
+                        break;
+
+                    case 'order_table':
+                        // Table header
+                        doc.fontSize(9).font('Helvetica-Bold');
+                        const tableX = x;
+                        const descWidth = width * 0.5;
+                        const qtyWidth = 40;
+                        const priceWidth = 60;
+                        const totalWidth = 60;
+
+                        doc.text('Description', tableX, startY);
+                        doc.text('Qty', tableX + descWidth, startY, { width: qtyWidth, align: 'center' });
+                        doc.text('Price', tableX + descWidth + qtyWidth, startY, { width: priceWidth, align: 'right' });
+                        doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, startY, { width: totalWidth, align: 'right' });
+
+                        doc.moveTo(tableX, startY + 12).lineTo(tableX + width, startY + 12).stroke();
+
+                        let tableY = startY + 18;
+                        doc.font('Helvetica').fontSize(9);
+
+                        lineItems.forEach((item: any) => {
+                            // Check for page break
+                            if (tableY > 720) {
+                                doc.addPage();
+                                tableY = 50;
+                            }
+
+                            const itemName = item.name || 'Product';
+                            const qty = item.quantity || 1;
+                            const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
+
+                            doc.text(itemName, tableX, tableY, { width: descWidth - 10 });
+                            doc.text(String(qty), tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
+                            doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
+                            doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
+
+                            // Check for metadata
+                            const itemMeta = item.meta_data?.filter((m: any) => !m.key.startsWith('_')) || [];
+                            if (itemMeta.length > 0) {
+                                tableY += 12;
+                                doc.fontSize(8).fillColor('#64748b');
+                                itemMeta.slice(0, 3).forEach((m: any) => {
+                                    const label = m.display_key || m.key.replace(/_/g, ' ');
+                                    const val = typeof m.value === 'object' ? JSON.stringify(m.value) : (m.display_value || m.value);
+                                    doc.text(`${label}: ${val}`, tableX + 10, tableY, { width: descWidth - 20 });
+                                    tableY += 10;
+                                });
+                                doc.fillColor('black').fontSize(9);
+                            }
+
+                            tableY += 14;
+                        });
+
+                        // Totals integrated into table
+                        doc.moveTo(tableX, tableY).lineTo(tableX + width, tableY).stroke();
+                        tableY += 10;
+
+                        const subtotal = parseFloat(order.total) - parseFloat(order.taxTotal || 0) - parseFloat(order.shippingTotal || 0);
+                        const totalsX = tableX + width - 150;
+
+                        doc.font('Helvetica').fontSize(9);
+                        doc.text('Subtotal', totalsX, tableY);
+                        doc.text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        tableY += 14;
+
+                        if (order.shippingTotal && parseFloat(order.shippingTotal) > 0) {
+                            doc.text('Shipping', totalsX, tableY);
+                            doc.text(formatCurrency(order.shippingTotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                            tableY += 14;
+                        }
+
+                        doc.text('Tax', totalsX, tableY);
+                        doc.text(formatCurrency(order.taxTotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        tableY += 16;
+
+                        doc.font('Helvetica-Bold').fontSize(11);
+                        doc.text('Total', totalsX, tableY);
+                        doc.text(formatCurrency(order.total), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        tableY += 20;
+
+                        blockHeight = tableY - startY;
+                        break;
+
+                    case 'totals':
+                        // Standalone totals block (if not integrated into order_table)
+                        const subtotalVal = parseFloat(order.total) - parseFloat(order.taxTotal || 0) - parseFloat(order.shippingTotal || 0);
+                        doc.fontSize(9).font('Helvetica');
+
+                        let totY = startY;
+                        doc.text('Subtotal:', x, totY);
+                        doc.text(formatCurrency(subtotalVal), x + 80, totY, { width: 70, align: 'right' });
+                        totY += 14;
+
+                        if (order.shippingTotal && parseFloat(order.shippingTotal) > 0) {
+                            doc.text('Shipping:', x, totY);
+                            doc.text(formatCurrency(order.shippingTotal), x + 80, totY, { width: 70, align: 'right' });
+                            totY += 14;
+                        }
+
+                        doc.text('Tax:', x, totY);
+                        doc.text(formatCurrency(order.taxTotal), x + 80, totY, { width: 70, align: 'right' });
+                        totY += 16;
+
+                        doc.font('Helvetica-Bold').fontSize(11);
+                        doc.text('Total:', x, totY);
+                        doc.text(formatCurrency(order.total), x + 80, totY, { width: 70, align: 'right' });
+
+                        blockHeight = totY - startY + 20;
+                        break;
+
+                    case 'text':
+                        let textContent = itemConfig.content || '';
+                        // Simple handlebars replacement
+                        textContent = textContent.replace(/\{\{order\.number\}\}/g, order.number || '');
+                        textContent = textContent.replace(/\{\{order\.total\}\}/g, formatCurrency(order.total));
+
+                        const style = itemConfig.style || {};
+                        doc.fontSize(parseInt(style.fontSize) || 10);
+                        if (style.fontWeight === 'bold') doc.font('Helvetica-Bold');
+                        else doc.font('Helvetica');
+
+                        doc.text(textContent, x, startY, { width, align: style.textAlign || 'left' });
+                        blockHeight = doc.heightOfString(textContent, { width }) + 10;
+                        break;
+
+                    case 'footer':
+                        doc.fontSize(9).font('Helvetica');
+                        const footerText = itemConfig.content || 'Thank you for your business!';
+                        doc.text(footerText, x, startY, { width, align: 'center' });
+                        blockHeight = doc.heightOfString(footerText, { width }) + 10;
+                        break;
+
+                    case 'row':
+                        // Row container - render children horizontally
+                        const children = itemConfig.children || [];
+                        if (children.length > 0) {
+                            const childWidth = width / children.length;
+                            let maxChildHeight = 0;
+
+                            children.forEach((childId: string, idx: number) => {
+                                const childConfig = getItemConfig(childId);
+                                if (childConfig) {
+                                    const childHeight = renderBlock(childConfig, x + (idx * childWidth), childWidth - 10, startY);
+                                    maxChildHeight = Math.max(maxChildHeight, childHeight);
+                                }
+                            });
+
+                            blockHeight = maxChildHeight;
+                        }
+                        break;
+
+                    default:
+                        blockHeight = 20;
+                }
+
+                return blockHeight;
+            };
+
+            // Render each grid item in order
+            sortedGrid.forEach((gridItem: any) => {
+                const itemConfig = getItemConfig(gridItem.i);
+                if (!itemConfig) return;
+
+                const x = marginLeft + (gridItem.x * colWidth);
+                const width = gridItem.w * colWidth;
+
+                // Check for page break
+                if (currentY > 720 && itemConfig.type !== 'footer') {
+                    doc.addPage();
+                    currentY = marginTop;
+                }
+
+                const blockHeight = renderBlock(itemConfig, x, width, currentY);
+                currentY += blockHeight + 10; // Add spacing between blocks
+            });
 
             doc.end();
 

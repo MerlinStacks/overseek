@@ -151,7 +151,7 @@ export function InvoiceDesigner() {
         total: '137.50'
     };
 
-    const addItem = (type: string) => {
+    const addItem = (type: string, parentRowId?: string) => {
         const newItemId = generateId();
         let w = 6;
         let h = 2;
@@ -171,17 +171,10 @@ export function InvoiceDesigner() {
         } else if (type === 'customer_details') {
             w = 6;
             h = 4;
+        } else if (type === 'row') {
+            w = 12;
+            h = 3;
         }
-
-        const newItem = {
-            i: newItemId,
-            x: 0,
-            y: Infinity,
-            w,
-            h,
-            minW: 2,
-            minH: 1
-        };
 
         const initialItem: any = {
             id: newItemId,
@@ -197,8 +190,40 @@ export function InvoiceDesigner() {
             };
         }
 
-        setLayout(prev => [...prev, newItem]);
-        setItems(prev => [...prev, initialItem]);
+        if (type === 'row') {
+            initialItem.children = [];
+        }
+
+        // If adding to a parent row, add as a child instead of to the grid
+        if (parentRowId) {
+            setItems(prev => {
+                const newItems = [...prev, initialItem];
+                // Update the parent row's children array
+                return newItems.map(item =>
+                    item.id === parentRowId
+                        ? { ...item, children: [...(item.children || []), newItemId] }
+                        : item
+                );
+            });
+        } else {
+            // Add to the grid layout
+            const newLayoutItem = {
+                i: newItemId,
+                x: 0,
+                y: Infinity,
+                w,
+                h,
+                minW: 2,
+                minH: 1
+            };
+            setLayout(prev => [...prev, newLayoutItem]);
+            setItems(prev => [...prev, initialItem]);
+        }
+    };
+
+    // Handle drag-drop from sidebar
+    const handleDropItem = (type: string, targetRowId?: string) => {
+        addItem(type, targetRowId);
     };
 
     const updateItem = (updates: any) => {
@@ -206,8 +231,21 @@ export function InvoiceDesigner() {
     };
 
     const deleteItem = () => {
+        // Also remove from any parent row's children array
+        setItems(prev => {
+            const itemToDelete = prev.find(i => i.id === selectedId);
+            if (!itemToDelete) return prev;
+
+            // Remove the item and update any parent that has it as a child
+            return prev
+                .filter(i => i.id !== selectedId)
+                .map(item =>
+                    item.children?.includes(selectedId!)
+                        ? { ...item, children: item.children.filter((c: string) => c !== selectedId) }
+                        : item
+                );
+        });
         setLayout(prev => prev.filter(l => l.i !== selectedId));
-        setItems(prev => prev.filter(i => i.id !== selectedId));
         setSelectedId(null);
     };
 
@@ -470,6 +508,7 @@ export function InvoiceDesigner() {
                     selectedId={selectedId}
                     onLayoutChange={(l: any) => setLayout(l)}
                     onSelect={setSelectedId}
+                    onDropItem={handleDropItem}
                 />
 
                 {/* Right Sidebar - Properties Panel */}

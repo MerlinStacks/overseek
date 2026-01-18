@@ -366,7 +366,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
     // POST /api/ads/execute-action - Execute an actionable recommendation
-    fastify.post<{ Body: { actionType: string; platform: 'google' | 'meta'; campaignId: string; parameters: any } }>('/execute-action', async (request, reply) => {
+    fastify.post<{ Body: { actionType: string; platform: 'google' | 'meta' | 'both'; campaignId: string; parameters: any } }>('/execute-action', async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
@@ -395,10 +395,14 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             // This is inefficient but works for Phase 1.
 
             const accounts = await AdsService.getAdAccounts(accountId);
-            const platformAccounts = accounts.filter(a => a.platform === platform.toUpperCase());
+            // Handle 'both' platform by querying for either GOOGLE or META
+            const platformAccounts = platform === 'both'
+                ? accounts.filter(a => a.platform === 'GOOGLE' || a.platform === 'META')
+                : accounts.filter(a => a.platform === platform.toUpperCase());
 
             if (platformAccounts.length === 0) {
-                return reply.code(400).send({ error: `No connected ${platform} accounts found` });
+                const platformLabel = platform === 'both' ? 'Google or Meta' : platform;
+                return reply.code(400).send({ error: `No connected ${platformLabel} ad accounts found` });
             }
 
             let targetAccount = null;

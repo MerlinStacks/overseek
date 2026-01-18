@@ -1,4 +1,4 @@
-import { Type, Image as ImageIcon, Table, DollarSign, Sparkles, User, LayoutTemplate, Heading } from 'lucide-react';
+import { Type, Image as ImageIcon, Table, DollarSign, Sparkles, User, LayoutTemplate, Heading, Rows } from 'lucide-react';
 import { TOOLBOX_ITEMS } from './invoiceUtils';
 
 interface DesignerSidebarProps {
@@ -6,6 +6,7 @@ interface DesignerSidebarProps {
 }
 
 const ICONS: Record<string, any> = {
+    row: Rows,
     header: Heading,
     text: Type,
     image: ImageIcon,
@@ -16,6 +17,7 @@ const ICONS: Record<string, any> = {
 };
 
 const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
+    row: { bg: 'bg-violet-50', hover: 'hover:border-violet-400', icon: 'text-violet-600' },
     header: { bg: 'bg-slate-50', hover: 'hover:border-slate-400', icon: 'text-slate-600' },
     text: { bg: 'bg-blue-50', hover: 'hover:border-blue-400', icon: 'text-blue-600' },
     image: { bg: 'bg-purple-50', hover: 'hover:border-purple-400', icon: 'text-purple-600' },
@@ -64,6 +66,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                                 <div className="flex-1">
                                     <span className="text-sm font-semibold text-slate-700 block">{item.label}</span>
                                     <span className="text-xs text-slate-400">
+                                        {item.type === 'row' && 'Group blocks side-by-side'}
                                         {item.type === 'header' && 'First page header'}
                                         {item.type === 'text' && 'Add custom text'}
                                         {item.type === 'image' && 'Logo or image'}

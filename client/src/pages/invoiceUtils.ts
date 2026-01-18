@@ -10,6 +10,7 @@ export const generateId = (): string => {
 };
 
 export const TOOLBOX_ITEMS = [
+    { id: 'row', type: 'row', label: 'Row Container' },
     { id: 'header', type: 'header', label: 'Header' },
     { id: 'text', type: 'text', label: 'Text Block' }, // Icon handled in component import to avoid circular dep or heavy imports if not needed
     { id: 'image', type: 'image', label: 'Image' },

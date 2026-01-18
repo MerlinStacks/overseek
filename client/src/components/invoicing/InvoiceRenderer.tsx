@@ -31,7 +31,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                 return (
                     <div className="h-full flex items-center gap-6 py-2">
                         {/* Logo Section - Left */}
-                        <div className="w-32 h-full flex items-center justify-start">
+                        <div className="w-32 h-full flex items-center justify-start flex-shrink-0">
                             {itemConfig.logo ? (
                                 <img src={itemConfig.logo} alt="Logo" className="max-h-full max-w-full object-contain" />
                             ) : (
@@ -40,10 +40,16 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                 </div>
                             )}
                         </div>
-                        {/* Business Details Section - Right Aligned */}
-                        <div className="flex-1 text-right text-sm text-slate-700 leading-relaxed">
+                        {/* Business Details Section - Right Aligned with Auto-Fit */}
+                        <div
+                            className="flex-1 text-right text-slate-700 leading-relaxed overflow-hidden"
+                            style={{
+                                containerType: 'inline-size',
+                                fontSize: 'clamp(10px, 2.2cqw, 14px)',
+                            }}
+                        >
                             {itemConfig.businessDetails ? (
-                                <div className="whitespace-pre-wrap">{itemConfig.businessDetails}</div>
+                                <div className="whitespace-pre-wrap break-words">{itemConfig.businessDetails}</div>
                             ) : (
                                 <div className="text-slate-400 italic">Business details</div>
                             )}
@@ -235,7 +241,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                 };
 
                 return (
-                    <div className="py-2">
+                    <div className="py-2" style={{ overflow: 'visible' }}>
                         {hasItems ? (
                             <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
                                 <thead>
@@ -368,6 +374,28 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     </div>
                 );
 
+            case 'row':
+                // Row container - renders children horizontally
+                const childItems = (itemConfig.children || []).map((childId: string) =>
+                    items.find(i => i.id === childId)
+                ).filter(Boolean);
+
+                return (
+                    <div className="py-2 flex gap-4" style={{ overflow: 'visible' }}>
+                        {childItems.length > 0 ? (
+                            childItems.map((child: any) => (
+                                <div key={child.id} className="flex-1">
+                                    {renderContent(child)}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="flex-1 text-slate-400 italic text-sm py-4 text-center">
+                                Row container (empty)
+                            </div>
+                        )}
+                    </div>
+                );
+
             default:
                 return <div className="p-2 text-slate-500 text-sm">{itemConfig.type}</div>;
         }
@@ -422,7 +450,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
 
                     {/* Paper Container */}
                     <div
-                        className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm relative ring-1 ring-slate-200/50 overflow-hidden"
+                        className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm relative ring-1 ring-slate-200/50"
                         style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}
                     >
                         {/* Grid Layout */}
@@ -452,10 +480,14 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                     return <div key={l.i} className="hidden"></div>;
                                 }
 
+                                // Allow order_table to overflow its grid cell so totals don't get clipped
+                                const isOrderTable = itemConfig?.type === 'order_table';
+
                                 return (
                                     <div
                                         key={l.i}
                                         className="bg-white"
+                                        style={isOrderTable ? { overflow: 'visible', zIndex: 10 } : undefined}
                                     >
                                         {itemConfig && renderContent(itemConfig)}
                                     </div>

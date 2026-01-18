@@ -530,7 +530,7 @@ interface MetaCategory {
 }
 
 function OrderMetaSection({ metaData, onImageClick }: { metaData: any[], onImageClick: (url: string) => void }) {
-    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['variations']));
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['variations', 'custom']));
 
     // Filter out hidden meta and categorize
     const filteredMeta = metaData.filter(m => !m.key.startsWith('_'));
