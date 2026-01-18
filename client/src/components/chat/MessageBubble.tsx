@@ -296,10 +296,19 @@ function extractAttachments(content: string): AttachmentInfo[] {
         const url = match[2];
         if (seenUrls.has(url)) continue;
 
-        // Check if it's an attachment URL
-        if (url.includes('/uploads/attachments/') || url.includes('/attachment')) {
+        // Get extension from either URL or link text (filename)
+        const urlExt = url.split('.').pop()?.toLowerCase().split(/[?#]/)[0] || '';
+        const textExt = text.split('.').pop()?.toLowerCase() || '';
+        const ext = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'].includes(urlExt) ? urlExt : textExt;
+
+        // Check if it's an attachment URL (by path OR by having attachment-like extension)
+        const isAttachmentUrl = url.includes('/uploads/attachments/') ||
+            url.includes('/uploads/') ||
+            url.includes('/attachment') ||
+            ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'].includes(ext);
+
+        if (isAttachmentUrl && ext) {
             seenUrls.add(url);
-            const ext = url.split('.').pop()?.toLowerCase() || '';
 
             let type: AttachmentInfo['type'] = 'file';
             if (ext === 'pdf') type = 'pdf';
@@ -375,10 +384,12 @@ export const MessageBubble = memo(function MessageBubble({
         cleanContent = cleanContent.replace(/\n\n\*\*Attachments:\*\*\n[\s\S]*$/i, '');
         cleanContent = cleanContent.replace(/\*\*Attachments:\*\*\s*\n?/gi, '');
 
-        // Remove markdown attachment links: [filename](/uploads/attachments/...)
-        cleanContent = cleanContent.replace(/\[([^\]]+)\]\((\/uploads\/attachments\/[^)]+)\)/gi, '');
+        // Remove markdown attachment links: [filename](/uploads/...) or [filename.pdf](url)
+        cleanContent = cleanContent.replace(/\[([^\]]+)\]\((\/uploads\/[^)]+)\)/gi, '');
+        // Also remove markdown links that look like attachments (by extension in link text)
+        cleanContent = cleanContent.replace(/\[([^\]]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp|txt|csv|zip))\]\([^)]+\)/gi, '');
 
-        // Remove "Attachments: " plain text prefix
+        // Remove "Attachments: " or "Attachments:\n" plain text prefix (handles both formats)
         cleanContent = cleanContent.replace(/Attachments:\s*/gi, '');
 
         // Trim trailing whitespace/newlines
