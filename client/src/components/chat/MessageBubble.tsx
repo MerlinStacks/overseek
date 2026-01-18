@@ -249,7 +249,7 @@ interface AttachmentInfo {
 
 /**
  * Extracts attachment info from message content.
- * Handles inline images, linked files, and email attachment references.
+ * Handles inline images, linked files, markdown links, and email attachment references.
  */
 function extractAttachments(content: string): AttachmentInfo[] {
     const attachments: AttachmentInfo[] = [];
@@ -267,7 +267,7 @@ function extractAttachments(content: string): AttachmentInfo[] {
         }
     }
 
-    // Extract linked files
+    // Extract HTML linked files
     const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi;
     while ((match = linkRegex.exec(content)) !== null) {
         const url = match[1];
@@ -285,6 +285,28 @@ function extractAttachments(content: string): AttachmentInfo[] {
         } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
             seenUrls.add(url);
             attachments.push({ type: 'image', url, filename: text || url.split('/').pop() || 'image' });
+        }
+    }
+
+    // Extract markdown-style links: [filename](url)
+    // Matches: [55466 - Yvonne McKay.pdf](/uploads/attachments/...)
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/gi;
+    while ((match = markdownLinkRegex.exec(content)) !== null) {
+        const text = match[1];
+        const url = match[2];
+        if (seenUrls.has(url)) continue;
+
+        // Check if it's an attachment URL
+        if (url.includes('/uploads/attachments/') || url.includes('/attachment')) {
+            seenUrls.add(url);
+            const ext = url.split('.').pop()?.toLowerCase() || '';
+
+            let type: AttachmentInfo['type'] = 'file';
+            if (ext === 'pdf') type = 'pdf';
+            else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) type = 'document';
+            else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image';
+
+            attachments.push({ type, url, filename: text || url.split('/').pop() || 'file' });
         }
     }
 
@@ -344,7 +366,25 @@ export const MessageBubble = memo(function MessageBubble({
     const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(mainContent), [mainContent]);
 
     const sanitizedContent = useMemo(() => {
-        return DOMPurify.sanitize(mainContent, {
+        // Strip attachment markdown links before rendering
+        // Remove patterns like: [filename](/uploads/attachments/...)
+        // Also remove the "**Attachments:**" header and following lines if present
+        let cleanContent = mainContent;
+
+        // Remove "**Attachments:**" header and the markdown links that follow
+        cleanContent = cleanContent.replace(/\n\n\*\*Attachments:\*\*\n[\s\S]*$/i, '');
+        cleanContent = cleanContent.replace(/\*\*Attachments:\*\*\s*\n?/gi, '');
+
+        // Remove markdown attachment links: [filename](/uploads/attachments/...)
+        cleanContent = cleanContent.replace(/\[([^\]]+)\]\((\/uploads\/attachments\/[^)]+)\)/gi, '');
+
+        // Remove "Attachments: " plain text prefix
+        cleanContent = cleanContent.replace(/Attachments:\s*/gi, '');
+
+        // Trim trailing whitespace/newlines
+        cleanContent = cleanContent.trim();
+
+        return DOMPurify.sanitize(cleanContent, {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'div', 'span', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
             ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'style', 'class'],
             ALLOW_DATA_ATTR: false,

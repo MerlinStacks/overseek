@@ -130,12 +130,82 @@ export function ChatWindow({
         fetchEmailAccounts();
     }, [currentAccount, token]);
 
+    // === STATE FOR ATTACHMENTS (must be before sendMessageWithAttachments callback) ===
+    const [stagedAttachments, setStagedAttachments] = useState<File[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+
     // === EXTRACTED HOOKS ===
     const canned = useCannedResponses();
-    // Note: messageSend will use handleSendWithAttachments defined below when attachments are staged
+
+    // Wrapper for sending messages that includes staged attachments
+    // This must be defined before useMessageSend to avoid dependency issues
+    const sendMessageWithAttachments = useCallback(async (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccId?: string) => {
+        // If no staged attachments, use normal send
+        if (stagedAttachments.length === 0) {
+            return onSendMessage(content, type, isInternal, channel, emailAccId);
+        }
+
+        // Upload attachments with message content
+        setIsUploading(true);
+        setUploadProgress(0);
+
+        try {
+            const formData = new FormData();
+            formData.append('content', content);
+            formData.append('type', type);
+            formData.append('isInternal', String(isInternal));
+            if (channel) formData.append('channel', channel);
+            if (emailAccId) formData.append('emailAccountId', emailAccId);
+
+            stagedAttachments.forEach(file => {
+                formData.append('attachments', file);
+            });
+
+            const xhr = new XMLHttpRequest();
+
+            await new Promise<void>((resolve, reject) => {
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        setUploadProgress(Math.round((event.loaded / event.total) * 100));
+                    }
+                };
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve();
+                    } else {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            reject(new Error(data.error || 'Failed to send message with attachments'));
+                        } catch {
+                            reject(new Error('Failed to send'));
+                        }
+                    }
+                };
+
+                xhr.onerror = () => reject(new Error('Network error'));
+
+                xhr.open('POST', `/api/chat/${conversationId}/message-with-attachments`);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.setRequestHeader('x-account-id', currentAccount?.id || '');
+                xhr.send(formData);
+            });
+
+            // Clear staged attachments on success
+            setStagedAttachments([]);
+            setUploadProgress(0);
+        } catch (error) {
+            Logger.error('Failed to send message with attachments', { error });
+            throw error;
+        } finally {
+            setIsUploading(false);
+        }
+    }, [stagedAttachments, onSendMessage, conversationId, token, currentAccount?.id]);
+
     const messageSend = useMessageSend({
         conversationId,
-        onSendMessage, // Will be wrapped by handleSend in ChatComposer
+        onSendMessage: sendMessageWithAttachments, // Uses wrapper that handles attachments
         recipientEmail,
         isLiveChat: currentChannel === 'CHAT',
         emailAccountId: selectedEmailAccountId
@@ -145,10 +215,7 @@ export function ChatWindow({
 
     // === LOCAL STATE ===
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
-    const [stagedAttachments, setStagedAttachments] = useState<File[]>([]);
 
     // Modal states
     const [showSnoozeModal, setShowSnoozeModal] = useState(false);
@@ -231,67 +298,6 @@ export function ChatWindow({
 
     const handleRemoveAttachment = (index: number) => {
         setStagedAttachments(prev => prev.filter((_, i) => i !== index));
-    };
-
-    // === SEND MESSAGE WITH ATTACHMENTS ===
-    const handleSendWithAttachments = async (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccId?: string) => {
-        // If no staged attachments, use normal send
-        if (stagedAttachments.length === 0) {
-            return onSendMessage(content, type, isInternal, channel, emailAccId);
-        }
-
-        // Upload attachments with message content
-        setIsUploading(true);
-        setUploadProgress(0);
-
-        try {
-            const formData = new FormData();
-            formData.append('content', content);
-            formData.append('type', type);
-            formData.append('isInternal', String(isInternal));
-            if (channel) formData.append('channel', channel);
-            if (emailAccId) formData.append('emailAccountId', emailAccId);
-
-            stagedAttachments.forEach(file => {
-                formData.append('attachments', file);
-            });
-
-            const xhr = new XMLHttpRequest();
-
-            await new Promise<void>((resolve, reject) => {
-                xhr.upload.onprogress = (event) => {
-                    if (event.lengthComputable) {
-                        setUploadProgress(Math.round((event.loaded / event.total) * 100));
-                    }
-                };
-
-                xhr.onload = () => {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve();
-                    } else {
-                        try {
-                            const data = JSON.parse(xhr.responseText);
-                            reject(new Error(data.error || 'Failed to send message with attachments'));
-                        } catch {
-                            reject(new Error('Failed to send'));
-                        }
-                    }
-                };
-
-                xhr.onerror = () => reject(new Error('Network error'));
-
-                xhr.open('POST', `/api/chat/${conversationId}/message-with-attachments`);
-                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                xhr.setRequestHeader('x-account-id', currentAccount?.id || '');
-                xhr.send(formData);
-            });
-
-            // Clear staged attachments on success
-            setStagedAttachments([]);
-        } finally {
-            setIsUploading(false);
-            setUploadProgress(0);
-        }
     };
 
     // === AI DRAFT GENERATION ===
