@@ -1035,6 +1035,9 @@ model Conversation {
   // For email conversations from unknown senders (no WooCustomer match)
   guestEmail String?
   guestName  String?
+  
+  // Conversation title (e.g., email subject line)
+  title      String?
 
   // Social messaging platform identifiers
   externalConversationId String?        // Platform-specific thread ID

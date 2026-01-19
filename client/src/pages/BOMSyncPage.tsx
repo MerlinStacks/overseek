@@ -17,7 +17,8 @@ import {
     AlertTriangle,
     Clock,
     ArrowRight,
-    History
+    History,
+    RotateCcw
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -59,9 +60,37 @@ export function BOMSyncPage() {
     const [isLoadingPending, setIsLoadingPending] = useState(true);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [syncingProductId, setSyncingProductId] = useState<string | null>(null);
     const [syncResult, setSyncResult] = useState<{ synced: number; failed: number } | null>(null);
 
     const [stats, setStats] = useState({ total: 0, needsSync: 0, inSync: 0 });
+
+    function handleRefresh() {
+        fetchPendingChanges();
+        fetchSyncHistory();
+    }
+
+    async function handleSyncSingle(productId: string, variationId: number) {
+        if (!currentAccount) return;
+        setSyncingProductId(`${productId}-${variationId}`);
+        try {
+            const res = await fetch(`/api/inventory/products/${productId}/bom/sync?variationId=${variationId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                await fetchPendingChanges();
+                await fetchSyncHistory();
+            }
+        } catch (err) {
+            Logger.error('Failed to sync single product', { error: err });
+        } finally {
+            setSyncingProductId(null);
+        }
+    }
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -148,33 +177,43 @@ export function BOMSyncPage() {
             <div className="flex justify-between items-end border-b pb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">BOM Inventory Sync</h1>
-                    <p className="text-sm text-gray-500">Sync calculated stock from BOM to WooCommerce</p>
+                    <p className="text-sm text-gray-500">Sync calculated stock from BOM to WooCommerce • Auto-syncs hourly</p>
                 </div>
 
-                <button
-                    onClick={handleSyncAll}
-                    disabled={isSyncing || stats.needsSync === 0}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${stats.needsSync === 0
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleRefresh}
+                        disabled={isLoadingPending}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-gray-600 hover:bg-gray-100 transition-all border border-gray-200"
+                        title="Refresh"
+                    >
+                        <RotateCcw size={18} className={isLoadingPending ? 'animate-spin' : ''} />
+                    </button>
+                    <button
+                        onClick={handleSyncAll}
+                        disabled={isSyncing || stats.needsSync === 0}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${stats.needsSync === 0
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                >
-                    {isSyncing ? (
-                        <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                        <RefreshCw size={18} />
-                    )}
-                    {isSyncing ? 'Syncing...' : `Sync All Changes (${stats.needsSync})`}
-                </button>
+                            }`}
+                    >
+                        {isSyncing ? (
+                            <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                            <RefreshCw size={18} />
+                        )}
+                        {isSyncing ? 'Syncing...' : `Sync All (${stats.needsSync})`}
+                    </button>
+                </div>
             </div>
 
             {/* Sync Result Toast */}
             {syncResult && (
                 <div className={`p-4 rounded-lg border ${syncResult.failed === 0
-                        ? 'bg-green-50 border-green-200 text-green-800'
-                        : syncResult.failed === -1
-                            ? 'bg-red-50 border-red-200 text-red-800'
-                            : 'bg-amber-50 border-amber-200 text-amber-800'
+                    ? 'bg-green-50 border-green-200 text-green-800'
+                    : syncResult.failed === -1
+                        ? 'bg-red-50 border-red-200 text-red-800'
+                        : 'bg-amber-50 border-amber-200 text-amber-800'
                     }`}>
                     {syncResult.failed === -1 ? (
                         <span>Sync failed. Please try again.</span>
@@ -209,22 +248,107 @@ export function BOMSyncPage() {
                 </div>
             </div>
 
-            {/* Pending Changes Table */}
+            {/* Pending Changes Table - Only shows out-of-sync products */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                <div className="px-6 py-4 border-b border-gray-100 bg-amber-50/50 flex items-center gap-2">
+                    <AlertTriangle size={18} className="text-amber-600" />
                     <h2 className="font-semibold text-gray-900">Pending Changes</h2>
+                    <span className="text-sm text-gray-500">({stats.needsSync} products need sync)</span>
                 </div>
 
                 {isLoadingPending ? (
                     <div className="p-12 text-center text-gray-400">
                         <Loader2 className="animate-spin inline mr-2" /> Loading...
                     </div>
-                ) : pendingChanges.length === 0 ? (
+                ) : stats.needsSync === 0 ? (
                     <div className="p-12 text-center text-gray-500 flex flex-col items-center gap-2">
-                        <Package size={48} className="text-gray-300" />
-                        <p>No BOM products found</p>
+                        <CheckCircle size={48} className="text-green-300" />
+                        <p className="text-green-700 font-medium">All BOM products are in sync!</p>
+                        <p className="text-sm text-gray-400">No pending changes to sync to WooCommerce</p>
                     </div>
                 ) : (
+                    <table className="w-full">
+                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                            <tr>
+                                <th className="px-6 py-3 text-left">Product</th>
+                                <th className="px-6 py-3 text-center">WooCommerce</th>
+                                <th className="px-6 py-3 text-center">Difference</th>
+                                <th className="px-6 py-3 text-center">Effective</th>
+                                <th className="px-6 py-3 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {pendingChanges.filter(item => item.needsSync).map((item) => {
+                                const diff = item.effectiveStock - (item.currentWooStock ?? 0);
+                                const isSyncingThis = syncingProductId === `${item.productId}-${item.variationId}`;
+                                return (
+                                    <tr key={`${item.productId}-${item.variationId}`} className="hover:bg-gray-50">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
+                                                    {item.mainImage ? (
+                                                        <img src={item.mainImage} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                                            <Package size={16} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium text-gray-900">{item.name}</div>
+                                                    {item.variationId > 0 && (
+                                                        <div className="text-xs text-purple-600">Variant #{item.variationId}</div>
+                                                    )}
+                                                    {item.sku && <div className="text-xs text-gray-500 font-mono">{item.sku}</div>}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className="text-lg font-bold text-gray-500">
+                                                {item.currentWooStock ?? '—'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`text-lg font-bold ${diff > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {diff > 0 ? '+' : ''}{diff}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className="text-lg font-bold text-blue-600">
+                                                {item.effectiveStock}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <button
+                                                onClick={() => handleSyncSingle(item.productId, item.variationId)}
+                                                disabled={isSyncingThis || isSyncing}
+                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                                {isSyncingThis ? (
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                ) : (
+                                                    <RefreshCw size={14} />
+                                                )}
+                                                Sync
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {/* All BOM Products - Collapsible */}
+            <details className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <summary className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 cursor-pointer hover:bg-gray-100 flex items-center gap-2">
+                    <Package size={18} className="text-gray-400" />
+                    <h2 className="font-semibold text-gray-900">All BOM Products</h2>
+                    <span className="text-sm text-gray-500">({stats.total} total)</span>
+                </summary>
+
+                {!isLoadingPending && pendingChanges.length > 0 && (
                     <table className="w-full">
                         <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                             <tr>
@@ -237,7 +361,7 @@ export function BOMSyncPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {pendingChanges.map((item) => (
-                                <tr key={`${item.productId}-${item.variationId}`} className="hover:bg-gray-50">
+                                <tr key={`all-${item.productId}-${item.variationId}`} className="hover:bg-gray-50">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
@@ -289,7 +413,7 @@ export function BOMSyncPage() {
                         </tbody>
                     </table>
                 )}
-            </div>
+            </details>
 
             {/* Sync History */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

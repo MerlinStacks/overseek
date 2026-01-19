@@ -66,6 +66,15 @@ export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, varia
         if (onUpdate) onUpdate(updated);
     };
 
+    // Update multiple fields at once to avoid stale state issues
+    const handleMultiFieldChange = (id: number, updates: Partial<ProductVariant>) => {
+        const updated = editingVariants.map(v =>
+            v.id === id ? { ...v, ...updates } : v
+        );
+        setEditingVariants(updated);
+        if (onUpdate) onUpdate(updated);
+    };
+
     // Get variation image from either image object or images array
     const getVariantImage = (v: ProductVariant): string | null => {
         if (v.image?.src) return v.image.src;
@@ -252,8 +261,10 @@ export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, varia
                                                                     value={v.goldPriceType || 'none'}
                                                                     onChange={(e) => {
                                                                         const newType = e.target.value;
-                                                                        handleFieldChange(v.id, 'goldPriceType', newType === 'none' ? null : newType);
-                                                                        handleFieldChange(v.id, 'isGoldPriceApplied', newType !== 'none');
+                                                                        handleMultiFieldChange(v.id, {
+                                                                            goldPriceType: newType === 'none' ? null : newType,
+                                                                            isGoldPriceApplied: newType !== 'none'
+                                                                        });
                                                                     }}
                                                                     className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white"
                                                                 >

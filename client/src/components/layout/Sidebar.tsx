@@ -30,7 +30,8 @@ import {
     UsersRound,
     Filter,
     TrendingDown,
-    RefreshCw
+    RefreshCw,
+    Activity
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -360,7 +361,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 })}
 
                 {user?.isSuperAdmin && (
-                    <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-600/40">
+                    <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-600/40 space-y-1">
                         <NavLink
                             to="/admin"
                             className={({ isActive }) => cn(
@@ -376,6 +377,24 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                             {collapsed && !isMobile && (
                                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                                     Super Admin
+                                </div>
+                            )}
+                        </NavLink>
+                        <NavLink
+                            to="/admin/diagnostics"
+                            className={({ isActive }) => cn(
+                                "flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 group relative text-sm",
+                                isActive
+                                    ? "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-600 font-medium"
+                                    : "text-slate-500 hover:bg-slate-100/80 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
+                            )}
+                        >
+                            <Activity size={18} strokeWidth={1.5} />
+                            {(!collapsed || isMobile) && <span>System Health</span>}
+
+                            {collapsed && !isMobile && (
+                                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
+                                    System Health
                                 </div>
                             )}
                         </NavLink>

@@ -79,7 +79,7 @@ export class EmailIngestion {
             return;
         }
 
-        let conversation = await this.resolveConversation(accountId, fromEmail, fromName, inReplyTo, references);
+        let conversation = await this.resolveConversation(accountId, fromEmail, fromName, subject, inReplyTo, references);
 
         // Add message with emailMessageId (even for blocked contacts, for audit trail)
         // Prefer HTML if available, otherwise use text body
@@ -155,7 +155,15 @@ export class EmailIngestion {
         Logger.info('[EmailIngestion] Imported email', { fromEmail, conversationId: conversation.id });
     }
 
-    private async resolveConversation(accountId: string, fromEmail: string, fromName?: string, inReplyTo?: string | null, references?: string | null) {
+    /**
+     * Extract a clean title from email subject, stripping Re:/Fwd: prefixes.
+     */
+    private cleanSubjectForTitle(subject: string): string {
+        return subject.replace(/^(re:|fwd:|fw:)\s*/gi, '').trim();
+    }
+
+    private async resolveConversation(accountId: string, fromEmail: string, fromName?: string, subject?: string, inReplyTo?: string | null, references?: string | null) {
+        const cleanTitle = subject ? this.cleanSubjectForTitle(subject) : undefined;
         // TIER 1: Match by threading headers
         if (inReplyTo || references) {
             const threadIds: string[] = [];
@@ -171,8 +179,25 @@ export class EmailIngestion {
                     include: { conversation: true }
                 });
                 if (matchedMessage) {
-                    Logger.info('[EmailIngestion] Matched by threading', { conversationId: matchedMessage.conversation.id });
-                    return matchedMessage.conversation;
+                    const conv = matchedMessage.conversation;
+                    const updates: any = {};
+                    // Backfill guestName if missing but now available from email
+                    if (conv.guestEmail && !conv.guestName && fromName) {
+                        updates.guestName = fromName;
+                    }
+                    // Backfill title if missing
+                    if (!conv.title && cleanTitle) {
+                        updates.title = cleanTitle;
+                    }
+                    if (Object.keys(updates).length > 0) {
+                        await prisma.conversation.update({ where: { id: conv.id }, data: updates });
+                        Logger.info('[EmailIngestion] Backfilled fields via threading match', {
+                            conversationId: conv.id,
+                            ...updates
+                        });
+                    }
+                    Logger.info('[EmailIngestion] Matched by threading', { conversationId: conv.id });
+                    return conv;
                 }
             }
         }
@@ -191,7 +216,25 @@ export class EmailIngestion {
             where: { accountId, guestEmail: fromEmail, mergedIntoId: null },
             orderBy: { updatedAt: 'desc' }
         });
-        if (guestConv) return guestConv;
+        if (guestConv) {
+            const updates: any = {};
+            // Backfill guestName if missing but now available from email
+            if (!guestConv.guestName && fromName) {
+                updates.guestName = fromName;
+            }
+            // Backfill title if missing
+            if (!guestConv.title && cleanTitle) {
+                updates.title = cleanTitle;
+            }
+            if (Object.keys(updates).length > 0) {
+                await prisma.conversation.update({ where: { id: guestConv.id }, data: updates });
+                Logger.info('[EmailIngestion] Backfilled fields on existing conversation', {
+                    conversationId: guestConv.id,
+                    ...updates
+                });
+            }
+            return guestConv;
+        }
 
         // TIER 3: Create new
         const newCustomer = await prisma.wooCustomer.findFirst({ where: { accountId, email: fromEmail } });
@@ -203,6 +246,7 @@ export class EmailIngestion {
                 wooCustomerId: newCustomer?.id,
                 guestEmail: newCustomer ? undefined : fromEmail,
                 guestName: newCustomer ? undefined : fromName || undefined,
+                title: cleanTitle || undefined,
                 priority: 'MEDIUM'
             }
         });

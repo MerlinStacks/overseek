@@ -297,6 +297,16 @@ export class SchedulerService {
 
         Logger.info('Scheduled Ad Alert Check (Every 4 hours)');
 
+        // BOM Inventory Sync (Hourly) - Ensures parent product stock matches buildable quantity
+        await queue.add('bom-inventory-sync', {}, {
+            repeat: {
+                pattern: '0 * * * *', // Every hour at :00
+            },
+            jobId: 'bom-inventory-sync-hourly'
+        });
+
+        Logger.info('Scheduled BOM Inventory Sync (Hourly)');
+
         QueueFactory.createWorker('scheduler', async (job) => {
             if (job.name === 'orchestrate-sync') {
                 await this.dispatchToAllAccounts();
@@ -308,6 +318,8 @@ export class SchedulerService {
                 await this.dispatchOutcomeAssessment();
             } else if (job.name === 'ad-alerts') {
                 await this.dispatchAdAlerts();
+            } else if (job.name === 'bom-inventory-sync') {
+                await this.dispatchBOMInventorySync();
             }
         });
 
@@ -714,6 +726,43 @@ export class SchedulerService {
 
         } catch (error) {
             Logger.error('[Scheduler] Ad alerts dispatch failed', { error });
+        }
+    }
+
+    /**
+     * BOM Inventory Sync: Sync all parent products' effective stock based on child component availability.
+     * Runs hourly to ensure WooCommerce stock reflects actual buildable quantity.
+     */
+    private static async dispatchBOMInventorySync() {
+        Logger.info('[Scheduler] Starting hourly BOM inventory sync');
+
+        try {
+            const { BOMInventorySyncService } = await import('./BOMInventorySyncService');
+
+            // Get all accounts with BOM products
+            const accountsWithBOM = await prisma.bOM.findMany({
+                select: { product: { select: { accountId: true } } },
+                distinct: ['productId']
+            });
+
+            const accountIds = [...new Set(accountsWithBOM.map(b => b.product.accountId))];
+
+            Logger.info(`[Scheduler] Syncing BOM products for ${accountIds.length} accounts`);
+
+            for (const accountId of accountIds) {
+                try {
+                    const result = await BOMInventorySyncService.syncAllBOMProducts(accountId);
+                    Logger.info(`[Scheduler] BOM sync completed for account ${accountId}`, {
+                        synced: result.synced,
+                        failed: result.failed
+                    });
+                } catch (error) {
+                    Logger.error(`[Scheduler] BOM sync failed for account ${accountId}`, { error });
+                }
+            }
+
+        } catch (error) {
+            Logger.error('[Scheduler] BOM inventory sync dispatch failed', { error });
         }
     }
 }

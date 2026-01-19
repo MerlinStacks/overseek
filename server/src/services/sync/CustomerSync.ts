@@ -125,8 +125,72 @@ export class CustomerSync extends BaseSync {
                 Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned customers`, { accountId, syncId });
             }
         }
+        // --- Auto-Link: Link guest conversations to newly synced customers ---
+        // Find guest conversations where guestEmail matches a WooCustomer email
+        const linkedCount = await this.linkGuestConversationsToCustomers(accountId);
+        if (linkedCount > 0) {
+            Logger.info(`Auto-linked ${linkedCount} guest conversations to customers`, { accountId, syncId });
+        }
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
+    }
+
+    /**
+     * Auto-link guest conversations to WooCommerce customers by matching email addresses.
+     * @returns Number of conversations linked
+     */
+    private async linkGuestConversationsToCustomers(accountId: string): Promise<number> {
+        // Find guest conversations (no wooCustomerId, but has guestEmail)
+        const guestConversations = await prisma.conversation.findMany({
+            where: {
+                accountId,
+                wooCustomerId: null,
+                guestEmail: { not: null }
+            },
+            select: { id: true, guestEmail: true }
+        });
+
+        if (guestConversations.length === 0) return 0;
+
+        // Build a map of email -> conversations
+        const emailToConvs = new Map<string, string[]>();
+        for (const conv of guestConversations) {
+            if (!conv.guestEmail) continue;
+            const email = conv.guestEmail.toLowerCase();
+            if (!emailToConvs.has(email)) {
+                emailToConvs.set(email, []);
+            }
+            emailToConvs.get(email)!.push(conv.id);
+        }
+
+        // Find matching customers
+        const emails = Array.from(emailToConvs.keys());
+        const matchingCustomers = await prisma.wooCustomer.findMany({
+            where: {
+                accountId,
+                email: { in: emails, mode: 'insensitive' }
+            },
+            select: { id: true, email: true }
+        });
+
+        let linkedCount = 0;
+        for (const customer of matchingCustomers) {
+            const convIds = emailToConvs.get(customer.email.toLowerCase());
+            if (!convIds || convIds.length === 0) continue;
+
+            // Update all matching conversations
+            await prisma.conversation.updateMany({
+                where: { id: { in: convIds } },
+                data: {
+                    wooCustomerId: customer.id,
+                    guestEmail: null,
+                    guestName: null
+                }
+            });
+            linkedCount += convIds.length;
+        }
+
+        return linkedCount;
     }
 }
 

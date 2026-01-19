@@ -20,6 +20,7 @@ interface Conversation {
     };
     guestEmail?: string;
     guestName?: string;
+    title?: string;
     assignedTo?: string;
     assignee?: {
         id: string;
@@ -188,7 +189,8 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
             const name = `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim();
             return name || conv.wooCustomer.email || 'Customer';
         }
-        return conv.guestName || conv.guestEmail || 'Visitor';
+        // For guests: prefer name, fall back to email address, last resort is generic text
+        return conv.guestName || conv.guestEmail || 'Unknown Contact';
     }, []);
 
     const getInitials = useCallback((name: string) => {
@@ -206,15 +208,20 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
 
     const getPreview = useCallback((conv: Conversation) => {
         const lastMsg = conv.messages[0];
-        if (!lastMsg) return { subject: null, preview: 'No messages' };
+        if (!lastMsg) return { subject: conv.title || null, preview: 'No messages' };
 
         let content = lastMsg.content;
-        let subject: string | null = null;
+        // Use stored conversation title if available, otherwise extract from message
+        let subject: string | null = conv.title || null;
 
-        // Extract subject if present
-        if (content.startsWith('Subject:')) {
+        // Extract subject from message content if not using stored title
+        if (!subject && content.startsWith('Subject:')) {
             const lines = content.split('\n');
             subject = lines[0].replace('Subject:', '').trim();
+            content = lines.length > 2 ? lines.slice(2).join(' ') : '';
+        } else if (content.startsWith('Subject:')) {
+            // Still strip Subject: prefix from content for preview
+            const lines = content.split('\n');
             content = lines.length > 2 ? lines.slice(2).join(' ') : '';
         }
 

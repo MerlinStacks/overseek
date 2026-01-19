@@ -1,8 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, Trash2, RefreshCw, Send, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+    Bell, Trash2, RefreshCw, Send, AlertTriangle, CheckCircle, XCircle,
+    ChevronDown, ChevronRight, Activity, Database, Server, Zap, Webhook,
+    Clock, HardDrive
+} from 'lucide-react';
 import { cn } from '../../utils/cn';
+
+interface SystemHealthData {
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    timestamp: string;
+    version: {
+        app: string;
+        node: string;
+        uptime: number;
+        uptimeFormatted: string;
+    };
+    services: Record<string, { status: 'healthy' | 'degraded' | 'unhealthy'; latencyMs?: number; details?: string }>;
+    queues: Record<string, { waiting: number; active: number; completed: number; failed: number }>;
+    sync: {
+        totalAccounts: number;
+        entityTypes: Array<{
+            type: string;
+            accountsTracked: number;
+            accountsSynced: number;
+            oldestSync: string | null;
+            newestSync: string | null;
+        }>;
+    };
+    webhooks: {
+        failed24h: number;
+        processed24h: number;
+        received24h: number;
+    };
+}
 
 interface PushSubscriptionData {
     totalSubscriptions: number;
@@ -54,6 +86,32 @@ export function AdminDiagnosticsPage() {
     const [testResult, setTestResult] = useState<TestPushResult | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+
+    // System Health State
+    const [systemHealth, setSystemHealth] = useState<SystemHealthData | null>(null);
+    const [healthLoading, setHealthLoading] = useState(false);
+
+    // Fetch system health on mount
+    useEffect(() => {
+        fetchSystemHealth();
+    }, [token]);
+
+    const fetchSystemHealth = async () => {
+        setHealthLoading(true);
+        try {
+            const res = await fetch('/api/admin/system-health', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSystemHealth(data);
+            }
+        } catch (e) {
+            Logger.error('Failed to fetch system health', { error: e });
+        } finally {
+            setHealthLoading(false);
+        }
+    };
 
     const fetchSubscriptions = async () => {
         setLoading(true);
@@ -181,6 +239,119 @@ export function AdminDiagnosticsPage() {
                     <span className="text-sm">{message.text}</span>
                 </div>
             )}
+
+            {/* System Health Section */}
+            <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                        <Activity size={20} />
+                        System Health
+                    </h2>
+                    <button
+                        onClick={fetchSystemHealth}
+                        disabled={healthLoading}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw size={14} className={healthLoading ? 'animate-spin' : ''} />
+                        Refresh
+                    </button>
+                </div>
+
+                {healthLoading && !systemHealth ? (
+                    <div className="text-center py-8 text-slate-400">Loading system health...</div>
+                ) : systemHealth ? (
+                    <div className="space-y-6">
+                        {/* Overall Status + Version */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={cn(
+                                    "w-3 h-3 rounded-full",
+                                    systemHealth.status === 'healthy' ? "bg-green-500" :
+                                        systemHealth.status === 'degraded' ? "bg-amber-500" : "bg-red-500"
+                                )} />
+                                <span className="text-lg font-medium capitalize">{systemHealth.status}</span>
+                            </div>
+                            <div className="text-sm text-slate-500">
+                                v{systemHealth.version.app} • Node {systemHealth.version.node} • Up {systemHealth.version.uptimeFormatted}
+                            </div>
+                        </div>
+
+                        {/* Services Grid */}
+                        <div className="grid grid-cols-3 gap-4">
+                            {Object.entries(systemHealth.services).map(([name, service]) => (
+                                <div key={name} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                                    <div className={cn(
+                                        "w-2 h-2 rounded-full",
+                                        service.status === 'healthy' ? "bg-green-500" :
+                                            service.status === 'degraded' ? "bg-amber-500" : "bg-red-500"
+                                    )} />
+                                    <div>
+                                        <div className="font-medium text-sm capitalize">{name}</div>
+                                        {service.latencyMs !== undefined && (
+                                            <div className="text-xs text-slate-500">{service.latencyMs}ms</div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Queue Stats */}
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                <Zap size={14} /> Job Queues
+                            </h3>
+                            <div className="grid grid-cols-4 gap-3">
+                                {Object.entries(systemHealth.queues).map(([name, stats]) => (
+                                    <div key={name} className="p-3 bg-slate-50 rounded-lg">
+                                        <div className="text-xs font-medium text-slate-600 capitalize mb-1">{name}</div>
+                                        <div className="flex gap-2 text-xs">
+                                            <span className="text-amber-600">⏳{stats.waiting}</span>
+                                            <span className="text-blue-600">▶{stats.active}</span>
+                                            <span className="text-red-600">✗{stats.failed}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Sync Summary */}
+                        <div className="flex gap-6">
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                    <Database size={14} /> Sync Status
+                                </h3>
+                                <div className="flex gap-3">
+                                    {systemHealth.sync.entityTypes.map(entity => (
+                                        <div key={entity.type} className="text-center p-2 bg-slate-50 rounded-lg">
+                                            <div className="text-lg font-bold text-slate-700">{entity.accountsSynced}/{entity.accountsTracked}</div>
+                                            <div className="text-xs text-slate-500 capitalize">{entity.type}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Webhook Health */}
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                    <Webhook size={14} /> Webhooks (24h)
+                                </h3>
+                                <div className="flex gap-3 text-center">
+                                    <div className="p-2 bg-slate-50 rounded-lg">
+                                        <div className="text-lg font-bold text-green-600">{systemHealth.webhooks.processed24h}</div>
+                                        <div className="text-xs text-slate-500">Processed</div>
+                                    </div>
+                                    <div className="p-2 bg-slate-50 rounded-lg">
+                                        <div className="text-lg font-bold text-red-600">{systemHealth.webhooks.failed24h}</div>
+                                        <div className="text-xs text-slate-500">Failed</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="text-center py-8 text-slate-400">Click refresh to load system health</div>
+                )}
+            </div>
 
             {/* Push Subscriptions Section */}
             <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-6">

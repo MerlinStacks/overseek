@@ -127,8 +127,65 @@ export class InventoryService {
                     }
                 }
             }
+
+            // Auto-sync: After deducting child stock, recalculate and sync parent product(s) effective stock
+            // This ensures parent products reflect the new buildable quantity
+            await InventoryService.syncParentProductsAfterOrder(accountId, order);
+
         } catch (error: any) {
             Logger.error(`[InventoryService] Error processing BOM for order ${order.id}`, { error: error.message, accountId });
+        }
+    }
+
+    /**
+     * After processing an order, sync the effective stock of any parent products
+     * that have BOM relationships with items in the order.
+     */
+    private static async syncParentProductsAfterOrder(accountId: string, order: any) {
+        try {
+            const { BOMInventorySyncService } = await import('./BOMInventorySyncService');
+            const affectedProductIds = new Set<string>();
+
+            // Find all BOM parent products that reference child products in this order
+            for (const lineItem of order.line_items) {
+                const wooProductId = lineItem.product_id;
+
+                // Find parent products that have this product as a child in their BOM
+                const bomItemsWithThisChild = await prisma.bOMItem.findMany({
+                    where: {
+                        childProduct: {
+                            wooId: wooProductId,
+                            accountId
+                        }
+                    },
+                    include: {
+                        bom: {
+                            select: { productId: true, variationId: true }
+                        }
+                    }
+                });
+
+                for (const bomItem of bomItemsWithThisChild) {
+                    affectedProductIds.add(`${bomItem.bom.productId}:${bomItem.bom.variationId}`);
+                }
+            }
+
+            if (affectedProductIds.size === 0) {
+                return;
+            }
+
+            Logger.info(`[InventoryService] Auto-syncing ${affectedProductIds.size} parent product(s) after order ${order.number}`, { accountId });
+
+            for (const key of affectedProductIds) {
+                const [productId, variationId] = key.split(':');
+                try {
+                    await BOMInventorySyncService.syncProductToWoo(accountId, productId, parseInt(variationId));
+                } catch (err: any) {
+                    Logger.error(`[InventoryService] Failed to auto-sync parent ${productId}`, { error: err.message, accountId });
+                }
+            }
+        } catch (error: any) {
+            Logger.error(`[InventoryService] Error in syncParentProductsAfterOrder`, { error: error.message, accountId });
         }
     }
 

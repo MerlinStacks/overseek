@@ -4,10 +4,29 @@ export interface RequestOptions extends RequestInit {
     accountId?: string;
 }
 
-class ApiError extends Error {
-    constructor(public status: number, message: string) {
+/**
+ * Enhanced API Error with structured data from server.
+ * Includes error code and recoverability for better client handling.
+ */
+export class ApiError extends Error {
+    /** HTTP status code */
+    readonly status: number;
+    /** Error code for client-side handling */
+    readonly code: string;
+    /** Whether the error is recoverable (user can retry) */
+    readonly isRecoverable: boolean;
+
+    constructor(
+        status: number,
+        message: string,
+        code: string = 'INTERNAL_ERROR',
+        isRecoverable: boolean = false
+    ) {
         super(message);
         this.name = 'ApiError';
+        this.status = status;
+        this.code = code;
+        this.isRecoverable = isRecoverable;
     }
 }
 
@@ -63,9 +82,14 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
     if (!response.ok) {
         let errorMessage = 'Something went wrong';
+        let errorCode = 'INTERNAL_ERROR';
+        let isRecoverable = false;
+
         try {
             const errorData = await response.json();
             errorMessage = errorData.message || errorData.error || errorMessage;
+            errorCode = errorData.code || errorCode;
+            isRecoverable = errorData.isRecoverable || false;
         } catch {
             // Only use status text if JSON parsing fails
             errorMessage = response.statusText;
@@ -76,7 +100,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             handleAuthError(errorMessage);
         }
 
-        throw new ApiError(response.status, errorMessage);
+        throw new ApiError(response.status, errorMessage, errorCode, isRecoverable);
     }
 
     // Handle 204 No Content

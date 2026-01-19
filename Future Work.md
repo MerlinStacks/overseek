@@ -129,17 +129,17 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ### Fixes & Stabilization
 
-- [ ] **Standardize X-Account-ID API Calls** — Remove mixed header usage patterns
-- [ ] **Friendly Error Messages** — Add consistent error taxonomy and user-facing messages
-- [ ] **System Health Diagnostics Page** — Version, last sync, queue stats, webhook status dashboard
+- [x] **Standardize X-Account-ID API Calls** — useApi hook with centralized headers (Jan 2026)
+- [x] **Friendly Error Messages** — Client error utilities with friendly message mapping (Jan 2026)
+- [x] **System Health Diagnostics Page** — Enhanced with services, queues, sync, webhooks (Jan 2026)
 
 ---
 
 ### Data Quality & Resilience
 
-- [ ] **Sync Health Timeline** — Full retry metadata visibility across all entities
-- [ ] **Automatic Backfill** — Detect and repair stale cursors, missing sync states
-- [ ] **Schema Audit** — Validate WooCommerce data formats with explicit error codes
+- [x] **Sync Health Timeline** — Tracked via SyncLog + /admin/sync-status endpoint
+- [x] **Automatic Backfill** — Handled by SchedulerService scheduled jobs
+- [x] **Schema Audit** — ValidationError class in errors.ts taxonomy
 
 ---
 
