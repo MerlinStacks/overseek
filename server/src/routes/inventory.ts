@@ -207,6 +207,37 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    /**
+     * GET /products/:productId/bom/effective-stock
+     * Returns the calculated effective stock for a product's BOM using local data only.
+     */
+    fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/effective-stock', async (request, reply) => {
+        const { productId } = request.params;
+        const query = request.query as { variationId?: string };
+        const variationId = parseInt(query.variationId || '0');
+
+        try {
+            const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(
+                productId,
+                variationId
+            );
+
+            if (!calculation) {
+                return { effectiveStock: null, currentWooStock: null };
+            }
+
+            return {
+                effectiveStock: calculation.effectiveStock,
+                currentWooStock: calculation.currentWooStock,
+                needsSync: calculation.needsSync,
+                components: calculation.components
+            };
+        } catch (error) {
+            Logger.error('Error calculating effective stock', { error, productId, variationId });
+            return reply.code(500).send({ error: 'Failed to calculate effective stock' });
+        }
+    });
+
     fastify.post<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
         const { productId } = request.params;
         const { items, variationId = 0 } = request.body as any;
@@ -511,6 +542,70 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error fetching pending BOM changes', { error, accountId });
             return reply.code(500).send({ error: 'Failed to fetch pending changes' });
+        }
+    });
+
+    /**
+     * POST /products/:productId/bom/sync
+     * Syncs a single product's effective BOM stock to WooCommerce.
+     */
+    fastify.post<{ Params: { productId: string } }>('/products/:productId/bom/sync', async (request, reply) => {
+        const accountId = request.accountId!;
+        const { productId } = request.params;
+        const query = request.query as { variationId?: string };
+        const variationId = parseInt(query.variationId || '0');
+
+        try {
+            const result = await BOMInventorySyncService.syncProductToWoo(accountId, productId, variationId);
+
+            if (result.success) {
+                return {
+                    status: 'success',
+                    productId: result.productId,
+                    previousStock: result.previousStock,
+                    newStock: result.newStock
+                };
+            } else {
+                return reply.code(400).send({
+                    status: 'failed',
+                    error: result.error
+                });
+            }
+        } catch (error) {
+            Logger.error('Error syncing BOM product to WooCommerce', { error, productId, variationId });
+            return reply.code(500).send({ error: 'Failed to sync product' });
+        }
+    });
+
+    /**
+     * POST /bom/sync-all
+     * Syncs all BOM products for the account to WooCommerce.
+     */
+    fastify.post('/bom/sync-all', async (request, reply) => {
+        const accountId = request.accountId!;
+
+        try {
+            Logger.info(`[BOMSync] Starting sync-all for account`, { accountId });
+
+            const result = await BOMInventorySyncService.syncAllBOMProducts(accountId);
+
+            Logger.info(`[BOMSync] sync-all complete`, {
+                accountId,
+                total: result.total,
+                synced: result.synced,
+                failed: result.failed
+            });
+
+            return {
+                status: 'completed',
+                total: result.total,
+                synced: result.synced,
+                skipped: result.skipped,
+                failed: result.failed
+            };
+        } catch (error) {
+            Logger.error('Error syncing all BOM products', { error, accountId });
+            return reply.code(500).send({ error: 'Failed to sync all products' });
         }
     });
 
