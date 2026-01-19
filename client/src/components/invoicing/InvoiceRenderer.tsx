@@ -210,30 +210,56 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                 const getItemMeta = (item: any) => {
                     const meta: { label: string; value: string }[] = [];
 
+                    // Keys to always exclude (internal plugin/system keys)
+                    const excludedKeyPatterns = [
+                        /^_/,                    // Internal underscore-prefixed keys
+                        /^pa_/,                  // Already handled separately for variations
+                        /wcpa/i,                 // WCPA plugin internal data
+                        /meta_data/i,            // Nested meta references
+                        /^reduced_stock/i,       // Stock management internal
+                        /label_map/i,            // Internal mappings
+                        /droppable/i,            // UI state fields
+                    ];
+
+                    const isExcludedKey = (key: string) =>
+                        excludedKeyPatterns.some(pattern => pattern.test(key));
+
                     // Standard fields
                     if (item.sku) meta.push({ label: 'SKU', value: item.sku });
-                    if (item.weight) meta.push({ label: 'Weight', value: `${item.weight}g` });
+
+                    // Variation attributes only
                     if (item.variation_id && item.variation_id > 0) {
-                        // Check for variation attributes
                         const attrs = item.meta_data?.filter((m: any) =>
-                            m.key.startsWith('pa_') || m.display_key
+                            m.key?.startsWith('pa_') || (m.display_key && !isExcludedKey(m.key || ''))
                         ) || [];
                         attrs.forEach((attr: any) => {
                             const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
                             const rawValue = attr.display_value || attr.value;
-                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: safeStringify(rawValue) });
+                            const strValue = safeStringify(rawValue);
+                            // Only include if value is reasonable length
+                            if (strValue.length < 200) {
+                                meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
+                            }
                         });
                     }
 
-                    // Custom meta fields (excluding internal ones starting with _)
-                    const customMeta = item.meta_data?.filter((m: any) =>
-                        !m.key.startsWith('_') && !m.key.startsWith('pa_')
-                    ) || [];
+                    // Custom meta fields - strict filtering
+                    const customMeta = item.meta_data?.filter((m: any) => {
+                        const key = m.key || '';
+                        // Exclude internal keys
+                        if (isExcludedKey(key)) return false;
+                        // Must have a display_key to be user-facing
+                        if (!m.display_key && !m.display_value) return false;
+                        return true;
+                    }) || [];
+
                     customMeta.forEach((m: any) => {
-                        if (m.display_value || m.value) {
+                        const rawValue = m.display_value || m.value;
+                        const strValue = safeStringify(rawValue);
+                        // Only include if value is reasonable length (not giant internal data)
+                        if (strValue.length < 200 && strValue.length > 0) {
                             const label = m.display_key || m.key.replace(/_/g, ' ');
-                            const rawValue = m.display_value || m.value;
-                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: safeStringify(rawValue) });
+                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
                         }
                     });
 

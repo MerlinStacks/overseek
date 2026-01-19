@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
 import { usePermissions } from '../../hooks/usePermissions';
-import { useUser } from '../../hooks/useUser';
-import { Plus, Trash2, Edit2, Check, X, Shield } from 'lucide-react';
+import { useAccount } from '../../context/AccountContext';
+import { useAuth } from '../../context/AuthContext';
+import { Plus, Trash2, Edit2, Shield } from 'lucide-react';
 
 interface Role {
     id: string;
@@ -26,16 +27,24 @@ const AVAILABLE_PERMISSIONS = [
 
 export default function RoleManager() {
     const { hasPermission } = usePermissions();
-    const { user } = useUser(); // Need accountId ideally or fetch wrapper handles it
+    const { currentAccount } = useAccount();
+    const { token } = useAuth();
     const [roles, setRoles] = useState<Role[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [currentRole, setCurrentRole] = useState<Partial<Role>>({});
 
     const fetchRoles = async () => {
+        if (!token || !currentAccount?.id) {
+            setIsLoading(false);
+            return;
+        }
         try {
             const res = await fetch('/api/roles', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'x-account-id': localStorage.getItem('accountId') || '' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
             if (res.ok) {
                 const data = await res.json();
@@ -50,12 +59,17 @@ export default function RoleManager() {
 
     useEffect(() => {
         fetchRoles();
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, currentAccount?.id]);
 
     const handleSave = async () => {
         // Client-side validation
         if (!currentRole.name || currentRole.name.trim() === '') {
             alert('Role name is required');
+            return;
+        }
+        if (!token || !currentAccount?.id) {
+            alert('No account context available');
             return;
         }
 
@@ -67,8 +81,8 @@ export default function RoleManager() {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                    'x-account-id': localStorage.getItem('accountId') || ''
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
                 },
                 body: JSON.stringify({
                     name: currentRole.name.trim(),
@@ -92,13 +106,14 @@ export default function RoleManager() {
 
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure? This will remove the role from all assigned users.')) return;
+        if (!token || !currentAccount?.id) return;
 
         try {
             const res = await fetch(`/api/roles/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                    'x-account-id': localStorage.getItem('accountId') || ''
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
                 }
             });
             if (res.ok) fetchRoles();

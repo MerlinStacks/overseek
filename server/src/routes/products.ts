@@ -60,6 +60,10 @@ const rewriteDescriptionBodySchema = z.object({
     shortDescription: z.string().optional()
 });
 
+const stockUpdateBodySchema = z.object({
+    stockQuantity: z.number().int().min(0, 'Stock quantity must be a non-negative integer')
+});
+
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -108,11 +112,13 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!p) return reply.code(404).send({ error: 'Product not found in WooCommerce' });
 
-            // For variable products, fetch full variation data
+            // For variable products (including ATUM's custom types), fetch full variation data
+            // Check for variations existence, not just type name, to support plugins like ATUM Product Levels
             let variationsData: any[] = [];
-            if (p.type === 'variable' && p.variations?.length > 0) {
+            const hasVariations = p.variations?.length > 0 || p.type?.includes('variable');
+            if (hasVariations && p.variations?.length > 0) {
                 variationsData = await woo.getProductVariations(wooId);
-                Logger.info(`Fetched ${variationsData.length} variations for product ${wooId}`);
+                Logger.info(`Fetched ${variationsData.length} variations for product ${wooId} (type: ${p.type})`);
             }
 
             // Store rawData with variationsData included
@@ -280,6 +286,106 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to update product' });
+        }
+    });
+
+    // GET /:id/stock - Get stock info with BOM calculation
+    fastify.get<{ Params: { id: string } }>('/:id/stock', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+
+            // Find local product by wooId
+            const product = await prisma.wooProduct.findUnique({
+                where: { accountId_wooId: { accountId, wooId } },
+                select: { id: true }
+            });
+
+            if (!product) {
+                return reply.code(404).send({ error: 'Product not found' });
+            }
+
+            const { InventoryService } = await import('../services/InventoryService');
+            const stockInfo = await InventoryService.getProductStock(accountId, product.id);
+
+            return stockInfo;
+        } catch (error: any) {
+            Logger.error('Error fetching stock', { error });
+            return reply.code(500).send({ error: 'Failed to fetch stock info' });
+        }
+    });
+
+    // PUT /:id/stock - Update stock quantity (only for non-BOM products)
+    fastify.put<{ Params: { id: string }; Body: { stockQuantity: number } }>('/:id/stock', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+
+            // Validate request body with Zod
+            const parseResult = stockUpdateBodySchema.safeParse(request.body);
+            if (!parseResult.success) {
+                return reply.code(400).send({
+                    error: parseResult.error.issues[0]?.message || 'Invalid stock quantity'
+                });
+            }
+            const { stockQuantity } = parseResult.data;
+
+            // Find local product with BOM items that have child products
+            const product = await prisma.wooProduct.findUnique({
+                where: { accountId_wooId: { accountId, wooId } },
+                include: {
+                    boms: {
+                        select: {
+                            id: true,
+                            items: {
+                                where: { childProductId: { not: null } },
+                                select: { id: true }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (!product) {
+                return reply.code(404).send({ error: 'Product not found' });
+            }
+
+            // Block updates only for products with BOMs that have child product components
+            const hasBOMWithChildProducts = product.boms.some(bom => bom.items.length > 0);
+            if (hasBOMWithChildProducts) {
+                return reply.code(400).send({
+                    error: 'Cannot manually update stock for products with BOM. Stock is calculated from components.'
+                });
+            }
+
+            // Update local stock
+            await prisma.wooProduct.update({
+                where: { id: product.id },
+                data: {
+                    stockQuantity,
+                    manageStock: true
+                }
+            });
+
+            // Sync to WooCommerce (non-blocking, log failures)
+            try {
+                const woo = await WooService.forAccount(accountId);
+                await woo.updateProduct(wooId, {
+                    manage_stock: true,
+                    stock_quantity: stockQuantity
+                });
+            } catch (wooErr) {
+                Logger.warn('Failed to sync stock to WooCommerce', { error: wooErr, accountId, wooId });
+            }
+
+            return {
+                success: true,
+                stockQuantity,
+                manageStock: true
+            };
+        } catch (error: any) {
+            Logger.error('Error updating stock', { error });
+            return reply.code(500).send({ error: 'Failed to update stock' });
         }
     });
 

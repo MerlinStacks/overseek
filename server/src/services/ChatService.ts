@@ -36,14 +36,31 @@ export class ChatService {
                 mergedIntoId: null
             },
             include: {
-                wooCustomer: true,
+                // Only fetch fields needed for display
+                wooCustomer: {
+                    select: {
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        ordersCount: true,
+                        totalSpent: true,
+                        wooId: true
+                    }
+                },
                 assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                // Only need last 2 messages for preview and timing
                 messages: {
                     orderBy: { createdAt: 'desc' },
-                    take: 10,
+                    take: 2,
                     select: { content: true, createdAt: true, senderType: true }
                 },
-                _count: { select: { messages: true } }
+                labels: {
+                    select: {
+                        label: {
+                            select: { id: true, name: true, color: true }
+                        }
+                    }
+                }
             },
             orderBy: { updatedAt: 'desc' }
         });

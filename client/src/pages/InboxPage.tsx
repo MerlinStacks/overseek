@@ -26,6 +26,48 @@ export function InboxPage() {
     const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
     const [availableChannels, setAvailableChannels] = useState<Array<{ channel: ConversationChannel; identifier: string; available: boolean }>>([]);
 
+    // Cache for previously fetched messages - enables instant switching between conversations
+    const messagesCache = useRef<Map<string, any[]>>(new Map());
+    // Track pending preload requests to avoid duplicate fetches
+    const preloadingRef = useRef<Set<string>>(new Set());
+
+    /**
+     * Preload messages when user hovers over a conversation.
+     * Fetches messages in background and populates cache for instant switching.
+     */
+    const handlePreloadConversation = useCallback((conversationId: string) => {
+        // Skip if already cached or currently preloading
+        if (messagesCache.current.has(conversationId) || preloadingRef.current.has(conversationId)) {
+            return;
+        }
+        if (!token || !currentAccount) return;
+
+        preloadingRef.current.add(conversationId);
+
+        // Fetch in background (low priority)
+        fetch(`/api/chat/${conversationId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount.id
+            }
+        })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data?.messages) {
+                    messagesCache.current.set(conversationId, data.messages);
+                    // Keep cache bounded
+                    if (messagesCache.current.size > 25) {
+                        const firstKey = messagesCache.current.keys().next().value;
+                        if (firstKey) messagesCache.current.delete(firstKey);
+                    }
+                }
+            })
+            .catch(() => { /* Silent fail for preload */ })
+            .finally(() => {
+                preloadingRef.current.delete(conversationId);
+            });
+    }, [token, currentAccount]);
+
     const activeConversation = conversations.find(c => c.id === selectedId);
 
     // Get recipient info for ChatWindow
@@ -96,7 +138,18 @@ export function InboxPage() {
 
         socket.on('message:new', (msg: any) => {
             if (selectedId === msg.conversationId) {
-                setMessages(prev => [...prev, msg]);
+                setMessages(prev => {
+                    const updated = [...prev, msg];
+                    // Also update cache
+                    messagesCache.current.set(msg.conversationId, updated);
+                    return updated;
+                });
+            } else {
+                // Update cache even if not currently viewing this conversation
+                const cached = messagesCache.current.get(msg.conversationId);
+                if (cached) {
+                    messagesCache.current.set(msg.conversationId, [...cached, msg]);
+                }
             }
         });
 
@@ -130,54 +183,63 @@ export function InboxPage() {
 
         socket?.emit('join:conversation', selectedId);
 
-        const fetchMessages = async () => {
-            const res = await fetch(`/api/chat/${selectedId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.messages) setMessages(data.messages);
-        };
-        fetchMessages();
+        // Show cached messages immediately if available (instant switch)
+        const cachedMessages = messagesCache.current.get(selectedId);
+        if (cachedMessages) {
+            setMessages(cachedMessages);
+        }
 
-        // Mark conversation as read
-        const markAsRead = async () => {
-            try {
-                await fetch(`/api/chat/${selectedId}/read`, {
+        // Run all fetches in parallel for faster loading
+        const fetchConversationData = async () => {
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount.id
+            };
+
+            // Parallel fetch: messages, mark as read, and available channels
+            const [messagesRes, , channelsRes] = await Promise.all([
+                // Fetch messages
+                fetch(`/api/chat/${selectedId}`, { headers }),
+                // Mark as read (fire and forget, we don't need the result)
+                fetch(`/api/chat/${selectedId}/read`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
-                    }
-                });
-                // Update local state
-                setConversations(prev => prev.map(c =>
-                    c.id === selectedId ? { ...c, isRead: true } : c
-                ));
-            } catch (error) {
-                Logger.error('Failed to mark conversation as read', { error: error });
-            }
-        };
-        markAsRead();
+                    headers
+                }).catch(err => Logger.error('Failed to mark as read', { error: err })),
+                // Fetch available channels
+                fetch(`/api/chat/${selectedId}/available-channels`, { headers })
+                    .catch(() => null) // Gracefully handle errors
+            ]);
 
-        // Fetch available channels for this conversation
-        const fetchChannels = async () => {
-            try {
-                const res = await fetch(`/api/chat/${selectedId}/available-channels`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
+            // Process messages response
+            if (messagesRes.ok) {
+                const data = await messagesRes.json();
+                if (data.messages) {
+                    setMessages(data.messages);
+                    // Update cache with fresh data
+                    messagesCache.current.set(selectedId, data.messages);
+                    // Limit cache size to 20 conversations
+                    if (messagesCache.current.size > 20) {
+                        const firstKey = messagesCache.current.keys().next().value;
+                        if (firstKey) messagesCache.current.delete(firstKey);
                     }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setAvailableChannels(data.channels || []);
                 }
-            } catch (error) {
-                Logger.error('Failed to fetch available channels', { error: error });
+            }
+
+            // Update local read state optimistically
+            setConversations(prev => prev.map(c =>
+                c.id === selectedId ? { ...c, isRead: true } : c
+            ));
+
+            // Process channels response
+            if (channelsRes?.ok) {
+                const data = await channelsRes.json();
+                setAvailableChannels(data.channels || []);
+            } else {
                 setAvailableChannels([]);
             }
         };
-        fetchChannels();
+
+        fetchConversationData();
 
         return () => {
             socket?.emit('leave:conversation', selectedId);
@@ -250,6 +312,7 @@ export function InboxPage() {
                 conversations={conversations}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                onPreload={handlePreloadConversation}
                 currentUserId={user?.id}
                 onCompose={() => setIsComposeOpen(true)}
             />

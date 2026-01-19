@@ -1,9 +1,10 @@
 
 import { formatDistanceToNow } from 'date-fns';
+import { Virtuoso } from 'react-virtuoso';
 import { Logger } from '../../utils/logger';
 import { Mail, Filter, ChevronDown, Pencil, Eye, EyeOff, Plus, Search, X, Loader2, Tag, Square, CheckSquare } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { useDrafts } from '../../hooks/useDrafts';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -42,6 +43,7 @@ interface ConversationListProps {
     conversations: Conversation[];
     selectedId: string | null;
     onSelect: (id: string) => void;
+    onPreload?: (id: string) => void;
     currentUserId?: string;
     onCompose?: () => void;
     onRefresh?: () => void;
@@ -50,7 +52,7 @@ interface ConversationListProps {
 
 type FilterType = 'all' | 'mine' | 'unassigned';
 
-export function ConversationList({ conversations, selectedId, onSelect, currentUserId, onCompose, onRefresh, users = [] }: ConversationListProps) {
+export function ConversationList({ conversations, selectedId, onSelect, onPreload, currentUserId, onCompose, onRefresh, users = [] }: ConversationListProps) {
     const [filter, setFilter] = useState<FilterType>('all');
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [showResolved, setShowResolved] = useState(false);
@@ -145,58 +147,64 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
         return () => clearTimeout(timeout);
     }, [searchQuery, token, currentAccount, isSearchMode]);
 
-    // Use search results when searching, otherwise normal filtered list
-    const filteredConversations = isSearchMode ? searchResults : conversations.filter(conv => {
-        // Status filter: only show OPEN by default
-        if (!showResolved && conv.status !== 'OPEN') return false;
+    // Memoized: Use search results when searching, otherwise normal filtered list
+    const filteredConversations = useMemo(() => {
+        if (isSearchMode) return searchResults;
 
-        // Label filter
-        if (selectedLabelId) {
-            if (!conv.labels?.some(l => l.id === selectedLabelId)) return false;
-        }
+        return conversations.filter(conv => {
+            // Status filter: only show OPEN by default
+            if (!showResolved && conv.status !== 'OPEN') return false;
 
-        // Assignment filter
-        if (filter === 'mine') return conv.assignedTo === currentUserId;
-        if (filter === 'unassigned') return !conv.assignedTo;
-        return true;
-    });
+            // Label filter
+            if (selectedLabelId) {
+                if (!conv.labels?.some(l => l.id === selectedLabelId)) return false;
+            }
 
-    // Count by filter (only count OPEN conversations unless showResolved)
-    const getFilteredCount = (filterFn: (c: Conversation) => boolean) => {
-        return conversations.filter(c => {
-            if (!showResolved && c.status !== 'OPEN') return false;
-            return filterFn(c);
-        }).length;
-    };
+            // Assignment filter
+            if (filter === 'mine') return conv.assignedTo === currentUserId;
+            if (filter === 'unassigned') return !conv.assignedTo;
+            return true;
+        });
+    }, [isSearchMode, searchResults, conversations, showResolved, selectedLabelId, filter, currentUserId]);
 
-    const counts = {
-        all: getFilteredCount(() => true),
-        mine: getFilteredCount(c => c.assignedTo === currentUserId),
-        unassigned: getFilteredCount(c => !c.assignedTo)
-    };
+    // Memoized counts - only recalculates when conversations or filters change
+    const counts = useMemo(() => {
+        const getFilteredCount = (filterFn: (c: Conversation) => boolean) => {
+            return conversations.filter(c => {
+                if (!showResolved && c.status !== 'OPEN') return false;
+                return filterFn(c);
+            }).length;
+        };
 
-    const getDisplayName = (conv: Conversation) => {
+        return {
+            all: getFilteredCount(() => true),
+            mine: getFilteredCount(c => c.assignedTo === currentUserId),
+            unassigned: getFilteredCount(c => !c.assignedTo)
+        };
+    }, [conversations, showResolved, currentUserId]);
+
+    const getDisplayName = useCallback((conv: Conversation) => {
         if (conv.wooCustomer) {
             const name = `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim();
             return name || conv.wooCustomer.email || 'Customer';
         }
         return conv.guestName || conv.guestEmail || 'Visitor';
-    };
+    }, []);
 
-    const getInitials = (name: string) => {
+    const getInitials = useCallback((name: string) => {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
-    };
+    }, []);
 
     /**
      * Gets the timestamp of the last CUSTOMER message for display.
      * Falls back to last message or updatedAt if no customer message found.
      */
-    const getLastCustomerMessageTime = (conv: Conversation): string => {
+    const getLastCustomerMessageTime = useCallback((conv: Conversation): string => {
         const lastCustomerMsg = conv.messages.find(m => m.senderType === 'CUSTOMER');
         return lastCustomerMsg?.createdAt || conv.messages[0]?.createdAt || conv.updatedAt;
-    };
+    }, []);
 
-    const getPreview = (conv: Conversation) => {
+    const getPreview = useCallback((conv: Conversation) => {
         const lastMsg = conv.messages[0];
         if (!lastMsg) return { subject: null, preview: 'No messages' };
 
@@ -213,7 +221,7 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
         // Strip HTML tags for preview
         const preview = content.replace(/<[^>]*>/g, '').trim().slice(0, 80);
         return { subject, preview };
-    };
+    }, []);
 
     return (
         <div className="flex flex-col h-full bg-white border-r border-gray-200 w-80">
@@ -364,127 +372,132 @@ export function ConversationList({ conversations, selectedId, onSelect, currentU
                 )}
             </div>
 
-            {/* Conversations List */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Conversations List - Virtualized for performance */}
+            <div className="flex-1 overflow-hidden">
                 {filteredConversations.length === 0 ? (
                     <div className="p-8 text-center text-gray-500 text-sm">
                         No conversations found
                     </div>
                 ) : (
-                    filteredConversations.map(conv => {
-                        const name = getDisplayName(conv);
-                        const { subject, preview } = getPreview(conv);
-                        const initials = getInitials(name);
-                        const isSelected = selectedId === conv.id;
-                        const isEmail = conv.guestEmail || conv.wooCustomer?.email;
-                        const conversationHasDraft = hasDraft(conv.id);
-                        const isUnread = conv.isRead === false;
+                    <Virtuoso
+                        style={{ height: '100%' }}
+                        data={filteredConversations}
+                        overscan={5}
+                        itemContent={(index, conv) => {
+                            const name = getDisplayName(conv);
+                            const { subject, preview } = getPreview(conv);
+                            const initials = getInitials(name);
+                            const isSelected = selectedId === conv.id;
+                            const isEmail = conv.guestEmail || conv.wooCustomer?.email;
+                            const conversationHasDraft = hasDraft(conv.id);
+                            const isUnread = conv.isRead === false;
 
-                        return (
-                            <div
-                                key={conv.id}
-                                onClick={() => !isSelectionMode && onSelect(conv.id)}
-                                className={cn(
-                                    "flex gap-3 p-3 cursor-pointer border-b border-gray-100 transition-colors",
-                                    isSelected
-                                        ? "bg-blue-50 border-l-2 border-l-blue-600"
-                                        : "hover:bg-gray-50 border-l-2 border-l-transparent",
-                                    isUnread && !isSelected && "bg-blue-50/50",
-                                    selectedIds.has(conv.id) && "bg-indigo-50"
-                                )}
-                            >
-                                {/* Checkbox for bulk selection */}
-                                <button
-                                    onClick={(e) => toggleSelection(conv.id, e)}
-                                    className="p-0.5 rounded hover:bg-gray-200 transition-colors shrink-0 self-start mt-2"
+                            return (
+                                <div
+                                    onClick={() => !isSelectionMode && onSelect(conv.id)}
+                                    onMouseEnter={() => onPreload?.(conv.id)}
+                                    className={cn(
+                                        "flex gap-3 p-3 cursor-pointer border-b border-gray-100 transition-colors",
+                                        isSelected
+                                            ? "bg-blue-50 border-l-2 border-l-blue-600"
+                                            : "hover:bg-gray-50 border-l-2 border-l-transparent",
+                                        isUnread && !isSelected && "bg-blue-50/50",
+                                        selectedIds.has(conv.id) && "bg-indigo-50"
+                                    )}
                                 >
-                                    {selectedIds.has(conv.id) ? (
-                                        <CheckSquare size={16} className="text-indigo-600" />
-                                    ) : (
-                                        <Square size={16} className="text-gray-400" />
-                                    )}
-                                </button>
-                                {/* Avatar */}
-                                <div className={cn(
-                                    "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0",
-                                    isSelected ? "bg-blue-600" : "bg-gray-500"
-                                )}>
-                                    {initials}
-                                </div>
+                                    {/* Checkbox for bulk selection */}
+                                    <button
+                                        onClick={(e) => toggleSelection(conv.id, e)}
+                                        className="p-0.5 rounded hover:bg-gray-200 transition-colors shrink-0 self-start mt-2"
+                                    >
+                                        {selectedIds.has(conv.id) ? (
+                                            <CheckSquare size={16} className="text-indigo-600" />
+                                        ) : (
+                                            <Square size={16} className="text-gray-400" />
+                                        )}
+                                    </button>
+                                    {/* Avatar */}
+                                    <div className={cn(
+                                        "w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0",
+                                        isSelected ? "bg-blue-600" : "bg-gray-500"
+                                    )}>
+                                        {initials}
+                                    </div>
 
-                                {/* Content */}
-                                <div className="flex-1 min-w-0">
-                                    {/* Sender row */}
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            {isUnread && (
-                                                <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0" />
-                                            )}
-                                            {isEmail && <Mail size={12} className="text-gray-400 shrink-0" />}
-                                            <span className={cn(
-                                                "truncate text-sm",
-                                                isUnread ? "font-bold text-gray-900" : "font-medium text-gray-700"
-                                            )}>{name}</span>
+                                    {/* Content */}
+                                    <div className="flex-1 min-w-0">
+                                        {/* Sender row */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {isUnread && (
+                                                    <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0" />
+                                                )}
+                                                {isEmail && <Mail size={12} className="text-gray-400 shrink-0" />}
+                                                <span className={cn(
+                                                    "truncate text-sm",
+                                                    isUnread ? "font-bold text-gray-900" : "font-medium text-gray-700"
+                                                )}>{name}</span>
+                                            </div>
+                                            <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">
+                                                {formatDistanceToNow(new Date(getLastCustomerMessageTime(conv)), { addSuffix: false })}
+                                            </span>
                                         </div>
-                                        <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">
-                                            {formatDistanceToNow(new Date(getLastCustomerMessageTime(conv)), { addSuffix: false })}
-                                        </span>
-                                    </div>
 
-                                    {/* Subject line (prominent like email clients) */}
-                                    {subject && (
-                                        <p className={cn(
-                                            "text-sm truncate mt-0.5",
-                                            isUnread ? "font-semibold text-gray-900" : "font-medium text-gray-800"
-                                        )}>
-                                            {subject}
+                                        {/* Subject line (prominent like email clients) */}
+                                        {subject && (
+                                            <p className={cn(
+                                                "text-sm truncate mt-0.5",
+                                                isUnread ? "font-semibold text-gray-900" : "font-medium text-gray-800"
+                                            )}>
+                                                {subject}
+                                            </p>
+                                        )}
+
+                                        {/* Body preview */}
+                                        <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
+                                            {preview || (subject ? '' : 'No content')}
                                         </p>
-                                    )}
 
-                                    {/* Body preview */}
-                                    <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
-                                        {preview || (subject ? '' : 'No content')}
-                                    </p>
-
-                                    {/* Status Badge */}
-                                    <div className="flex items-center gap-2 mt-1.5">
-                                        {conv.status === 'OPEN' && (
-                                            <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded-sm">
-                                                Open
-                                            </span>
-                                        )}
-                                        {conv.assignee && (
-                                            <span className="text-[10px] text-gray-400">
-                                                → {conv.assignee.fullName || 'Assigned'}
-                                            </span>
-                                        )}
-                                        {conversationHasDraft && (
-                                            <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded-sm">
-                                                <Pencil size={10} />
-                                                Draft
-                                            </span>
-                                        )}
-                                        {/* Labels */}
-                                        {conv.labels && conv.labels.slice(0, 2).map(label => (
-                                            <span
-                                                key={label.id}
-                                                className="px-1.5 py-0.5 text-[10px] font-medium rounded-sm"
-                                                style={{
-                                                    backgroundColor: `${label.color}20`,
-                                                    color: label.color,
-                                                }}
-                                            >
-                                                {label.name}
-                                            </span>
-                                        ))}
-                                        {conv.labels && conv.labels.length > 2 && (
-                                            <span className="text-[10px] text-gray-400">+{conv.labels.length - 2}</span>
-                                        )}
+                                        {/* Status Badge */}
+                                        <div className="flex items-center gap-2 mt-1.5">
+                                            {conv.status === 'OPEN' && (
+                                                <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded-sm">
+                                                    Open
+                                                </span>
+                                            )}
+                                            {conv.assignee && (
+                                                <span className="text-[10px] text-gray-400">
+                                                    → {conv.assignee.fullName || 'Assigned'}
+                                                </span>
+                                            )}
+                                            {conversationHasDraft && (
+                                                <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded-sm">
+                                                    <Pencil size={10} />
+                                                    Draft
+                                                </span>
+                                            )}
+                                            {/* Labels */}
+                                            {conv.labels && conv.labels.slice(0, 2).map(label => (
+                                                <span
+                                                    key={label.id}
+                                                    className="px-1.5 py-0.5 text-[10px] font-medium rounded-sm"
+                                                    style={{
+                                                        backgroundColor: `${label.color}20`,
+                                                        color: label.color,
+                                                    }}
+                                                >
+                                                    {label.name}
+                                                </span>
+                                            ))}
+                                            {conv.labels && conv.labels.length > 2 && (
+                                                <span className="text-[10px] text-gray-400">+{conv.labels.length - 2}</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })
+                            );
+                        }}
+                    />
                 )}
             </div>
 

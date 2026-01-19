@@ -521,6 +521,10 @@ model WooProduct {
 
   binLocation String? // Warehouse bin location
 
+  // Local stock management (can override WooCommerce)
+  stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
+  manageStock   Boolean @default(false)  // Whether to use local stock instead of WooCommerce
+
   rawData Json
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1045,8 +1049,12 @@ model Conversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Performance indexes for inbox queries
   @@index([accountId, status])
   @@index([accountId, channel])
+  @@index([accountId, status, updatedAt(sort: Desc)])  // Covers main list query with ORDER BY
+  @@index([accountId, isRead])                          // For unread filter
+  @@index([accountId, assignedTo])                      // For assignment filter
   @@index([visitorToken])
   @@index([externalConversationId])
 }

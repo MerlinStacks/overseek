@@ -134,6 +134,127 @@ export class InventoryService {
 
 
     /**
+     * Get the effective stock quantity for a product.
+     * Uses local stockQuantity if manageStock is true, otherwise falls back to WooCommerce rawData.
+     */
+    static async getEffectiveStock(product: { stockQuantity: number | null; manageStock: boolean; rawData: any }): Promise<number | null> {
+        if (product.manageStock && product.stockQuantity !== null) {
+            return product.stockQuantity;
+        }
+        // Fall back to WooCommerce rawData
+        const raw = product.rawData as any;
+        if (raw?.manage_stock && typeof raw.stock_quantity === 'number') {
+            return raw.stock_quantity;
+        }
+        return null; // Stock not managed
+    }
+
+    /**
+     * Calculate available stock for a product that has a BOM.
+     * Returns the maximum buildable quantity based on component stock levels.
+     * 
+     * Formula: floor(min(componentStock / qtyPerUnit)) for all components
+     * 
+     * @returns number of buildable units, or null if product has no BOM
+     */
+    static async calculateBOMStock(accountId: string, productId: string, variationId: number = 0): Promise<number | null> {
+        // Find the BOM for this product/variation
+        const bom = await prisma.bOM.findFirst({
+            where: {
+                productId,
+                variationId: { in: [variationId, 0] }
+            },
+            include: {
+                items: {
+                    include: {
+                        childProduct: true
+                    }
+                }
+            },
+            orderBy: { variationId: 'desc' } // Prefer variant-specific BOM
+        });
+
+        if (!bom || bom.items.length === 0) {
+            return null; // No BOM, use direct stock
+        }
+
+        let minBuildable = Infinity;
+
+        for (const item of bom.items) {
+            if (!item.childProductId || !item.childProduct) continue;
+
+            const qtyPerUnit = Number(item.quantity) || 1;
+            if (qtyPerUnit <= 0) continue;
+
+            // Get effective stock for the component
+            const componentStock = await this.getEffectiveStock(item.childProduct);
+
+            if (componentStock === null) {
+                // Component doesn't have managed stock - can't calculate
+                continue;
+            }
+
+            const buildableFromThis = Math.floor(componentStock / qtyPerUnit);
+            minBuildable = Math.min(minBuildable, buildableFromThis);
+        }
+
+        return minBuildable === Infinity ? null : minBuildable;
+    }
+
+    /**
+     * Get stock info for a product, including whether it's BOM-based.
+     * Only considers BOM-based if BOM has actual child product components.
+     */
+    static async getProductStock(accountId: string, productId: string): Promise<{
+        stockQuantity: number | null;
+        isBOMBased: boolean;
+        manageStock: boolean;
+    }> {
+        const product = await prisma.wooProduct.findUnique({
+            where: { id: productId },
+            select: {
+                stockQuantity: true,
+                manageStock: true,
+                rawData: true,
+                boms: {
+                    select: {
+                        id: true,
+                        items: {
+                            where: { childProductId: { not: null } },
+                            select: { id: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        // Only consider BOM-based if there's at least one BOM with child product items
+        const hasBOMWithChildProducts = product.boms.some(bom => bom.items.length > 0);
+
+        if (hasBOMWithChildProducts) {
+            // Calculate stock from BOM
+            const bomStock = await this.calculateBOMStock(accountId, productId);
+            return {
+                stockQuantity: bomStock,
+                isBOMBased: true,
+                manageStock: true
+            };
+        }
+
+        // Use effective stock for non-BOM products
+        const effectiveStock = await this.getEffectiveStock(product);
+        return {
+            stockQuantity: effectiveStock,
+            isBOMBased: false,
+            manageStock: product.manageStock
+        };
+    }
+
+    /**
      * Recursively calculate COGS for a product.
      * Returns 0 if no BOM.
      */

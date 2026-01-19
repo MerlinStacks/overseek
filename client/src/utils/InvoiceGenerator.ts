@@ -48,30 +48,65 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
         format: 'a4'
     });
 
-    const pageWidth = doc.internal.pageSize.getWidth(); // 210
+    const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
 
-    // Grid System: 12 Cols matching react-grid-layout
-    const colWidth = pageWidth / 12;
+    // Page margins
+    const pageMarginLeft = 10;
+    const pageMarginRight = 10;
+    const pageMarginTop = 10;
+    const usableWidth = pageWidth - pageMarginLeft - pageMarginRight; // 190mm
 
-    // Row Height: RGL uses 30px. At 794px preview → 210mm PDF scale (0.264mm/px):
-    // 30px ≈ 7.9mm, rounding to 8mm
+    // Grid System: 12 Cols within usable width
+    const colWidth = usableWidth / 12;
+
+    // Row Height: RGL uses 30px rowHeight. Scale to mm.
+    // Preview is 794px wide for ~210mm → scale factor ~0.264
+    // 30px * 0.264 ≈ 8mm
     const rowHeightMM = 8;
 
-    // Margins: Match RGL margins [16, 8] (horizontal, vertical) in preview
-    // Scale: 794px preview → 210mm PDF = 0.264mm/px
-    // marginX: 16px * 0.264 ≈ 4.2mm
-    // marginY: 8px * 0.264 ≈ 2.1mm
-    const marginX = 4.2;
-    const marginY = 2.1;
-    const marginTop = 10; // Top page margin
+    // Page dimensions for page break handling
+    const pageHeight = doc.internal.pageSize.getHeight(); // 297mm for A4
 
-    // Helper to get coordinates - matches RGL positioning with margins
+    // Reserved zones to prevent content overlap
+    const headerReservedHeight = 35; // Space reserved for header on page 1 (logo + business details)
+    const footerReservedHeight = 25; // Space reserved for footer at bottom
+
+    // Calculate content safe zone
+    const contentTopPage1 = pageMarginTop + headerReservedHeight; // ~45mm on page 1
+    const contentTopOther = pageMarginTop; // 10mm on subsequent pages
+    const contentBottom = pageHeight - footerReservedHeight; // ~272mm from top
+
+    // Track current Y offset for page breaks
+    let yOffset = 0;
+    let currentPage = 1;
+
+    // Helper to check if we need a page break before rendering an element
+    const checkPageBreak = (elementY: number, elementH: number): number => {
+        const adjustedY = elementY + yOffset;
+
+        // If element would exceed content safe zone, add new page
+        if (adjustedY + elementH > contentBottom) {
+            doc.addPage();
+            currentPage++;
+            // On new pages, content starts at top margin (no header reserved space)
+            yOffset = -elementY + contentTopOther;
+            return contentTopOther;
+        }
+
+        return adjustedY;
+    };
+
+    // Helper to get coordinates with page break awareness
     const getRect = (item: InvoiceLayoutItem) => {
+        const baseY = pageMarginTop + (item.y * rowHeightMM);
+        const h = item.h * rowHeightMM;
+        const adjustedY = checkPageBreak(baseY, h);
+
         return {
-            x: item.x * colWidth + marginX,
-            y: item.y * (rowHeightMM + marginY) + marginTop,
-            w: item.w * colWidth - marginX, // Account for inter-item gap
-            h: item.h * rowHeightMM
+            x: pageMarginLeft + (item.x * colWidth),
+            y: adjustedY,
+            w: item.w * colWidth,
+            h: h
         };
     };
 
@@ -94,7 +129,10 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             continue;
         }
 
+        // Header only renders on page 1
         if (type === 'header') {
+            if (currentPage !== 1) continue; // Skip header on subsequent pages
+
             // Render logo if available (left side)
             if (itemConfig.logo) {
                 try {
@@ -308,18 +346,22 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
         }
     }
 
-    // Render Footer on Last Page
+    // Render Footer on Last Page (at bottom)
     if (footerItems.length > 0) {
         const pageCount = (doc.internal as any).getNumberOfPages();
         doc.setPage(pageCount);
 
+        // Position footer near bottom of page
+        const footerY = pageHeight - 20; // 20mm from bottom
+
         footerItems.forEach(({ layoutItem, itemConfig }) => {
-            const { x, y, w } = getRect(layoutItem);
             const content = itemConfig.content || '';
+            const footerX = pageMarginLeft + (layoutItem.x * colWidth);
+            const footerW = layoutItem.w * colWidth;
 
             doc.setFontSize(8);
             doc.setTextColor(100);
-            doc.text(content, x + (w / 2), y + 5, { align: 'center', maxWidth: w });
+            doc.text(content, footerX + (footerW / 2), footerY, { align: 'center', maxWidth: footerW });
             doc.setTextColor(0);
         });
     }

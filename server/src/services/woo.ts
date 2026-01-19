@@ -15,7 +15,7 @@ const MOCK_REVIEWS: MockReview[] = [];
 
 export interface WooProductData {
     name: string;
-    type?: 'simple' | 'variable' | 'grouped' | 'external';
+    type?: 'simple' | 'variable' | 'grouped' | 'external' | string; // Extended to support ATUM's custom types
     regular_price?: string;
     description?: string;
     short_description?: string;
@@ -232,6 +232,32 @@ export class WooService {
                 'UPDATE',
                 'ORDER',
                 id.toString(),
+                data
+            );
+        }
+
+        return response.data;
+    }
+
+    /**
+     * Update a product variation's data (stock, price, etc.)
+     * Required for updating variation-specific inventory via BOM sync.
+     */
+    async updateProductVariation(productId: number, variationId: number, data: any, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug(`[Demo] Updated Variation ${variationId} of Product ${productId}`, { data });
+            return { id: variationId, ...data };
+        }
+        const response = await this.api.put(`products/${productId}/variations/${variationId}`, data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(
+                this.accountId,
+                userId || null,
+                'UPDATE',
+                'PRODUCT_VARIATION',
+                `${productId}/${variationId}`,
                 data
             );
         }

@@ -63,8 +63,8 @@ interface ProductData {
     // Gold Price
     isGoldPriceApplied?: boolean;
 
-    // Woo Specific
-    type?: 'simple' | 'variable' | 'grouped' | 'external';
+    // Woo Specific - type can include ATUM's custom types like 'variable-product-part'
+    type?: string;
     variations?: number[]; // IDs
     rawData?: any;
 
@@ -394,12 +394,13 @@ export function ProductEditPage() {
                 <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <LogisticsPanel
                         formData={formData}
+                        productWooId={product.wooId}
                         weightUnit={currentAccount?.weightUnit}
                         dimensionUnit={currentAccount?.dimensionUnit}
                         onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
                     />
-                    {/* BOM for Simple Products */}
-                    {product.type !== 'variable' && (
+                    {/* BOM for Simple Products (not variable/variation types) */}
+                    {!product.type?.includes('variable') && !(product.variations && product.variations.length > 0) && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
                             <BOMPanel
                                 ref={bomPanelRef}
@@ -414,8 +415,8 @@ export function ProductEditPage() {
                 </div>
             )
         },
-        // Only show Variations tab for variable products with actual variations
-        ...(product.type === 'variable' && product.variations?.length ? [{
+        // Show Variations tab for any product with variations (supports ATUM's Variable Product Part and similar types)
+        ...((product.type?.includes('variable') || product.variations?.length) && product.variations?.length ? [{
             id: 'variants',
             label: 'Variations',
             icon: <Layers size={16} />,

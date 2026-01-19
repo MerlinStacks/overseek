@@ -9,6 +9,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { PurchaseOrderService } from '../services/PurchaseOrderService';
 import { PicklistService } from '../services/PicklistService';
 import { InventoryService } from '../services/InventoryService';
+import { BOMInventorySyncService } from '../services/BOMInventorySyncService';
 
 const poService = new PurchaseOrderService();
 const picklistService = new PicklistService();
@@ -289,6 +290,83 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to save BOM' });
+        }
+    });
+
+    // --- BOM Inventory Sync ---
+
+    /**
+     * GET /products/:productId/bom/effective-stock
+     * Calculate effective stock for a BOM product without syncing to WooCommerce.
+     * Returns the minimum buildable units based on child component stock.
+     */
+    fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/effective-stock', async (request, reply) => {
+        const accountId = request.accountId!;
+        const { productId } = request.params;
+        const query = request.query as { variationId?: string };
+        const variationId = parseInt(query.variationId || '0');
+
+        // Validate variationId is a valid number
+        if (isNaN(variationId) || variationId < 0) {
+            return reply.code(400).send({ error: 'Invalid variationId parameter' });
+        }
+
+        try {
+            const result = await BOMInventorySyncService.calculateEffectiveStock(accountId, productId, variationId);
+
+            if (!result) {
+                return reply.code(404).send({
+                    error: 'No BOM with child products found for this product'
+                });
+            }
+
+            return result;
+        } catch (error) {
+            Logger.error('Error calculating effective stock', { error, accountId, productId });
+            return reply.code(500).send({ error: 'Failed to calculate effective stock' });
+        }
+    });
+
+    /**
+     * POST /products/:productId/bom/sync
+     * Sync a single product's inventory to WooCommerce based on BOM calculation.
+     */
+    fastify.post<{ Params: { productId: string } }>('/products/:productId/bom/sync', async (request, reply) => {
+        const accountId = request.accountId!;
+        const { productId } = request.params;
+        const body = request.body as { variationId?: number };
+        const variationId = body.variationId ?? 0;
+
+        try {
+            const result = await BOMInventorySyncService.syncProductToWoo(accountId, productId, variationId);
+
+            if (!result.success) {
+                return reply.code(400).send({
+                    error: result.error || 'Sync failed',
+                    result
+                });
+            }
+
+            return result;
+        } catch (error) {
+            Logger.error('Error syncing BOM inventory', { error, accountId, productId });
+            return reply.code(500).send({ error: 'Failed to sync inventory to WooCommerce' });
+        }
+    });
+
+    /**
+     * POST /bom/sync-all
+     * Bulk sync ALL BOM parent products for the account to WooCommerce.
+     */
+    fastify.post('/bom/sync-all', async (request, reply) => {
+        const accountId = request.accountId!;
+
+        try {
+            const result = await BOMInventorySyncService.syncAllBOMProducts(accountId);
+            return result;
+        } catch (error) {
+            Logger.error('Error bulk syncing BOM inventory', { error, accountId });
+            return reply.code(500).send({ error: 'Failed to bulk sync inventory' });
         }
     });
 

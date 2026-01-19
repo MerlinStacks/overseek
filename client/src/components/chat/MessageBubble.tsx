@@ -63,10 +63,47 @@ function parseEmailContent(content: string): { subject: string | null; body: str
 }
 
 /**
+ * Cleans up raw email metadata and MIME header fragments from content.
+ * Email replies often contain leaked header fragments like:
+ * - "v="Content-Type" content="text/html; charset=Windows-1252">"
+ * - Raw MIME boundaries and headers
+ */
+function cleanEmailMetadata(content: string): string {
+    let cleaned = content;
+
+    // Remove broken HTML meta tag fragments (attribute leakage from stripped tags)
+    // Matches patterns like: v="Content-Type" content="text/html; charset=Windows-1252">
+    cleaned = cleaned.replace(/[a-z-]+=["'][^"']*["']\s*[a-z-]*=["'][^"']*charset[^"']*["'][^>]*>/gi, '');
+
+    // Remove standalone Content-Type declarations
+    cleaned = cleaned.replace(/Content-Type[:\s]+[^\n<]+/gi, '');
+
+    // Remove MIME boundary markers
+    cleaned = cleaned.replace(/--[a-zA-Z0-9_-]+--?/g, '');
+
+    // Remove charset declarations
+    cleaned = cleaned.replace(/charset\s*=\s*["']?[^"'\s>]+["']?/gi, '');
+
+    // Remove X-headers from email (X-Mailer, X-Priority, etc.)
+    cleaned = cleaned.replace(/^X-[A-Za-z-]+:.*$/gim, '');
+
+    // Remove MIME-Version headers
+    cleaned = cleaned.replace(/MIME-Version:.*$/gim, '');
+
+    // Clean up any lines that are just attribute fragments
+    cleaned = cleaned.replace(/^[a-z-]+=["'][^"']*["']>?\s*$/gim, '');
+
+    return cleaned.trim();
+}
+
+/**
  * Strips HTML tags and returns plain text for analysis.
  */
 function stripHtmlForAnalysis(html: string): string {
-    return html
+    // First clean email metadata
+    let cleaned = cleanEmailMetadata(html);
+
+    return cleaned
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/p>/gi, '\n\n')
         .replace(/<\/div>/gi, '\n')
@@ -380,10 +417,11 @@ export const MessageBubble = memo(function MessageBubble({
     const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(mainContent), [mainContent]);
 
     const sanitizedContent = useMemo(() => {
-        // Strip attachment markdown links before rendering
+        // Clean up email metadata first (raw MIME headers, charset, etc.)
+        // Then strip attachment markdown links before rendering
         // Remove patterns like: [filename](/uploads/attachments/...)
         // Also remove the "**Attachments:**" header and following lines if present
-        let cleanContent = mainContent;
+        let cleanContent = cleanEmailMetadata(mainContent);
 
         // Remove "**Attachments:**" header and the markdown links that follow
         cleanContent = cleanContent.replace(/\n\n\*\*Attachments:\*\*\n[\s\S]*$/i, '');
@@ -409,7 +447,9 @@ export const MessageBubble = memo(function MessageBubble({
 
     const sanitizedQuotedContent = useMemo(() => {
         if (!quotedContent) return null;
-        return DOMPurify.sanitize(quotedContent, {
+        // Clean email metadata from quoted content as well
+        const cleanedQuoted = cleanEmailMetadata(quotedContent);
+        return DOMPurify.sanitize(cleanedQuoted, {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'div', 'span'],
             ALLOWED_ATTR: ['href', 'target'],
         });

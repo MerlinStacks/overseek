@@ -1,6 +1,6 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { Logger } from '../../utils/logger';
-import { Plus, Trash2, Calendar, DollarSign, Loader2, GitBranch } from 'lucide-react';
+import { Plus, Trash2, DollarSign, Loader2, GitBranch, RefreshCw, Package, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
@@ -39,6 +39,11 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
 
+    // BOM Inventory Sync state
+    const [effectiveStock, setEffectiveStock] = useState<number | null>(null);
+    const [currentWooStock, setCurrentWooStock] = useState<number | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
     // 0 = Main Product, otherwise Variant ID
     // If fixedVariationId is defined, use it, else default to 0
@@ -47,6 +52,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     useEffect(() => {
         if (!currentAccount || !productId) return;
         fetchBOM();
+        fetchEffectiveStock();
     }, [productId, currentAccount, token, selectedScope]);
 
     // Search for products
@@ -112,6 +118,75 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
             Logger.error('An error occurred', { error: err });
         } finally {
             setLoading(false);
+        }
+    };
+
+    /**
+     * Fetches the calculated effective stock for this BOM product.
+     */
+    const fetchEffectiveStock = async () => {
+        if (!currentAccount || !productId) return;
+
+        try {
+            const res = await fetch(`/api/inventory/products/${productId}/bom/effective-stock?variationId=${selectedScope}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setEffectiveStock(data.effectiveStock);
+                setCurrentWooStock(data.currentWooStock);
+            } else {
+                // No BOM with child products
+                setEffectiveStock(null);
+                setCurrentWooStock(null);
+            }
+        } catch (err) {
+            Logger.error('Failed to fetch effective stock', { error: err });
+            setEffectiveStock(null);
+            setCurrentWooStock(null);
+        }
+    };
+
+    /**
+     * Syncs the calculated effective stock to WooCommerce.
+     */
+    const handleSyncToWoo = async () => {
+        if (!currentAccount || !productId) return;
+
+        setIsSyncing(true);
+        setSyncStatus('idle');
+
+        try {
+            const res = await fetch(`/api/inventory/products/${productId}/bom/sync`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({ variationId: selectedScope })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setCurrentWooStock(data.newStock);
+                setSyncStatus('success');
+                // Refresh effective stock data
+                await fetchEffectiveStock();
+            } else {
+                setSyncStatus('error');
+            }
+        } catch (err) {
+            Logger.error('Failed to sync inventory to WooCommerce', { error: err });
+            setSyncStatus('error');
+        } finally {
+            setIsSyncing(false);
+            // Reset status after 3 seconds
+            setTimeout(() => setSyncStatus('idle'), 3000);
         }
     };
 
@@ -230,13 +305,70 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
             </div>
 
             <div className="p-6 space-y-6">
-                {/* Cost Summary */}
-                <div className="p-4 bg-green-50/50 rounded-xl border border-green-100 mb-6">
-                    <div className="flex items-center gap-2 text-green-700 mb-1">
-                        <DollarSign size={18} />
-                        <span className="font-semibold text-sm uppercase">Composite Cost ({selectedScope === 0 ? 'Main' : `Variant #${selectedScope}`})</span>
+                {/* Cost & Inventory Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    {/* Cost Summary */}
+                    <div className="p-4 bg-green-50/50 rounded-xl border border-green-100">
+                        <div className="flex items-center gap-2 text-green-700 mb-1">
+                            <DollarSign size={18} />
+                            <span className="font-semibold text-sm uppercase">Composite Cost</span>
+                        </div>
+                        <div className="text-2xl font-bold text-gray-900">${totalCost.toFixed(2)}</div>
                     </div>
-                    <div className="text-2xl font-bold text-gray-900">${totalCost.toFixed(2)}</div>
+
+                    {/* Effective Stock & Sync - Only show if there are BOM items with child products */}
+                    {effectiveStock !== null && (
+                        <div className={`p-4 rounded-xl border ${currentWooStock !== effectiveStock
+                                ? 'bg-amber-50/50 border-amber-200'
+                                : 'bg-blue-50/50 border-blue-100'
+                            }`}>
+                            <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2 text-blue-700">
+                                    <Package size={18} />
+                                    <span className="font-semibold text-sm uppercase">Buildable Units</span>
+                                </div>
+                                {currentWooStock !== effectiveStock && (
+                                    <div className="flex items-center gap-1 text-amber-600 text-xs">
+                                        <AlertTriangle size={14} />
+                                        <span>Out of sync</span>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex items-end justify-between">
+                                <div>
+                                    <div className="text-2xl font-bold text-gray-900">{effectiveStock}</div>
+                                    {currentWooStock !== null && currentWooStock !== effectiveStock && (
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            WooCommerce: {currentWooStock}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={handleSyncToWoo}
+                                    disabled={isSyncing || currentWooStock === effectiveStock}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${currentWooStock === effectiveStock
+                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                            : syncStatus === 'success'
+                                                ? 'bg-green-500 text-white'
+                                                : syncStatus === 'error'
+                                                    ? 'bg-red-500 text-white'
+                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                                        }`}
+                                >
+                                    {isSyncing ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : syncStatus === 'success' ? (
+                                        <CheckCircle size={14} />
+                                    ) : syncStatus === 'error' ? (
+                                        <AlertTriangle size={14} />
+                                    ) : (
+                                        <RefreshCw size={14} />
+                                    )}
+                                    {isSyncing ? 'Syncing...' : syncStatus === 'success' ? 'Synced!' : syncStatus === 'error' ? 'Failed' : 'Sync to Woo'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {loading ? (

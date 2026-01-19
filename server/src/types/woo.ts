@@ -196,7 +196,7 @@ export interface WooProductRawData {
     date_created_gmt: string;
     date_modified: string;
     date_modified_gmt: string;
-    type: 'simple' | 'grouped' | 'external' | 'variable';
+    type: 'simple' | 'grouped' | 'external' | 'variable' | string; // Extended to support ATUM's custom types like 'variable-product-part'
     status: 'draft' | 'pending' | 'private' | 'publish';
     featured?: boolean;
     catalog_visibility?: 'visible' | 'catalog' | 'search' | 'hidden';
