@@ -174,7 +174,8 @@ export class BOMInventorySyncService {
         }
 
         const effectiveStock = minBuildableUnits;
-        const needsSync = currentWooStock !== effectiveStock;
+        // Only sync if stocks differ. Handle null case: if we can't fetch current stock, skip sync.
+        const needsSync = currentWooStock !== null && Number(currentWooStock) !== Number(effectiveStock);
 
         return {
             productId: product.id,

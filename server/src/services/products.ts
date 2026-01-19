@@ -374,7 +374,7 @@ export class ProductsService {
                 })
             ]);
 
-            const mappedProducts = products.map(p => {
+            let mappedProducts = products.map(p => {
                 const raw = p.rawData as any || {};
 
                 // Map images from JSON format if needed
@@ -390,6 +390,7 @@ export class ProductsService {
                     wooId: p.wooId,
                     name: p.name,
                     sku: p.sku,
+                    type: raw.type, // Include type for variable product detection
                     stock_status: p.stockStatus,
                     stock_quantity: raw.stock_quantity ?? null,
                     low_stock_amount: raw.low_stock_amount ?? 5,
@@ -401,12 +402,56 @@ export class ProductsService {
                     seoScore: p.seoScore || 0,
                     merchantCenterScore: p.merchantCenterScore || 0,
                     cogs: p.cogs ? Number(p.cogs) : 0,
-                    // Basic variation support for list view
-                    variations: [],
-                    // DB fallback doesn't calculate hasBOM efficiently without extra queries, can add if needed but skipping for robustness
-                    hasBOM: false
+                    variations: raw.variations || [],
+                    hasBOM: false,
+                    searchableVariants: [] // Will be populated below
                 };
             });
+
+            // Fetch variants for variable products (same logic as ES path)
+            try {
+                const productIdsForVariants = mappedProducts
+                    .filter((p: any) => p.type?.includes('variable') || (p.variations && p.variations.length > 0))
+                    .map((p: any) => p.id);
+
+                if (productIdsForVariants.length > 0) {
+                    const variants = await prisma.productVariation.findMany({
+                        where: { productId: { in: productIdsForVariants } },
+                        select: {
+                            id: true,
+                            productId: true,
+                            wooId: true,
+                            sku: true,
+                            stockQuantity: true,
+                            stockStatus: true,
+                            cogs: true,
+                            rawData: true
+                        }
+                    });
+
+                    const variantMap = new Map<string, any[]>();
+                    for (const v of variants) {
+                        if (!variantMap.has(v.productId)) variantMap.set(v.productId, []);
+                        const rawData = v.rawData as any || {};
+                        variantMap.get(v.productId)!.push({
+                            ...v,
+                            cogs: v.cogs ? Number(v.cogs) : 0,
+                            attributes: rawData.attributes || [],
+                            attributeString: (rawData.attributes || [])
+                                .map((a: any) => a.option || a.value)
+                                .filter(Boolean)
+                                .join(' / ')
+                        });
+                    }
+
+                    mappedProducts = mappedProducts.map((p: any) => ({
+                        ...p,
+                        searchableVariants: variantMap.get(p.id) || []
+                    }));
+                }
+            } catch (variantErr) {
+                Logger.warn('Failed to fetch variants in DB fallback', { error: variantErr });
+            }
 
             return {
                 products: mappedProducts,
