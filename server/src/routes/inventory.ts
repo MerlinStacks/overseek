@@ -451,30 +451,50 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 }
             });
 
+            Logger.info(`[BOMSync] Found ${bomsWithChildProducts.length} BOMs with child products`, { accountId });
+
             const pendingChanges = [];
+            let calculationFailures = 0;
 
             for (const bom of bomsWithChildProducts) {
-                const calculation = await BOMInventorySyncService.calculateEffectiveStock(
-                    accountId,
-                    bom.productId,
-                    bom.variationId
-                );
+                try {
+                    const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(
+                        bom.productId,
+                        bom.variationId
+                    );
 
-                if (calculation) {
-                    pendingChanges.push({
-                        productId: bom.product.id,
-                        wooId: bom.product.wooId,
-                        name: bom.product.name,
-                        sku: bom.product.sku,
-                        mainImage: bom.product.mainImage,
+                    if (calculation) {
+                        pendingChanges.push({
+                            productId: bom.product.id,
+                            wooId: bom.product.wooId,
+                            name: bom.product.name,
+                            sku: bom.product.sku,
+                            mainImage: bom.product.mainImage,
+                            variationId: bom.variationId,
+                            currentWooStock: calculation.currentWooStock,
+                            effectiveStock: calculation.effectiveStock,
+                            needsSync: calculation.needsSync,
+                            components: calculation.components
+                        });
+                    } else {
+                        calculationFailures++;
+                        Logger.warn(`[BOMSync] calculateEffectiveStock returned null for product`, {
+                            productId: bom.productId,
+                            variationId: bom.variationId,
+                            productName: bom.product.name
+                        });
+                    }
+                } catch (calcError) {
+                    calculationFailures++;
+                    Logger.error(`[BOMSync] calculateEffectiveStock threw error`, {
+                        productId: bom.productId,
                         variationId: bom.variationId,
-                        currentWooStock: calculation.currentWooStock,
-                        effectiveStock: calculation.effectiveStock,
-                        needsSync: calculation.needsSync,
-                        components: calculation.components
+                        error: calcError
                     });
                 }
             }
+
+            Logger.info(`[BOMSync] Results: ${pendingChanges.length} success, ${calculationFailures} failures`, { accountId });
 
             // Sort: needs sync first, then by name
             pendingChanges.sort((a, b) => {

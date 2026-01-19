@@ -196,6 +196,109 @@ export class BOMInventorySyncService {
     }
 
     /**
+     * Fast, local-only calculation of effective stock using only database data.
+     * No WooCommerce API calls - suitable for display endpoints that need speed.
+     * Returns null if the product has no BOM or no child products.
+     */
+    static async calculateEffectiveStockLocal(
+        productId: string,
+        variationId: number = 0
+    ): Promise<EffectiveStockResult | null> {
+        // Get the product details with stock from rawData
+        const product = await prisma.wooProduct.findUnique({
+            where: { id: productId },
+            select: { id: true, wooId: true, name: true, rawData: true, stockQuantity: true }
+        });
+
+        if (!product) {
+            return null;
+        }
+
+        // Find the BOM with all child products and their stock data
+        const bom = await prisma.bOM.findUnique({
+            where: {
+                productId_variationId: { productId, variationId }
+            },
+            include: {
+                items: {
+                    where: { childProductId: { not: null } },
+                    include: {
+                        childProduct: {
+                            select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true }
+                        },
+                        childVariation: {
+                            select: { wooId: true, sku: true, stockQuantity: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!bom || bom.items.length === 0) {
+            return null;
+        }
+
+        // Get current stock from local DB or rawData
+        const rawData = product.rawData as any;
+        const currentWooStock = product.stockQuantity ?? rawData?.stock_quantity ?? null;
+
+        // Calculate effective stock based on each child component using local data only
+        const components: EffectiveStockResult['components'] = [];
+        let minBuildableUnits = Infinity;
+
+        for (const bomItem of bom.items) {
+            if (!bomItem.childProduct) continue;
+
+            const requiredQty = Number(bomItem.quantity);
+            if (requiredQty <= 0) continue;
+
+            let childStock = 0;
+            let childName = bomItem.childProduct.name;
+
+            // Check if this is a variant component
+            if (bomItem.childVariationId && bomItem.childVariation) {
+                childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + bomItem.childVariation.wooId})`;
+                childStock = bomItem.childVariation.stockQuantity ?? 0;
+            } else {
+                // Standard product - use local stockQuantity or rawData
+                const childRawData = bomItem.childProduct.rawData as any;
+                childStock = bomItem.childProduct.stockQuantity ?? childRawData?.stock_quantity ?? 0;
+            }
+
+            const buildableUnits = Math.floor(childStock / requiredQty);
+
+            components.push({
+                childProductId: bomItem.childProduct.id,
+                childName,
+                childWooId: bomItem.childProduct.wooId,
+                requiredQty,
+                childStock,
+                buildableUnits
+            });
+
+            if (buildableUnits < minBuildableUnits) {
+                minBuildableUnits = buildableUnits;
+            }
+        }
+
+        if (components.length === 0 || minBuildableUnits === Infinity) {
+            return null;
+        }
+
+        const effectiveStock = minBuildableUnits;
+        const needsSync = currentWooStock !== null && Number(currentWooStock) !== Number(effectiveStock);
+
+        return {
+            productId: product.id,
+            wooId: product.wooId,
+            effectiveStock,
+            currentWooStock,
+            needsSync,
+            components
+        };
+    }
+
+    /**
      * Sync a single product's inventory to WooCommerce based on BOM calculation.
      */
     static async syncProductToWoo(
