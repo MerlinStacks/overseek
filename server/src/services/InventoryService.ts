@@ -204,11 +204,21 @@ export class InventoryService {
     /**
      * Get stock info for a product, including whether it's BOM-based.
      * Only considers BOM-based if BOM has actual child product components.
+     * For variable products, returns stock info per variant.
      */
     static async getProductStock(accountId: string, productId: string): Promise<{
         stockQuantity: number | null;
         isBOMBased: boolean;
         manageStock: boolean;
+        isVariable?: boolean;
+        variants?: Array<{
+            wooId: number;
+            sku?: string;
+            stockQuantity: number | null;
+            stockStatus?: string;
+            manageStock: boolean;
+            attributes?: string;
+        }>;
     }> {
         const product = await prisma.wooProduct.findUnique({
             where: { id: productId },
@@ -216,6 +226,16 @@ export class InventoryService {
                 stockQuantity: true,
                 manageStock: true,
                 rawData: true,
+                variations: {
+                    select: {
+                        wooId: true,
+                        sku: true,
+                        stockQuantity: true,
+                        stockStatus: true,
+                        manageStock: true,
+                        rawData: true
+                    }
+                },
                 boms: {
                     select: {
                         id: true,
@@ -241,16 +261,58 @@ export class InventoryService {
             return {
                 stockQuantity: bomStock,
                 isBOMBased: true,
-                manageStock: true
+                manageStock: true,
+                isVariable: false
             };
         }
 
-        // Use effective stock for non-BOM products
+        // Check if variable product with variations
+        if (product.variations.length > 0) {
+            const variants = product.variations.map(v => {
+                const raw = v.rawData as any;
+                // Get stock from local if managed, otherwise from rawData
+                let stockQty: number | null = null;
+                if (v.manageStock && v.stockQuantity !== null) {
+                    stockQty = v.stockQuantity;
+                } else if (raw?.manage_stock && typeof raw.stock_quantity === 'number') {
+                    stockQty = raw.stock_quantity;
+                }
+
+                // Build attributes string
+                const attributes = raw?.attributes?.map((a: any) => a.option).join(' / ') ?? '';
+
+                return {
+                    wooId: v.wooId,
+                    sku: v.sku ?? undefined,
+                    stockQuantity: stockQty,
+                    stockStatus: v.stockStatus ?? raw?.stock_status,
+                    manageStock: v.manageStock,
+                    attributes
+                };
+            });
+
+            // Sum up variant stock for total
+            const totalStock = variants.reduce((sum, v) => {
+                if (v.stockQuantity !== null) sum += v.stockQuantity;
+                return sum;
+            }, 0);
+
+            return {
+                stockQuantity: totalStock,
+                isBOMBased: false,
+                manageStock: true,
+                isVariable: true,
+                variants
+            };
+        }
+
+        // Simple product: Use effective stock
         const effectiveStock = await this.getEffectiveStock(product);
         return {
             stockQuantity: effectiveStock,
             isBOMBased: false,
-            manageStock: product.manageStock
+            manageStock: product.manageStock,
+            isVariable: false
         };
     }
 

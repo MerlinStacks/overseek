@@ -32,6 +32,7 @@ const MarketingPage = lazy(() => import('./pages/MarketingPage').then(m => ({ de
 const FlowsPage = lazy(() => import('./pages/FlowsPage').then(m => ({ default: m.FlowsPage })));
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
 const InventoryPage = lazy(() => import('./pages/InventoryPage').then(m => ({ default: m.InventoryPage })));
+const BOMSyncPage = lazy(() => import('./pages/BOMSyncPage').then(m => ({ default: m.BOMSyncPage })));
 const InventoryForecastPage = lazy(() => import('./pages/InventoryForecastPage').then(m => ({ default: m.InventoryForecastPage })));
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
 const SegmentsPage = lazy(() => import('./pages/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
@@ -202,6 +203,7 @@ function App() {
                                                 <Route path="/orders" element={<AccountGuard><OrdersPage /></AccountGuard>} />
                                                 <Route path="/orders/:id" element={<AccountGuard><OrderDetailPage /></AccountGuard>} />
                                                 <Route path="/inventory" element={<AccountGuard><InventoryPage /></AccountGuard>} />
+                                                <Route path="/inventory/bom-sync" element={<AccountGuard><BOMSyncPage /></AccountGuard>} />
                                                 <Route path="/inventory/forecasts" element={<AccountGuard><InventoryForecastPage /></AccountGuard>} />
                                                 <Route path="/inventory/product/:id" element={<AccountGuard><ProductEditPage /></AccountGuard>} />
                                                 <Route path="/inventory/purchase-orders/new" element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />

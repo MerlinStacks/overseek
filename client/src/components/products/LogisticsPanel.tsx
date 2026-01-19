@@ -7,15 +7,22 @@ interface LogisticsPanelProps {
     weightUnit?: string;
     dimensionUnit?: string;
     productWooId?: number;
+    variants?: Array<{
+        id: number;
+        sku?: string;
+        attributes?: Array<{ name: string; option: string }>;
+        stock_quantity?: number | null;
+        stock_status?: string;
+    }>;
     onChange: (updates: any) => void;
 }
 
-export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'cm', productWooId, onChange }: LogisticsPanelProps) {
+export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'cm', productWooId, variants, onChange }: LogisticsPanelProps) {
     return (
         <div className="space-y-6">
             {/* Stock Management - shown if productWooId is provided */}
             {productWooId && (
-                <StockManagementPanel productWooId={productWooId} />
+                <StockManagementPanel productWooId={productWooId} variants={variants} />
             )}
 
             <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

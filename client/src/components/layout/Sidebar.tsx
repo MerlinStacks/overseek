@@ -29,7 +29,8 @@ import {
     HelpCircle,
     UsersRound,
     Filter,
-    TrendingDown
+    TrendingDown,
+    RefreshCw
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -57,6 +58,7 @@ const navItems = [
         children: [
             { icon: ShoppingCart, label: 'Orders', path: '/orders' },
             { icon: Package, label: 'Inventory', path: '/inventory' },
+            { icon: RefreshCw, label: 'BOM Sync', path: '/inventory/bom-sync' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
             { icon: Users, label: 'Customers', path: '/customers' },
             { icon: Filter, label: 'Segments', path: '/customers/segments' },
@@ -106,7 +108,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
         if (item.label === 'Commerce') {
             const hasChild = item.children?.some(child => {
                 if (child.path === '/orders') return hasPermission('view_orders');
-                if (child.path === '/inventory' || child.path === '/inventory/forecasts') return hasPermission('view_products');
+                if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                 if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
                 return true;
             });
@@ -122,7 +124,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 ...item,
                 children: item.children.filter(child => {
                     if (child.path === '/orders') return hasPermission('view_orders');
-                    if (child.path === '/inventory' || child.path === '/inventory/forecasts') return hasPermission('view_products');
+                    if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                     if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
                     if (item.label === 'Analytics') return hasPermission('view_finance');
                     if (item.label === 'Growth') return hasPermission('view_marketing');

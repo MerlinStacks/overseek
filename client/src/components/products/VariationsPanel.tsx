@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, ChevronDown, ChevronRight, Package } from 'lucide-react';
+import { Layers, ChevronDown, ChevronRight, Package, DollarSign } from 'lucide-react';
 import { BOMPanel } from './BOMPanel';
+import { useAccountFeature } from '../../hooks/useAccountFeature';
 
 interface ProductVariant {
     id: number;
@@ -20,6 +21,9 @@ interface ProductVariant {
     image?: { src: string } | null; // Single image for variation
     images?: any[];
     attributes: any[];
+    // Gold Price fields
+    isGoldPriceApplied?: boolean;
+    goldPriceType?: string | null;
 }
 
 interface VariationsPanelProps {
@@ -40,12 +44,15 @@ interface VariationsPanelProps {
 export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, variants, onUpdate }) => {
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [editingVariants, setEditingVariants] = useState<ProductVariant[]>(variants);
+    const isGoldPriceEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
 
     useEffect(() => {
         setEditingVariants(variants);
     }, [variants]);
 
-    if (product.type !== 'variable') return null;
+    // Support ATUM's custom variable types (e.g., 'variable-product-part') and any product with variations
+    const hasVariations = product.type?.includes('variable') || (product.variations && product.variations.length > 0);
+    if (!hasVariations) return null;
 
     const toggleExpand = (id: number) => {
         setExpandedId(expandedId === id ? null : id);
@@ -235,6 +242,29 @@ export const VariationsPanel: React.FC<VariationsPanelProps> = ({ product, varia
                                                                 placeholder="e.g. A-01-02"
                                                             />
                                                         </div>
+                                                        {isGoldPriceEnabled && (
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                                                                    <DollarSign size={12} className="text-amber-500" />
+                                                                    Gold Type
+                                                                </label>
+                                                                <select
+                                                                    value={v.goldPriceType || 'none'}
+                                                                    onChange={(e) => {
+                                                                        const newType = e.target.value;
+                                                                        handleFieldChange(v.id, 'goldPriceType', newType === 'none' ? null : newType);
+                                                                        handleFieldChange(v.id, 'isGoldPriceApplied', newType !== 'none');
+                                                                    }}
+                                                                    className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white"
+                                                                >
+                                                                    <option value="none">None</option>
+                                                                    <option value="18ct">18ct Gold</option>
+                                                                    <option value="9ct">9ct Gold</option>
+                                                                    <option value="18ctWhite">18ct White Gold</option>
+                                                                    <option value="9ctWhite">9ct White Gold</option>
+                                                                </select>
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     <div className="border-l-2 border-blue-100 pl-4">

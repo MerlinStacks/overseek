@@ -370,6 +370,134 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    /**
+     * GET /bom/pending-changes
+     * Returns all BOM products with current vs effective stock comparison.
+     * Used by the BOM sync dashboard to show which products need syncing.
+     */
+    fastify.get('/bom/pending-changes', async (request, reply) => {
+        const accountId = request.accountId!;
+
+        try {
+            // Find all BOMs with child product items for this account
+            const bomsWithChildProducts = await prisma.bOM.findMany({
+                where: {
+                    product: { accountId },
+                    items: {
+                        some: { childProductId: { not: null } }
+                    }
+                },
+                include: {
+                    product: {
+                        select: { id: true, wooId: true, name: true, sku: true, mainImage: true }
+                    }
+                }
+            });
+
+            const pendingChanges = [];
+
+            for (const bom of bomsWithChildProducts) {
+                const calculation = await BOMInventorySyncService.calculateEffectiveStock(
+                    accountId,
+                    bom.productId,
+                    bom.variationId
+                );
+
+                if (calculation) {
+                    pendingChanges.push({
+                        productId: bom.product.id,
+                        wooId: bom.product.wooId,
+                        name: bom.product.name,
+                        sku: bom.product.sku,
+                        mainImage: bom.product.mainImage,
+                        variationId: bom.variationId,
+                        currentWooStock: calculation.currentWooStock,
+                        effectiveStock: calculation.effectiveStock,
+                        needsSync: calculation.needsSync,
+                        components: calculation.components
+                    });
+                }
+            }
+
+            // Sort: needs sync first, then by name
+            pendingChanges.sort((a, b) => {
+                if (a.needsSync !== b.needsSync) return a.needsSync ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            return {
+                total: pendingChanges.length,
+                needsSync: pendingChanges.filter(p => p.needsSync).length,
+                inSync: pendingChanges.filter(p => !p.needsSync).length,
+                products: pendingChanges
+            };
+        } catch (error) {
+            Logger.error('Error fetching pending BOM changes', { error, accountId });
+            return reply.code(500).send({ error: 'Failed to fetch pending changes' });
+        }
+    });
+
+    /**
+     * GET /bom/sync-history
+     * Returns recent BOM sync logs from AuditLog where source = 'SYSTEM_BOM'.
+     */
+    fastify.get('/bom/sync-history', async (request, reply) => {
+        const accountId = request.accountId!;
+        const query = request.query as { limit?: string };
+        const limit = Math.min(parseInt(query.limit || '50'), 100);
+
+        try {
+            const logs = await prisma.auditLog.findMany({
+                where: {
+                    accountId,
+                    source: 'SYSTEM_BOM'
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                select: {
+                    id: true,
+                    resourceId: true,
+                    previousValue: true,
+                    details: true,
+                    createdAt: true
+                }
+            });
+
+            // Enrich with product names
+            const productIds = [...new Set(logs.map(l => l.resourceId))];
+            const products = await prisma.wooProduct.findMany({
+                where: { id: { in: productIds } },
+                select: { id: true, name: true, sku: true }
+            });
+            const productMap = new Map(products.map(p => [p.id, p]));
+
+            const enrichedLogs = logs.map(log => {
+                const product = productMap.get(log.resourceId);
+                const prev = log.previousValue as any;
+                const details = log.details as any;
+
+                return {
+                    id: log.id,
+                    productId: log.resourceId,
+                    productName: product?.name || 'Unknown Product',
+                    productSku: product?.sku,
+                    previousStock: prev?.stock_quantity ?? null,
+                    newStock: details?.stock_quantity ?? null,
+                    trigger: details?.trigger || 'BOM_SYNC',
+                    createdAt: log.createdAt
+                };
+            });
+
+            return {
+                total: enrichedLogs.length,
+                logs: enrichedLogs
+            };
+        } catch (error) {
+            Logger.error('Error fetching BOM sync history', { error, accountId });
+            return reply.code(500).send({ error: 'Failed to fetch sync history' });
+        }
+    });
+
     // --- Purchase Orders ---
 
     fastify.get('/purchase-orders', async (request, reply) => {

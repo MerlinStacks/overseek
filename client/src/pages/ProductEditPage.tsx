@@ -382,6 +382,7 @@ export function ProductEditPage() {
                     <GoldPricePanel
                         product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied }}
                         onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
+                        hasVariants={!!(product.variations && product.variations.length > 0)}
                     />
                 </div>
             )
@@ -397,6 +398,7 @@ export function ProductEditPage() {
                         productWooId={product.wooId}
                         weightUnit={currentAccount?.weightUnit}
                         dimensionUnit={currentAccount?.dimensionUnit}
+                        variants={variants}
                         onChange={(updates) => setFormData(prev => ({ ...prev, ...updates }))}
                     />
                     {/* BOM for Simple Products (not variable/variation types) */}

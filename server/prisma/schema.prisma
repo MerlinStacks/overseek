@@ -551,10 +551,18 @@ model ProductVariation {
   salePrice   Decimal? @db.Decimal(10, 2)
   stockStatus String? // "instock", "outofstock"
   
+  // Local stock management (can override WooCommerce)
+  stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
+  manageStock   Boolean @default(false)  // Whether to use local stock
+  
   // Custom Fields
   cogs        Decimal? @db.Decimal(10, 2)
   miscCosts   Json?    @default("[]") // Array of { amount, note }
   binLocation String?
+  
+  // Gold Price (per-variant override)
+  isGoldPriceApplied Boolean  @default(false)
+  goldPriceType      String?  // "18ct", "9ct", "18ctWhite", "9ctWhite"
   
   images      Json? @default("[]") // Local overrides or cached images
   rawData     Json? // Store full Woo response

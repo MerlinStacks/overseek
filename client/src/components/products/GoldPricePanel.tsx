@@ -6,13 +6,31 @@ import { AlertTriangle, Scale, DollarSign, Calculator } from 'lucide-react';
 interface GoldPricePanelProps {
     product: any;
     onChange: (updates: any) => void;
+    hasVariants?: boolean;
 }
 
-export function GoldPricePanel({ product, onChange }: GoldPricePanelProps) {
+export function GoldPricePanel({ product, onChange, hasVariants }: GoldPricePanelProps) {
     const isEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
     const { currentAccount } = useAccount();
 
     if (!isEnabled) return null;
+
+    // Hide main product gold price panel if variants exist (gold price is set per-variant)
+    if (hasVariants) {
+        return (
+            <div className="bg-amber-50/50 rounded-xl border border-amber-100 p-6">
+                <div className="flex items-center gap-3">
+                    <DollarSign className="text-amber-600" size={20} />
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-900">Gold Price Calculation</h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                            This product has variants. Gold price settings are configured per-variant in the <strong>Variations</strong> tab.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const weight = product.weight ? parseFloat(product.weight) : 0;
 
@@ -41,7 +59,7 @@ export function GoldPricePanel({ product, onChange }: GoldPricePanelProps) {
         if (newType === 'none') {
             onChange({ isGoldPriceApplied: false, goldPriceType: null });
         } else if (newType === 'legacy') {
-             onChange({ isGoldPriceApplied: true, goldPriceType: null });
+            onChange({ isGoldPriceApplied: true, goldPriceType: null });
         } else {
             onChange({ isGoldPriceApplied: true, goldPriceType: newType });
         }
@@ -76,9 +94,9 @@ export function GoldPricePanel({ product, onChange }: GoldPricePanelProps) {
                     <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
                         <div className="text-xs text-gray-500 uppercase font-bold mb-1">Applied Price</div>
                         <div className="text-xl font-mono text-gray-900">
-                             ${selectedPrice.toFixed(2)} <span className="text-sm text-gray-500">/g</span>
+                            ${selectedPrice.toFixed(2)} <span className="text-sm text-gray-500">/g</span>
                         </div>
-                         {currentType !== 'none' && (
+                        {currentType !== 'none' && (
                             <div className="text-xs text-gray-500 mt-1">
                                 Based on {currentType === 'legacy' ? 'Base Price' : currentType} setting
                             </div>

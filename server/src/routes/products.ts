@@ -389,6 +389,85 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // PUT /:id/variants/:variantId/stock - Update variant stock quantity
+    fastify.put<{ Params: { id: string; variantId: string }; Body: { stockQuantity: number } }>(
+        '/:id/variants/:variantId/stock',
+        async (request, reply) => {
+            try {
+                const accountId = request.accountId!;
+                const { id: wooId } = productIdParamSchema.parse(request.params);
+                const variantWooId = parseInt(request.params.variantId, 10);
+
+                if (isNaN(variantWooId) || variantWooId <= 0) {
+                    return reply.code(400).send({ error: 'Invalid variant ID' });
+                }
+
+                // Validate request body
+                const parseResult = stockUpdateBodySchema.safeParse(request.body);
+                if (!parseResult.success) {
+                    return reply.code(400).send({
+                        error: parseResult.error.issues[0]?.message || 'Invalid stock quantity'
+                    });
+                }
+                const { stockQuantity } = parseResult.data;
+
+                // Find the product and variation
+                const product = await prisma.wooProduct.findUnique({
+                    where: { accountId_wooId: { accountId, wooId } },
+                    select: { id: true }
+                });
+
+                if (!product) {
+                    return reply.code(404).send({ error: 'Product not found' });
+                }
+
+                const variation = await prisma.productVariation.findUnique({
+                    where: { productId_wooId: { productId: product.id, wooId: variantWooId } }
+                });
+
+                if (!variation) {
+                    return reply.code(404).send({ error: 'Variation not found' });
+                }
+
+                // Update local variation stock
+                await prisma.productVariation.update({
+                    where: { id: variation.id },
+                    data: {
+                        stockQuantity,
+                        manageStock: true,
+                        stockStatus: stockQuantity > 0 ? 'instock' : 'outofstock'
+                    }
+                });
+
+                // Sync to WooCommerce (non-blocking)
+                try {
+                    const woo = await WooService.forAccount(accountId);
+                    await woo.updateProductVariation(wooId, variantWooId, {
+                        manage_stock: true,
+                        stock_quantity: stockQuantity
+                    });
+                } catch (wooErr) {
+                    Logger.warn('Failed to sync variant stock to WooCommerce', {
+                        error: wooErr,
+                        accountId,
+                        productWooId: wooId,
+                        variantWooId
+                    });
+                }
+
+                return {
+                    success: true,
+                    variantWooId,
+                    stockQuantity,
+                    manageStock: true
+                };
+            } catch (error: any) {
+                Logger.error('Error updating variant stock', { error });
+                return reply.code(500).send({ error: 'Failed to update variant stock' });
+            }
+        }
+    );
+
     // GET /:id/sales-history - Get sales history from Elasticsearch
     fastify.get<{ Params: { id: string } }>('/:id/sales-history', async (request, reply) => {
         try {

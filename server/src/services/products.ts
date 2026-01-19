@@ -54,6 +54,8 @@ export class ProductsService {
                 cogs: localVariant?.cogs?.toString() || '',
                 miscCosts: localVariant?.miscCosts || [],
                 binLocation: localVariant?.binLocation || '',
+                isGoldPriceApplied: localVariant?.isGoldPriceApplied || false,
+                goldPriceType: localVariant?.goldPriceType || null,
                 image: fullData?.image || null, // Single image object { src: ... }
                 images: fullData?.image ? [fullData.image] : [],
                 attributes: fullData?.attributes || []
@@ -151,6 +153,8 @@ export class ProductsService {
                         cogs: v.cogs ? parseFloat(v.cogs) : undefined,
                         miscCosts: v.miscCosts || undefined,
                         binLocation: v.binLocation,
+                        isGoldPriceApplied: v.isGoldPriceApplied,
+                        goldPriceType: v.goldPriceType,
                         sku: v.sku,
                         price: v.price ? parseFloat(v.price) : undefined,
                         salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
@@ -162,6 +166,8 @@ export class ProductsService {
                         cogs: v.cogs ? parseFloat(v.cogs) : undefined,
                         miscCosts: v.miscCosts || undefined,
                         binLocation: v.binLocation,
+                        isGoldPriceApplied: v.isGoldPriceApplied || false,
+                        goldPriceType: v.goldPriceType || null,
                         sku: v.sku,
                         price: v.price ? parseFloat(v.price) : undefined,
                         salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,

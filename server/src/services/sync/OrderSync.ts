@@ -140,7 +140,12 @@ export class OrderSync extends BaseSync {
             totalProcessed += orders.length;
 
             Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
-            if (orders.length < 25) hasMore = false;
+
+            // Use totalPages from WooCommerce API headers (x-wp-totalpages) instead of batch-size heuristic
+            // The old `orders.length < 25` check was unreliable because:
+            // 1. WooCommerce may return fewer items due to internal filtering
+            // 2. Zod validation may skip invalid orders, reducing the count
+            if (page >= totalPages) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
