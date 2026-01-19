@@ -100,15 +100,46 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 const data = await res.json();
                 // Map backend response to UI BOMItems
                 if (data && data.items) {
-                    const mapped = data.items.map((item: any) => ({
-                        id: item.id,
-                        childProductId: item.childProductId,
-                        supplierItemId: item.supplierItemId,
-                        displayName: item.childProduct ? item.childProduct.name : (item.supplierItem?.name || 'Unknown'),
-                        quantity: Number(item.quantity),
-                        wasteFactor: Number(item.wasteFactor),
-                        cost: item.childProduct ? (Number(item.childProduct.cogs) || 0) : (Number(item.supplierItem?.cost) || 0)
-                    }));
+                    const mapped = data.items.map((item: any) => {
+                        // Build display name: prefer variant, then product, then supplier item
+                        let displayName = 'Unknown';
+                        if (item.childVariation) {
+                            // Variant: use parent product name + variant attributes
+                            const variantRaw = item.childVariation.rawData || {};
+                            const attrString = (variantRaw.attributes || [])
+                                .map((a: any) => a.option || a.value)
+                                .filter(Boolean)
+                                .join(' / ');
+                            displayName = item.childProduct
+                                ? `${item.childProduct.name} - ${attrString || item.childVariation.sku || `#${item.childVariation.wooId}`}`
+                                : attrString || item.childVariation.sku || `Variant #${item.childVariation.wooId}`;
+                        } else if (item.childProduct) {
+                            displayName = item.childProduct.name;
+                        } else if (item.supplierItem) {
+                            displayName = item.supplierItem.name || 'Unknown';
+                        }
+
+                        // Get COGS: prioritize variant COGS > product COGS > supplier cost
+                        let cost = 0;
+                        if (item.childVariation?.cogs) {
+                            cost = Number(item.childVariation.cogs);
+                        } else if (item.childProduct?.cogs) {
+                            cost = Number(item.childProduct.cogs);
+                        } else if (item.supplierItem?.cost) {
+                            cost = Number(item.supplierItem.cost);
+                        }
+
+                        return {
+                            id: item.id,
+                            childProductId: item.childProductId,
+                            childVariationId: item.childVariationId,
+                            supplierItemId: item.supplierItemId,
+                            displayName,
+                            quantity: Number(item.quantity),
+                            wasteFactor: Number(item.wasteFactor),
+                            cost
+                        };
+                    });
                     setBomItems(mapped);
                 } else {
                     setBomItems([]);
@@ -406,84 +437,85 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                             {/* Search Results Dropdown */}
                             {searchResults.length > 0 && (
                                 <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-96 overflow-y-auto">
-                                    {searchResults.map(p => (
-                                        <div key={p.id} className="border-b border-gray-50 last:border-b-0">
-                                            {/* Parent product header */}
-                                            <button
-                                                disabled={p.hasBOM || p.id === productId || (p.searchableVariants && p.searchableVariants.length > 0)}
-                                                className={`w-full text-left p-3 transition-colors flex items-center gap-3 ${p.hasBOM || p.id === productId
-                                                    ? 'opacity-50 cursor-not-allowed bg-gray-50'
-                                                    : (p.searchableVariants && p.searchableVariants.length > 0)
-                                                        ? 'bg-gray-50/50 cursor-default'
-                                                        : 'hover:bg-blue-50 cursor-pointer'
-                                                    }`}
-                                                onClick={() => {
-                                                    // Only allow click if NOT a variable product (no variants to choose from)
-                                                    if (!p.hasBOM && p.id !== productId && (!p.searchableVariants || p.searchableVariants.length === 0)) {
-                                                        handleAddProduct(p);
-                                                    }
-                                                }}
-                                            >
-                                                {p.mainImage && (
-                                                    <img src={p.mainImage} alt="" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="font-medium text-gray-900 text-sm truncate">
-                                                        {p.name}
-                                                        {p.hasBOM && <span className="ml-2 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">Composite Product</span>}
-                                                        {p.id === productId && <span className="ml-2 text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-full border border-gray-200">Current Product</span>}
-                                                        {p.searchableVariants && p.searchableVariants.length > 0 && (
-                                                            <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200">
-                                                                {p.searchableVariants.length} variant{p.searchableVariants.length > 1 ? 's' : ''}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                        {p.sku && <span className="font-mono">{p.sku}</span>}
-                                                        {p.sku && p.stockQuantity !== undefined && <span className="mx-1">•</span>}
-                                                        {p.stockQuantity !== undefined && <span>Stock: {p.stockQuantity}</span>}
-                                                    </div>
-                                                </div>
-                                                <div className="text-sm font-semibold text-gray-700">${p.price || '0.00'}</div>
-                                            </button>
+                                    {searchResults
+                                        // Filter out products that can't be added as components
+                                        .filter(p => !p.hasBOM && p.id !== productId)
+                                        .map(p => {
+                                            const hasVariants = p.searchableVariants && p.searchableVariants.length > 0;
+                                            const isClickable = !hasVariants;
 
-                                            {/* Variant sub-options */}
-                                            {p.searchableVariants && p.searchableVariants.length > 0 && (
-                                                <div className="bg-gray-50/30 border-t border-gray-100">
-                                                    {p.searchableVariants.map((v: any) => (
-                                                        <button
-                                                            key={v.id}
-                                                            className="w-full text-left pl-8 pr-3 py-2 transition-colors flex items-center gap-3 hover:bg-blue-50 border-b border-gray-50 last:border-b-0"
-                                                            onClick={() => handleAddProduct({
-                                                                id: p.id,
-                                                                name: `${p.name} - ${v.attributeString || v.sku || `#${v.wooId}`}`,
-                                                                cogs: v.cogs,
-                                                                sku: v.sku,
-                                                                stockQuantity: v.stockQuantity,
-                                                                variantId: v.wooId,
-                                                                isVariant: true
-                                                            })}
-                                                        >
-                                                            <GitBranch size={14} className="text-gray-400 flex-shrink-0" />
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="font-medium text-gray-800 text-sm truncate">
-                                                                    {v.attributeString || `Variant #${v.wooId}`}
-                                                                </div>
-                                                                <div className="text-xs text-gray-500">
-                                                                    {v.sku && <span className="font-mono">{v.sku}</span>}
-                                                                    {v.sku && v.stockQuantity !== undefined && <span className="mx-1">•</span>}
-                                                                    {v.stockQuantity !== undefined && <span>Stock: {v.stockQuantity}</span>}
-                                                                </div>
+                                            return (
+                                                <div key={p.id} className="border-b border-gray-50 last:border-b-0">
+                                                    {/* Parent product row */}
+                                                    <button
+                                                        disabled={!isClickable}
+                                                        className={`w-full text-left p-3 transition-colors flex items-center gap-3 ${isClickable
+                                                                ? 'hover:bg-blue-50 cursor-pointer'
+                                                                : 'bg-gray-50/50 cursor-default'
+                                                            }`}
+                                                        onClick={() => {
+                                                            if (isClickable) handleAddProduct(p);
+                                                        }}
+                                                    >
+                                                        {p.mainImage && (
+                                                            <img src={p.mainImage} alt="" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-medium text-gray-900 text-sm truncate">
+                                                                {p.name}
+                                                                {hasVariants && (
+                                                                    <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200">
+                                                                        {p.searchableVariants.length} variant{p.searchableVariants.length > 1 ? 's' : ''}
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            <div className="text-xs font-medium text-gray-600">
-                                                                COGS: ${v.cogs?.toFixed(2) || '0.00'}
+                                                            <div className="text-xs text-gray-500">
+                                                                {p.sku && <span className="font-mono">{p.sku}</span>}
+                                                                {p.sku && p.stockQuantity !== undefined && <span className="mx-1">•</span>}
+                                                                {p.stockQuantity !== undefined && <span>Stock: {p.stockQuantity}</span>}
                                                             </div>
-                                                        </button>
-                                                    ))}
+                                                        </div>
+                                                        {isClickable && <div className="text-sm font-semibold text-gray-700">${p.price || '0.00'}</div>}
+                                                    </button>
+
+                                                    {/* Variant sub-options */}
+                                                    {hasVariants && (
+                                                        <div className="bg-gray-50/30 border-t border-gray-100">
+                                                            {p.searchableVariants.map((v: any) => (
+                                                                <button
+                                                                    key={v.id}
+                                                                    className="w-full text-left pl-8 pr-3 py-2 transition-colors flex items-center gap-3 hover:bg-blue-50 border-b border-gray-50 last:border-b-0"
+                                                                    onClick={() => handleAddProduct({
+                                                                        id: p.id,
+                                                                        name: `${p.name} - ${v.attributeString || v.sku || `#${v.wooId}`}`,
+                                                                        cogs: v.cogs,
+                                                                        sku: v.sku,
+                                                                        stockQuantity: v.stockQuantity,
+                                                                        variantId: v.wooId,
+                                                                        isVariant: true
+                                                                    })}
+                                                                >
+                                                                    <GitBranch size={14} className="text-gray-400 flex-shrink-0" />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="font-medium text-gray-800 text-sm truncate">
+                                                                            {v.attributeString || `Variant #${v.wooId}`}
+                                                                        </div>
+                                                                        <div className="text-xs text-gray-500">
+                                                                            {v.sku && <span className="font-mono">{v.sku}</span>}
+                                                                            {v.sku && v.stockQuantity !== undefined && <span className="mx-1">•</span>}
+                                                                            {v.stockQuantity !== undefined && <span>Stock: {v.stockQuantity}</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-xs font-medium text-gray-600">
+                                                                        COGS: ${v.cogs?.toFixed(2) || '0.00'}
+                                                                    </div>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                            );
+                                        })}
                                 </div>
                             )}
                         </div>

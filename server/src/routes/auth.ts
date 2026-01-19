@@ -37,45 +37,82 @@ const resetPasswordSchema = z.object({
 
 // Simple in-memory rate limiter (per IP) as fallback if Redis is unavailable.
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const MAX_FAILED_ATTEMPTS = 10; // Increased limit - only counts FAILED attempts now
 
-function checkLoginRateLimitFallback(ip: string): boolean {
+/**
+ * Check if IP is currently rate limited (without incrementing).
+ * Returns true if allowed to attempt login, false if blocked.
+ */
+function isRateLimitedFallback(ip: string): boolean {
     const now = Date.now();
-    const windowMs = 60 * 60 * 1000; // 1 hour
-    const maxAttempts = 5;
-
     const record = loginAttempts.get(ip);
+
+    if (!record) return true; // No record = allowed
+
+    // Window expired, reset
+    if (now - record.firstAttempt > WINDOW_MS) {
+        loginAttempts.delete(ip);
+        return true;
+    }
+
+    // Check if at limit
+    return record.count < MAX_FAILED_ATTEMPTS;
+}
+
+/**
+ * Increment failed login counter for IP.
+ */
+function incrementFailedLoginFallback(ip: string): void {
+    const now = Date.now();
+    const record = loginAttempts.get(ip);
+
     if (!record) {
         loginAttempts.set(ip, { count: 1, firstAttempt: now });
-        return true;
+        return;
     }
 
-    if (now - record.firstAttempt > windowMs) {
+    // Window expired, reset
+    if (now - record.firstAttempt > WINDOW_MS) {
         loginAttempts.set(ip, { count: 1, firstAttempt: now });
-        return true;
-    }
-
-    if (record.count >= maxAttempts) {
-        return false;
+        return;
     }
 
     record.count++;
-    return true;
 }
 
-async function checkLoginRateLimit(ip: string): Promise<boolean> {
+/**
+ * Check if IP is currently rate limited using Redis.
+ * Returns true if allowed to attempt login, false if blocked.
+ */
+async function isRateLimited(ip: string): Promise<boolean> {
+    const key = `login:failed:${ip}`;
+
+    try {
+        const count = await redisClient.get(key);
+        if (!count) return true; // No record = allowed
+        return parseInt(count) < MAX_FAILED_ATTEMPTS;
+    } catch (error) {
+        Logger.warn('Rate limit check fallback to memory', { error });
+        return isRateLimitedFallback(ip);
+    }
+}
+
+/**
+ * Increment failed login counter for IP in Redis.
+ */
+async function incrementFailedLogin(ip: string): Promise<void> {
     const windowSeconds = 60 * 60; // 1 hour
-    const maxAttempts = 5;
-    const key = `login:ip:${ip}`;
+    const key = `login:failed:${ip}`;
 
     try {
         const count = await redisClient.incr(key);
         if (count === 1) {
             await redisClient.expire(key, windowSeconds);
         }
-        return count <= maxAttempts;
     } catch (error) {
-        Logger.warn('Login rate limit fallback', { error });
-        return checkLoginRateLimitFallback(ip);
+        Logger.warn('Failed login increment fallback to memory', { error });
+        incrementFailedLoginFallback(ip);
     }
 }
 
@@ -160,8 +197,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/login', async (request, reply) => {
         try {
             const ip = request.ip;
-            if (!(await checkLoginRateLimit(ip))) {
-                return reply.code(429).send({ error: 'Too many login attempts, please try again after an hour.' });
+
+            // Check if IP is currently rate limited (don't increment yet - only count failures)
+            if (!(await isRateLimited(ip))) {
+                return reply.code(429).send({ error: 'Too many login attempts, please try again later.' });
             }
 
             const parsed = loginSchema.safeParse(request.body);
@@ -171,20 +210,33 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             const { email, password, token: twoFactorToken } = parsed.data;
 
             const user = await prisma.user.findUnique({ where: { email } });
-            if (!user) return reply.code(401).send({ error: 'Invalid credentials' });
+            if (!user) {
+                // Increment failed attempt counter - only on actual failed login
+                await incrementFailedLogin(ip);
+                return reply.code(401).send({ error: 'Invalid credentials' });
+            }
 
             const isValid = await comparePassword(password, user.passwordHash);
-            if (!isValid) return reply.code(401).send({ error: 'Invalid credentials' });
+            if (!isValid) {
+                // Increment failed attempt counter - only on actual failed login
+                await incrementFailedLogin(ip);
+                return reply.code(401).send({ error: 'Invalid credentials' });
+            }
 
-            // 2FA Check
+            // 2FA Check (successful password, check 2FA if enabled)
             if (user.isTwoFactorEnabled) {
                 if (!twoFactorToken) {
                     return { requireTwoFactor: true };
                 }
                 const isTokenValid = SecurityService.verifyTwoFactorToken(twoFactorToken, user.twoFactorSecret!);
-                if (!isTokenValid) return reply.code(401).send({ error: 'Invalid 2FA code' });
+                if (!isTokenValid) {
+                    // Increment failed attempt counter for bad 2FA
+                    await incrementFailedLogin(ip);
+                    return reply.code(401).send({ error: 'Invalid 2FA code' });
+                }
             }
 
+            // Successful login - no rate limit increment!
             const { accessToken, refreshToken } = await SecurityService.createSession(user.id, ip, request.headers['user-agent'] as string);
 
             return {

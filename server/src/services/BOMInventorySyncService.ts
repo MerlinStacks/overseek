@@ -119,14 +119,8 @@ export class BOMInventorySyncService {
                     childWooId = bomItem.childVariation.wooId;
                     childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + childWooId})`;
 
-                    // Fetch variant stock from WooCommerce (or use local if synced and managed)
-                    // We'll fetch live from Woo to be safe for sync
+                    // Fetch variant stock from WooCommerce, fallback to local data
                     try {
-                        // wooService usually has getProduct for variants too if ID is unique? 
-                        // Actually Woo variations have unique IDs. 
-                        // But strictly we should use /products/ID/variations/ID if needed.
-                        // However, getProduct(id) in many Woo clients works for variations too.
-                        // Let's assume we can fetch it. If not, we might need to verify WooService.
                         const variant = await wooService.getProduct(childWooId);
                         childStock = variant.stock_quantity ?? 0;
                     } catch {
@@ -135,8 +129,22 @@ export class BOMInventorySyncService {
                     }
                 } else {
                     // Standard product component
-                    const childWooProduct = await wooService.getProduct(childWooId);
-                    childStock = childWooProduct.stock_quantity ?? 0;
+                    try {
+                        const childWooProduct = await wooService.getProduct(childWooId);
+                        childStock = childWooProduct.stock_quantity ?? 0;
+                    } catch {
+                        // Fallback to local stockQuantity from DB if WooCommerce API fails
+                        const localProduct = await prisma.wooProduct.findUnique({
+                            where: { id: bomItem.childProduct.id },
+                            select: { stockQuantity: true }
+                        });
+                        childStock = localProduct?.stockQuantity ?? 0;
+                        Logger.warn(`[BOMInventorySync] Using local stock for child product`, {
+                            accountId,
+                            childWooId,
+                            localStock: childStock
+                        });
+                    }
                 }
 
                 // Calculate buildable units from this component
@@ -157,14 +165,14 @@ export class BOMInventorySyncService {
                 }
 
             } catch (err) {
-                Logger.error(`[BOMInventorySync] Failed to fetch child product stock`, {
+                Logger.error(`[BOMInventorySync] Failed to process child product in BOM`, {
                     accountId,
                     childProductId: bomItem.childProduct.id,
                     childWooId: bomItem.childProduct.wooId,
                     error: err
                 });
-                // If we can't get a child's stock, we can't calculate effective stock
-                return null;
+                // Continue processing other components instead of failing entirely
+                continue;
             }
         }
 

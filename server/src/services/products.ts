@@ -348,6 +348,16 @@ export class ProductsService {
                         // This handles products that have been synced but don't have persistent variant records
                         const productsNeedingFallback = productIdsForVariants.filter(id => !variantMap.has(id));
                         if (productsNeedingFallback.length > 0) {
+                            // Also fetch any ProductVariation records that might exist for COGS
+                            const fallbackVariations = await prisma.productVariation.findMany({
+                                where: { productId: { in: productsNeedingFallback } },
+                                select: { productId: true, wooId: true, cogs: true }
+                            });
+                            const cogsLookup = new Map<string, number>();
+                            for (const fv of fallbackVariations) {
+                                cogsLookup.set(`${fv.productId}:${fv.wooId}`, fv.cogs ? Number(fv.cogs) : 0);
+                            }
+
                             for (const p of dbProducts.filter(db => productsNeedingFallback.includes(db.id))) {
                                 const raw = p.rawData as any || {};
                                 const variationsData: any[] = raw.variationsData || [];
@@ -359,7 +369,7 @@ export class ProductsService {
                                         sku: v.sku || '',
                                         stockQuantity: v.stock_quantity ?? null,
                                         stockStatus: v.stock_status || 'instock',
-                                        cogs: 0,
+                                        cogs: cogsLookup.get(`${p.id}:${v.id}`) || 0,
                                         attributes: v.attributes || [],
                                         attributeString: (v.attributes || [])
                                             .map((a: any) => a.option || a.value)
@@ -489,7 +499,16 @@ export class ProductsService {
                     // FALLBACK: Check rawData.variationsData for products without ProductVariation records
                     const productsNeedingFallback = productIdsForVariants.filter(id => !variantMap.has(id));
                     if (productsNeedingFallback.length > 0) {
-                        // We already have the products with rawData in mappedProducts
+                        // Fetch COGS from ProductVariation for fallback products
+                        const fallbackVariations = await prisma.productVariation.findMany({
+                            where: { productId: { in: productsNeedingFallback } },
+                            select: { productId: true, wooId: true, cogs: true }
+                        });
+                        const cogsLookup = new Map<string, number>();
+                        for (const fv of fallbackVariations) {
+                            cogsLookup.set(`${fv.productId}:${fv.wooId}`, fv.cogs ? Number(fv.cogs) : 0);
+                        }
+
                         for (const p of mappedProducts) {
                             if (!productsNeedingFallback.includes(p.id)) continue;
                             // Fetch rawData from DB since mappedProducts doesn't have variationsData
@@ -507,7 +526,7 @@ export class ProductsService {
                                     sku: v.sku || '',
                                     stockQuantity: v.stock_quantity ?? null,
                                     stockStatus: v.stock_status || 'instock',
-                                    cogs: 0,
+                                    cogs: cogsLookup.get(`${p.id}:${v.id}`) || 0,
                                     attributes: v.attributes || [],
                                     attributeString: (v.attributes || [])
                                         .map((a: any) => a.option || a.value)

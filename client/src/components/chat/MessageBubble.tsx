@@ -69,57 +69,54 @@ function parseEmailContent(content: string): { subject: string | null; body: str
  * - "-html40">" (partial HTML doctype/meta tag fragments)
  * - CSS style fragments: "t-size: 12pt; color: rgb(0, 0, 0);">"
  * - Raw MIME boundaries and headers
+ * 
+ * IMPORTANT: Patterns must be targeted to avoid stripping actual content.
+ * Use ^ anchors for line-start patterns or require specific orphaned formats.
  */
 function cleanEmailMetadata(content: string): string {
     let cleaned = content;
 
-    // Remove CSS style attribute fragments that leak through from stripped HTML tags
-    // Matches: font-size: 12pt; color: rgb(0, 0, 0);"> or t-size: 12pt; ...">
-    // These occur when HTML like <span style="font-size: 12pt;..."> is partially stripped
-    cleaned = cleaned.replace(/[a-z-]*size:\s*\d+pt;[^>]*>/gi, '');
-    cleaned = cleaned.replace(/[a-z-]*color:\s*rgb\([^)]+\);?[^>]*>/gi, '');
-    cleaned = cleaned.replace(/style\s*=\s*["'][^"']*["']\s*>/gi, '');
+    // Remove CSS style attribute fragments ONLY at line start (orphaned from stripped tags)
+    // Matches lines starting with: t-size: 12pt; color: rgb(0, 0, 0);">
+    cleaned = cleaned.replace(/^[a-z-]*size:\s*\d+pt;[^>\n]*">\s*/gim, '');
+    cleaned = cleaned.replace(/^[a-z-]*color:\s*rgb\([^)]+\);?[^>\n]*">\s*/gim, '');
 
-    // Remove any remaining CSS property fragments ending with ;">
-    cleaned = cleaned.replace(/[a-z-]+:\s*[^;]*;\s*["']?\s*>/gi, '');
+    // Remove lines that are just orphaned style attributes ending with ">
+    // Must start with partial CSS and end with "> to be considered orphaned
+    cleaned = cleaned.replace(/^[a-z-]+:\s*[^;]{1,50};\s*">\s*/gim, '');
 
-    // Remove partial HTML tag fragments like "-html40">" or "html; charset=...>"
-    // These leak through when email clients strip incomplete HTML tags
-    cleaned = cleaned.replace(/-?html\d*["']?\s*>?\s*/gi, '');
+    // Remove partial HTML tag fragments like "-html40">" at line start
+    cleaned = cleaned.replace(/^-?html\d*["']?\s*>\s*/gim, '');
 
-    // Remove standalone closing angle brackets with preceding attribute fragments
-    // Matches: ...charset=Windows-1252"> or similar partial tag endings
-    cleaned = cleaned.replace(/[^<\n]*charset[^>]*>/gi, '');
+    // Remove standalone closing angle brackets with charset (at line start)
+    cleaned = cleaned.replace(/^[^<\n]{0,60}charset[^>]*>\s*/gim, '');
 
     // Remove broken HTML meta tag fragments (attribute leakage from stripped tags)
-    // Matches patterns like: v="Content-Type" content="text/html; charset=Windows-1252">
     cleaned = cleaned.replace(/[a-z-]+=["'][^"']*["']\s*[a-z-]*=["'][^"']*charset[^"']*["'][^>]*>/gi, '');
 
-    // Remove standalone Content-Type declarations
-    cleaned = cleaned.replace(/Content-Type[:\s]+[^\n<]+/gi, '');
+    // Remove standalone Content-Type declarations (at line start)
+    cleaned = cleaned.replace(/^Content-Type[:\s]+[^\n<]+$/gim, '');
 
     // Remove MIME boundary markers
     cleaned = cleaned.replace(/--[a-zA-Z0-9_-]+--?/g, '');
 
-    // Remove charset declarations
-    cleaned = cleaned.replace(/charset\s*=\s*["']?[^"'\s>]+["']?/gi, '');
+    // Remove charset declarations at line start
+    cleaned = cleaned.replace(/^charset\s*=\s*["']?[^"'\s>]+["']?\s*/gim, '');
 
     // Remove X-headers from email (X-Mailer, X-Priority, etc.)
     cleaned = cleaned.replace(/^X-[A-Za-z-]+:.*$/gim, '');
 
     // Remove MIME-Version headers
-    cleaned = cleaned.replace(/MIME-Version:.*$/gim, '');
+    cleaned = cleaned.replace(/^MIME-Version:.*$/gim, '');
 
-    // Clean up any lines that are just attribute fragments
+    // Clean up lines that are ONLY attribute fragments (nothing else on the line)
     cleaned = cleaned.replace(/^[a-z-]+=["'][^"']*["']>?\s*$/gim, '');
 
     // Remove orphaned closing angle brackets at start of lines
     cleaned = cleaned.replace(/^["']?\s*>\s*$/gm, '');
 
-    // Remove email quote markers: < <, <<, >>, > >
+    // Remove email quote markers on their own lines: < <, <<, >>, > >
     cleaned = cleaned.replace(/^[<>]\s*[<>]\s*$/gm, '');
-    cleaned = cleaned.replace(/^<<\s*$/gm, '');
-    cleaned = cleaned.replace(/^>>\s*$/gm, '');
 
     return cleaned.trim();
 }

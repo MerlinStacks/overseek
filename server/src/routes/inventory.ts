@@ -194,7 +194,8 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                     items: {
                         include: {
                             supplierItem: { include: { supplier: true } },
-                            childProduct: true
+                            childProduct: true,
+                            childVariation: true // Include variant details for name/COGS
                         }
                     }
                 }
@@ -262,10 +263,15 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (hasBOMItems) {
                 totalCogs = updated.items.reduce((sum, item) => {
-                    // Get unit cost from Child Product (cogs) or Supplier Item (cost)
-                    const unitCost = item.childProduct?.cogs
-                        ? Number(item.childProduct.cogs)
-                        : (item.supplierItem?.cost ? Number(item.supplierItem.cost) : 0);
+                    // Priority: Variant COGS > Child Product COGS > Supplier Item cost
+                    let unitCost = 0;
+                    if (item.childVariation?.cogs) {
+                        unitCost = Number(item.childVariation.cogs);
+                    } else if (item.childProduct?.cogs) {
+                        unitCost = Number(item.childProduct.cogs);
+                    } else if (item.supplierItem?.cost) {
+                        unitCost = Number(item.supplierItem.cost);
+                    }
 
                     const quantity = Number(item.quantity);
                     const waste = Number(item.wasteFactor);
