@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { isBot } from './TrafficAnalyzer';
 import { calculatePurchaseIntent } from './CohortLTVService';
+import { cacheAside, CacheTTL } from '../../utils/cache';
 
 /**
  * Cart item structure from the cartItems JSON field.
@@ -49,38 +50,45 @@ export interface LiveCartSession {
 /**
  * Get Live Visitors (Active in last 3 mins).
  * Filters out bots and sessions without userAgent.
+ * Cached for 10 seconds to prevent duplicate queries from concurrent widgets.
  *
  * @param accountId - The account ID to query
  * @returns Array of active visitor sessions (max 50)
  */
 export async function getLiveVisitors(accountId: string) {
-    const threeMinsAgo = new Date(Date.now() - 3 * 60 * 1000);
+    return cacheAside(
+        `live-visitors:${accountId}`,
+        async () => {
+            const threeMinsAgo = new Date(Date.now() - 3 * 60 * 1000);
 
-    const sessions = await prisma.analyticsSession.findMany({
-        where: {
-            accountId,
-            lastActiveAt: {
-                gte: threeMinsAgo
-            },
-            // Exclude sessions with no userAgent (likely bots or server-side requests)
-            userAgent: {
-                not: null
-            }
+            const sessions = await prisma.analyticsSession.findMany({
+                where: {
+                    accountId,
+                    lastActiveAt: {
+                        gte: threeMinsAgo
+                    },
+                    // Exclude sessions with no userAgent (likely bots or server-side requests)
+                    userAgent: {
+                        not: null
+                    }
+                },
+                orderBy: {
+                    lastActiveAt: 'desc'
+                },
+                take: 100 // Fetch more initially, we'll filter further
+            });
+
+            // Post-filter to catch any bots that slipped through ingestion
+            // Also filter out empty userAgent strings
+            const filteredSessions = sessions.filter(session => {
+                if (!session.userAgent || session.userAgent.trim() === '') return false;
+                return !isBot(session.userAgent);
+            });
+
+            return filteredSessions.slice(0, 50); // Cap at 50 for live view
         },
-        orderBy: {
-            lastActiveAt: 'desc'
-        },
-        take: 100 // Fetch more initially, we'll filter further
-    });
-
-    // Post-filter to catch any bots that slipped through ingestion
-    // Also filter out empty userAgent strings
-    const filteredSessions = sessions.filter(session => {
-        if (!session.userAgent || session.userAgent.trim() === '') return false;
-        return !isBot(session.userAgent);
-    });
-
-    return filteredSessions.slice(0, 50); // Cap at 50 for live view
+        { ttl: 10, namespace: 'analytics' }
+    );
 }
 
 /**
@@ -191,41 +199,48 @@ export async function getLiveCarts(accountId: string): Promise<LiveCartSession[]
 /**
  * Get count of unique visitors in the last 24 hours.
  * Uses an optimized count query with bot filtering at the database level.
+ * Cached for 30 seconds to reduce repeated expensive count queries.
  *
  * @param accountId - The account ID to query
  * @returns Count of unique visitor sessions
  */
 export async function getVisitorCount24h(accountId: string): Promise<number> {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return cacheAside(
+        `visitors-24h:${accountId}`,
+        async () => {
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // Common bot user agent substrings to filter at DB level
-    const botPatterns = [
-        'bot', 'crawler', 'spider', 'headless', 'phantom', 'selenium',
-        'puppeteer', 'lighthouse', 'pagespeed', 'pingdom', 'uptimerobot',
-        'googlebot', 'bingbot', 'yandex', 'baidu', 'duckduck', 'facebookexternalhit',
-        'slurp', 'ia_archiver', 'alexa', 'msnbot', 'ahrefsbot', 'semrush'
-    ];
+            // Common bot user agent substrings to filter at DB level
+            const botPatterns = [
+                'bot', 'crawler', 'spider', 'headless', 'phantom', 'selenium',
+                'puppeteer', 'lighthouse', 'pagespeed', 'pingdom', 'uptimerobot',
+                'googlebot', 'bingbot', 'yandex', 'baidu', 'duckduck', 'facebookexternalhit',
+                'slurp', 'ia_archiver', 'alexa', 'msnbot', 'ahrefsbot', 'semrush'
+            ];
 
-    // Build bot filter as raw SQL fragments using Prisma.sql
-    // Template literals in $queryRaw treat ${} as parameterized values, not raw SQL
-    const botConditions = botPatterns.map(
-        p => Prisma.sql`LOWER("userAgent") LIKE ${`%${p}%`}`
+            // Build bot filter as raw SQL fragments using Prisma.sql
+            // Template literals in $queryRaw treat ${} as parameterized values, not raw SQL
+            const botConditions = botPatterns.map(
+                p => Prisma.sql`LOWER("userAgent") LIKE ${`%${p}%`}`
+            );
+            const botFilter = Prisma.join(botConditions, ' OR ');
+
+            // Use raw query for efficient bot filtering
+            // This avoids loading all sessions into memory
+            const result = await prisma.$queryRaw<[{ count: bigint }]>`
+                SELECT COUNT(*) as count
+                FROM "AnalyticsSession"
+                WHERE "accountId" = ${accountId}
+                AND "lastActiveAt" >= ${twentyFourHoursAgo}
+                AND "userAgent" IS NOT NULL
+                AND "userAgent" != ''
+                AND NOT (${botFilter})
+            `;
+
+            return Number(result[0]?.count ?? 0);
+        },
+        { ttl: CacheTTL.SHORT, namespace: 'analytics' }
     );
-    const botFilter = Prisma.join(botConditions, ' OR ');
-
-    // Use raw query for efficient bot filtering
-    // This avoids loading all sessions into memory
-    const result = await prisma.$queryRaw<[{ count: bigint }]>`
-        SELECT COUNT(*) as count
-        FROM "AnalyticsSession"
-        WHERE "accountId" = ${accountId}
-        AND "lastActiveAt" >= ${twentyFourHoursAgo}
-        AND "userAgent" IS NOT NULL
-        AND "userAgent" != ''
-        AND NOT (${botFilter})
-    `;
-
-    return Number(result[0]?.count ?? 0);
 }
 
 /**

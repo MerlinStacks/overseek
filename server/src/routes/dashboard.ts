@@ -7,19 +7,25 @@ import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AdsTools } from '../services/tools/AdsTools';
+import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 
 const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
     // GET /api/dashboard/inbox-count
+    // Cached for 30 seconds to reduce database load from frequent UI polls
     fastify.get('/inbox-count', async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'No account' });
 
         try {
-            const openCount = await prisma.conversation.count({
-                where: { accountId, status: 'OPEN' }
-            });
+            const openCount = await cacheAside(
+                `inbox-count:${accountId}`,
+                async () => prisma.conversation.count({
+                    where: { accountId, status: 'OPEN' }
+                }),
+                { ttl: CacheTTL.SHORT, namespace: 'dashboard' }
+            );
             return { open: openCount };
         } catch (error) {
             Logger.error('Failed to fetch inbox count', { error, accountId });

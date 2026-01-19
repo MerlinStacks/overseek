@@ -342,38 +342,6 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     // --- BOM Inventory Sync ---
 
     /**
-     * GET /products/:productId/bom/effective-stock
-     * Calculate effective stock for a BOM product without syncing to WooCommerce.
-     * Returns the minimum buildable units based on child component stock.
-     */
-    fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/effective-stock', async (request, reply) => {
-        const accountId = request.accountId!;
-        const { productId } = request.params;
-        const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0');
-
-        // Validate variationId is a valid number
-        if (isNaN(variationId) || variationId < 0) {
-            return reply.code(400).send({ error: 'Invalid variationId parameter' });
-        }
-
-        try {
-            const result = await BOMInventorySyncService.calculateEffectiveStock(accountId, productId, variationId);
-
-            if (!result) {
-                return reply.code(404).send({
-                    error: 'No BOM with child products found for this product'
-                });
-            }
-
-            return result;
-        } catch (error) {
-            Logger.error('Error calculating effective stock', { error, accountId, productId });
-            return reply.code(500).send({ error: 'Failed to calculate effective stock' });
-        }
-    });
-
-    /**
      * POST /products/:productId/bom/sync
      * Sync a single product's inventory to WooCommerce based on BOM calculation.
      */
