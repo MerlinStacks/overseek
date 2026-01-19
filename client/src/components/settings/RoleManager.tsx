@@ -53,6 +53,12 @@ export default function RoleManager() {
     }, []);
 
     const handleSave = async () => {
+        // Client-side validation
+        if (!currentRole.name || currentRole.name.trim() === '') {
+            alert('Role name is required');
+            return;
+        }
+
         try {
             const method = currentRole.id ? 'PUT' : 'POST';
             const url = currentRole.id ? `/api/roles/${currentRole.id}` : '/api/roles';
@@ -65,7 +71,7 @@ export default function RoleManager() {
                     'x-account-id': localStorage.getItem('accountId') || ''
                 },
                 body: JSON.stringify({
-                    name: currentRole.name,
+                    name: currentRole.name.trim(),
                     permissions: currentRole.permissions || {}
                 })
             });
@@ -75,9 +81,11 @@ export default function RoleManager() {
                 setCurrentRole({});
                 fetchRoles();
             } else {
-                alert('Failed to save role');
+                const errorData = await res.json().catch(() => ({ error: 'Failed to save role' }));
+                alert(errorData.error || 'Failed to save role');
             }
         } catch (e) {
+            Logger.error('Error saving role', { error: e });
             alert('Error saving role');
         }
     };
