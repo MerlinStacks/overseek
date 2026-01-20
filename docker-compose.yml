@@ -1,7 +1,7 @@
 services:
   # Postgres Database
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
 
     environment:
       POSTGRES_USER: admin
@@ -26,7 +26,7 @@ services:
 
   # Elasticsearch
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.4
     environment:
       - discovery.type=single-node
       - "ES_JAVA_OPTS=-Xms${ES_HEAP_MIN:-512m} -Xmx${ES_HEAP_MAX:-1g}"
