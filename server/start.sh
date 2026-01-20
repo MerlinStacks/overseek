@@ -3,12 +3,9 @@ set -e
 
 echo "[Startup] Starting deployment script..."
 
-# Ensure Prisma Client is up to date
-echo "[Startup] Generating Prisma Client..."
-npx prisma generate --config ./prisma/prisma.config.ts
+# Note: prisma generate is done at build time (Dockerfile), no need to repeat here
 
 # Retry loop for database migrations
-# This handles the case where Postgres is not yet ready to accept connections
 echo "[Startup] Running database migrations..."
 MAX_RETRIES=30
 COUNT=0
