@@ -13,7 +13,8 @@ const customLevels = {
 const level = process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
 
 // Human-readable timestamp function (ISO format for JSON logs)
-const timestampFn = () => `,"time":"${new Date().toISOString()}"`;
+// Using pino's built-in stdTimeFunctions.isoTime for proper formatting
+const timestampFn = pino.stdTimeFunctions.isoTime;
 
 // Create the raw pino logger for our Logger wrapper
 // Note: Sync writes prevent buffer interleaving in Docker containers.

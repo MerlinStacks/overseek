@@ -395,7 +395,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
 
             case 'footer':
                 return (
-                    <div className="py-3 text-center text-sm text-slate-500">
+                    <div className="py-3 text-center text-sm text-slate-500 bg-white relative z-20">
                         {itemConfig.content || 'Thank you for your business!'}
                     </div>
                 );
@@ -508,12 +508,13 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
 
                                 // Allow order_table to overflow its grid cell so totals don't get clipped
                                 const isOrderTable = itemConfig?.type === 'order_table';
+                                const isFooter = itemConfig?.type === 'footer';
 
                                 return (
                                     <div
                                         key={l.i}
                                         className="bg-white"
-                                        style={isOrderTable ? { overflow: 'visible', zIndex: 10 } : undefined}
+                                        style={isOrderTable ? { overflow: 'visible' } : isFooter ? { position: 'relative', zIndex: 20 } : undefined}
                                     >
                                         {itemConfig && renderContent(itemConfig)}
                                     </div>

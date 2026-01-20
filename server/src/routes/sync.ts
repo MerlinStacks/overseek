@@ -25,7 +25,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         const queue = (await import('../services/queue/QueueFactory')).QueueFactory.getQueue(queueName);
         const jobs = await queue.getJobs(['active', 'waiting', 'delayed']);
 
-        return jobs.some((job) => job.data?.accountId === accountId);
+        return jobs.some((job) => job?.data?.accountId === accountId);
     };
 
     // Trigger Manual Sync
@@ -63,7 +63,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                 const jobs = await queue.getActive();
 
                 for (const job of jobs) {
-                    if (job.data.accountId === accountId) {
+                    if (job?.data?.accountId === accountId) {
                         activeJobs.push({
                             id: job.id,
                             queue: name,
@@ -169,7 +169,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             for (const name of syncQueues) {
                 const queue = (await import('../services/queue/QueueFactory')).QueueFactory.getQueue(name);
                 const jobs = await queue.getActive();
-                activeJobsCount += jobs.filter((job) => job.data?.accountId === accountId).length;
+                activeJobsCount += jobs.filter((job) => job?.data?.accountId === accountId).length;
             }
 
             const enriched = recent.map((log) => {

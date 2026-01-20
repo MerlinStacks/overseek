@@ -351,8 +351,8 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { productId: string } }>('/products/:productId/bom/sync', async (request, reply) => {
         const accountId = request.accountId!;
         const { productId } = request.params;
-        const body = request.body as { variationId?: number };
-        const variationId = body.variationId ?? 0;
+        const query = request.query as { variationId?: string };
+        const variationId = parseInt(query.variationId || '0');
 
         try {
             const result = await BOMInventorySyncService.syncProductToWoo(accountId, productId, variationId);
