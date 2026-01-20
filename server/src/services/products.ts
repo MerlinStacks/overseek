@@ -45,6 +45,8 @@ export class ProductsService {
                 salePrice: fullData?.sale_price || '',
                 stockStatus: fullData?.stock_status || 'instock',
                 stockQuantity: fullData?.stock_quantity ?? null,
+                manageStock: fullData?.manage_stock ?? false,
+                backorders: fullData?.backorders || 'no',
                 weight: fullData?.weight || '',
                 dimensions: {
                     length: fullData?.dimensions?.length || '',
@@ -76,6 +78,7 @@ export class ProductsService {
             images: (Array.isArray(product.images) && product.images.length > 0) ? product.images : (raw?.images || []),
             // WooCommerce inventory & taxonomy fields
             manageStock: raw?.manage_stock ?? false,
+            backorders: raw?.backorders || 'no',
             categories: raw?.categories || [],
             tags: raw?.tags || [],
             // Dimensions object for frontend compatibility
@@ -105,7 +108,9 @@ export class ProductsService {
             ...existingRawData,
             description: productData.description !== undefined ? productData.description : existingRawData.description,
             short_description: productData.short_description !== undefined ? productData.short_description : existingRawData.short_description,
-            sale_price: productData.salePrice !== undefined ? productData.salePrice : existingRawData.sale_price
+            sale_price: productData.salePrice !== undefined ? productData.salePrice : existingRawData.sale_price,
+            manage_stock: productData.manageStock !== undefined ? productData.manageStock : existingRawData.manage_stock,
+            backorders: productData.backorders !== undefined ? productData.backorders : existingRawData.backorders
         };
 
         // Merge focusKeyword into seoData
@@ -138,6 +143,20 @@ export class ProductsService {
                 seoData: updatedSeoData
             }
         });
+
+        // Sync manage_stock and backorders to WooCommerce for parent product
+        if (productData.manageStock !== undefined || productData.backorders !== undefined) {
+            try {
+                const { WooService } = await import('./woo');
+                const wooService = await WooService.forAccount(accountId);
+                const wooUpdateData: any = {};
+                if (productData.manageStock !== undefined) wooUpdateData.manage_stock = productData.manageStock;
+                if (productData.backorders !== undefined) wooUpdateData.backorders = productData.backorders;
+                await wooService.updateProduct(wooId, wooUpdateData);
+            } catch (err: any) {
+                Logger.error('Failed to sync manage_stock/backorders to WooCommerce', { error: err.message, wooId });
+            }
+        }
 
         // 2. Handle Variations Upsert & Sync
         if (variations && Array.isArray(variations)) {
@@ -189,7 +208,9 @@ export class ProductsService {
                         sku: v.sku,
                         regular_price: v.price,
                         sale_price: v.salePrice,
-                        stock_status: v.stockStatus
+                        stock_status: v.stockStatus,
+                        manage_stock: v.manageStock,
+                        backorders: v.backorders
                     });
                 } catch (err: any) {
                     Logger.error(`Failed to process variation ${v.id}`, { error: err.message, productWooId: wooId });

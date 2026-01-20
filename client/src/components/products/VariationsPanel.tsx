@@ -314,37 +314,41 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                             </span>
                                         </td>
                                         <td className="px-4 py-2">
-                                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleStockAdjust(v.id, -1)}
-                                                    className="w-6 h-6 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-xs font-bold"
-                                                >
-                                                    −
-                                                </button>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={stockEditValues[v.id] ?? ''}
-                                                    onChange={(e) => setStockEditValues(prev => ({ ...prev, [v.id]: e.target.value }))}
-                                                    className="w-14 px-1 py-1 text-center font-mono text-sm bg-white border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleStockAdjust(v.id, 1)}
-                                                    className="w-6 h-6 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-xs font-bold"
-                                                >
-                                                    +
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleStockSave(v.id)}
-                                                    disabled={savingStockId === v.id || stockEditValues[v.id] === (v.stockQuantity?.toString() ?? '')}
-                                                    className="ml-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                                >
-                                                    {savingStockId === v.id ? <Loader2 className="animate-spin" size={12} /> : 'Save'}
-                                                </button>
-                                            </div>
+                                            {v.manageStock ? (
+                                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStockAdjust(v.id, -1)}
+                                                        className="w-6 h-6 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-xs font-bold"
+                                                    >
+                                                        −
+                                                    </button>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={stockEditValues[v.id] ?? ''}
+                                                        onChange={(e) => setStockEditValues(prev => ({ ...prev, [v.id]: e.target.value }))}
+                                                        className="w-14 px-1 py-1 text-center font-mono text-sm bg-white border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStockAdjust(v.id, 1)}
+                                                        className="w-6 h-6 flex items-center justify-center bg-gray-100 border border-gray-200 rounded text-gray-600 hover:bg-gray-200 transition-colors text-xs font-bold"
+                                                    >
+                                                        +
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStockSave(v.id)}
+                                                        disabled={savingStockId === v.id || stockEditValues[v.id] === (v.stockQuantity?.toString() ?? '')}
+                                                        className="ml-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                    >
+                                                        {savingStockId === v.id ? <Loader2 className="animate-spin" size={12} /> : 'Save'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-gray-400 italic">Not tracked</span>
+                                            )}
                                         </td>
                                     </tr>
                                     {expandedId === v.id && (
@@ -361,8 +365,8 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                                             type="button"
                                                             onClick={() => handleFieldChange(v.id, 'manageStock', !v.manageStock)}
                                                             className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${v.manageStock
-                                                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                                                    : 'bg-gray-100 text-gray-500 border border-gray-200'
+                                                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                                                : 'bg-gray-100 text-gray-500 border border-gray-200'
                                                                 }`}
                                                         >
                                                             {v.manageStock ? 'Enabled' : 'Disabled'}

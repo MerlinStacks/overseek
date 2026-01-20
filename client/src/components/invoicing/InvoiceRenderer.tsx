@@ -463,6 +463,49 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
 
     const pages = getPagedLayout();
 
+    // For readOnly (preview) mode, use flow-based layout to prevent overlap
+    // Grid layout doesn't auto-size cells, causing content overflow issues
+    if (readOnly) {
+        // Sort items by Y position to render in visual order
+        const sortedLayout = [...layout].sort((a, b) => a.y - b.y);
+
+        // Separate footer items to render at the end
+        const footerItems: any[] = [];
+        const contentItems: any[] = [];
+
+        sortedLayout.forEach(l => {
+            const itemConfig = items.find(i => i.id === l.i);
+            if (!itemConfig) return;
+            if (itemConfig.type === 'footer') {
+                footerItems.push({ layout: l, config: itemConfig });
+            } else {
+                contentItems.push({ layout: l, config: itemConfig });
+            }
+        });
+
+        return (
+            <div
+                className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50 p-4"
+                style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}
+            >
+                {/* Content items in flow layout */}
+                {contentItems.map(({ layout: l, config: itemConfig }) => (
+                    <div key={l.i} className="mb-2">
+                        {renderContent(itemConfig)}
+                    </div>
+                ))}
+
+                {/* Footer items at the end */}
+                {footerItems.map(({ layout: l, config: itemConfig }) => (
+                    <div key={l.i} className="mt-4 pt-4 border-t border-slate-200">
+                        {renderContent(itemConfig)}
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // Designer mode uses grid layout for drag/drop
     return (
         <div className="space-y-8">
             {pages.map((pageLayout, pageIndex) => (
@@ -489,8 +532,8 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                             rowHeight={30}
                             // @ts-ignore - width prop type mismatch
                             width={794}
-                            isDraggable={!readOnly}
-                            isResizable={!readOnly}
+                            isDraggable={true}
+                            isResizable={true}
                             margin={[16, 8]}
                         >
                             {pageLayout.map((l: any) => {
@@ -506,15 +549,10 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                     return <div key={l.i} className="hidden"></div>;
                                 }
 
-                                // Allow order_table to overflow its grid cell so totals don't get clipped
-                                const isOrderTable = itemConfig?.type === 'order_table';
-                                const isFooter = itemConfig?.type === 'footer';
-
                                 return (
                                     <div
                                         key={l.i}
                                         className="bg-white"
-                                        style={isOrderTable ? { overflow: 'visible' } : isFooter ? { position: 'relative', zIndex: 20 } : undefined}
                                     >
                                         {itemConfig && renderContent(itemConfig)}
                                     </div>

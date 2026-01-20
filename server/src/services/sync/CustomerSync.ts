@@ -108,20 +108,26 @@ export class CustomerSync extends BaseSync {
                 select: { id: true, wooId: true }
             });
 
-            const deletePromises: Promise<any>[] = [];
-            for (const local of localCustomers) {
-                if (!wooCustomerIds.has(local.wooId)) {
-                    // Customer exists locally but not in WooCommerce - delete it
-                    deletePromises.push(
-                        prisma.wooCustomer.delete({ where: { id: local.id } })
-                            .then(() => IndexingService.deleteCustomer(accountId, local.wooId))
-                    );
-                    totalDeleted++;
-                }
-            }
+            // Collect IDs of customers to delete (exist locally but not in WooCommerce)
+            const orphanedCustomers = localCustomers.filter(
+                local => !wooCustomerIds.has(local.wooId)
+            );
 
-            if (deletePromises.length > 0) {
-                await Promise.allSettled(deletePromises);
+            if (orphanedCustomers.length > 0) {
+                const orphanedIds = orphanedCustomers.map(c => c.id);
+                const orphanedWooIds = orphanedCustomers.map(c => c.wooId);
+
+                // Batch delete in a single transaction to avoid deadlocks
+                await prisma.wooCustomer.deleteMany({
+                    where: { id: { in: orphanedIds } }
+                });
+
+                // Index deletions serially to avoid overwhelming the search index
+                for (const wooId of orphanedWooIds) {
+                    await IndexingService.deleteCustomer(accountId, wooId).catch(() => { });
+                }
+
+                totalDeleted = orphanedCustomers.length;
                 Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned customers`, { accountId, syncId });
             }
         }

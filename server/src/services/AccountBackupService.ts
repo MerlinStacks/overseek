@@ -152,6 +152,63 @@ export class AccountBackupService {
     /**
      * Save backup to storage and create DB record
      */
+    /**
+     * Stream-serialize JSON to avoid V8 string length limits on large datasets.
+     * Writes chunks directly to a gzip stream rather than building one giant string.
+     */
+    private static async streamSerializeToGzip(
+        backup: AccountBackup,
+        filePath: string
+    ): Promise<number> {
+        return new Promise((resolve, reject) => {
+            const gzStream = zlib.createGzip();
+            const writeStream = fs.createWriteStream(filePath);
+
+            gzStream.pipe(writeStream);
+
+            writeStream.on('finish', () => {
+                const stats = fs.statSync(filePath);
+                resolve(stats.size);
+            });
+
+            writeStream.on('error', reject);
+            gzStream.on('error', reject);
+
+            // Write opening brace and metadata fields
+            gzStream.write('{"exportedAt":' + JSON.stringify(backup.exportedAt) + ',');
+            gzStream.write('"version":' + JSON.stringify(backup.version) + ',');
+            gzStream.write('"account":' + JSON.stringify(backup.account) + ',');
+            gzStream.write('"data":{');
+
+            // Stream each data key separately to avoid giant string allocation
+            const dataKeys = Object.keys(backup.data);
+            dataKeys.forEach((key, keyIndex) => {
+                gzStream.write(JSON.stringify(key) + ':[');
+
+                const records = backup.data[key];
+                // Write records in chunks to avoid memory spikes
+                const CHUNK_SIZE = 500;
+                for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+                    const chunk = records.slice(i, i + CHUNK_SIZE);
+                    const chunkJson = chunk.map(r => JSON.stringify(r)).join(',');
+                    if (i > 0 && chunkJson) {
+                        gzStream.write(',');
+                    }
+                    gzStream.write(chunkJson);
+                }
+
+                gzStream.write(']');
+                if (keyIndex < dataKeys.length - 1) {
+                    gzStream.write(',');
+                }
+            });
+
+            // Close data object and root object
+            gzStream.write('}}');
+            gzStream.end();
+        });
+    }
+
     static async saveBackupToStorage(
         accountId: string,
         backup: AccountBackup,
@@ -168,10 +225,8 @@ export class AccountBackupService {
         const filename = `backup_${timestamp}.json.gz`;
         const filePath = path.join(accountBackupDir, filename);
 
-        // Compress and write
-        const jsonData = JSON.stringify(backup);
-        const compressed = await gzip(Buffer.from(jsonData, 'utf-8'));
-        fs.writeFileSync(filePath, compressed);
+        // Stream-serialize to gzip to avoid V8 string length limits
+        const sizeBytes = await this.streamSerializeToGzip(backup, filePath);
 
         // Count total records
         const recordCount = Object.values(backup.data).flat().length;
@@ -181,7 +236,7 @@ export class AccountBackupService {
             data: {
                 accountId,
                 filename,
-                sizeBytes: compressed.length,
+                sizeBytes,
                 recordCount,
                 status: 'COMPLETED',
                 type,
@@ -208,7 +263,7 @@ export class AccountBackupService {
         Logger.info('[AccountBackup] Backup saved to storage', {
             accountId,
             filename,
-            sizeBytes: compressed.length,
+            sizeBytes,
             recordCount,
             type,
         });
