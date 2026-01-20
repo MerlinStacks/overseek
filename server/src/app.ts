@@ -182,6 +182,8 @@ async function build() {
     await fastify.register(helpRoutes, { prefix: '/api/help' });
     await fastify.register(searchRoutes, { prefix: '/api/search' });
     await fastify.register(inventoryRoutes, { prefix: '/api/inventory' });
+    const internalProductsRoutes = (await import('./routes/internalProducts')).default;
+    await fastify.register(internalProductsRoutes, { prefix: '/api/inventory/internal-products' });
     await fastify.register(aiRoutes, { prefix: '/api/ai' });
     await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
     const adsRoutes = (await import('./routes/ads')).default;

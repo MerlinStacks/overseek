@@ -1,0 +1,20 @@
+﻿api-1  | [Startup] Starting deployment script...
+api-1  | [Startup] Running database migrations...
+api-1  | Loaded Prisma config from prisma/prisma.config.ts.
+api-1  | 
+api-1  | Prisma schema loaded from prisma/schema.prisma.
+api-1  | Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+api-1  | 
+api-1  | ≡ƒÜÇ  Your database is now in sync with your Prisma schema. Done in 187ms
+api-1  | 
+api-1  | [Startup] Migrations applied successfully.
+api-1  | [Startup] Starting Node.js application...
+api-1  | 
+api-1  | > overseek-server@1.0.0 start
+api-1  | > node dist/index.js
+api-1  | 
+api-1  | [dotenv@17.2.3] injecting env (0) from .env -- tip: ≡ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+api-1  | [dotenv@17.2.3] injecting env (0) from .env -- tip: ≡ƒùé∩╕Å backup and recover secrets: https://dotenvx.com/ops
+api-1  | [dotenv@17.2.3] injecting env (0) from .env -- tip: ΓÜÖ∩╕Å  suppress all logs with { quiet: true }
+api-1  | {"level":40,"time":"2026-01-20T02:07:43.963Z","pid":122,"hostname":"3670672a5fee","variables":["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"],"msg":"[ENV] Using default values"}
+api-1  | {"level":40,"time":"2026-01-20T02:07:43.963Z","pid":122,"hostname":"3670672a5fee","fingerprint":"b0ace4b12658","length":29,"msg":"[ENV] JWT_SECRET fingerprint"}

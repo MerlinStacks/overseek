@@ -43,6 +43,40 @@ export const pinoLogger = pinoInstance;
 export const fastifyLoggerConfig = false;
 
 /**
+ * Serializes Error objects in meta for proper logging.
+ * Error properties are non-enumerable, so Pino logs them as {}.
+ * This extracts message and stack for visibility.
+ */
+const serializeMeta = (meta?: Record<string, any>): Record<string, any> | undefined => {
+    if (!meta) return undefined;
+
+    const result = { ...meta };
+
+    // Handle 'error' property specifically
+    if (result.error instanceof Error) {
+        result.error = {
+            message: result.error.message,
+            stack: result.error.stack,
+            name: result.error.name,
+            // Preserve any additional properties on the error
+            ...(result.error as any)
+        };
+    }
+
+    // Handle 'err' property (common alternative)
+    if (result.err instanceof Error) {
+        result.err = {
+            message: result.err.message,
+            stack: result.err.stack,
+            name: result.err.name,
+            ...(result.err as any)
+        };
+    }
+
+    return result;
+};
+
+/**
  * Winston-compatible Logger wrapper.
  * 
  * Winston API: Logger.info('message', { meta })
@@ -52,36 +86,41 @@ export const fastifyLoggerConfig = false;
  */
 export const Logger = {
     error: (message: string, meta?: Record<string, any>) => {
-        if (meta) {
-            pinoInstance.error(meta, message);
+        const serialized = serializeMeta(meta);
+        if (serialized) {
+            pinoInstance.error(serialized, message);
         } else {
             pinoInstance.error(message);
         }
     },
     warn: (message: string, meta?: Record<string, any>) => {
-        if (meta) {
-            pinoInstance.warn(meta, message);
+        const serialized = serializeMeta(meta);
+        if (serialized) {
+            pinoInstance.warn(serialized, message);
         } else {
             pinoInstance.warn(message);
         }
     },
     info: (message: string, meta?: Record<string, any>) => {
-        if (meta) {
-            pinoInstance.info(meta, message);
+        const serialized = serializeMeta(meta);
+        if (serialized) {
+            pinoInstance.info(serialized, message);
         } else {
             pinoInstance.info(message);
         }
     },
     http: (message: string, meta?: Record<string, any>) => {
-        if (meta) {
-            (pinoInstance as any).http(meta, message);
+        const serialized = serializeMeta(meta);
+        if (serialized) {
+            (pinoInstance as any).http(serialized, message);
         } else {
             (pinoInstance as any).http(message);
         }
     },
     debug: (message: string, meta?: Record<string, any>) => {
-        if (meta) {
-            pinoInstance.debug(meta, message);
+        const serialized = serializeMeta(meta);
+        if (serialized) {
+            pinoInstance.debug(serialized, message);
         } else {
             pinoInstance.debug(message);
         }

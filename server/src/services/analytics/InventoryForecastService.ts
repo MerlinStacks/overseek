@@ -86,10 +86,19 @@ export class InventoryForecastService {
             const products = await this.getManagedStockProducts(accountId);
             if (products.length === 0) return [];
 
-            const productWooIds = products.map(p => p.wooId);
+            // Separate simple products from variations for proper ES querying
+            const simpleProducts = products.filter(p => !p.isVariation);
+            const variations = products.filter(p => p.isVariation);
 
             // 2. Get historical sales data from Elasticsearch
-            const salesData = await this.getHistoricalSales(accountId, productWooIds, 365);
+            // Query by productId for simple products, by variationId for variations
+            const salesData = await this.getHistoricalSales(
+                accountId,
+                simpleProducts.map(p => p.wooId),
+                variations.map(v => v.wooId),
+                365
+            );
+
 
             // 3. Calculate monthly seasonality from full year data
             const seasonalityByProduct = this.calculateProductSeasonality(salesData);
@@ -199,7 +208,9 @@ export class InventoryForecastService {
             if (!forecast) return null;
 
             // Get historical daily sales for chart
-            const salesData = await this.getHistoricalSales(accountId, [wooId], 90);
+            // For a detail view, we query by productId (simple) or variationId (variation)
+            // We don't know here if it's a variation, so query both ways
+            const salesData = await this.getHistoricalSales(accountId, [wooId], [wooId], 90);
             const productSales = salesData.get(wooId) || [];
 
             // Aggregate to daily for historical chart
@@ -230,7 +241,9 @@ export class InventoryForecastService {
     // ========================================================================
 
     /**
-     * Get all products with managed stock.
+     * Get all products with managed stock that are "leaf" products.
+     * Excludes assembled products (those with BOM items) - we forecast their components instead.
+     * Includes: simple products, components, and variations with managed stock.
      */
     private static async getManagedStockProducts(accountId: string): Promise<Array<{
         id: string;
@@ -240,7 +253,9 @@ export class InventoryForecastService {
         image: string | null;
         currentStock: number;
         supplierLeadTime: number | null;
+        isVariation?: boolean;
     }>> {
+        // 1. Get all products with their BOMs
         const products = await prisma.wooProduct.findMany({
             where: { accountId },
             select: {
@@ -252,45 +267,151 @@ export class InventoryForecastService {
                 rawData: true,
                 supplier: {
                     select: { leadTimeDefault: true }
+                },
+                // Include BOMs to check if product is assembled
+                boms: {
+                    select: {
+                        items: {
+                            select: { id: true },
+                            take: 1 // Only need to know if any items exist
+                        }
+                    }
+                },
+                // Include variations with managed stock
+                variations: {
+                    select: {
+                        id: true,
+                        wooId: true,
+                        sku: true,
+                        stockQuantity: true,
+                        manageStock: true,
+                        rawData: true
+                    }
                 }
             }
         });
 
-        return products
-            .map(p => {
+        const result: Array<{
+            id: string;
+            wooId: number;
+            name: string;
+            sku: string | null;
+            image: string | null;
+            currentStock: number;
+            supplierLeadTime: number | null;
+            isVariation?: boolean;
+        }> = [];
+
+        for (const p of products) {
+            // Check if product has a BOM with items (assembled product)
+            const hasActiveBOM = p.boms.some(bom => bom.items.length > 0);
+
+            // If it's an assembled product, skip the parent but include variations
+            if (!hasActiveBOM) {
+                // Add the parent product if it has managed stock
                 const raw = p.rawData as { manage_stock?: boolean; stock_quantity?: number };
-                if (!raw.manage_stock || typeof raw.stock_quantity !== 'number') {
-                    return null;
+                if (raw.manage_stock && typeof raw.stock_quantity === 'number') {
+                    result.push({
+                        id: p.id,
+                        wooId: p.wooId,
+                        name: p.name,
+                        sku: p.sku,
+                        image: p.mainImage,
+                        currentStock: raw.stock_quantity,
+                        supplierLeadTime: p.supplier?.leadTimeDefault || null
+                    });
                 }
-                return {
-                    id: p.id,
-                    wooId: p.wooId,
-                    name: p.name,
-                    sku: p.sku,
-                    image: p.mainImage,
-                    currentStock: raw.stock_quantity,
-                    supplierLeadTime: p.supplier?.leadTimeDefault || null
-                };
-            })
-            .filter((p): p is NonNullable<typeof p> => p !== null);
+            }
+
+            // Add variations with managed stock (whether parent has BOM or not)
+            for (const v of p.variations) {
+                // Check variation's manage_stock setting
+                const varRaw = v.rawData as { manage_stock?: boolean; stock_quantity?: number } | null;
+                const managesStock = v.manageStock || varRaw?.manage_stock;
+                const stockQty = v.stockQuantity ?? varRaw?.stock_quantity;
+
+                if (managesStock && typeof stockQty === 'number') {
+                    result.push({
+                        id: v.id,
+                        wooId: v.wooId,
+                        name: `${p.name} - Variation`,
+                        sku: v.sku,
+                        image: p.mainImage, // Use parent image for variations
+                        currentStock: stockQty,
+                        supplierLeadTime: p.supplier?.leadTimeDefault || null,
+                        isVariation: true
+                    });
+                }
+            }
+        }
+
+        // 2. Fetch internal products (component-only, not synced to WooCommerce)
+        // These are always included in forecasts since they're managed locally
+        const internalProducts = await prisma.internalProduct.findMany({
+            where: { accountId },
+            select: {
+                id: true,
+                name: true,
+                sku: true,
+                mainImage: true,
+                stockQuantity: true,
+                supplier: {
+                    select: { leadTimeDefault: true }
+                }
+            }
+        });
+
+        for (const ip of internalProducts) {
+            result.push({
+                id: ip.id,
+                wooId: 0, // Internal products have no WooCommerce ID
+                name: `[Internal] ${ip.name}`,
+                sku: ip.sku,
+                image: ip.mainImage,
+                currentStock: ip.stockQuantity,
+                supplierLeadTime: ip.supplier?.leadTimeDefault || null
+            });
+        }
+
+        return result;
     }
+
 
     /**
      * Get historical sales data from Elasticsearch.
-     * Returns Map<productId, Array<{date, quantity}>>
+     * Queries by productId for simple products and by variationId for variations.
+     * Returns Map<wooId, Array<{date, quantity}>>
      */
     private static async getHistoricalSales(
         accountId: string,
-        productWooIds: number[],
+        simpleProductWooIds: number[],
+        variationWooIds: number[],
         days: number
     ): Promise<Map<number, Array<{ date: string; quantity: number }>>> {
         const salesMap = new Map<number, Array<{ date: string; quantity: number }>>();
+
+        // If no IDs to query, return empty map
+        if (simpleProductWooIds.length === 0 && variationWooIds.length === 0) {
+            return salesMap;
+        }
 
         try {
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
 
-            // Use a simple, reliable aggregation structure
+            // Build the nested query to match either productId OR variationId
+            const nestedShouldClauses: any[] = [];
+            if (simpleProductWooIds.length > 0) {
+                nestedShouldClauses.push({
+                    terms: { 'line_items.productId': simpleProductWooIds }
+                });
+            }
+            if (variationWooIds.length > 0) {
+                nestedShouldClauses.push({
+                    terms: { 'line_items.variationId': variationWooIds }
+                });
+            }
+
             const response = await esClient.search({
                 index: 'orders',
                 size: 0,
@@ -310,7 +431,10 @@ export class InventoryForecastService {
                                 nested: {
                                     path: 'line_items',
                                     query: {
-                                        terms: { 'line_items.productId': productWooIds }
+                                        bool: {
+                                            should: nestedShouldClauses,
+                                            minimum_should_match: 1
+                                        }
                                     }
                                 }
                             }
@@ -327,9 +451,22 @@ export class InventoryForecastService {
                             line_items_nested: {
                                 nested: { path: 'line_items' },
                                 aggs: {
+                                    // Aggregate by productId for simple products
                                     by_product: {
                                         terms: {
                                             field: 'line_items.productId',
+                                            size: 10000
+                                        },
+                                        aggs: {
+                                            total_qty: {
+                                                sum: { field: 'line_items.quantity' }
+                                            }
+                                        }
+                                    },
+                                    // Aggregate by variationId for variations
+                                    by_variation: {
+                                        terms: {
+                                            field: 'line_items.variationId',
                                             size: 10000
                                         },
                                         aggs: {
@@ -345,16 +482,17 @@ export class InventoryForecastService {
                 }
             });
 
-            // Parse aggregation results - structure: by_day -> line_items_nested -> by_product
+            // Parse aggregation results
             const dayBuckets = (response.aggregations as any)?.by_day?.buckets || [];
 
             for (const dayBucket of dayBuckets) {
                 const date = new Date(dayBucket.key_as_string || dayBucket.key).toISOString().split('T')[0];
-                const productBuckets = dayBucket.line_items_nested?.by_product?.buckets || [];
 
+                // Process simple products (by productId)
+                const productBuckets = dayBucket.line_items_nested?.by_product?.buckets || [];
                 for (const productBucket of productBuckets) {
                     const productId = productBucket.key as number;
-                    if (!productWooIds.includes(productId)) continue;
+                    if (!simpleProductWooIds.includes(productId)) continue;
 
                     const quantity = productBucket.total_qty?.value || 0;
                     if (quantity <= 0) continue;
@@ -363,6 +501,22 @@ export class InventoryForecastService {
                         salesMap.set(productId, []);
                     }
                     salesMap.get(productId)!.push({ date, quantity });
+                }
+
+                // Process variations (by variationId)
+                const variationBuckets = dayBucket.line_items_nested?.by_variation?.buckets || [];
+                for (const variationBucket of variationBuckets) {
+                    const variationId = variationBucket.key as number;
+                    // Skip 0 (means no variation) and non-matching IDs
+                    if (variationId === 0 || !variationWooIds.includes(variationId)) continue;
+
+                    const quantity = variationBucket.total_qty?.value || 0;
+                    if (quantity <= 0) continue;
+
+                    if (!salesMap.has(variationId)) {
+                        salesMap.set(variationId, []);
+                    }
+                    salesMap.get(variationId)!.push({ date, quantity });
                 }
             }
 
@@ -375,6 +529,7 @@ export class InventoryForecastService {
 
         return salesMap;
     }
+
 
     /**
      * Calculate monthly seasonality coefficients per product.

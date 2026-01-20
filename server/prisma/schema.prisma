@@ -187,6 +187,9 @@ model Account {
 
   // Rate Limiting
   rateLimit           AccountRateLimit?
+
+  // Internal Products (component-only, not synced to WooCommerce)
+  internalProducts    InternalProduct[]
 }
 
 // --------------------------------------
@@ -601,6 +604,7 @@ model Supplier {
 
   items    SupplierItem[]
   products WooProduct[]
+  internalProducts InternalProduct[]
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -630,6 +634,38 @@ model SupplierItem {
   updatedAt DateTime @updatedAt
 }
 
+/// Internal-only products that are not synced to WooCommerce.
+/// Used as components in BOMs, tracked in forecasts and reports.
+model InternalProduct {
+  id          String   @id @default(uuid())
+  accountId   String
+
+  name        String
+  sku         String?
+  description String?  @db.Text
+
+  stockQuantity Int     @default(0)
+  cogs          Decimal? @db.Decimal(10, 2)
+  miscCosts     Json?    @default("[]")   // Same format as WooProduct
+  binLocation   String?
+
+  mainImage   String?
+  images      Json?    @default("[]")
+
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  bomItems    BOMItem[] @relation("InternalProductAsBOMComponent")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([accountId, sku])
+  @@index([accountId])
+}
+
 model BOM {
   id          String @id @default(uuid())
   productId   String
@@ -651,14 +687,16 @@ model BOMItem {
   supplierItemId String?
   childProductId String?
   childVariationId Int?
+  internalProductId String?  // Internal product component (not synced to WooCommerce)
 
   quantity    Decimal @db.Decimal(10, 4) // e.g. 1.5 meters, 0.05 kg
   wasteFactor Decimal @default(0) @db.Decimal(5, 4) // e.g. 0.10 for 10% waste
 
-  bom          BOM           @relation(fields: [bomId], references: [id], onDelete: Cascade)
-  supplierItem SupplierItem? @relation(fields: [supplierItemId], references: [id])
-  childProduct WooProduct?   @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
-  childVariation ProductVariation? @relation(fields: [childProductId, childVariationId], references: [productId, wooId])
+  bom              BOM              @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  supplierItem     SupplierItem?    @relation(fields: [supplierItemId], references: [id])
+  childProduct     WooProduct?      @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
+  childVariation   ProductVariation? @relation(fields: [childProductId, childVariationId], references: [productId, wooId])
+  internalProduct  InternalProduct? @relation("InternalProductAsBOMComponent", fields: [internalProductId], references: [id])
 
   // @@unique([bomId, supplierItemId]) // Removed as it conflicts with optional fields
 }

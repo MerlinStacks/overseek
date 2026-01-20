@@ -299,6 +299,65 @@ export class ProductsService {
                 return this.searchProductsFromDB(accountId, query, page, limit);
             }
 
+            // Supplement ES results with products matching variant SKU (ES doesn't index variant SKUs)
+            if (query) {
+                try {
+                    const existingProductIds = productsWithBomStatus.map((p: any) => p.id);
+                    const matchingVariants = await prisma.productVariation.findMany({
+                        where: {
+                            product: { accountId },
+                            sku: { contains: query, mode: 'insensitive' },
+                            productId: { notIn: existingProductIds }
+                        },
+                        select: { productId: true },
+                        distinct: ['productId'],
+                        take: limit
+                    });
+
+                    if (matchingVariants.length > 0) {
+                        // Fetch full product details for variant-matched products
+                        const additionalProducts = await prisma.wooProduct.findMany({
+                            where: { id: { in: matchingVariants.map(v => v.productId) } },
+                            select: {
+                                id: true,
+                                wooId: true,
+                                name: true,
+                                sku: true,
+                                stockStatus: true,
+                                price: true,
+                                cogs: true,
+                                mainImage: true,
+                                images: true,
+                                rawData: true,
+                                boms: { select: { id: true, items: { take: 1 } }, take: 1 }
+                            }
+                        });
+
+                        const mappedAdditional = additionalProducts.map(p => {
+                            const raw = p.rawData as any || {};
+                            const hasBOM = p.boms.length > 0 && p.boms[0].items.length > 0;
+                            return {
+                                id: p.id,
+                                wooId: p.wooId,
+                                name: p.name,
+                                sku: p.sku,
+                                stock_status: p.stockStatus,
+                                stock_quantity: raw.stock_quantity ?? null,
+                                price: p.price ? Number(p.price) : 0,
+                                mainImage: p.mainImage,
+                                images: p.images || raw.images || [],
+                                cogs: p.cogs ? Number(p.cogs) : 0,
+                                hasBOM
+                            };
+                        });
+
+                        productsWithBomStatus = [...productsWithBomStatus, ...mappedAdditional];
+                    }
+                } catch (err) {
+                    Logger.warn('Failed to supplement ES results with variant SKU matches', { error: err });
+                }
+            }
+
             // Fetch variants for variable products to enable BOM component selection
             // We check ALL products against the DB since ES may not have type field indexed yet
             try {
@@ -414,20 +473,49 @@ export class ProductsService {
     private static async searchProductsFromDB(accountId: string, query: string, page: number, limit: number) {
         const skip = (page - 1) * limit;
 
-        const where: any = { accountId };
+        // First, find products matching by name or parent SKU
+        const mainWhere: any = { accountId };
 
         if (query) {
-            where.OR = [
+            mainWhere.OR = [
                 { name: { contains: query, mode: 'insensitive' } },
                 { sku: { contains: query, mode: 'insensitive' } }
             ];
         }
 
+        // Also search by variant SKU - find parent product IDs for variants matching the query
+        let variantMatchedProductIds: string[] = [];
+        if (query) {
+            try {
+                const matchingVariants = await prisma.productVariation.findMany({
+                    where: {
+                        product: { accountId },
+                        sku: { contains: query, mode: 'insensitive' }
+                    },
+                    select: { productId: true },
+                    distinct: ['productId']
+                });
+                variantMatchedProductIds = matchingVariants.map(v => v.productId);
+            } catch (err) {
+                Logger.warn('Failed to search variants by SKU', { error: err });
+            }
+        }
+
+        // Merge: products matching name/SKU OR products with matching variant SKU
+        const finalWhere: any = { accountId };
+        if (query) {
+            finalWhere.OR = [
+                { name: { contains: query, mode: 'insensitive' } },
+                { sku: { contains: query, mode: 'insensitive' } },
+                ...(variantMatchedProductIds.length > 0 ? [{ id: { in: variantMatchedProductIds } }] : [])
+            ];
+        }
+
         try {
             const [total, products] = await Promise.all([
-                prisma.wooProduct.count({ where }),
+                prisma.wooProduct.count({ where: finalWhere }),
                 prisma.wooProduct.findMany({
-                    where,
+                    where: finalWhere,
                     skip,
                     take: limit,
                     orderBy: { createdAt: 'desc' },

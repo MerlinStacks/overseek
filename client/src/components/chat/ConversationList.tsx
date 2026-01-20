@@ -390,7 +390,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                         style={{ height: '100%' }}
                         data={filteredConversations}
                         overscan={5}
-                        itemContent={(index, conv) => {
+                        itemContent={(index: number, conv: Conversation) => {
                             const name = getDisplayName(conv);
                             const { subject, preview } = getPreview(conv);
                             const initials = getInitials(name);
@@ -484,7 +484,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                                                 </span>
                                             )}
                                             {/* Labels */}
-                                            {conv.labels && conv.labels.slice(0, 2).map(label => (
+                                            {conv.labels && conv.labels.slice(0, 2).map((label: { id: string; name: string; color: string }) => (
                                                 <span
                                                     key={label.id}
                                                     className="px-1.5 py-0.5 text-[10px] font-medium rounded-sm"

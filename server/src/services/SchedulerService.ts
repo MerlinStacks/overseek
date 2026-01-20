@@ -692,6 +692,11 @@ export class SchedulerService {
                         if (newAlerts.length > 0) {
                             // Persist new alerts
                             for (const alert of newAlerts) {
+                                // Prisma 7 requires proper JSON serialization for Json fields
+                                const sanitizedData = alert.data && Object.keys(alert.data).length > 0
+                                    ? JSON.parse(JSON.stringify(alert.data))
+                                    : {};
+
                                 await prisma.adAlert.create({
                                     data: {
                                         accountId,
@@ -702,7 +707,7 @@ export class SchedulerService {
                                         platform: alert.platform,
                                         campaignId: alert.campaignId,
                                         campaignName: alert.campaignName,
-                                        data: alert.data as any
+                                        data: sanitizedData
                                     }
                                 });
                             }

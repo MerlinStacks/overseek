@@ -198,7 +198,7 @@ export class BOMInventorySyncService {
     /**
      * Fast, local-only calculation of effective stock using only database data.
      * No WooCommerce API calls - suitable for display endpoints that need speed.
-     * Returns null if the product has no BOM or no child products.
+     * Returns null if the product has no BOM or no child products/internal products.
      */
     static async calculateEffectiveStockLocal(
         productId: string,
@@ -214,20 +214,28 @@ export class BOMInventorySyncService {
             return null;
         }
 
-        // Find the BOM with all child products and their stock data
+        // Find the BOM with all child products, variations, and internal products
         const bom = await prisma.bOM.findUnique({
             where: {
                 productId_variationId: { productId, variationId }
             },
             include: {
                 items: {
-                    where: { childProductId: { not: null } },
+                    where: {
+                        OR: [
+                            { childProductId: { not: null } },
+                            { internalProductId: { not: null } }
+                        ]
+                    },
                     include: {
                         childProduct: {
                             select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true }
                         },
                         childVariation: {
                             select: { wooId: true, sku: true, stockQuantity: true }
+                        },
+                        internalProduct: {
+                            select: { id: true, name: true, stockQuantity: true }
                         }
                     }
                 }
@@ -247,30 +255,47 @@ export class BOMInventorySyncService {
         let minBuildableUnits = Infinity;
 
         for (const bomItem of bom.items) {
-            if (!bomItem.childProduct) continue;
-
             const requiredQty = Number(bomItem.quantity);
             if (requiredQty <= 0) continue;
 
             let childStock = 0;
-            let childName = bomItem.childProduct.name;
+            let childName = '';
+            let childProductId = '';
+            let childWooId = 0;
 
-            // Check if this is a variant component
-            if (bomItem.childVariationId && bomItem.childVariation) {
-                childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + bomItem.childVariation.wooId})`;
-                childStock = bomItem.childVariation.stockQuantity ?? 0;
+            // Handle internal product components (priority check)
+            if (bomItem.internalProductId && bomItem.internalProduct) {
+                childStock = bomItem.internalProduct.stockQuantity;
+                childName = `[Internal] ${bomItem.internalProduct.name}`;
+                childProductId = bomItem.internalProductId;
+                childWooId = 0; // Internal products have no WooCommerce ID
+            }
+            // Handle WooCommerce product components
+            else if (bomItem.childProduct) {
+                childProductId = bomItem.childProduct.id;
+                childWooId = bomItem.childProduct.wooId;
+                childName = bomItem.childProduct.name;
+
+                // Check if this is a variant component
+                if (bomItem.childVariationId && bomItem.childVariation) {
+                    childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + bomItem.childVariation.wooId})`;
+                    childStock = bomItem.childVariation.stockQuantity ?? 0;
+                } else {
+                    // Standard product - use local stockQuantity or rawData
+                    const childRawData = bomItem.childProduct.rawData as any;
+                    childStock = bomItem.childProduct.stockQuantity ?? childRawData?.stock_quantity ?? 0;
+                }
             } else {
-                // Standard product - use local stockQuantity or rawData
-                const childRawData = bomItem.childProduct.rawData as any;
-                childStock = bomItem.childProduct.stockQuantity ?? childRawData?.stock_quantity ?? 0;
+                // No valid component, skip
+                continue;
             }
 
             const buildableUnits = Math.floor(childStock / requiredQty);
 
             components.push({
-                childProductId: bomItem.childProduct.id,
+                childProductId,
                 childName,
-                childWooId: bomItem.childProduct.wooId,
+                childWooId,
                 requiredQty,
                 childStock,
                 buildableUnits

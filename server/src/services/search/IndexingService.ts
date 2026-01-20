@@ -121,6 +121,7 @@ export class IndexingService {
                         name: { type: 'text', fields: { keyword: { type: 'keyword' } } },
                         sku: { type: 'keyword' },
                         productId: { type: 'keyword' },
+                        variationId: { type: 'keyword' },
                         quantity: { type: 'integer' },
                         total: { type: 'float' },
                         total_tax: { type: 'float' },
@@ -288,6 +289,7 @@ export class IndexingService {
                         name: { type: 'text', fields: { keyword: { type: 'keyword' } } },
                         sku: { type: 'keyword' },
                         productId: { type: 'keyword' },
+                        variationId: { type: 'keyword' },
                         quantity: { type: 'integer' },
                         meta_data: {
                             type: 'nested',
@@ -320,6 +322,7 @@ export class IndexingService {
                     name: item.name,
                     sku: item.sku,
                     productId: item.product_id,
+                    variationId: item.variation_id || 0,
                     quantity: item.quantity,
                     total: parseFloat(item.total || '0') + parseFloat(item.total_tax || '0'),
                     total_tax: parseFloat(item.total_tax || '0'),

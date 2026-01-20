@@ -40,9 +40,12 @@ export class OrderTaggingService {
      * Save tag mappings for an account
      */
     static async saveTagMappings(accountId: string, mappings: TagMapping[]): Promise<void> {
+        // Prisma 7 requires proper JSON serialization for Json fields
+        const sanitizedMappings = JSON.parse(JSON.stringify(mappings));
+
         await prisma.account.update({
             where: { id: accountId },
-            data: { orderTagMappings: mappings as any }
+            data: { orderTagMappings: sanitizedMappings }
         });
         Logger.info('Tag mappings saved', { accountId, count: mappings.length });
     }

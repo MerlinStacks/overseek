@@ -321,7 +321,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     }, 0);
 
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                 <div className="flex items-center gap-4">
                     <h3 className="font-semibold text-gray-900">BOM Configuration</h3>
@@ -422,19 +422,19 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 ) : (
                     <>
                         {/* Search Add */}
-                        <div className="relative">
+                        <div className="relative z-20">
                             <div className="flex items-center gap-2 mb-2">
                                 <Plus size={16} className="text-gray-400" />
                                 <label className="text-sm font-medium text-gray-700">Add Product Component</label>
                             </div>
                             <input
                                 type="text"
-                                placeholder="Search for a product..."
+                                placeholder="Search by product name or SKU..."
                                 className="w-full border p-2 rounded-lg"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
-                            {/* Search Results Dropdown */}
+                            {/* Search Results Dropdown - use fixed positioning to escape overflow:hidden parents */}
                             {searchResults.length > 0 && (
                                 <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-96 overflow-y-auto">
                                     {searchResults
