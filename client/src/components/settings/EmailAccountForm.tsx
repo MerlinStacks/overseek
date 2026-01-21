@@ -313,7 +313,8 @@ export function EmailAccountForm({
                                                         },
                                                         body: JSON.stringify({
                                                             relayEndpoint: formData.relayEndpoint,
-                                                            relayApiKey: formData.relayApiKey
+                                                            relayApiKey: formData.relayApiKey,
+                                                            emailAccountId: formData.id
                                                         })
                                                     });
                                                     const result = await response.json();

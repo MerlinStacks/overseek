@@ -295,18 +295,15 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * Test HTTP relay connection with full authentication (real-world test).
      * Sends a test payload to the actual relay endpoint to verify API key works.
+     * If emailAccountId is provided, uses the stored encrypted key from DB.
      */
-    fastify.post<{ Body: { relayEndpoint: string; relayApiKey: string; testEmail?: string } }>('/test-relay', async (request, reply) => {
+    fastify.post<{ Body: { relayEndpoint: string; relayApiKey?: string; emailAccountId?: string; testEmail?: string } }>('/test-relay', async (request, reply) => {
         try {
-            const { relayEndpoint, relayApiKey, testEmail } = request.body;
+            const { relayEndpoint, relayApiKey, emailAccountId, testEmail } = request.body;
             const accountId = request.user?.accountId || request.accountId;
 
             if (!relayEndpoint) {
                 return reply.code(400).send({ success: false, error: 'Relay endpoint is required' });
-            }
-
-            if (!relayApiKey) {
-                return reply.code(400).send({ success: false, error: 'Relay API key is required' });
             }
 
             // SSRF protection: Only allow HTTPS URLs
@@ -319,6 +316,26 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 new URL(relayEndpoint);
             } catch {
                 return reply.code(400).send({ success: false, error: 'Invalid URL format' });
+            }
+
+            // Get the API key - either from DB (for existing accounts) or from request (for new accounts)
+            let apiKeyToUse = relayApiKey;
+
+            // If the key is masked or not provided, try to get from DB
+            if (!apiKeyToUse || apiKeyToUse === '••••••••') {
+                if (!emailAccountId) {
+                    return reply.code(400).send({ success: false, error: 'Please enter the API key to test the connection' });
+                }
+
+                const emailAccount = await prisma.emailAccount.findFirst({
+                    where: { id: emailAccountId, accountId }
+                });
+
+                if (!emailAccount?.relayApiKey) {
+                    return reply.code(400).send({ success: false, error: 'No API key found for this account. Please enter one.' });
+                }
+
+                apiKeyToUse = decrypt(emailAccount.relayApiKey);
             }
 
             // Use the actual relay endpoint with test mode flag
@@ -336,7 +353,7 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Relay-Key': relayApiKey,
+                    'X-Relay-Key': apiKeyToUse,
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify(testPayload)
