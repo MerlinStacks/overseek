@@ -579,7 +579,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                                     {/* Profit Margin Calculator - Only show when user can view COGS */}
                                                     {canViewCogs && (() => {
                                                         const sellingPrice = parseFloat(v.salePrice || '') || parseFloat(v.price || '') || 0;
-                                                        const effectiveCogs = bomCogsMap[v.id] ?? parseFloat(v.cogs || '') || 0;
+                                                        const effectiveCogs = bomCogsMap[v.id] ?? (parseFloat(v.cogs || '') || 0);
                                                         const hasCogs = effectiveCogs > 0;
                                                         const hasPrice = sellingPrice > 0;
 
