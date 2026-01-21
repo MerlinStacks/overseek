@@ -128,6 +128,15 @@ class OverSeek_API {
 			$headers[] = 'References: ' . sanitize_text_field( $params['references'] );
 		}
 
+		// Test mode - validate authentication without sending email.
+		if ( ! empty( $params['test_mode'] ) && filter_var( $params['test_mode'], FILTER_VALIDATE_BOOLEAN ) ) {
+			return new WP_REST_Response( [
+				'success'    => true,
+				'test_mode'  => true,
+				'message'    => 'Authentication successful. Relay is properly configured.',
+			], 200 );
+		}
+
 		// Send via wp_mail.
 		$sent = wp_mail( $to, $subject, $html, $headers );
 

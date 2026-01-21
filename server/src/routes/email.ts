@@ -293,14 +293,20 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
-     * Test HTTP relay connection (server-side to avoid CORS).
+     * Test HTTP relay connection with full authentication (real-world test).
+     * Sends a test payload to the actual relay endpoint to verify API key works.
      */
-    fastify.post<{ Body: { relayEndpoint: string } }>('/test-relay', async (request, reply) => {
+    fastify.post<{ Body: { relayEndpoint: string; relayApiKey: string; testEmail?: string } }>('/test-relay', async (request, reply) => {
         try {
-            const { relayEndpoint } = request.body;
+            const { relayEndpoint, relayApiKey, testEmail } = request.body;
+            const accountId = request.user?.accountId || request.accountId;
 
             if (!relayEndpoint) {
                 return reply.code(400).send({ success: false, error: 'Relay endpoint is required' });
+            }
+
+            if (!relayApiKey) {
+                return reply.code(400).send({ success: false, error: 'Relay API key is required' });
             }
 
             // SSRF protection: Only allow HTTPS URLs
@@ -315,19 +321,42 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ success: false, error: 'Invalid URL format' });
             }
 
-            // Test the health endpoint of the WooCommerce plugin
-            const healthUrl = relayEndpoint.replace('/email-relay', '/health');
+            // Use the actual relay endpoint with test mode flag
+            const testPayload = {
+                account_id: accountId,
+                to: testEmail || 'test@example.com',
+                subject: '[OverSeek Test] Relay Connection Test',
+                html: '<p>This is a test email to verify the HTTP relay connection is working.</p>',
+                from_name: 'OverSeek Test',
+                from_email: 'noreply@overseek.com.au',
+                test_mode: true // Tell WP plugin this is just a test, don't actually send
+            };
 
-            const response = await fetch(healthUrl, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
+            const response = await fetch(relayEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Relay-Key': relayApiKey,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(testPayload)
             });
 
+            const responseData = await response.json().catch(() => ({}));
+
             if (response.ok) {
-                const data = await response.json();
-                return { success: true, message: 'Relay endpoint is reachable', data };
+                return {
+                    success: true,
+                    message: 'Relay connection test successful! API key authenticated.',
+                    data: responseData
+                };
+            } else if (response.status === 401 || response.status === 403) {
+                return { success: false, error: 'API key authentication failed. Check your relay API key.' };
             } else {
-                return { success: false, error: `Endpoint returned status ${response.status}` };
+                return {
+                    success: false,
+                    error: `Relay returned status ${response.status}: ${responseData.message || responseData.code || 'Unknown error'}`
+                };
             }
         } catch (error: any) {
             Logger.error('Relay test failed', { error: error.message });

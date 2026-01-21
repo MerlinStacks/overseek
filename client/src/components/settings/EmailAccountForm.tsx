@@ -298,24 +298,27 @@ export function EmailAccountForm({
                                         <button
                                             type="button"
                                             onClick={async () => {
-                                                if (!formData.relayEndpoint) return;
+                                                if (!formData.relayEndpoint || !formData.relayApiKey) return;
                                                 try {
                                                     const response = await fetch('/api/email/test-relay', {
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ relayEndpoint: formData.relayEndpoint })
+                                                        body: JSON.stringify({
+                                                            relayEndpoint: formData.relayEndpoint,
+                                                            relayApiKey: formData.relayApiKey
+                                                        })
                                                     });
                                                     const result = await response.json();
                                                     if (result.success) {
-                                                        alert('Relay endpoint is reachable!');
+                                                        alert('✓ ' + result.message);
                                                     } else {
-                                                        alert('Relay test failed: ' + (result.error || 'Unknown error'));
+                                                        alert('✗ ' + (result.error || 'Unknown error'));
                                                     }
                                                 } catch (err: any) {
                                                     alert('Cannot test relay: ' + err.message);
                                                 }
                                             }}
-                                            disabled={!formData.relayEndpoint}
+                                            disabled={!formData.relayEndpoint || !formData.relayApiKey}
                                             className="text-sm text-purple-600 hover:text-purple-700 disabled:opacity-50"
                                         >
                                             Test Relay Connection
