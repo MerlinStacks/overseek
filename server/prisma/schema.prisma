@@ -1661,6 +1661,10 @@ model EmailAccount {
   imapPassword String? // Encrypted at app level
   imapSecure   Boolean @default(true)
 
+  // HTTP Relay Configuration (for SMTP-blocked environments)
+  relayEndpoint String? // e.g. "https://example.com/wp-json/overseek/v1/email-relay"
+  relayApiKey   String? // API key for relay authentication (encrypted at app level)
+
   isDefault Boolean @default(false) // Default for sending
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1680,7 +1684,7 @@ model EmailLog {
   to             String
   subject        String
   
-  status         String   // SUCCESS, FAILED
+  status         String   // SUCCESS, FAILED, PENDING_RETRY
   errorMessage   String?  @db.Text
   errorCode      String?  // SMTP error code if available
   
@@ -1695,6 +1699,13 @@ model EmailLog {
   firstOpenedAt  DateTime?
   openCount      Int      @default(0)
   
+  // Retry support for failed emails
+  retryCount     Int      @default(0)   // Number of retry attempts
+  maxRetries     Int      @default(3)   // Max allowed retries
+  canRetry       Boolean  @default(true) // Whether retry is allowed
+  lastRetryAt    DateTime?              // When last retry was attempted
+  emailPayload   Json?                  // Stored payload for retry { html, attachments, options }
+  
   createdAt      DateTime @default(now())
   
   account        Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1704,6 +1715,7 @@ model EmailLog {
   @@index([accountId, createdAt])
   @@index([emailAccountId])
   @@index([trackingId])
+  @@index([status, canRetry]) // For finding retryable failed emails
 }
 
 model MessageTrackingEvent {

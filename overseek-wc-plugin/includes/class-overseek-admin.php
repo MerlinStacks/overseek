@@ -48,6 +48,12 @@ class OverSeek_Admin
 			'default' => 365,
 			'sanitize_callback' => 'absint',
 		));
+
+		// Email relay settings
+		register_setting('overseek_options_group', 'overseek_relay_api_key', array(
+			'type' => 'string',
+			'sanitize_callback' => 'sanitize_text_field',
+		));
 	}
 
 	/**
@@ -132,6 +138,21 @@ class OverSeek_Admin
 						<td>
 							<input type="checkbox" name="overseek_enable_chat" value="1" <?php checked(1, get_option('overseek_enable_chat'), true); ?> />
 							<p class="description">Show the OverSeek live chat widget to visitors.</p>
+						</td>
+					</tr>
+				</table>
+
+				<h2>Email Relay Settings</h2>
+				<p class="description">Configure email relay to allow OverSeek to send emails through this WordPress server.</p>
+				<table class="form-table">
+					<tr valign="top">
+						<th scope="row">Relay API Key</th>
+						<td>
+							<input type="text" name="overseek_relay_api_key" value="<?php echo esc_attr(get_option('overseek_relay_api_key')); ?>" style="width: 100%; max-width: 400px; font-family: monospace;" />
+							<p class="description">Enter a secure API key. This must match the key configured in OverSeek's email settings.</p>
+							<?php if (get_option('overseek_relay_api_key')): ?>
+							<p style="margin-top: 10px;"><strong>Relay Endpoint:</strong> <code><?php echo esc_url(home_url('/wp-json/overseek/v1/email-relay')); ?></code></p>
+							<?php endif; ?>
 						</td>
 					</tr>
 				</table>

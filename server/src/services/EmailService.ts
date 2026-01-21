@@ -61,7 +61,10 @@ export class EmailService {
     }
 
     /**
-     * Send email via SMTP.
+     * Send email via SMTP or HTTP relay.
+     * 
+     * Prioritizes HTTP relay if configured (for SMTP-blocked environments),
+     * falls back to direct SMTP otherwise.
      */
     async sendEmail(
         accountId: string,
@@ -92,21 +95,71 @@ export class EmailService {
             throw new Error("Email account not found");
         }
 
+        // Generate tracking ID for read receipts
+        const trackingId = crypto.randomUUID();
+        const trackingPixelUrl = `${process.env.API_URL || 'http://localhost:3000'}/api/email/track/${trackingId}.png`;
+
+        // Inject tracking pixel
+        const htmlWithTracking = html.includes('</body>')
+            ? html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
+            : `${html}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+
+        // Try HTTP relay first if configured
+        if (emailAccount.relayEndpoint && emailAccount.relayApiKey) {
+            try {
+                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithTracking, options);
+
+                await prisma.emailLog.create({
+                    data: {
+                        accountId,
+                        emailAccountId,
+                        to,
+                        subject,
+                        status: 'SUCCESS',
+                        messageId: result.message_id,
+                        trackingId,
+                        source: options?.source,
+                        sourceId: options?.sourceId,
+                        canRetry: false
+                    }
+                });
+
+                Logger.info(`Sent email via HTTP relay`, { messageId: result.message_id, to, trackingId });
+                return { messageId: result.message_id };
+            } catch (relayError: any) {
+                Logger.warn(`HTTP relay failed, falling back to SMTP`, { to, error: relayError.message });
+                // Fall through to SMTP if relay fails and SMTP is configured
+                if (!emailAccount.smtpEnabled) {
+                    await prisma.emailLog.create({
+                        data: {
+                            accountId,
+                            emailAccountId,
+                            to,
+                            subject,
+                            status: 'FAILED',
+                            errorMessage: `Relay failed: ${relayError.message}`,
+                            source: options?.source,
+                            sourceId: options?.sourceId,
+                            canRetry: true,
+                            emailPayload: {
+                                html: htmlWithTracking,
+                                attachments: attachments || [],
+                                options: options || {}
+                            }
+                        }
+                    });
+                    throw new Error(`HTTP relay failed: ${relayError.message}`);
+                }
+            }
+        }
+
+        // Use direct SMTP
         if (!emailAccount.smtpEnabled) {
-            throw new Error("SMTP not enabled for this account");
+            throw new Error("Neither HTTP relay nor SMTP is configured for this account");
         }
 
         try {
             const transporter = await this.createTransporter(emailAccount);
-
-            // Generate tracking ID for read receipts
-            const trackingId = crypto.randomUUID();
-            const trackingPixelUrl = `${process.env.API_URL || 'http://localhost:3000'}/api/email/track/${trackingId}.png`;
-
-            // Inject tracking pixel
-            const htmlWithTracking = html.includes('</body>')
-                ? html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
-                : `${html}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
 
             const mailOptions: any = {
                 from: `"${emailAccount.name}" <${emailAccount.email}>`,
@@ -135,7 +188,8 @@ export class EmailService {
                     messageId: info.messageId,
                     trackingId,
                     source: options?.source,
-                    sourceId: options?.sourceId
+                    sourceId: options?.sourceId,
+                    canRetry: false
                 }
             });
 
@@ -152,13 +206,154 @@ export class EmailService {
                     errorMessage: error.message,
                     errorCode: error.code || error.responseCode,
                     source: options?.source,
-                    sourceId: options?.sourceId
+                    sourceId: options?.sourceId,
+                    canRetry: true,
+                    emailPayload: {
+                        html: htmlWithTracking,
+                        attachments: attachments || [],
+                        options: options || {}
+                    }
                 }
             });
 
             Logger.error(`Failed to send email`, { to, error: error.message });
             throw error;
         }
+    }
+
+    /**
+     * Retry a failed email from the log.
+     * 
+     * Retrieves the stored payload and attempts to resend.
+     */
+    async retryFailedEmail(emailLogId: string, accountId: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+        const emailLog = await prisma.emailLog.findFirst({
+            where: {
+                id: emailLogId,
+                accountId,
+                status: 'FAILED',
+                canRetry: true
+            },
+            include: {
+                emailAccount: true
+            }
+        });
+
+        if (!emailLog) {
+            return { success: false, error: 'Email log not found or cannot be retried' };
+        }
+
+        if (emailLog.retryCount >= emailLog.maxRetries) {
+            await prisma.emailLog.update({
+                where: { id: emailLogId },
+                data: { canRetry: false }
+            });
+            return { success: false, error: 'Maximum retry attempts reached' };
+        }
+
+        const payload = emailLog.emailPayload as { html?: string; attachments?: any[]; options?: any } | null;
+        if (!payload || !payload.html) {
+            return { success: false, error: 'No stored payload for retry' };
+        }
+
+        // Update retry attempt tracking
+        await prisma.emailLog.update({
+            where: { id: emailLogId },
+            data: {
+                retryCount: { increment: 1 },
+                lastRetryAt: new Date(),
+                status: 'PENDING_RETRY'
+            }
+        });
+
+        try {
+            const result = await this.sendEmail(
+                accountId,
+                emailLog.emailAccountId,
+                emailLog.to,
+                emailLog.subject,
+                payload.html,
+                payload.attachments,
+                {
+                    source: emailLog.source || undefined,
+                    sourceId: emailLog.sourceId || undefined,
+                    ...payload.options
+                }
+            );
+
+            // Mark original as superseded (can't retry again)
+            await prisma.emailLog.update({
+                where: { id: emailLogId },
+                data: { canRetry: false, status: 'RETRIED' }
+            });
+
+            return { success: true, messageId: result.messageId };
+        } catch (error: any) {
+            // Update status back to FAILED if retry fails
+            await prisma.emailLog.update({
+                where: { id: emailLogId },
+                data: {
+                    status: 'FAILED',
+                    errorMessage: `Retry ${emailLog.retryCount + 1} failed: ${error.message}`
+                }
+            });
+
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Send email via HTTP relay endpoint.
+     * 
+     * Used when SMTP ports are blocked (e.g., DigitalOcean) and email 
+     * must be routed through an external relay (e.g., WooCommerce plugin).
+     */
+    private async sendViaHttpRelay(
+        emailAccount: EmailAccount,
+        accountId: string,
+        to: string,
+        subject: string,
+        html: string,
+        options?: { inReplyTo?: string; references?: string }
+    ): Promise<{ success: boolean; message_id: string }> {
+        if (!emailAccount.relayEndpoint || !emailAccount.relayApiKey) {
+            throw new Error('HTTP relay not configured');
+        }
+
+        const decryptedApiKey = decrypt(emailAccount.relayApiKey);
+
+        const payload = {
+            account_id: accountId,
+            to,
+            subject,
+            html,
+            from_name: emailAccount.name,
+            from_email: emailAccount.email,
+            in_reply_to: options?.inReplyTo,
+            references: options?.references
+        };
+
+        const response = await fetch(emailAccount.relayEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Relay-Key': decryptedApiKey
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Relay request failed: ${response.status} - ${errorText}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Relay returned unsuccessful response');
+        }
+
+        return result;
     }
 
     /**

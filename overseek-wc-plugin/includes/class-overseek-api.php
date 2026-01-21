@@ -38,6 +38,113 @@ class OverSeek_API {
 			'callback'            => [ $this, 'health_check_callback' ],
 			'permission_callback' => '__return_true',
 		] );
+
+		register_rest_route( 'overseek/v1', '/email-relay', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'email_relay_callback' ],
+			'permission_callback' => [ $this, 'check_relay_permission' ],
+		] );
+	}
+
+	/**
+	 * Check if request has valid relay API key and account ID.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return bool|WP_Error
+	 */
+	public function check_relay_permission( WP_REST_Request $request ) {
+		$stored_key = get_option( 'overseek_relay_api_key' );
+		
+		if ( empty( $stored_key ) ) {
+			return new WP_Error( 'relay_not_configured', 'Email relay is not configured', [ 'status' => 503 ] );
+		}
+
+		$provided_key = $request->get_header( 'X-Relay-Key' );
+		
+		if ( empty( $provided_key ) || ! hash_equals( $stored_key, $provided_key ) ) {
+			return new WP_Error( 'invalid_relay_key', 'Invalid or missing relay API key', [ 'status' => 401 ] );
+		}
+
+		// Validate account ID matches the linked OverSeek account
+		$stored_account_id = get_option( 'overseek_account_id' );
+		if ( ! empty( $stored_account_id ) ) {
+			$params = $request->get_json_params();
+			$provided_account_id = isset( $params['account_id'] ) ? sanitize_text_field( $params['account_id'] ) : '';
+			
+			if ( empty( $provided_account_id ) || $provided_account_id !== $stored_account_id ) {
+				return new WP_Error( 'account_mismatch', 'Account ID does not match linked account', [ 'status' => 403 ] );
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Email relay endpoint - receives email from OverSeek and sends via wp_mail.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function email_relay_callback( WP_REST_Request $request ): WP_REST_Response {
+		$params = $request->get_json_params();
+
+		// Validate required fields.
+		$to = isset( $params['to'] ) ? sanitize_email( $params['to'] ) : '';
+		$subject = isset( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
+		$html = isset( $params['html'] ) ? wp_kses_post( $params['html'] ) : '';
+
+		if ( empty( $to ) || ! is_email( $to ) ) {
+			return new WP_REST_Response( [ 'success' => false, 'error' => 'Invalid or missing "to" address' ], 400 );
+		}
+
+		if ( empty( $subject ) ) {
+			return new WP_REST_Response( [ 'success' => false, 'error' => 'Missing subject' ], 400 );
+		}
+
+		if ( empty( $html ) ) {
+			return new WP_REST_Response( [ 'success' => false, 'error' => 'Missing email body' ], 400 );
+		}
+
+		// Build headers.
+		$headers = [ 'Content-Type: text/html; charset=UTF-8' ];
+
+		$from_name = isset( $params['from_name'] ) ? sanitize_text_field( $params['from_name'] ) : '';
+		$from_email = isset( $params['from_email'] ) ? sanitize_email( $params['from_email'] ) : '';
+
+		if ( ! empty( $from_name ) && ! empty( $from_email ) ) {
+			$headers[] = sprintf( 'From: %s <%s>', $from_name, $from_email );
+		}
+
+		if ( ! empty( $params['reply_to'] ) && is_email( $params['reply_to'] ) ) {
+			$headers[] = 'Reply-To: ' . sanitize_email( $params['reply_to'] );
+		}
+
+		// Additional headers (In-Reply-To, References for threading).
+		if ( ! empty( $params['in_reply_to'] ) ) {
+			$headers[] = 'In-Reply-To: ' . sanitize_text_field( $params['in_reply_to'] );
+		}
+
+		if ( ! empty( $params['references'] ) ) {
+			$headers[] = 'References: ' . sanitize_text_field( $params['references'] );
+		}
+
+		// Send via wp_mail.
+		$sent = wp_mail( $to, $subject, $html, $headers );
+
+		if ( $sent ) {
+			// Generate a pseudo message ID for tracking.
+			$message_id = sprintf( '<%s.%s@%s>', uniqid(), time(), wp_parse_url( home_url(), PHP_URL_HOST ) );
+			
+			return new WP_REST_Response( [
+				'success'    => true,
+				'message_id' => $message_id,
+			], 200 );
+		} else {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => 'wp_mail failed to send the email',
+			], 500 );
+		}
 	}
 
 	/**

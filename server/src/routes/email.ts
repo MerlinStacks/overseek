@@ -351,6 +351,30 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to fetch email logs' });
         }
     });
+
+    /**
+     * Retry a failed email.
+     */
+    fastify.post<{ Params: { id: string } }>('/logs/:id/retry', async (request, reply) => {
+        try {
+            const accountId = request.user?.accountId || request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { id } = request.params;
+
+            const result = await emailService.retryFailedEmail(id, accountId);
+
+            if (!result.success) {
+                return reply.code(400).send({ success: false, error: result.error });
+            }
+
+            Logger.info('Email retry successful', { emailLogId: id, messageId: result.messageId });
+            return { success: true, messageId: result.messageId };
+        } catch (error: any) {
+            Logger.error('Failed to retry email', { error });
+            return reply.code(500).send({ error: 'Failed to retry email' });
+        }
+    });
 };
 
 export default emailRoutes;
