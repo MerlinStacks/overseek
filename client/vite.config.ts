@@ -50,7 +50,9 @@ export default defineConfig(({ mode }) => {
                 ...(env.ALLOWED_HOSTS ? env.ALLOWED_HOSTS.split(',').map(h => h.trim()) : [])
             ],
             hmr: {
-                clientPort: 443
+                protocol: env.HMR_PROTOCOL || 'wss',
+                clientPort: parseInt(env.HMR_PORT) || 443,
+                host: env.HMR_HOST || undefined  // undefined = use window.location.host
             },
             host: env.HOST === 'true' ? true : (env.HOST || true), // Default to true for Docker, or allow override
             port: parseInt(env.PORT) || 5173,
