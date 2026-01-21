@@ -65,6 +65,29 @@ export function BOMSyncPage() {
 
     const [stats, setStats] = useState({ total: 0, needsSync: 0, inSync: 0 });
 
+    /**
+     * Cancel a stuck BOM sync job via the API.
+     * Clears the 'already running' state and allows a fresh sync.
+     */
+    async function handleCancelSync() {
+        if (!currentAccount) return;
+        try {
+            const res = await fetch('/api/inventory/bom/sync-cancel', {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                setSyncResult(null);
+                await fetchPendingChanges();
+            }
+        } catch (err) {
+            Logger.error('Failed to cancel sync', { error: err });
+        }
+    }
+
     function handleRefresh() {
         fetchPendingChanges();
         fetchSyncHistory();
@@ -96,8 +119,33 @@ export function BOMSyncPage() {
         if (currentAccount && token) {
             fetchPendingChanges();
             fetchSyncHistory();
+            checkSyncStatus();
         }
     }, [currentAccount, token]);
+
+    /**
+     * Check if a BOM sync job is already running on page load.
+     */
+    async function checkSyncStatus() {
+        if (!currentAccount) return;
+        try {
+            const res = await fetch('/api/inventory/bom/sync-status', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.isSyncing) {
+                    // Show the "already in progress" banner
+                    setSyncResult({ synced: -3, failed: 0 });
+                }
+            }
+        } catch (err) {
+            Logger.error('Failed to check sync status', { error: err });
+        }
+    }
 
     async function fetchPendingChanges() {
         setIsLoadingPending(true);
@@ -260,7 +308,15 @@ export function BOMSyncPage() {
                             Sync queued! Processing in background... Refreshing status automatically.
                         </span>
                     ) : syncResult.synced === -3 ? (
-                        <span>A sync is already in progress for this account. Please wait for it to complete.</span>
+                        <span className="flex items-center justify-between w-full">
+                            <span>A sync is already in progress for this account. Please wait for it to complete.</span>
+                            <button
+                                onClick={handleCancelSync}
+                                className="ml-4 px-3 py-1 text-sm font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg transition-colors"
+                            >
+                                Cancel Sync
+                            </button>
+                        </span>
                     ) : syncResult.failed === -1 ? (
                         <span>Sync failed. Please try again.</span>
                     ) : (

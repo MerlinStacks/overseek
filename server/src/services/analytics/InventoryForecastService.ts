@@ -244,6 +244,12 @@ export class InventoryForecastService {
      * Get all products with managed stock that are "leaf" products.
      * Excludes assembled products (those with BOM items) - we forecast their components instead.
      * Includes: simple products, components, and variations with managed stock.
+     * 
+     * Filtering logic:
+     * - Parent products: excluded if they have a parent-level BOM (variationId=0) with items
+     * - Variations: excluded if:
+     *   1. The parent has a parent-level BOM with items, OR
+     *   2. The variation has its own BOM (variationId=wooId) with items
      */
     private static async getManagedStockProducts(accountId: string): Promise<Array<{
         id: string;
@@ -255,7 +261,7 @@ export class InventoryForecastService {
         supplierLeadTime: number | null;
         isVariation?: boolean;
     }>> {
-        // 1. Get all products with their BOMs
+        // 1. Get all products with their BOMs (including variation-specific BOMs)
         const products = await prisma.wooProduct.findMany({
             where: { accountId },
             select: {
@@ -269,8 +275,10 @@ export class InventoryForecastService {
                     select: { leadTimeDefault: true }
                 },
                 // Include BOMs to check if product is assembled
+                // variationId=0 means parent BOM, variationId>0 means variation-specific BOM
                 boms: {
                     select: {
+                        variationId: true,
                         items: {
                             select: { id: true },
                             take: 1 // Only need to know if any items exist
@@ -303,12 +311,11 @@ export class InventoryForecastService {
         }> = [];
 
         for (const p of products) {
-            // Check if product has a BOM with items (assembled product)
-            const hasActiveBOM = p.boms.some(bom => bom.items.length > 0);
+            // Check if product has a parent-level BOM with items (variationId=0)
+            const hasParentBOM = p.boms.some(bom => bom.variationId === 0 && bom.items.length > 0);
 
-            // If it's an assembled product, skip the parent but include variations
-            if (!hasActiveBOM) {
-                // Add the parent product if it has managed stock
+            // Parent products: only include if no parent BOM and has managed stock
+            if (!hasParentBOM) {
                 const raw = p.rawData as { manage_stock?: boolean; stock_quantity?: number };
                 if (raw.manage_stock && typeof raw.stock_quantity === 'number') {
                     result.push({
@@ -323,18 +330,43 @@ export class InventoryForecastService {
                 }
             }
 
-            // Add variations with managed stock (whether parent has BOM or not)
+            // Variations: only include if parent has no BOM AND variation has no its own BOM
+            // Skip all variations if the parent has a parent-level BOM
+            if (hasParentBOM) continue;
+
             for (const v of p.variations) {
+                // Check if this specific variation has its own BOM with items
+                const variationHasBOM = p.boms.some(
+                    bom => bom.variationId === v.wooId && bom.items.length > 0
+                );
+                if (variationHasBOM) continue;
+
                 // Check variation's manage_stock setting
                 const varRaw = v.rawData as { manage_stock?: boolean; stock_quantity?: number } | null;
                 const managesStock = v.manageStock || varRaw?.manage_stock;
                 const stockQty = v.stockQuantity ?? varRaw?.stock_quantity;
 
                 if (managesStock && typeof stockQty === 'number') {
+                    // Build variation name from attributes (e.g., "Size: Large, Color: Blue")
+                    const varRawFull = v.rawData as {
+                        manage_stock?: boolean;
+                        stock_quantity?: number;
+                        attributes?: Array<{ name: string; option: string }>;
+                    } | null;
+
+                    let variationSuffix = 'Variation';
+                    if (varRawFull?.attributes && varRawFull.attributes.length > 0) {
+                        // Extract just the option values (e.g., "Blue, Large")
+                        variationSuffix = varRawFull.attributes.map(a => a.option).join(', ');
+                    } else if (v.sku) {
+                        // Fallback to SKU if no attributes
+                        variationSuffix = v.sku;
+                    }
+
                     result.push({
                         id: v.id,
                         wooId: v.wooId,
-                        name: `${p.name} - Variation`,
+                        name: `${p.name} - ${variationSuffix}`,
                         sku: v.sku,
                         image: p.mainImage, // Use parent image for variations
                         currentStock: stockQty,

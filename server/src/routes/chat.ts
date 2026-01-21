@@ -19,6 +19,12 @@ import path from 'path';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
 
+// Modular sub-routes (extracted for maintainability)
+import { cannedResponseRoutes } from './chat/cannedResponses';
+import { macroRoutes } from './chat/macros';
+import { blockedContactRoutes } from './chat/blockedContacts';
+import { createBulkActionRoutes } from './chat/bulkActions';
+
 // Ensure attachments directory exists
 const attachmentsDir = path.join(__dirname, '../../uploads/attachments');
 if (!fs.existsSync(attachmentsDir)) {
@@ -28,6 +34,12 @@ if (!fs.existsSync(attachmentsDir)) {
 export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync => {
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
+
+        // Register modular sub-routes
+        await fastify.register(cannedResponseRoutes);
+        await fastify.register(macroRoutes);
+        await fastify.register(blockedContactRoutes);
+        await fastify.register(createBulkActionRoutes(chatService));
 
         // GET /conversations
         fastify.get('/conversations', async (request, reply) => {
@@ -230,115 +242,6 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             }
         });
 
-
-        // --- Canned Response Labels ---
-        fastify.get('/canned-labels', async (request, reply) => {
-            const accountId = request.accountId;
-            if (!accountId) return [];
-            const labels = await prisma.cannedResponseLabel.findMany({
-                where: { accountId },
-                orderBy: { name: 'asc' }
-            });
-            return labels;
-        });
-
-        fastify.post('/canned-labels', async (request, reply) => {
-            const { name, color } = request.body as any;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-            if (!name?.trim()) return reply.code(400).send({ error: 'Name is required' });
-
-            try {
-                const label = await prisma.cannedResponseLabel.create({
-                    data: { name: name.trim(), color: color || '#6366f1', accountId }
-                });
-                return label;
-            } catch (error: any) {
-                if (error.code === 'P2002') {
-                    return reply.code(409).send({ error: 'A label with this name already exists' });
-                }
-                throw error;
-            }
-        });
-
-        fastify.put<{ Params: { id: string } }>('/canned-labels/:id', async (request, reply) => {
-            const { name, color } = request.body as any;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-
-            try {
-                const label = await prisma.cannedResponseLabel.update({
-                    where: { id: request.params.id },
-                    data: {
-                        ...(name && { name: name.trim() }),
-                        ...(color && { color })
-                    }
-                });
-                return label;
-            } catch (error: any) {
-                if (error.code === 'P2002') {
-                    return reply.code(409).send({ error: 'A label with this name already exists' });
-                }
-                if (error.code === 'P2025') {
-                    return reply.code(404).send({ error: 'Label not found' });
-                }
-                throw error;
-            }
-        });
-
-        fastify.delete<{ Params: { id: string } }>('/canned-labels/:id', async (request, reply) => {
-            try {
-                await prisma.cannedResponseLabel.delete({ where: { id: request.params.id } });
-                return { success: true };
-            } catch (error: any) {
-                if (error.code === 'P2025') {
-                    return reply.code(404).send({ error: 'Label not found' });
-                }
-                throw error;
-            }
-        });
-
-        // --- Canned Responses ---
-        fastify.get('/canned-responses', async (request, reply) => {
-            const accountId = request.accountId;
-            if (!accountId) return [];
-            const responses = await prisma.cannedResponse.findMany({
-                where: { accountId },
-                include: { label: true },
-                orderBy: [{ shortcut: 'asc' }]
-            });
-            return responses;
-        });
-
-        fastify.post('/canned-responses', async (request, reply) => {
-            const { shortcut, content, labelId } = request.body as any;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-            const resp = await prisma.cannedResponse.create({
-                data: { shortcut, content, labelId: labelId || null, accountId },
-                include: { label: true }
-            });
-            return resp;
-        });
-
-        fastify.put<{ Params: { id: string } }>('/canned-responses/:id', async (request, reply) => {
-            const { shortcut, content, labelId } = request.body as any;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-
-            const resp = await prisma.cannedResponse.update({
-                where: { id: request.params.id },
-                data: { shortcut, content, labelId: labelId || null },
-                include: { label: true }
-            });
-            return resp;
-        });
-
-        fastify.delete<{ Params: { id: string } }>('/canned-responses/:id', async (request, reply) => {
-            await prisma.cannedResponse.delete({ where: { id: request.params.id } });
-            return { success: true };
-        });
-
         // --- Conversation Notes ---
         fastify.get<{ Params: { id: string } }>('/conversations/:id/notes', async (request, reply) => {
             const notes = await prisma.conversationNote.findMany({
@@ -369,81 +272,6 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         fastify.delete<{ Params: { id: string; noteId: string } }>('/conversations/:id/notes/:noteId', async (request, reply) => {
             await prisma.conversationNote.delete({ where: { id: request.params.noteId } });
             return { success: true };
-        });
-
-        // --- Inbox Macros ---
-        fastify.get('/macros', async (request, reply) => {
-            const accountId = request.accountId;
-            if (!accountId) return [];
-            return prisma.inboxMacro.findMany({
-                where: { accountId },
-                orderBy: { sortOrder: 'asc' }
-            });
-        });
-
-        fastify.post('/macros', async (request, reply) => {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account required' });
-            const { name, icon, color, actions } = request.body as any;
-            return prisma.inboxMacro.create({
-                data: { accountId, name, icon, color, actions }
-            });
-        });
-
-        fastify.put<{ Params: { id: string } }>('/macros/:id', async (request, reply) => {
-            const { name, icon, color, actions, sortOrder } = request.body as any;
-            return prisma.inboxMacro.update({
-                where: { id: request.params.id },
-                data: { name, icon, color, actions, sortOrder }
-            });
-        });
-
-        fastify.delete<{ Params: { id: string } }>('/macros/:id', async (request, reply) => {
-            await prisma.inboxMacro.delete({ where: { id: request.params.id } });
-            return { success: true };
-        });
-
-        // Execute a macro on a conversation
-        fastify.post<{ Params: { id: string } }>('/macros/:id/execute', async (request, reply) => {
-            const { conversationId } = request.body as any;
-            if (!conversationId) return reply.code(400).send({ error: 'conversationId required' });
-
-            const macro = await prisma.inboxMacro.findUnique({ where: { id: request.params.id } });
-            if (!macro) return reply.code(404).send({ error: 'Macro not found' });
-
-            const actions = macro.actions as any[];
-            const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
-            if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
-
-            for (const action of actions) {
-                if (action.type === 'ASSIGN' && action.userId) {
-                    await prisma.conversation.update({
-                        where: { id: conversationId },
-                        data: { assignedTo: action.userId }
-                    });
-                }
-                if (action.type === 'ADD_TAG' && action.labelId) {
-                    await prisma.conversationLabelAssignment.upsert({
-                        where: { conversationId_labelId: { conversationId, labelId: action.labelId } },
-                        create: { conversationId, labelId: action.labelId },
-                        update: {}
-                    });
-                }
-                if (action.type === 'CLOSE') {
-                    await prisma.conversation.update({
-                        where: { id: conversationId },
-                        data: { status: 'CLOSED' }
-                    });
-                }
-                if (action.type === 'REOPEN') {
-                    await prisma.conversation.update({
-                        where: { id: conversationId },
-                        data: { status: 'OPEN' }
-                    });
-                }
-            }
-
-            return { success: true, actionsExecuted: actions.length };
         });
 
         // --- Settings ---
@@ -876,63 +704,6 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             }
         });
 
-        // --- Blocked Contacts ---
-        fastify.post('/block', async (request, reply) => {
-            try {
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-
-                const { email, reason } = request.body as any;
-                if (!email) return reply.code(400).send({ error: 'Email is required' });
-
-                const result = await BlockedContactService.blockContact(accountId, email, request.user?.id, reason);
-                if (!result.success) return reply.code(500).send({ error: result.error });
-                return { success: true };
-            } catch (error) {
-                Logger.error('Failed to block contact', { error });
-                return reply.code(500).send({ error: 'Failed to block contact' });
-            }
-        });
-
-        fastify.delete<{ Params: { email: string } }>('/block/:email', async (request, reply) => {
-            try {
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-
-                const result = await BlockedContactService.unblockContact(accountId, decodeURIComponent(request.params.email));
-                if (!result.success) return reply.code(500).send({ error: result.error });
-                return { success: true };
-            } catch (error) {
-                Logger.error('Failed to unblock contact', { error });
-                return reply.code(500).send({ error: 'Failed to unblock contact' });
-            }
-        });
-
-        fastify.get('/blocked', async (request, reply) => {
-            try {
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-                const blocked = await BlockedContactService.listBlocked(accountId);
-                return blocked;
-            } catch (error) {
-                Logger.error('Failed to list blocked contacts', { error });
-                return reply.code(500).send({ error: 'Failed to list blocked contacts' });
-            }
-        });
-
-        fastify.get<{ Params: { email: string } }>('/block/check/:email', async (request, reply) => {
-            try {
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-
-                const isBlocked = await BlockedContactService.isBlocked(accountId, decodeURIComponent(request.params.email));
-                return { isBlocked };
-            } catch (error) {
-                Logger.error('Failed to check blocked status', { error });
-                return reply.code(500).send({ error: 'Failed to check blocked status' });
-            }
-        });
-
         // === CONVERSATION LABELS ===
         const labelService = new LabelService();
 
@@ -1093,147 +864,6 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 }
                 Logger.error('Failed to cancel snooze', { error });
                 return reply.code(500).send({ error: 'Failed to cancel snooze' });
-            }
-        });
-
-        // === BULK ACTIONS ===
-
-        // POST /conversations/bulk - Perform bulk actions on multiple conversations
-        fastify.post('/conversations/bulk', async (request, reply) => {
-            try {
-                const accountId = request.accountId;
-                const userId = request.user?.id;
-                const { conversationIds, action, labelId, assignToUserId } = request.body as {
-                    conversationIds: string[];
-                    action: 'close' | 'open' | 'assign' | 'addLabel' | 'removeLabel';
-                    labelId?: string;
-                    assignToUserId?: string;
-                };
-
-                if (!conversationIds || !Array.isArray(conversationIds) || conversationIds.length === 0) {
-                    return reply.code(400).send({ error: 'conversationIds array is required' });
-                }
-
-                if (!action) {
-                    return reply.code(400).send({ error: 'action is required' });
-                }
-
-                let result: { updated: number } = { updated: 0 };
-
-                switch (action) {
-                    case 'close': {
-                        const closeResult = await prisma.conversation.updateMany({
-                            where: { id: { in: conversationIds }, accountId },
-                            data: { status: 'CLOSED' },
-                        });
-                        result.updated = closeResult.count;
-                        break;
-                    }
-
-                    case 'open': {
-                        const openResult = await prisma.conversation.updateMany({
-                            where: { id: { in: conversationIds }, accountId },
-                            data: { status: 'OPEN', snoozedUntil: null },
-                        });
-                        result.updated = openResult.count;
-                        break;
-                    }
-
-                    case 'assign': {
-                        if (!assignToUserId) {
-                            return reply.code(400).send({ error: 'assignToUserId is required for assign action' });
-                        }
-                        const assignResult = await prisma.conversation.updateMany({
-                            where: { id: { in: conversationIds }, accountId },
-                            data: { assignedTo: assignToUserId },
-                        });
-                        result.updated = assignResult.count;
-                        break;
-                    }
-
-                    case 'addLabel': {
-                        if (!labelId) {
-                            return reply.code(400).send({ error: 'labelId is required for addLabel action' });
-                        }
-                        await labelService.bulkAssignLabel(conversationIds, labelId);
-                        result.updated = conversationIds.length;
-                        break;
-                    }
-
-                    case 'removeLabel': {
-                        if (!labelId) {
-                            return reply.code(400).send({ error: 'labelId is required for removeLabel action' });
-                        }
-                        const removeResult = await labelService.bulkRemoveLabel(conversationIds, labelId);
-                        result.updated = removeResult.count;
-                        break;
-                    }
-
-                    default:
-                        return reply.code(400).send({ error: `Unknown action: ${action}` });
-                }
-
-                Logger.info('Bulk action completed', { action, count: result.updated, userId });
-                return { success: true, ...result };
-            } catch (error) {
-                Logger.error('Failed to perform bulk action', { error });
-                return reply.code(500).send({ error: 'Failed to perform bulk action' });
-            }
-        });
-
-        // POST /conversations/bulk-merge - Merge multiple conversations into one
-        fastify.post('/conversations/bulk-merge', async (request, reply) => {
-            try {
-                const accountId = request.accountId;
-                const userId = request.user?.id;
-                const { targetId, sourceIds } = request.body as {
-                    targetId: string;
-                    sourceIds: string[];
-                };
-
-                if (!targetId) {
-                    return reply.code(400).send({ error: 'targetId is required' });
-                }
-
-                if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) {
-                    return reply.code(400).send({ error: 'sourceIds array is required' });
-                }
-
-                // Verify target conversation exists and belongs to this account
-                const targetConv = await prisma.conversation.findFirst({
-                    where: { id: targetId, accountId }
-                });
-
-                if (!targetConv) {
-                    return reply.code(404).send({ error: 'Target conversation not found' });
-                }
-
-                // Merge each source into target sequentially
-                let mergedCount = 0;
-                for (const sourceId of sourceIds) {
-                    try {
-                        await chatService.mergeConversations(targetId, sourceId);
-                        mergedCount++;
-                    } catch (mergeError: any) {
-                        Logger.warn('Failed to merge individual conversation', {
-                            targetId,
-                            sourceId,
-                            error: mergeError.message
-                        });
-                    }
-                }
-
-                Logger.info('Bulk merge completed', {
-                    targetId,
-                    sourceCount: sourceIds.length,
-                    mergedCount,
-                    userId
-                });
-
-                return { success: true, mergedCount };
-            } catch (error) {
-                Logger.error('Failed to perform bulk merge', { error });
-                return reply.code(500).send({ error: 'Failed to perform bulk merge' });
             }
         });
 

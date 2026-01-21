@@ -567,6 +567,12 @@ model ProductVariation {
   stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
   manageStock   Boolean @default(false)  // Whether to use local stock
   
+  // Physical attributes (synced with WooCommerce)
+  weight  Decimal? @db.Decimal(10, 4)
+  length  Decimal? @db.Decimal(10, 2)
+  width   Decimal? @db.Decimal(10, 2)
+  height  Decimal? @db.Decimal(10, 2)
+  
   // Custom Fields
   cogs        Decimal? @db.Decimal(10, 2)
   miscCosts   Json?    @default("[]") // Array of { amount, note }

@@ -84,8 +84,8 @@ export class TrackingService {
         return _getFunnel(accountId, days);
     }
 
-    static getRevenue(accountId: string, days: number = 30) {
-        return _getRevenue(accountId, days);
+    static getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+        return _getRevenue(accountId, days, timezone);
     }
 
     static getAttribution(accountId: string, days: number = 30) {

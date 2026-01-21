@@ -52,7 +52,11 @@ export class EmailService {
             tls: {
                 rejectUnauthorized: false,
                 servername: account.smtpHost
-            }
+            },
+            // Timeout configuration to prevent infinite hangs
+            connectionTimeout: 10000,  // 10 seconds to establish connection
+            greetingTimeout: 10000,    // 10 seconds for greeting
+            socketTimeout: 30000       // 30 seconds for socket operations
         });
     }
 

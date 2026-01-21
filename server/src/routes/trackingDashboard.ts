@@ -109,7 +109,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { days?: string };
             const days = parseInt(query.days || '30');
-            return await TrackingService.getRevenue(accountId, days);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await TrackingService.getRevenue(accountId, days, timezone);
         } catch (error) {
             Logger.error('Revenue Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch revenue' });

@@ -38,6 +38,12 @@ export class ProductsService {
             const fullData = variationsData.find((v: any) => v.id === vId);
             const localVariant = localVariations.find(lv => lv.wooId === vId);
 
+            // Prioritize local weight/dimensions if stored, else fall back to WooCommerce rawData
+            const weight = localVariant?.weight?.toString() || fullData?.weight || '';
+            const length = localVariant?.length?.toString() || fullData?.dimensions?.length || '';
+            const width = localVariant?.width?.toString() || fullData?.dimensions?.width || '';
+            const height = localVariant?.height?.toString() || fullData?.dimensions?.height || '';
+
             return {
                 id: vId,
                 sku: fullData?.sku || '',
@@ -47,12 +53,8 @@ export class ProductsService {
                 stockQuantity: fullData?.stock_quantity ?? null,
                 manageStock: fullData?.manage_stock ?? false,
                 backorders: fullData?.backorders || 'no',
-                weight: fullData?.weight || '',
-                dimensions: {
-                    length: fullData?.dimensions?.length || '',
-                    width: fullData?.dimensions?.width || '',
-                    height: fullData?.dimensions?.height || ''
-                },
+                weight,
+                dimensions: { length, width, height },
                 cogs: localVariant?.cogs?.toString() || '',
                 miscCosts: localVariant?.miscCosts || [],
                 binLocation: localVariant?.binLocation || '',
@@ -172,7 +174,7 @@ export class ProductsService {
                 }
 
                 try {
-                    // Update local DB for variations
+                    // Update local DB for variations (including weight/dimensions)
                     await prisma.productVariation.upsert({
                         where: { productId_wooId: { productId: updated.id, wooId: v.id } },
                         update: {
@@ -184,7 +186,11 @@ export class ProductsService {
                             sku: v.sku,
                             price: v.price ? parseFloat(v.price) : undefined,
                             salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
-                            stockStatus: v.stockStatus
+                            stockStatus: v.stockStatus,
+                            weight: v.weight ? parseFloat(v.weight) : undefined,
+                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
+                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
+                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
                         },
                         create: {
                             productId: updated.id,
@@ -197,7 +203,11 @@ export class ProductsService {
                             sku: v.sku,
                             price: v.price ? parseFloat(v.price) : undefined,
                             salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
-                            stockStatus: v.stockStatus
+                            stockStatus: v.stockStatus,
+                            weight: v.weight ? parseFloat(v.weight) : undefined,
+                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
+                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
+                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
                         }
                     });
 
@@ -210,7 +220,13 @@ export class ProductsService {
                         sale_price: v.salePrice,
                         stock_status: v.stockStatus,
                         manage_stock: v.manageStock,
-                        backorders: v.backorders
+                        backorders: v.backorders,
+                        weight: v.weight || '',
+                        dimensions: {
+                            length: v.dimensions?.length || '',
+                            width: v.dimensions?.width || '',
+                            height: v.dimensions?.height || ''
+                        }
                     });
                 } catch (err: any) {
                     Logger.error(`Failed to process variation ${v.id}`, { error: err.message, productWooId: wooId });

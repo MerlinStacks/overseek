@@ -302,16 +302,52 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                             </div>
                                         </td>
                                         <td className="px-4 py-2">
-                                            <span className="text-sm text-gray-700 font-mono">
-                                                {v.weight || '—'}
-                                            </span>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={v.weight || ''}
+                                                onChange={(e) => handleFieldChange(v.id, 'weight', e.target.value)}
+                                                className="w-full font-mono text-sm px-2 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                placeholder="0.00"
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
                                         </td>
                                         <td className="px-4 py-2">
-                                            <span className="text-xs text-gray-600 font-mono">
-                                                {(v.dimensions?.length || v.dimensions?.width || v.dimensions?.height)
-                                                    ? `${v.dimensions.length || '—'} × ${v.dimensions.width || '—'} × ${v.dimensions.height || '—'}`
-                                                    : '—'}
-                                            </span>
+                                            <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={v.dimensions?.length || ''}
+                                                    onChange={(e) => handleFieldChange(v.id, 'dimensions', { ...v.dimensions, length: e.target.value })}
+                                                    className="w-12 font-mono text-xs px-1 py-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                    placeholder="L"
+                                                    title="Length"
+                                                />
+                                                <span className="text-gray-400 text-xs">×</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={v.dimensions?.width || ''}
+                                                    onChange={(e) => handleFieldChange(v.id, 'dimensions', { ...v.dimensions, width: e.target.value })}
+                                                    className="w-12 font-mono text-xs px-1 py-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                    placeholder="W"
+                                                    title="Width"
+                                                />
+                                                <span className="text-gray-400 text-xs">×</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={v.dimensions?.height || ''}
+                                                    onChange={(e) => handleFieldChange(v.id, 'dimensions', { ...v.dimensions, height: e.target.value })}
+                                                    className="w-12 font-mono text-xs px-1 py-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                    placeholder="H"
+                                                    title="Height"
+                                                />
+                                            </div>
                                         </td>
                                         <td className="px-4 py-2">
                                             {v.manageStock ? (
