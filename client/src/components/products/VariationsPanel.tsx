@@ -71,10 +71,41 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     // Store refs for all BOMPanels to enable batch save
     const bomPanelRefs = useRef<Map<number, BOMPanelRef | null>>(new Map());
 
+    // Track variant IDs for stable dependency in BOM fetch effect
+    // This prevents refetching when variants array reference changes but IDs are the same
+    const variantIdsRef = useRef<string>('');
+
+    // Track whether we've synchronized with parent to prevent initial mount callback
+    const hasInitializedRef = useRef(false);
+
     // Track BOM COGS for each variant (keyed by variant ID)
     // When a variant has BOM components, this stores the calculated total cost
     const [bomCogsMap, setBomCogsMap] = useState<Record<number, number | null>>({});
     const [bomCogsLoading, setBomCogsLoading] = useState(true);
+
+    /**
+     * Calculate gold price COGS for a variant.
+     * Returns null if gold pricing is not applicable or not configured.
+     */
+    const calculateGoldCogs = useCallback((variant: ProductVariant): number | null => {
+        if (!variant.isGoldPriceApplied || !variant.goldPriceType || !currentAccount) {
+            return null;
+        }
+        const weight = parseFloat(variant.weight || '') || 0;
+        if (weight <= 0) return null;
+
+        const goldPriceMap: Record<string, number | undefined> = {
+            '18ct': currentAccount.goldPrice18ct,
+            '9ct': currentAccount.goldPrice9ct,
+            '18ctWhite': currentAccount.goldPrice18ctWhite,
+            '9ctWhite': currentAccount.goldPrice9ctWhite,
+            'legacy': currentAccount.goldPrice
+        };
+        const goldPricePerGram = Number(goldPriceMap[variant.goldPriceType]) || 0;
+        if (goldPricePerGram <= 0) return null;
+
+        return weight * goldPricePerGram;
+    }, [currentAccount]);
 
     /**
      * Save all variant BOMs. Called by parent when saving the product.
@@ -100,17 +131,29 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
             stockValues[v.id] = v.stockQuantity?.toString() ?? '';
         });
         setStockEditValues(stockValues);
+        // Mark as initialized after first sync
+        hasInitializedRef.current = true;
     }, [variants]);
 
     /**
      * Fetches BOM COGS for all variants on mount.
      * This allows displaying the BOM-calculated cost even before expanding a variant.
+     * Uses variantIdsRef to prevent refetching when variants array reference changes
+     * but the actual variant IDs remain the same.
      */
     useEffect(() => {
         if (!token || !currentAccount || !canViewCogs || variants.length === 0) {
             setBomCogsLoading(false);
             return;
         }
+
+        // Create a stable string key from variant IDs to detect actual changes
+        const currentVariantIds = variants.map(v => v.id).sort().join(',');
+        if (currentVariantIds === variantIdsRef.current) {
+            // Variant IDs haven't changed, skip refetch
+            return;
+        }
+        variantIdsRef.current = currentVariantIds;
 
         const fetchAllBomCogs = async () => {
             setBomCogsLoading(true);
@@ -158,18 +201,21 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     }, []);
 
     // Sync changes with parent when editingVariants changes
+    // Skip the initial mount to prevent unnecessary parent updates
     useEffect(() => {
+        if (!hasInitializedRef.current) return;
         if (onUpdate) onUpdate(editingVariants);
     }, [editingVariants, onUpdate]);
 
     /**
      * Callback for BOMPanel to update BOM COGS when components change.
+     * Note: We only update bomCogsMap, not the variant's cogs field.
+     * This prevents a render loop since editingVariants changes trigger onUpdate.
+     * The BOM COGS is used directly from bomCogsMap in profit margin calculations.
      */
     const handleBomCogsUpdate = useCallback((variantId: number, cogs: number) => {
         setBomCogsMap(prev => ({ ...prev, [variantId]: cogs }));
-        // Also update the variant's cogs field to keep in sync
-        handleFieldChange(variantId, 'cogs', cogs.toString());
-    }, [handleFieldChange]);
+    }, []);
 
     // Support ATUM's custom variable types (e.g., 'variable-product-part') and any product with variations
     const hasVariations = product.type?.includes('variable') || (product.variations && product.variations.length > 0);
@@ -198,12 +244,11 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     };
 
     // Update multiple fields at once to avoid stale state issues
+    // Note: We don't call onUpdate here because the useEffect at line 174+ handles it
     const handleMultiFieldChange = (id: number, updates: Partial<ProductVariant>) => {
-        const updated = editingVariants.map(v =>
+        setEditingVariants(prev => prev.map(v =>
             v.id === id ? { ...v, ...updates } : v
-        );
-        setEditingVariants(updated);
-        if (onUpdate) onUpdate(updated);
+        ));
     };
 
     // Get variation image from either image object or images array
@@ -511,36 +556,54 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
 
                                                     {/* Additional fields */}
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                                        {canViewCogs && (
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
-                                                                    COGS (Cost)
-                                                                    {bomCogsMap[v.id] !== null && bomCogsMap[v.id] !== undefined && (
-                                                                        <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
-                                                                            BOM
-                                                                        </span>
+                                                        {canViewCogs && (() => {
+                                                            // Determine COGS source: BOM > Gold > Manual
+                                                            const bomCogs = bomCogsMap[v.id];
+                                                            const goldCogs = calculateGoldCogs(v);
+                                                            const hasBom = bomCogs != null && bomCogs > 0;
+                                                            const hasGold = goldCogs != null && goldCogs > 0;
+
+                                                            return (
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                                                                        COGS (Cost)
+                                                                        {hasBom && (
+                                                                            <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                                                                BOM
+                                                                            </span>
+                                                                        )}
+                                                                        {!hasBom && hasGold && (
+                                                                            <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                                Gold
+                                                                            </span>
+                                                                        )}
+                                                                    </label>
+                                                                    {bomCogsLoading ? (
+                                                                        // Loading state
+                                                                        <div className="w-full h-[34px] bg-gray-100 rounded-lg animate-pulse" />
+                                                                    ) : hasBom ? (
+                                                                        // BOM COGS - read-only display
+                                                                        <div className="w-full text-sm px-3 py-1.5 bg-purple-50/50 border border-purple-200 rounded-lg text-purple-800 font-medium">
+                                                                            ${bomCogs!.toFixed(2)}
+                                                                        </div>
+                                                                    ) : hasGold ? (
+                                                                        // Gold Price COGS - read-only display
+                                                                        <div className="w-full text-sm px-3 py-1.5 bg-amber-50/50 border border-amber-200 rounded-lg text-amber-800 font-medium">
+                                                                            ${goldCogs!.toFixed(2)}
+                                                                        </div>
+                                                                    ) : (
+                                                                        // Manual COGS input
+                                                                        <input
+                                                                            type="number" step="0.01"
+                                                                            value={v.cogs || ''}
+                                                                            onChange={(e) => handleFieldChange(v.id, 'cogs', e.target.value)}
+                                                                            className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg"
+                                                                            placeholder="0.00"
+                                                                        />
                                                                     )}
-                                                                </label>
-                                                                {bomCogsLoading ? (
-                                                                    // Loading state
-                                                                    <div className="w-full h-[34px] bg-gray-100 rounded-lg animate-pulse" />
-                                                                ) : bomCogsMap[v.id] !== null && bomCogsMap[v.id] !== undefined ? (
-                                                                    // BOM COGS - read-only display
-                                                                    <div className="w-full text-sm px-3 py-1.5 bg-purple-50/50 border border-purple-200 rounded-lg text-purple-800 font-medium">
-                                                                        ${bomCogsMap[v.id]!.toFixed(2)}
-                                                                    </div>
-                                                                ) : (
-                                                                    // Manual COGS input
-                                                                    <input
-                                                                        type="number" step="0.01"
-                                                                        value={v.cogs || ''}
-                                                                        onChange={(e) => handleFieldChange(v.id, 'cogs', e.target.value)}
-                                                                        className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg"
-                                                                        placeholder="0.00"
-                                                                    />
-                                                                )}
-                                                            </div>
-                                                        )}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">Bin Location</label>
                                                             <input
@@ -582,34 +645,20 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                                     {canViewCogs && (() => {
                                                         const sellingPrice = parseFloat(v.salePrice || '') || parseFloat(v.price || '') || 0;
 
-                                                        // Calculate gold price COGS for variants with gold pricing enabled
-                                                        // Priority: BOM > Gold Price > Manual COGS
+                                                        // Calculate effective COGS using priority: BOM > Gold Price > Manual
+                                                        const bomCogs = bomCogsMap[v.id];
+                                                        const goldCogs = calculateGoldCogs(v);
+
                                                         let effectiveCogs = 0;
                                                         let cogsSource: 'bom' | 'gold' | 'manual' | 'none' = 'none';
 
-                                                        if (bomCogsMap[v.id] != null && bomCogsMap[v.id]! > 0) {
-                                                            // BOM COGS takes priority
-                                                            effectiveCogs = bomCogsMap[v.id]!;
+                                                        if (bomCogs != null && bomCogs > 0) {
+                                                            effectiveCogs = bomCogs;
                                                             cogsSource = 'bom';
-                                                        } else if (v.isGoldPriceApplied && v.goldPriceType && currentAccount) {
-                                                            // Gold price COGS - calculate from weight * gold price per gram
-                                                            const weight = parseFloat(v.weight || '') || 0;
-                                                            const goldPriceMap: Record<string, number | undefined> = {
-                                                                '18ct': currentAccount.goldPrice18ct,
-                                                                '9ct': currentAccount.goldPrice9ct,
-                                                                '18ctWhite': currentAccount.goldPrice18ctWhite,
-                                                                '9ctWhite': currentAccount.goldPrice9ctWhite,
-                                                                'legacy': currentAccount.goldPrice
-                                                            };
-                                                            const goldPricePerGram = Number(goldPriceMap[v.goldPriceType]) || 0;
-                                                            if (weight > 0 && goldPricePerGram > 0) {
-                                                                effectiveCogs = weight * goldPricePerGram;
-                                                                cogsSource = 'gold';
-                                                            }
-                                                        }
-
-                                                        // Fallback to manual COGS
-                                                        if (effectiveCogs === 0) {
+                                                        } else if (goldCogs != null && goldCogs > 0) {
+                                                            effectiveCogs = goldCogs;
+                                                            cogsSource = 'gold';
+                                                        } else {
                                                             effectiveCogs = parseFloat(v.cogs || '') || 0;
                                                             if (effectiveCogs > 0) cogsSource = 'manual';
                                                         }
