@@ -163,8 +163,8 @@ export function EmailAccountForm({
                                             handleChange('relayApiKey', '');
                                         }}
                                         className={`flex-1 py-3 px-4 rounded-lg border-2 transition-all ${formData.smtpEnabled && !formData.relayEndpoint
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                                             }`}
                                     >
                                         <div className="flex items-center justify-center gap-2">
@@ -180,10 +180,10 @@ export function EmailAccountForm({
                                             setRelayExpanded(true);
                                         }}
                                         className={`flex-1 py-3 px-4 rounded-lg border-2 transition-all ${formData.relayEndpoint
-                                                ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                : !formData.smtpEnabled && !formData.relayEndpoint
-                                                    ? 'border-gray-300 bg-gray-50 text-gray-600'
-                                                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                            : !formData.smtpEnabled && !formData.relayEndpoint
+                                                ? 'border-gray-300 bg-gray-50 text-gray-600'
+                                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                                             }`}
                                     >
                                         <div className="flex items-center justify-center gap-2">
@@ -292,6 +292,29 @@ export function EmailAccountForm({
                                             onChange={(e) => handleChange('relayApiKey', e.target.value)}
                                         />
                                         <p className="text-xs text-gray-500 mt-1">Must match the key set in your WordPress plugin</p>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div></div>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (!formData.relayEndpoint) return;
+                                                try {
+                                                    const response = await fetch(formData.relayEndpoint.replace('/email-relay', '/health'));
+                                                    if (response.ok) {
+                                                        alert('Relay endpoint is reachable!');
+                                                    } else {
+                                                        alert('Relay endpoint returned an error: ' + response.status);
+                                                    }
+                                                } catch (err: any) {
+                                                    alert('Cannot reach relay endpoint: ' + err.message);
+                                                }
+                                            }}
+                                            disabled={!formData.relayEndpoint}
+                                            className="text-sm text-purple-600 hover:text-purple-700 disabled:opacity-50"
+                                        >
+                                            Test Relay Connection
+                                        </button>
                                     </div>
                                     {formData.relayEndpoint && formData.relayApiKey && (
                                         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-3 rounded-lg">
@@ -419,7 +442,7 @@ export function EmailAccountForm({
                 {/* Footer */}
                 <div className="bg-gray-50 -mx-6 -mb-6 px-6 py-4 flex justify-between items-center rounded-b-xl border-t border-gray-100 mt-6">
                     <div className="text-sm text-gray-500">
-                        {!formData.smtpEnabled && !formData.imapEnabled && 'Enable at least one protocol'}
+                        {!formData.smtpEnabled && !formData.imapEnabled && !formData.relayEndpoint && 'Configure outgoing email or receiving'}
                     </div>
                     <div className="flex gap-3">
                         <button
@@ -430,7 +453,7 @@ export function EmailAccountForm({
                         </button>
                         <button
                             onClick={() => onSave(formData)}
-                            disabled={isSaving || (!formData.smtpEnabled && !formData.imapEnabled)}
+                            disabled={isSaving || (!formData.smtpEnabled && !formData.imapEnabled && !formData.relayEndpoint)}
                             className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}

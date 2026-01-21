@@ -1,4 +1,4 @@
-import { Mail, Plus, Trash2, Star, Send, Inbox } from 'lucide-react';
+import { Mail, Plus, Trash2, Star, Send, Inbox, Globe } from 'lucide-react';
 import type { EmailAccount } from './EmailAccountForm';
 
 interface EmailAccountListProps {
@@ -53,10 +53,16 @@ export function EmailAccountList({ accounts, onEdit, onDelete, onAdd, onSetDefau
                                         <span className="text-sm text-gray-500">{acc.email}</span>
                                         <span className="text-gray-300">•</span>
                                         <div className="flex items-center gap-1.5">
-                                            {acc.smtpEnabled && (
+                                            {acc.relayEndpoint && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                                                    <Globe size={10} />
+                                                    Relay
+                                                </span>
+                                            )}
+                                            {acc.smtpEnabled && !acc.relayEndpoint && (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
                                                     <Send size={10} />
-                                                    Sending
+                                                    SMTP
                                                 </span>
                                             )}
                                             {acc.imapEnabled && (
@@ -65,7 +71,7 @@ export function EmailAccountList({ accounts, onEdit, onDelete, onAdd, onSetDefau
                                                     Receiving
                                                 </span>
                                             )}
-                                            {!acc.smtpEnabled && !acc.imapEnabled && (
+                                            {!acc.smtpEnabled && !acc.imapEnabled && !acc.relayEndpoint && (
                                                 <span className="text-xs text-gray-400">Not configured</span>
                                             )}
                                         </div>
@@ -73,7 +79,7 @@ export function EmailAccountList({ accounts, onEdit, onDelete, onAdd, onSetDefau
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                {acc.smtpEnabled && !acc.isDefault && onSetDefault && (
+                                {(acc.smtpEnabled || acc.relayEndpoint) && !acc.isDefault && onSetDefault && (
                                     <button
                                         onClick={() => onSetDefault(acc.id)}
                                         className="p-2 text-gray-400 hover:text-amber-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-200 text-sm"

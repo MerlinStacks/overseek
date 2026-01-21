@@ -145,14 +145,13 @@ class OverSeek_Admin
 				<h2>Email Relay Settings</h2>
 				<p class="description">Configure email relay to allow OverSeek to send emails through this WordPress server.</p>
 				<table class="form-table">
-					<tr valign="top">
+						<tr valign="top">
 						<th scope="row">Relay API Key</th>
 						<td>
 							<input type="text" name="overseek_relay_api_key" value="<?php echo esc_attr(get_option('overseek_relay_api_key')); ?>" style="width: 100%; max-width: 400px; font-family: monospace;" />
 							<p class="description">Enter a secure API key. This must match the key configured in OverSeek's email settings.</p>
-							<?php if (get_option('overseek_relay_api_key')): ?>
-							<p style="margin-top: 10px;"><strong>Relay Endpoint:</strong> <code><?php echo esc_url(home_url('/wp-json/overseek/v1/email-relay')); ?></code></p>
-							<?php endif; ?>
+							<p style="margin-top: 10px;"><strong>Relay Endpoint:</strong> <code style="user-select: all;"><?php echo esc_url(home_url('/wp-json/overseek/v1/email-relay')); ?></code></p>
+							<p class="description">Copy this URL into OverSeek's email account settings.</p>
 						</td>
 					</tr>
 				</table>
