@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { Logger } from '../../utils/logger';
+import { calculateTotalBomCost } from '../../utils/bomUtils';
 
 interface ProductVariant {
     id: number;
@@ -73,6 +74,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     // Track BOM COGS for each variant (keyed by variant ID)
     // When a variant has BOM components, this stores the calculated total cost
     const [bomCogsMap, setBomCogsMap] = useState<Record<number, number | null>>({});
+    const [bomCogsLoading, setBomCogsLoading] = useState(true);
 
     /**
      * Save all variant BOMs. Called by parent when saving the product.
@@ -105,9 +107,13 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
      * This allows displaying the BOM-calculated cost even before expanding a variant.
      */
     useEffect(() => {
-        if (!token || !currentAccount || !canViewCogs || variants.length === 0) return;
+        if (!token || !currentAccount || !canViewCogs || variants.length === 0) {
+            setBomCogsLoading(false);
+            return;
+        }
 
         const fetchAllBomCogs = async () => {
+            setBomCogsLoading(true);
             const newBomCogsMap: Record<number, number | null> = {};
 
             await Promise.all(variants.map(async (v) => {
@@ -122,22 +128,8 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                     if (res.ok) {
                         const data = await res.json();
                         if (data.items && data.items.length > 0) {
-                            // Calculate total BOM cost
-                            const totalCost = data.items.reduce((sum: number, item: any) => {
-                                let unitCost = 0;
-                                if (item.internalProduct?.cogs) {
-                                    unitCost = Number(item.internalProduct.cogs);
-                                } else if (item.childVariation?.cogs) {
-                                    unitCost = Number(item.childVariation.cogs);
-                                } else if (item.childProduct?.cogs) {
-                                    unitCost = Number(item.childProduct.cogs);
-                                } else if (item.supplierItem?.cost) {
-                                    unitCost = Number(item.supplierItem.cost);
-                                }
-                                const quantity = Number(item.quantity);
-                                const waste = Number(item.wasteFactor || 0);
-                                return sum + (unitCost * quantity * (1 + waste));
-                            }, 0);
+                            // Use shared utility for BOM cost calculation
+                            const totalCost = calculateTotalBomCost(data.items);
                             newBomCogsMap[v.id] = totalCost;
                         } else {
                             newBomCogsMap[v.id] = null;
@@ -150,10 +142,25 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
             }));
 
             setBomCogsMap(newBomCogsMap);
+            setBomCogsLoading(false);
         };
 
         fetchAllBomCogs();
     }, [token, currentAccount, product.id, variants, canViewCogs]);
+
+    /**
+     * Handle field change for a variant. Wrapped in useCallback for stable reference.
+     */
+    const handleFieldChange = useCallback((id: number, field: keyof ProductVariant, value: any) => {
+        setEditingVariants(prev => prev.map(v =>
+            v.id === id ? { ...v, [field]: value } : v
+        ));
+    }, []);
+
+    // Sync changes with parent when editingVariants changes
+    useEffect(() => {
+        if (onUpdate) onUpdate(editingVariants);
+    }, [editingVariants, onUpdate]);
 
     /**
      * Callback for BOMPanel to update BOM COGS when components change.
@@ -162,7 +169,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         setBomCogsMap(prev => ({ ...prev, [variantId]: cogs }));
         // Also update the variant's cogs field to keep in sync
         handleFieldChange(variantId, 'cogs', cogs.toString());
-    }, []);
+    }, [handleFieldChange]);
 
     // Support ATUM's custom variable types (e.g., 'variable-product-part') and any product with variations
     const hasVariations = product.type?.includes('variable') || (product.variations && product.variations.length > 0);
@@ -188,14 +195,6 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
             }
         }
         setExpandedId(expandedId === id ? null : id);
-    };
-
-    const handleFieldChange = (id: number, field: keyof ProductVariant, value: any) => {
-        const updated = editingVariants.map(v =>
-            v.id === id ? { ...v, [field]: value } : v
-        );
-        setEditingVariants(updated);
-        if (onUpdate) onUpdate(updated);
     };
 
     // Update multiple fields at once to avoid stale state issues
@@ -522,7 +521,10 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                                                         </span>
                                                                     )}
                                                                 </label>
-                                                                {bomCogsMap[v.id] !== null && bomCogsMap[v.id] !== undefined ? (
+                                                                {bomCogsLoading ? (
+                                                                    // Loading state
+                                                                    <div className="w-full h-[34px] bg-gray-100 rounded-lg animate-pulse" />
+                                                                ) : bomCogsMap[v.id] !== null && bomCogsMap[v.id] !== undefined ? (
                                                                     // BOM COGS - read-only display
                                                                     <div className="w-full text-sm px-3 py-1.5 bg-purple-50/50 border border-purple-200 rounded-lg text-purple-800 font-medium">
                                                                         ${bomCogsMap[v.id]!.toFixed(2)}
