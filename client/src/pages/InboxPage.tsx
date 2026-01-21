@@ -126,7 +126,7 @@ export function InboxPage() {
                     messages: [data.lastMessage],
                     updatedAt: data.updatedAt
                 };
-                return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+                return updated.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
             });
 
             if (selectedId === data.id && data.lastMessage) {

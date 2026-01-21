@@ -38,6 +38,7 @@ const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ de
 const SegmentsPage = lazy(() => import('./pages/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
 const CustomerDetailsPage = lazy(() => import('./pages/CustomerDetailsPage').then(m => ({ default: m.CustomerDetailsPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const GoldPriceMarginReportPage = lazy(() => import('./pages/GoldPriceMarginReportPage').then(m => ({ default: m.GoldPriceMarginReportPage })));
 const InboxPage = lazy(() => import('./pages/InboxPage').then(m => ({ default: m.InboxPage })));
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 const PaidAdsPage = lazy(() => import('./pages/PaidAdsPage').then(m => ({ default: m.PaidAdsPage })));
@@ -230,6 +231,7 @@ function App() {
                                                 <Route path="/help/article/:slug" element={<AccountGuard><HelpArticle /></AccountGuard>} />
 
                                                 <Route path="/reports" element={<AccountGuard><ReportsPage /></AccountGuard>} />
+                                                <Route path="/reports/gold-price-margin" element={<AccountGuard><GoldPriceMarginReportPage /></AccountGuard>} />
                                                 <Route path="/team" element={<AccountGuard><TeamPage /></AccountGuard>} />
                                                 <Route path="/wizard" element={<SetupWizard />} />
                                                 <Route path="/settings" element={<AccountGuard><SettingsPage /></AccountGuard>} />

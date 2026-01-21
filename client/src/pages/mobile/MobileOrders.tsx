@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatCurrency } from '../../utils/format';
+import { OrdersSkeleton } from '../../components/mobile/MobileSkeleton';
 
 interface OrderApiResponse {
     id: string;
@@ -41,18 +42,25 @@ interface Order {
     itemCount: number;
 }
 
+/**
+ * Dark-mode status config with colors matching glassmorphism theme.
+ */
 const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; label: string; next?: string }> = {
-    pending: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', label: 'Pending', next: 'processing' },
-    processing: { icon: Package, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Processing', next: 'shipped' },
-    shipped: { icon: Truck, color: 'text-purple-600', bg: 'bg-purple-100', label: 'Shipped', next: 'completed' },
-    delivered: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100', label: 'Delivered' },
-    completed: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100', label: 'Completed' },
-    cancelled: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-100', label: 'Cancelled' },
-    refunded: { icon: RefreshCw, color: 'text-gray-600', bg: 'bg-gray-100', label: 'Refunded' },
+    pending: { icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/20', label: 'Pending', next: 'processing' },
+    processing: { icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/20', label: 'Processing', next: 'shipped' },
+    shipped: { icon: Truck, color: 'text-purple-400', bg: 'bg-purple-500/20', label: 'Shipped', next: 'completed' },
+    delivered: { icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/20', label: 'Delivered' },
+    completed: { icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/20', label: 'Completed' },
+    cancelled: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/20', label: 'Cancelled' },
+    refunded: { icon: RefreshCw, color: 'text-slate-400', bg: 'bg-slate-500/20', label: 'Refunded' },
 };
 
 const FILTER_OPTIONS = ['All', 'Pending', 'Processing', 'Shipped', 'Completed'];
 
+/**
+ * MobileOrders - Premium dark-mode orders list for PWA.
+ * Features swipe-to-advance status, search, and filters.
+ */
 export function MobileOrders() {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -63,6 +71,15 @@ export function MobileOrders() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(1);
+
+    /**
+     * Triggers haptic feedback if supported.
+     */
+    const triggerHaptic = (duration = 10) => {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+        }
+    };
 
     useEffect(() => {
         fetchOrders(true);
@@ -130,7 +147,13 @@ export function MobileOrders() {
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
+        triggerHaptic();
         fetchOrders(true);
+    };
+
+    const handleFilterChange = (filter: string) => {
+        triggerHaptic();
+        setActiveFilter(filter);
     };
 
     const formatDate = (date: string) => {
@@ -144,7 +167,6 @@ export function MobileOrders() {
         return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
     };
 
-    // Currency formatting helper using centralized utility
     const formatAccountCurrency = (amount: number) =>
         formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
@@ -154,7 +176,9 @@ export function MobileOrders() {
 
     const advanceStatus = async (orderId: string, currentStatus: string) => {
         const config = getStatusConfig(currentStatus);
-        if (!config.next) return; // No next status available
+        if (!config.next) return;
+
+        triggerHaptic(15);
 
         // Optimistically update
         setOrders(prev => prev.map(o =>
@@ -173,60 +197,52 @@ export function MobileOrders() {
             });
         } catch (error) {
             Logger.error('[MobileOrders] Status update failed:', { error: error });
-            fetchOrders(true); // Reload on failure
+            fetchOrders(true);
         }
     };
 
     if (loading && orders.length === 0) {
-        return (
-            <div className="space-y-4 animate-pulse">
-                <div className="h-8 bg-gray-200 rounded w-24" />
-                <div className="h-12 bg-gray-200 rounded-2xl" />
-                <div className="flex gap-2">
-                    {[...Array(4)].map((_, i) => (
-                        <div key={i} className="h-10 w-24 bg-gray-200 rounded-full flex-shrink-0" />
-                    ))}
-                </div>
-                {[...Array(5)].map((_, i) => (
-                    <div key={i} className="h-24 bg-gray-200 rounded-2xl" />
-                ))}
-            </div>
-        );
+        return <OrdersSkeleton />;
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-slide-up">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
-                <span className="text-sm text-gray-500">{orders.length} orders</span>
+                <h1 className="text-2xl font-bold text-white">Orders</h1>
+                <span className="text-sm text-slate-400 bg-slate-800/50 px-3 py-1 rounded-full">
+                    {orders.length} orders
+                </span>
             </div>
 
             {/* Search */}
             <form onSubmit={handleSearch} className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-slate-700/50">
+                    <Search size={16} className="text-slate-400" />
+                </div>
                 <input
                     type="text"
                     placeholder="Search by order # or customer..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-base"
+                    className="w-full pl-14 pr-4 py-3.5 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                 />
             </form>
 
             {/* Filter Chips */}
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
                 {FILTER_OPTIONS.map((filter) => {
                     const filterConfig = filter !== 'All' ? getStatusConfig(filter) : null;
+                    const isActive = activeFilter === filter;
                     return (
                         <button
                             key={filter}
-                            onClick={() => setActiveFilter(filter)}
+                            onClick={() => handleFilterChange(filter)}
                             className={`
-                                px-4 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2
-                                ${activeFilter === filter
-                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                    : 'bg-white text-gray-700 border border-gray-200 active:bg-gray-50'
+                                px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 active:scale-95
+                                ${isActive
+                                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
+                                    : 'bg-slate-800/50 backdrop-blur-sm border border-white/10 text-slate-300'
                                 }
                             `}
                         >
@@ -239,7 +255,7 @@ export function MobileOrders() {
 
             {/* Swipe Hint */}
             {orders.length > 0 && (
-                <p className="text-xs text-gray-400 text-center">
+                <p className="text-xs text-slate-500 text-center">
                     ← Swipe right to advance order status
                 </p>
             )}
@@ -248,14 +264,14 @@ export function MobileOrders() {
             <div className="space-y-3">
                 {orders.length === 0 ? (
                     <div className="text-center py-16">
-                        <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                            <ShoppingBag className="text-gray-400" size={36} />
+                        <div className="w-20 h-20 mx-auto mb-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl flex items-center justify-center">
+                            <ShoppingBag className="text-slate-500" size={36} />
                         </div>
-                        <p className="text-gray-900 font-semibold mb-1">No orders found</p>
-                        <p className="text-gray-500 text-sm">Orders will appear here</p>
+                        <p className="text-white font-semibold mb-1">No orders found</p>
+                        <p className="text-slate-400 text-sm">Orders will appear here</p>
                     </div>
                 ) : (
-                    orders.map((order) => {
+                    orders.map((order, index) => {
                         const config = getStatusConfig(order.status);
                         const StatusIcon = config.icon;
                         const nextConfig = config.next ? getStatusConfig(config.next) : null;
@@ -266,34 +282,40 @@ export function MobileOrders() {
                                 key={order.id}
                                 leftAction={config.next && NextIcon ? {
                                     icon: <NextIcon size={24} className="text-white" />,
-                                    color: nextConfig?.bg.replace('bg-', 'bg-') || 'bg-indigo-500',
+                                    color: 'bg-indigo-500',
                                     onAction: () => advanceStatus(order.id, order.status)
                                 } : undefined}
                             >
                                 <button
-                                    onClick={() => navigate(`/m/orders/${order.id}`)}
-                                    className="w-full bg-white p-4 active:bg-gray-50 transition-all"
+                                    onClick={() => {
+                                        triggerHaptic();
+                                        navigate(`/m/orders/${order.id}`);
+                                    }}
+                                    className="w-full bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 active:bg-slate-700/50 transition-all animate-fade-slide-up"
+                                    style={{ animationDelay: `${index * 30}ms` }}
                                 >
                                     <div className="flex items-start justify-between mb-3">
-                                        <div>
-                                            <p className="text-lg font-bold text-gray-900">{order.orderNumber}</p>
-                                            <p className="text-sm text-gray-500">{order.customerName}</p>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
+                                                <StatusIcon size={18} className={config.color} />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className="font-bold text-white">{order.orderNumber}</p>
+                                                <p className="text-sm text-slate-400">{order.customerName}</p>
+                                            </div>
                                         </div>
-                                        <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
+                                        <span className="text-xs text-slate-500">{formatDate(order.createdAt)}</span>
                                     </div>
 
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xl font-bold text-gray-900">{formatAccountCurrency(order.total)}</p>
-                                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${config.bg}`}>
-                                            <StatusIcon size={14} className={config.color} />
-                                            <span className={`text-sm font-semibold ${config.color}`}>
-                                                {config.label}
-                                            </span>
-                                        </div>
+                                    <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${config.bg} ${config.color}`}>
+                                            {config.label}
+                                        </span>
+                                        <p className="text-lg font-bold text-white">{formatAccountCurrency(order.total)}</p>
                                     </div>
 
                                     {order.itemCount > 0 && (
-                                        <p className="text-xs text-gray-500 mt-2">
+                                        <p className="text-xs text-slate-500 mt-2">
                                             {order.itemCount} item{order.itemCount > 1 ? 's' : ''}
                                         </p>
                                     )}
@@ -308,7 +330,7 @@ export function MobileOrders() {
                     <button
                         onClick={() => fetchOrders()}
                         disabled={loading}
-                        className="w-full py-4 text-indigo-600 font-semibold disabled:opacity-50 bg-white rounded-2xl border border-gray-100 active:bg-gray-50"
+                        className="w-full py-4 text-indigo-400 font-semibold disabled:opacity-50 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl active:bg-slate-700/50 transition-all"
                     >
                         {loading ? 'Loading...' : 'Load More Orders'}
                     </button>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { AlertTriangle, Scale, DollarSign, Calculator } from 'lucide-react';
 
 interface GoldPricePanelProps {
@@ -12,8 +13,11 @@ interface GoldPricePanelProps {
 export function GoldPricePanel({ product, onChange, hasVariants }: GoldPricePanelProps) {
     const isEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
     const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
 
-    if (!isEnabled) return null;
+    // Hide panel if feature is disabled OR user doesn't have COGS permission
+    if (!isEnabled || !canViewCogs) return null;
 
     // Hide main product gold price panel if variants exist (gold price is set per-variant)
     if (hasVariants) {

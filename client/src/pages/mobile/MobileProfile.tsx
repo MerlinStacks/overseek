@@ -11,12 +11,20 @@ import {
     Shield,
     LogOut,
     Building,
-    Loader2
+    Loader2,
+    Check,
+    Clock
 } from 'lucide-react';
 
 /**
- * MobileProfile - Mobile-optimized user profile page
- * Allows viewing and editing user details with a clean mobile UI
+ * MobileProfile - Premium dark-mode mobile profile page.
+ * Styled consistently with MobileDashboard for a cohesive PWA experience.
+ * 
+ * Features:
+ * - Dark glassmorphism design
+ * - Animated transitions
+ * - Haptic feedback
+ * - Success state feedback
  */
 export function MobileProfile() {
     const navigate = useNavigate();
@@ -29,6 +37,7 @@ export function MobileProfile() {
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [uploadSuccess, setUploadSuccess] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -37,9 +46,19 @@ export function MobileProfile() {
         }
     }, [user]);
 
+    /**
+     * Triggers haptic feedback if supported by the device.
+     */
+    const triggerHaptic = (duration = 10) => {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+        }
+    };
+
     const handleSave = async () => {
         if (!token) return;
 
+        triggerHaptic(15);
         setSaving(true);
         try {
             const res = await fetch('/api/auth/me', {
@@ -51,7 +70,10 @@ export function MobileProfile() {
                 body: JSON.stringify({ fullName })
             });
             if (res.ok) {
+                const updatedUser = await res.json();
+                updateUser(updatedUser);
                 setSaved(true);
+                triggerHaptic(30);
                 setTimeout(() => setSaved(false), 2000);
             }
         } catch (e) {
@@ -64,6 +86,7 @@ export function MobileProfile() {
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            triggerHaptic();
             const reader = new FileReader();
             reader.onload = () => setAvatarPreview(reader.result as string);
             reader.readAsDataURL(file);
@@ -71,8 +94,9 @@ export function MobileProfile() {
             if (!token) return;
 
             setUploading(true);
+            setUploadSuccess(false);
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('avatar', file);
 
             try {
                 const res = await fetch('/api/auth/upload-avatar', {
@@ -89,6 +113,9 @@ export function MobileProfile() {
                         updateUser({ ...user, avatarUrl: data.avatarUrl });
                     }
                     setAvatarPreview(null);
+                    setUploadSuccess(true);
+                    triggerHaptic(30);
+                    setTimeout(() => setUploadSuccess(false), 2000);
                 } else {
                     Logger.error('Failed to upload avatar');
                     setAvatarPreview(null);
@@ -103,6 +130,7 @@ export function MobileProfile() {
     };
 
     const handleLogout = () => {
+        triggerHaptic(20);
         if (confirm('Are you sure you want to log out?')) {
             logout();
             navigate('/login');
@@ -118,45 +146,55 @@ export function MobileProfile() {
     const avatarUrl = getAvatarUrl();
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-slide-up">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <button
-                    onClick={() => navigate(-1)}
-                    className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 active:bg-gray-200"
+                    onClick={() => {
+                        triggerHaptic();
+                        navigate(-1);
+                    }}
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:scale-95 transition-transform"
                     aria-label="Go back"
                 >
-                    <ChevronLeft size={24} />
+                    <ChevronLeft size={22} className="text-slate-300" />
                 </button>
-                <h1 className="text-xl font-bold text-gray-900">Profile</h1>
+                <h1 className="text-xl font-bold text-white">Profile</h1>
             </div>
 
             {/* Avatar Section */}
-            <div className="flex flex-col items-center py-6">
+            <div className="flex flex-col items-center py-8">
                 <div className="relative">
                     {avatarUrl ? (
                         <img
                             src={avatarUrl}
                             alt="Profile"
-                            className="w-24 h-24 rounded-full object-cover ring-4 ring-white shadow-lg"
+                            className="w-28 h-28 rounded-2xl object-cover ring-4 ring-slate-800 shadow-2xl"
                         />
                     ) : (
-                        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white shadow-lg">
+                        <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl font-bold ring-4 ring-slate-800 shadow-2xl">
                             {fullName?.[0]?.toUpperCase() || email?.[0]?.toUpperCase() || 'U'}
                         </div>
                     )}
+
+                    {/* Upload overlay */}
                     {uploading && (
-                        <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
-                            <Loader2 className="animate-spin text-white" size={24} />
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                            <Loader2 className="animate-spin text-white" size={28} />
                         </div>
                     )}
+
+                    {/* Camera button */}
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg active:bg-indigo-700"
+                        className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all duration-200 ${uploadSuccess
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white active:scale-95'
+                            }`}
                         aria-label="Change avatar"
                         disabled={uploading}
                     >
-                        <Camera size={16} />
+                        {uploadSuccess ? <Check size={18} /> : <Camera size={18} />}
                     </button>
                     <input
                         ref={fileInputRef}
@@ -166,49 +204,59 @@ export function MobileProfile() {
                         className="hidden"
                     />
                 </div>
-                <h2 className="mt-4 text-lg font-semibold text-gray-900">{fullName || 'No name set'}</h2>
-                <p className="text-sm text-gray-500">{email}</p>
+                <h2 className="mt-5 text-xl font-bold text-white">{fullName || 'No name set'}</h2>
+                <p className="text-sm text-slate-400 mt-1">{email}</p>
             </div>
 
             {/* Profile Form */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-5 space-y-5">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Full Name</label>
                     <div className="relative">
-                        <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-blue-500/20">
+                            <User size={16} className="text-blue-400" />
+                        </div>
                         <input
                             type="text"
                             value={fullName}
                             onChange={e => setFullName(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-base"
+                            className="w-full pl-14 pr-4 py-3.5 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                             placeholder="Your name"
                         />
                     </div>
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Email</label>
                     <div className="relative">
-                        <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-emerald-500/20">
+                            <Mail size={16} className="text-emerald-400" />
+                        </div>
                         <input
                             type="email"
                             value={email}
                             disabled
-                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 text-base"
+                            className="w-full pl-14 pr-4 py-3.5 bg-slate-900/30 border border-white/5 rounded-xl text-slate-500"
                         />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
+                    <p className="text-xs text-slate-500 mt-2">Email cannot be changed</p>
                 </div>
 
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="w-full py-3 bg-indigo-600 text-white font-medium rounded-lg flex items-center justify-center gap-2 active:bg-indigo-700 disabled:opacity-50"
+                    className={`w-full py-3.5 font-semibold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 ${saved
+                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
+                            : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
+                        }`}
                 >
                     {saving ? (
                         <Loader2 size={18} className="animate-spin" />
                     ) : saved ? (
-                        <>✓ Saved</>
+                        <>
+                            <Check size={18} />
+                            Saved!
+                        </>
                     ) : (
                         <>
                             <Save size={18} />
@@ -218,25 +266,39 @@ export function MobileProfile() {
                 </button>
             </div>
 
-            {/* Account Info */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-100">
+            {/* Account Info Cards */}
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
-                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                        <Shield size={20} className="text-green-600" />
+                    <div className="w-11 h-11 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                        <Shield size={20} className="text-emerald-400" />
                     </div>
                     <div className="flex-1">
-                        <p className="font-medium text-gray-900">Account Role</p>
-                        <p className="text-sm text-gray-500 capitalize">{(user as any)?.role?.toLowerCase() || 'User'}</p>
+                        <p className="font-medium text-white">Account Role</p>
+                        <p className="text-sm text-slate-400 capitalize">{(user as any)?.role?.toLowerCase() || 'User'}</p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-4 p-4">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Building size={20} className="text-blue-600" />
+                    <div className="w-11 h-11 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                        <Building size={20} className="text-blue-400" />
                     </div>
                     <div className="flex-1">
-                        <p className="font-medium text-gray-900">Account ID</p>
-                        <p className="text-sm text-gray-500 font-mono">{user?.id?.slice(0, 8)}...</p>
+                        <p className="font-medium text-white">Account ID</p>
+                        <p className="text-sm text-slate-400 font-mono">{user?.id?.slice(0, 8)}...</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4 p-4">
+                    <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                        <Clock size={20} className="text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="font-medium text-white">Shift Hours</p>
+                        <p className="text-sm text-slate-400">
+                            {(user as any)?.shiftStart && (user as any)?.shiftEnd
+                                ? `${(user as any).shiftStart} – ${(user as any).shiftEnd}`
+                                : 'Not set'}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -244,7 +306,7 @@ export function MobileProfile() {
             {/* Logout Button */}
             <button
                 onClick={handleLogout}
-                className="w-full py-3 bg-red-50 text-red-600 font-medium rounded-xl flex items-center justify-center gap-2 active:bg-red-100 border border-red-100"
+                className="w-full py-3.5 bg-red-500/10 border border-red-500/20 text-red-400 font-semibold rounded-2xl flex items-center justify-center gap-2 active:bg-red-500/20 active:scale-[0.98] transition-all"
             >
                 <LogOut size={18} />
                 Log Out

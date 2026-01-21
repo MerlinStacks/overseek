@@ -43,7 +43,6 @@ model User {
   refreshTokens         RefreshToken[]
   pushSubscriptions     PushSubscription[]
   blockedContacts       BlockedContact[]
-  todos                 Todo[]
   messageReactions      MessageReaction[]
   scheduledMessages     Message[]            @relation("ScheduledMessages")
   conversationNotes     ConversationNote[]   @relation("UserConversationNotes")
@@ -154,9 +153,6 @@ model Account {
   
   // Blocked Contacts
   blockedContacts   BlockedContact[]
-  
-  // AI Todos
-  todos             Todo[]
   
   // Conversation Labels
   conversationLabels ConversationLabel[]
@@ -1964,29 +1960,6 @@ model PushSubscription {
   @@index([accountId])
 }
 
-// --------------------------------------
-// AI Todo List
-// --------------------------------------
-
-model Todo {
-  id        String    @id @default(uuid())
-  accountId String
-  userId    String
-  
-  title       String
-  completed   Boolean   @default(false)
-  priority    String    @default("NORMAL") // LOW, NORMAL, HIGH
-  aiGenerated Boolean   @default(false)    // Flag for AI-suggested tasks
-  
-  dueDate   DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([accountId, userId])
-}
 
 // --------------------------------------
 // AI Ad Optimization Context

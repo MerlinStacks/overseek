@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { Logger } from '../../utils/logger';
 import {
     Package, Plus, Search, Loader2, Trash2, Edit2, Box,
@@ -46,6 +47,8 @@ interface InternalProductFormData {
 export function InternalProductsList() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
 
     const [products, setProducts] = useState<InternalProduct[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -277,7 +280,7 @@ export function InternalProductsList() {
                             <th className="px-6 py-4">Name</th>
                             <th className="px-6 py-4">SKU</th>
                             <th className="px-6 py-4">Stock</th>
-                            <th className="px-6 py-4">COGS</th>
+                            {canViewCogs && <th className="px-6 py-4">COGS</th>}
                             <th className="px-6 py-4">Supplier</th>
                             <th className="px-6 py-4">BOM Usage</th>
                             <th className="px-6 py-4 text-center">Actions</th>
@@ -323,14 +326,16 @@ export function InternalProductsList() {
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`text-lg font-bold ${product.stockQuantity === 0 ? 'text-red-600' :
-                                                product.stockQuantity < 10 ? 'text-amber-600' : 'text-gray-900'
+                                            product.stockQuantity < 10 ? 'text-amber-600' : 'text-gray-900'
                                             }`}>
                                             {product.stockQuantity}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-gray-600">
-                                        {product.cogs ? `$${product.cogs.toFixed(2)}` : '-'}
-                                    </td>
+                                    {canViewCogs && (
+                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                            {product.cogs ? `$${product.cogs.toFixed(2)}` : '-'}
+                                        </td>
+                                    )}
                                     <td className="px-6 py-4 text-sm text-gray-600">
                                         {product.supplier ? (
                                             <span className="flex items-center gap-1">
@@ -439,18 +444,20 @@ export function InternalProductsList() {
                                         min="0"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">COGS ($)</label>
-                                    <input
-                                        type="number"
-                                        value={formData.cogs}
-                                        onChange={(e) => setFormData({ ...formData, cogs: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        min="0"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                    />
-                                </div>
+                                {canViewCogs && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">COGS ($)</label>
+                                        <input
+                                            type="number"
+                                            value={formData.cogs}
+                                            onChange={(e) => setFormData({ ...formData, cogs: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>

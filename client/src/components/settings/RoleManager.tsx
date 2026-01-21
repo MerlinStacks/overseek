@@ -17,6 +17,7 @@ interface Role {
 const AVAILABLE_PERMISSIONS = [
     { key: 'view_products', label: 'View Products' },
     { key: 'edit_products', label: 'Edit Products' },
+    { key: 'view_cogs', label: 'View COGS (Cost of Goods)' },
     { key: 'view_orders', label: 'View Orders' },
     { key: 'edit_orders', label: 'Edit Orders (General)' },
     { key: 'edit_order_tags', label: 'Edit Order Tags' },

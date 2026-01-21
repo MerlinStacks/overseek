@@ -176,7 +176,6 @@ async function build() {
     const reviewsRoutes = (await import('./routes/reviews')).default;
     const segmentsRoutes = (await import('./routes/segments')).default;
     const policiesRoutes = (await import('./routes/policies')).default;
-    const todoRoutes = (await import('./routes/todo')).default;
     const auditsRoutes = (await import('./routes/audits')).default;
     const sessionsRoutes = (await import('./routes/sessions')).default;
     const invoicesRoutes = (await import('./routes/invoices')).default;
@@ -194,7 +193,6 @@ async function build() {
     await fastify.register(reviewsRoutes, { prefix: '/api/reviews' });
     await fastify.register(segmentsRoutes, { prefix: '/api/segments' });
     await fastify.register(policiesRoutes, { prefix: '/api/policies' });
-    await fastify.register(todoRoutes, { prefix: '/api/todos' });
     await fastify.register(auditsRoutes, { prefix: '/api/audits' });
     await fastify.register(sessionsRoutes, { prefix: '/api/sessions' });
     await fastify.register(invoicesRoutes, { prefix: '/api/invoices' });
@@ -242,6 +240,8 @@ async function build() {
     await fastify.register(oauthRoutes, { prefix: '/api/oauth' });
     const analyticsRoutes = (await import('./routes/analytics')).default;
     await fastify.register(analyticsRoutes, { prefix: '/api/analytics' });
+    const goldPriceReportRoutes = (await import('./routes/goldPriceReport')).default;
+    await fastify.register(goldPriceReportRoutes, { prefix: '/api/reports' });
     const trackingRoutes = (await import('./routes/tracking')).default;
     await fastify.register(trackingRoutes, { prefix: '/api/tracking' });
 

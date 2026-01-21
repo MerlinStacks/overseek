@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { DollarSign } from 'lucide-react';
 import { MiscCostsEditor, MiscCost } from './MiscCostsEditor';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface PricingPanelProps {
     formData: any;
@@ -8,6 +9,9 @@ interface PricingPanelProps {
 }
 
 export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }) => {
+    const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
+
     return (
         <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
@@ -44,31 +48,35 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                         />
                     </div>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cost of Goods (COGS)</label>
-                    <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                        <input
-                            type="number"
-                            step="0.01"
-                            value={formData.cogs}
-                            onChange={(e) => onChange && onChange({ cogs: e.target.value })}
-                            className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
-                            placeholder="0.00"
-                        />
+                {canViewCogs && (
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cost of Goods (COGS)</label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                            <input
+                                type="number"
+                                step="0.01"
+                                value={formData.cogs}
+                                onChange={(e) => onChange && onChange({ cogs: e.target.value })}
+                                className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
+                                placeholder="0.00"
+                            />
+                        </div>
                     </div>
+                )}
+            </div>
+
+            {canViewCogs && (
+                <div className="mb-6">
+                    <MiscCostsEditor
+                        value={formData.miscCosts || []}
+                        onChange={(costs) => onChange && onChange({ miscCosts: costs })}
+                    />
                 </div>
-            </div>
+            )}
 
-            <div className="mb-6">
-                <MiscCostsEditor
-                    value={formData.miscCosts || []}
-                    onChange={(costs) => onChange && onChange({ miscCosts: costs })}
-                />
-            </div>
-
-            {/* Profit Margin Calculator */}
-            {(() => {
+            {/* Profit Margin Calculator - Only show when user can view COGS */}
+            {canViewCogs && (() => {
                 const sellingPrice = parseFloat(formData.salePrice) || parseFloat(formData.price) || 0;
                 const cogs = parseFloat(formData.cogs) || 0;
                 const miscTotal = (formData.miscCosts || []).reduce((sum: number, item: MiscCost) => sum + (Number(item.amount) || 0), 0);

@@ -4,6 +4,7 @@ import { BOMPanel, BOMPanelRef } from './BOMPanel';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { Logger } from '../../utils/logger';
 
 interface ProductVariant {
@@ -59,6 +60,8 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [editingVariants, setEditingVariants] = useState<ProductVariant[]>(variants);
     const isGoldPriceEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
+    const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
 
     // Stock editing state: track edited values and saving status per variant
     const [stockEditValues, setStockEditValues] = useState<Record<number, string>>({});
@@ -441,16 +444,18 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
 
                                                     {/* Additional fields */}
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">COGS (Cost)</label>
-                                                            <input
-                                                                type="number" step="0.01"
-                                                                value={v.cogs || ''}
-                                                                onChange={(e) => handleFieldChange(v.id, 'cogs', e.target.value)}
-                                                                className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg"
-                                                                placeholder="0.00"
-                                                            />
-                                                        </div>
+                                                        {canViewCogs && (
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">COGS (Cost)</label>
+                                                                <input
+                                                                    type="number" step="0.01"
+                                                                    value={v.cogs || ''}
+                                                                    onChange={(e) => handleFieldChange(v.id, 'cogs', e.target.value)}
+                                                                    className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg"
+                                                                    placeholder="0.00"
+                                                                />
+                                                            </div>
+                                                        )}
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">Bin Location</label>
                                                             <input

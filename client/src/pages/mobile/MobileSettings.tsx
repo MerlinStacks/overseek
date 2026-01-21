@@ -15,8 +15,8 @@ import {
 } from 'lucide-react';
 
 /**
- * MobileSettings - Mobile-optimized settings page
- * Provides quick access to key settings in a mobile-friendly format
+ * MobileSettings - Premium dark-mode settings for PWA.
+ * Provides sync controls and quick access to key settings.
  */
 
 interface SettingItem {
@@ -24,8 +24,8 @@ interface SettingItem {
     label: string;
     description: string;
     icon: typeof Bell;
-    color: string;
-    badge?: string;
+    iconColor: string;
+    iconBg: string;
 }
 
 export function MobileSettings() {
@@ -34,6 +34,15 @@ export function MobileSettings() {
     const { currentAccount, accounts, setCurrentAccount } = useAccount();
     const [syncing, setSyncing] = useState(false);
     const [showSwitcher, setShowSwitcher] = useState(false);
+
+    /**
+     * Triggers haptic feedback if supported.
+     */
+    const triggerHaptic = (duration = 10) => {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+        }
+    };
 
     const settingSections = [
         {
@@ -44,7 +53,8 @@ export function MobileSettings() {
                     label: 'Push Notifications',
                     description: 'Manage notification preferences',
                     icon: Bell,
-                    color: 'bg-blue-100 text-blue-600'
+                    iconColor: 'text-purple-400',
+                    iconBg: 'bg-purple-500/20'
                 }
             ]
         },
@@ -56,26 +66,29 @@ export function MobileSettings() {
                     label: 'Products & Inventory',
                     description: 'Manage stock settings',
                     icon: Package,
-                    color: 'bg-green-100 text-green-600'
+                    iconColor: 'text-orange-400',
+                    iconBg: 'bg-orange-500/20'
                 },
                 {
                     id: 'inbox',
                     label: 'Inbox Settings',
                     description: 'Chat and inbox preferences',
                     icon: MessageSquare,
-                    color: 'bg-purple-100 text-purple-600'
+                    iconColor: 'text-emerald-400',
+                    iconBg: 'bg-emerald-500/20'
                 }
             ]
         },
         {
-            title: 'Active store',
+            title: 'Active Store',
             items: [
                 {
                     id: 'website',
-                    label: 'Website',
-                    description: (currentAccount as any)?.website || 'No website configured',
+                    label: currentAccount?.name || 'Store',
+                    description: currentAccount?.wooUrl || 'No website configured',
                     icon: Globe,
-                    color: 'bg-gray-100 text-gray-600'
+                    iconColor: 'text-blue-400',
+                    iconBg: 'bg-blue-500/20'
                 }
             ]
         }
@@ -84,6 +97,7 @@ export function MobileSettings() {
     const handleSync = async () => {
         if (!token || !currentAccount || syncing) return;
 
+        triggerHaptic(20);
         setSyncing(true);
         try {
             await fetch('/api/sync/products/import', {
@@ -93,7 +107,6 @@ export function MobileSettings() {
                     'X-Account-ID': currentAccount.id
                 }
             });
-            // Also sync orders
             await fetch('/api/sync/orders/import', {
                 method: 'POST',
                 headers: {
@@ -101,6 +114,7 @@ export function MobileSettings() {
                     'X-Account-ID': currentAccount.id
                 }
             });
+            triggerHaptic(30);
         } catch (e) {
             Logger.error('[MobileSettings] Sync error:', { error: e });
         } finally {
@@ -109,6 +123,7 @@ export function MobileSettings() {
     };
 
     const handleSettingPress = (id: string) => {
+        triggerHaptic();
         switch (id) {
             case 'push':
                 navigate('/m/notifications');
@@ -130,27 +145,30 @@ export function MobileSettings() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-slide-up">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <button
-                    onClick={() => navigate(-1)}
-                    className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 active:bg-gray-200"
+                    onClick={() => {
+                        triggerHaptic();
+                        navigate(-1);
+                    }}
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:scale-95 transition-transform"
                     aria-label="Go back"
                 >
-                    <ChevronLeft size={24} />
+                    <ChevronLeft size={22} className="text-slate-300" />
                 </button>
-                <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+                <h1 className="text-xl font-bold text-white">Settings</h1>
             </div>
 
             {/* Sync Card */}
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white">
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-xl shadow-indigo-500/20">
                 <h3 className="font-semibold text-lg">Store Sync</h3>
-                <p className="text-sm text-white/80 mt-1">Keep products and orders up to date</p>
+                <p className="text-sm text-white/70 mt-1">Keep products and orders up to date</p>
                 <button
                     onClick={handleSync}
                     disabled={syncing}
-                    className="mt-4 w-full py-3 bg-white/20 hover:bg-white/30 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                    className="mt-4 w-full py-3.5 bg-white/20 hover:bg-white/30 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
                 >
                     {syncing ? (
                         <>
@@ -169,26 +187,26 @@ export function MobileSettings() {
             {/* Settings Sections */}
             {settingSections.map((section, idx) => (
                 <div key={idx}>
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 px-1">
+                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-1">
                         {section.title}
                     </h3>
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-100">
+                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
                         {section.items.map((item) => {
                             const Icon = item.icon;
                             return (
                                 <button
                                     key={item.id}
                                     onClick={() => handleSettingPress(item.id)}
-                                    className="w-full flex items-center gap-4 p-4 text-left active:bg-gray-50 transition-colors"
+                                    className="w-full flex items-center gap-4 p-4 text-left active:bg-white/5 transition-colors"
                                 >
-                                    <div className={`w-10 h-10 rounded-full ${item.color} flex items-center justify-center`}>
-                                        <Icon size={20} />
+                                    <div className={`w-10 h-10 rounded-xl ${item.iconBg} flex items-center justify-center`}>
+                                        <Icon size={20} className={item.iconColor} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-gray-900">{item.label}</p>
-                                        <p className="text-sm text-gray-500 truncate">{item.description}</p>
+                                        <p className="font-medium text-white">{item.label}</p>
+                                        <p className="text-sm text-slate-400 truncate">{item.description}</p>
                                     </div>
-                                    <ChevronRight size={20} className="text-gray-400 flex-shrink-0" />
+                                    <ChevronRight size={18} className="text-slate-500 flex-shrink-0" />
                                 </button>
                             );
                         })}
@@ -197,7 +215,7 @@ export function MobileSettings() {
             ))}
 
             {/* App Info */}
-            <div className="text-center text-sm text-gray-400 py-4">
+            <div className="text-center text-sm text-slate-500 py-4">
                 <p>OverSeek Companion v1.0</p>
                 <p className="mt-1">© 2026 SLDevs</p>
             </div>
@@ -207,44 +225,46 @@ export function MobileSettings() {
                 <div className="fixed inset-0 z-50 flex items-end justify-center">
                     {/* Backdrop */}
                     <div
-                        className="absolute inset-0 bg-black/50"
+                        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                         onClick={() => setShowSwitcher(false)}
                     />
                     {/* Modal */}
-                    <div className="relative w-full max-w-md bg-white rounded-t-2xl p-6 pb-8 animate-slide-up">
-                        <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
-                        <h2 className="text-lg font-bold text-gray-900 mb-4">Switch Store</h2>
+                    <div className="relative w-full max-w-md bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-8 animate-fade-slide-up">
+                        <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-4" />
+                        <h2 className="text-lg font-bold text-white mb-4">Switch Store</h2>
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                             {accounts.map((account) => (
                                 <button
                                     key={account.id}
                                     onClick={() => {
+                                        triggerHaptic(15);
                                         setCurrentAccount(account);
                                         setShowSwitcher(false);
-                                        // Refresh the page to reload data for new account
                                         window.location.reload();
                                     }}
                                     className={`w-full flex items-center gap-3 p-4 rounded-xl text-left transition-colors ${currentAccount?.id === account.id
-                                        ? 'bg-indigo-50 border-2 border-indigo-500'
-                                        : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
+                                        ? 'bg-indigo-500/20 border-2 border-indigo-500'
+                                        : 'bg-slate-800/50 border-2 border-transparent hover:bg-slate-700/50'
                                         }`}
                                 >
-                                    <Globe size={20} className={currentAccount?.id === account.id ? 'text-indigo-600' : 'text-gray-400'} />
+                                    <div className={`w-10 h-10 rounded-xl ${currentAccount?.id === account.id ? 'bg-indigo-500/20' : 'bg-slate-700'} flex items-center justify-center`}>
+                                        <Globe size={18} className={currentAccount?.id === account.id ? 'text-indigo-400' : 'text-slate-400'} />
+                                    </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className={`font-medium truncate ${currentAccount?.id === account.id ? 'text-indigo-600' : 'text-gray-900'}`}>
+                                        <p className={`font-medium truncate ${currentAccount?.id === account.id ? 'text-indigo-400' : 'text-white'}`}>
                                             {account.name}
                                         </p>
-                                        <p className="text-sm text-gray-500 truncate">{account.wooUrl}</p>
+                                        <p className="text-sm text-slate-500 truncate">{account.wooUrl}</p>
                                     </div>
                                     {currentAccount?.id === account.id && (
-                                        <span className="text-xs font-medium text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full">Active</span>
+                                        <span className="text-xs font-medium text-indigo-400 bg-indigo-500/20 px-2.5 py-1 rounded-lg">Active</span>
                                     )}
                                 </button>
                             ))}
                         </div>
                         <button
                             onClick={() => setShowSwitcher(false)}
-                            className="w-full mt-4 py-3 bg-gray-100 rounded-xl font-medium text-gray-700 active:bg-gray-200"
+                            className="w-full mt-4 py-3.5 bg-slate-800 border border-white/10 rounded-xl font-medium text-slate-300 active:bg-slate-700"
                         >
                             Cancel
                         </button>

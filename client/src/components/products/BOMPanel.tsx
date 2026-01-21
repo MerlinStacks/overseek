@@ -3,6 +3,7 @@ import { Logger } from '../../utils/logger';
 import { Plus, Trash2, DollarSign, Loader2, GitBranch, RefreshCw, Package, AlertTriangle, CheckCircle, Save } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface BOMItem {
     id?: string;
@@ -36,6 +37,8 @@ export interface BOMPanelRef {
 export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete, onCOGSUpdate }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
     const [bomItems, setBomItems] = useState<BOMItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -54,10 +57,10 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     const [selectedScope, setSelectedScope] = useState<number>(fixedVariationId !== undefined ? fixedVariationId : 0);
 
     useEffect(() => {
-        if (!currentAccount || !productId) return;
+        if (!currentAccount || !productId || !canViewCogs) return;
         fetchBOM();
         fetchEffectiveStock();
-    }, [productId, currentAccount, token, selectedScope]);
+    }, [productId, currentAccount, token, selectedScope, canViewCogs]);
 
     // Search for products
     useEffect(() => {
@@ -384,6 +387,9 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
         return sum + itemCost;
     }, 0);
+
+    // Hide entire panel if user doesn't have COGS permission
+    if (!canViewCogs) return null;
 
     return (
         <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">

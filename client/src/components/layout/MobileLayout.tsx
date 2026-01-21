@@ -1,13 +1,12 @@
-import { ReactNode, useState, useEffect, useCallback } from 'react';
+import { ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
-import { RefreshCw, WifiOff, Download, X } from 'lucide-react';
+import { RefreshCw, WifiOff, Download, X, Loader2 } from 'lucide-react';
 import { MobileNav } from './MobileNav';
 import { MobileErrorBoundary } from '../mobile/MobileErrorBoundary';
 
 import { PWAUpdateModal, usePWAUpdate, PWAUpdateBanner } from '../mobile/PWAUpdateModal';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Logger } from '../../utils/logger';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 
 /**
@@ -18,7 +17,8 @@ import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
  * - Glassmorphism cards throughout
  * - Bottom navigation with badge counts
  * - iOS safe areas handling
- * - Pull-to-refresh with visual feedback
+ * - Enhanced pull-to-refresh with custom spinner
+ * - Smooth page transitions
  * - Custom install prompt
  * - Haptic feedback where supported
  */
@@ -36,6 +36,11 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     const location = useLocation();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+
+    // Page transition state
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    const [displayLocation, setDisplayLocation] = useState(location);
+    const prevPathRef = useRef(location.pathname);
 
     // Pull-to-refresh state
     const [refreshing, setRefreshing] = useState(false);
@@ -61,6 +66,28 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     // Install prompt
     const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+    // Page transition effect
+    useEffect(() => {
+        if (location.pathname !== prevPathRef.current) {
+            setIsTransitioning(true);
+
+            // Short delay for exit animation
+            const exitTimer = setTimeout(() => {
+                setDisplayLocation(location);
+                prevPathRef.current = location.pathname;
+
+                // Allow enter animation
+                const enterTimer = setTimeout(() => {
+                    setIsTransitioning(false);
+                }, 50);
+
+                return () => clearTimeout(enterTimer);
+            }, 150);
+
+            return () => clearTimeout(exitTimer);
+        }
+    }, [location]);
 
     // Fetch badge counts
     const fetchBadgeCounts = useCallback(async () => {
@@ -105,8 +132,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         };
     }, []);
 
-    // Note: PWA update detection is handled by usePWAUpdate hook
-
     // Install prompt listener
     useEffect(() => {
         const handleBeforeInstall = (e: Event) => {
@@ -127,6 +152,15 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         };
     }, []);
 
+    /**
+     * Triggers haptic feedback if supported.
+     */
+    const triggerHaptic = (duration = 10) => {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+        }
+    };
+
     // Handle install
     const handleInstall = async () => {
         if (!installPrompt) return;
@@ -144,11 +178,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         localStorage.setItem('pwa-install-dismissed', Date.now().toString());
     };
 
-    // Handle update tap - force reload to activate new SW
-    const handleUpdateTap = () => {
-        window.location.reload();
-    };
-
     // Pull-to-refresh handlers
     const handleTouchStart = (e: React.TouchEvent) => {
         if (window.scrollY === 0) {
@@ -160,22 +189,25 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         if (startY === 0 || window.scrollY > 0) return;
         const currentY = e.touches[0].clientY;
         const distance = Math.max(0, currentY - startY);
-        setPullDistance(Math.min(distance, 120));
+        // Apply resistance for more natural feel
+        const resistance = 0.5;
+        const resistedDistance = distance * resistance;
+        setPullDistance(Math.min(resistedDistance, 100));
     };
 
     const handleTouchEnd = async () => {
-        if (pullDistance > 70) {
+        if (pullDistance > 50) {
             setRefreshing(true);
-            // Haptic feedback
-            if ('vibrate' in navigator) {
-                navigator.vibrate(15);
-            }
+            triggerHaptic(20);
+
             // Refresh badge counts
             await fetchBadgeCounts();
             // Dispatch custom event for pages to refresh their data
             window.dispatchEvent(new CustomEvent('mobile-refresh'));
-            // Wait a bit for visual feedback
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // Wait for visual feedback
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            triggerHaptic(15);
             setRefreshing(false);
         }
         setStartY(0);
@@ -191,7 +223,8 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         return 'dashboard';
     };
 
-    const pullProgress = Math.min(pullDistance / 70, 1);
+    const pullProgress = Math.min(pullDistance / 50, 1);
+    const pullThresholdMet = pullProgress >= 1;
 
     return (
         <div
@@ -201,11 +234,9 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                 paddingBottom: 'calc(env(safe-area-inset-bottom) + 64px)'
             }}
         >
-
-
             {/* Offline Banner */}
             {!isOnline && (
-                <div className="bg-amber-500/90 backdrop-blur-sm text-white text-center py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-medium">
+                <div className="bg-amber-500/90 backdrop-blur-sm text-white text-center py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-medium animate-fade-slide-up">
                     <WifiOff size={16} />
                     You're offline - some features may be unavailable
                 </div>
@@ -226,7 +257,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
             {/* Install App Banner */}
             {showInstallBanner && installPrompt && (
-                <div className="bg-gradient-to-r from-emerald-500/90 to-teal-500/90 backdrop-blur-sm text-white py-3 px-4 flex items-center justify-between gap-3">
+                <div className="bg-gradient-to-r from-emerald-500/90 to-teal-500/90 backdrop-blur-sm text-white py-3 px-4 flex items-center justify-between gap-3 animate-fade-slide-up">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white/20 rounded-xl">
                             <Download size={20} />
@@ -253,41 +284,83 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                 </div>
             )}
 
-            {/* Pull-to-refresh indicator */}
+            {/* Enhanced Pull-to-refresh indicator */}
             <div
-                className={`fixed top-0 left-0 right-0 flex items-center justify-center z-50 transition-all duration-200 ${pullDistance > 0 ? 'bg-gradient-to-r from-indigo-600 to-purple-600' : 'bg-transparent'
-                    }`}
+                className="fixed top-0 left-0 right-0 flex flex-col items-center justify-center z-50 overflow-hidden transition-all duration-300 ease-out"
                 style={{
-                    height: Math.max(pullDistance, 0),
+                    height: refreshing ? 80 : Math.max(pullDistance, 0),
                     paddingTop: 'env(safe-area-inset-top)',
-                    opacity: pullProgress
+                    opacity: pullProgress > 0.1 || refreshing ? 1 : 0,
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.95) 100%)',
                 }}
             >
-                <div
-                    className={`p-2 rounded-full bg-white/20 backdrop-blur-sm ${refreshing ? 'animate-spin' : ''}`}
-                    style={{
-                        transform: `rotate(${pullProgress * 360}deg) scale(${0.5 + pullProgress * 0.5})`,
-                        transition: refreshing ? 'none' : 'transform 0.1s'
-                    }}
-                >
-                    <RefreshCw size={24} className="text-white" />
+                <div className="relative">
+                    {/* Outer ring */}
+                    <div
+                        className={`w-12 h-12 rounded-full border-3 border-white/30 flex items-center justify-center ${refreshing ? '' : 'transition-transform duration-100'
+                            }`}
+                        style={{
+                            transform: refreshing
+                                ? 'scale(1)'
+                                : `scale(${0.6 + pullProgress * 0.4})`,
+                            borderWidth: '3px',
+                        }}
+                    >
+                        {/* Inner spinner/icon */}
+                        {refreshing ? (
+                            <Loader2 size={24} className="text-white animate-spin" />
+                        ) : (
+                            <RefreshCw
+                                size={22}
+                                className="text-white transition-transform duration-100"
+                                style={{
+                                    transform: `rotate(${pullProgress * 180}deg)`,
+                                }}
+                            />
+                        )}
+                    </div>
+
+                    {/* Progress ring */}
+                    {!refreshing && pullProgress > 0 && (
+                        <svg
+                            className="absolute inset-0 w-12 h-12 -rotate-90"
+                            viewBox="0 0 48 48"
+                        >
+                            <circle
+                                cx="24"
+                                cy="24"
+                                r="21"
+                                fill="none"
+                                stroke="white"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeDasharray={`${pullProgress * 132} 132`}
+                                className="transition-all duration-100"
+                            />
+                        </svg>
+                    )}
                 </div>
-                {pullProgress >= 1 && !refreshing && (
-                    <span className="text-white text-sm ml-3 font-medium">Release to refresh</span>
-                )}
-                {refreshing && (
-                    <span className="text-white text-sm ml-3 font-medium">Refreshing...</span>
-                )}
+
+                {/* Status text */}
+                <span className={`text-white text-xs font-medium mt-2 transition-all duration-200 ${(pullThresholdMet || refreshing) ? 'opacity-100' : 'opacity-0'
+                    }`}>
+                    {refreshing ? 'Refreshing...' : 'Release to refresh'}
+                </span>
             </div>
 
-            {/* Main content */}
+            {/* Main content with page transitions */}
             <main
                 className="flex-1 overflow-x-hidden"
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
             >
-                <div className="p-4">
+                <div
+                    className={`p-4 transition-all duration-150 ease-out ${isTransitioning
+                            ? 'opacity-0 translate-x-4'
+                            : 'opacity-100 translate-x-0'
+                        }`}
+                >
                     <MobileErrorBoundary>
                         {children || <Outlet />}
                     </MobileErrorBoundary>

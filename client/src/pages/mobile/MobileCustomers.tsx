@@ -9,17 +9,16 @@ import {
     Users,
     Mail,
     ShoppingBag,
-    Calendar,
     ChevronRight,
-    Loader2,
-    User
+    Loader2
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/format';
+import { formatCurrency } from '../../utils/format';
 import { getInitials } from '../../utils/string';
+import { ListSkeleton } from '../../components/mobile/MobileSkeleton';
 
 /**
- * MobileCustomers - Mobile-optimized customer list with search
- * Displays customers with key metrics and links to details
+ * MobileCustomers - Premium dark-mode customer list for PWA.
+ * Features search and displays customer metrics.
  */
 
 interface CustomerApiResponse {
@@ -59,6 +58,15 @@ export function MobileCustomers() {
     const [searchQuery, setSearchQuery] = useState('');
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
+
+    /**
+     * Triggers haptic feedback if supported.
+     */
+    const triggerHaptic = (duration = 10) => {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+        }
+    };
 
     const fetchCustomers = useCallback(async (reset = false) => {
         if (!currentAccount || !token) return;
@@ -115,6 +123,7 @@ export function MobileCustomers() {
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
+        triggerHaptic();
         fetchCustomers(true);
     };
 
@@ -125,60 +134,79 @@ export function MobileCustomers() {
         }
     };
 
-    // Currency formatting helper using centralized utility
     const formatAccountCurrency = (amount: number) =>
         formatCurrency(amount, currentAccount?.currency || 'USD');
 
+    if (loading && customers.length === 0) {
+        return (
+            <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-800/50" />
+                    <div className="h-6 w-24 bg-slate-800/50 rounded-lg" />
+                </div>
+                <ListSkeleton count={6} />
+            </div>
+        );
+    }
+
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-slide-up">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <button
-                    onClick={() => navigate(-1)}
-                    className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 active:bg-gray-200"
+                    onClick={() => {
+                        triggerHaptic();
+                        navigate(-1);
+                    }}
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:scale-95 transition-transform"
                     aria-label="Go back"
                 >
-                    <ChevronLeft size={24} />
+                    <ChevronLeft size={22} className="text-slate-300" />
                 </button>
-                <h1 className="text-xl font-bold text-gray-900">Customers</h1>
+                <h1 className="text-xl font-bold text-white">Customers</h1>
+                <span className="ml-auto text-sm text-slate-400 bg-slate-800/50 px-3 py-1 rounded-full">
+                    {customers.length}
+                </span>
             </div>
 
             {/* Search */}
             <form onSubmit={handleSearch} className="flex gap-2">
                 <div className="flex-1 relative">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-slate-700/50">
+                        <Search size={14} className="text-slate-400" />
+                    </div>
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search customers..."
-                        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-base"
+                        className="w-full pl-14 pr-4 py-3.5 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                     />
                 </div>
                 <button
                     type="submit"
-                    className="px-4 py-3 bg-indigo-600 text-white rounded-xl active:bg-indigo-700"
+                    className="px-4 py-3.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl active:scale-95 transition-transform shadow-lg shadow-indigo-500/25"
                 >
                     <Search size={18} />
                 </button>
             </form>
 
             {/* Stats Summary */}
-            {!loading && customers.length > 0 && (
-                <div className="flex gap-3">
-                    <div className="flex-1 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100">
-                        <div className="flex items-center gap-2 text-indigo-600 mb-1">
+            {customers.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4">
+                        <div className="flex items-center gap-2 text-indigo-400 mb-1">
                             <Users size={16} />
                             <span className="text-xs font-medium">Total</span>
                         </div>
-                        <p className="text-xl font-bold text-gray-900">{customers.length}</p>
+                        <p className="text-xl font-bold text-white">{customers.length}</p>
                     </div>
-                    <div className="flex-1 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
-                        <div className="flex items-center gap-2 text-green-600 mb-1">
+                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4">
+                        <div className="flex items-center gap-2 text-emerald-400 mb-1">
                             <ShoppingBag size={16} />
                             <span className="text-xs font-medium">Total Spent</span>
                         </div>
-                        <p className="text-xl font-bold text-gray-900">
+                        <p className="text-xl font-bold text-white">
                             {formatAccountCurrency(customers.reduce((sum, c) => sum + c.totalSpent, 0))}
                         </p>
                     </div>
@@ -186,53 +214,60 @@ export function MobileCustomers() {
             )}
 
             {/* Customer List */}
-            {loading ? (
-                <div className="flex items-center justify-center py-12">
-                    <Loader2 size={32} className="animate-spin text-indigo-600" />
-                </div>
-            ) : customers.length === 0 ? (
-                <div className="text-center py-12">
-                    <Users size={48} className="mx-auto text-gray-300 mb-3" />
-                    <p className="text-gray-500">No customers found</p>
+            {customers.length === 0 ? (
+                <div className="text-center py-16">
+                    <div className="w-20 h-20 mx-auto mb-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl flex items-center justify-center">
+                        <Users className="text-slate-500" size={36} />
+                    </div>
+                    <p className="text-white font-semibold mb-1">No customers found</p>
+                    <p className="text-slate-400 text-sm">Customers will appear here</p>
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {customers.map((customer) => (
+                    {customers.map((customer, index) => (
                         <button
                             key={customer.id}
-                            onClick={() => navigate(`/m/customers/${customer.id}`)}
-                            className="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4 text-left active:bg-gray-50 transition-colors"
+                            onClick={() => {
+                                triggerHaptic();
+                                navigate(`/m/customers/${customer.id}`);
+                            }}
+                            className="w-full bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex items-center gap-4 text-left active:bg-slate-700/50 transition-all animate-fade-slide-up"
+                            style={{ animationDelay: `${index * 30}ms` }}
                         >
                             {/* Avatar */}
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                                {customer.avatarUrl ? (
-                                    <img src={customer.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
-                                ) : (
-                                    getInitials(`${customer.firstName} ${customer.lastName}`)
-                                )}
-                            </div>
+                            {customer.avatarUrl ? (
+                                <img
+                                    src={customer.avatarUrl}
+                                    alt=""
+                                    className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
+                                />
+                            ) : (
+                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-lg shadow-indigo-500/25">
+                                    {getInitials(`${customer.firstName} ${customer.lastName}`)}
+                                </div>
+                            )}
 
                             {/* Info */}
                             <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900 truncate">
+                                <p className="font-semibold text-white truncate">
                                     {customer.firstName} {customer.lastName}
                                 </p>
-                                <p className="text-sm text-gray-500 truncate flex items-center gap-1">
+                                <p className="text-sm text-slate-400 truncate flex items-center gap-1.5">
                                     <Mail size={12} />
                                     {customer.email}
                                 </p>
-                                <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                                    <span className="flex items-center gap-1">
+                                <div className="flex items-center gap-3 mt-1.5 text-xs">
+                                    <span className="flex items-center gap-1 text-slate-500">
                                         <ShoppingBag size={10} />
                                         {customer.ordersCount} orders
                                     </span>
-                                    <span className="font-medium text-green-600">
+                                    <span className="font-medium text-emerald-400">
                                         {formatAccountCurrency(customer.totalSpent)}
                                     </span>
                                 </div>
                             </div>
 
-                            <ChevronRight size={20} className="text-gray-400 flex-shrink-0" />
+                            <ChevronRight size={18} className="text-slate-500 flex-shrink-0" />
                         </button>
                     ))}
 
@@ -240,9 +275,17 @@ export function MobileCustomers() {
                     {hasMore && (
                         <button
                             onClick={loadMore}
-                            className="w-full py-3 text-indigo-600 font-medium text-center"
+                            disabled={loading}
+                            className="w-full py-4 text-indigo-400 font-semibold bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl active:bg-slate-700/50 transition-all flex items-center justify-center gap-2"
                         >
-                            Load More
+                            {loading ? (
+                                <>
+                                    <Loader2 size={16} className="animate-spin" />
+                                    Loading...
+                                </>
+                            ) : (
+                                'Load More'
+                            )}
                         </button>
                     )}
                 </div>

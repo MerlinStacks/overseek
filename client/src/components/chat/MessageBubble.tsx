@@ -364,17 +364,28 @@ function extractAttachments(content: string): AttachmentInfo[] {
         if (seenUrls.has(url)) continue;
 
         // Get extension from either URL or link text (filename)
+        // Be careful to only extract extensions from actual file-like patterns
         const urlExt = url.split('.').pop()?.toLowerCase().split(/[?#]/)[0] || '';
         const textExt = text.split('.').pop()?.toLowerCase() || '';
-        const ext = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'].includes(urlExt) ? urlExt : textExt;
 
-        // Check if it's an attachment URL (by path OR by having attachment-like extension)
-        const isAttachmentUrl = url.includes('/uploads/attachments/') ||
-            url.includes('/uploads/') ||
-            url.includes('/attachment') ||
-            ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'].includes(ext);
+        // Valid file extensions for attachments
+        const validExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'];
+        const ext = validExtensions.includes(urlExt) ? urlExt : (validExtensions.includes(textExt) ? textExt : '');
 
-        if (isAttachmentUrl && ext) {
+        // Only count as attachment if:
+        // 1. The URL looks like an attachment path (explicit attachment directories)
+        // 2. AND has a valid file extension
+        // This prevents random markdown links from being detected as attachments
+        const isAttachmentPath = url.includes('/uploads/attachments/') ||
+            url.includes('/attachment/') ||
+            url.includes('/files/');
+
+        // Only match if we have BOTH a valid extension AND an attachment-like path
+        // OR if the link text itself looks like a filename with extension (e.g., "document.pdf")
+        const hasFileExtensionInText = validExtensions.some(e => text.toLowerCase().endsWith('.' + e));
+        const isAttachment = ext && (isAttachmentPath || hasFileExtensionInText);
+
+        if (isAttachment) {
             seenUrls.add(url);
 
             let type: AttachmentInfo['type'] = 'file';
