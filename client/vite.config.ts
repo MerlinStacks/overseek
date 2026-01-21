@@ -46,9 +46,8 @@ export default defineConfig(({ mode }) => {
         },
         server: {
             allowedHosts: [
-                'overseek.plateit.au',
                 'localhost',
-                ...(env.ALLOWED_HOSTS ? env.ALLOWED_HOSTS.split(',') : [])
+                ...(env.ALLOWED_HOSTS ? env.ALLOWED_HOSTS.split(',').map(h => h.trim()) : [])
             ],
             hmr: {
                 clientPort: 443

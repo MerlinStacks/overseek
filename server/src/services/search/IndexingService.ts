@@ -7,12 +7,21 @@ export class IndexingService {
         try {
             const exists = await esClient.indices.exists({ index: indexName });
             if (!exists) {
-                await esClient.indices.create({
-                    index: indexName,
-                    settings: (mapping as any).settings || {},
-                    mappings: { properties: (mapping as any).properties || mapping }
-                });
-                Logger.info(`Elasticsearch index '${indexName}' created.`);
+                try {
+                    await esClient.indices.create({
+                        index: indexName,
+                        settings: (mapping as any).settings || {},
+                        mappings: { properties: (mapping as any).properties || mapping }
+                    });
+                    Logger.info(`Elasticsearch index '${indexName}' created.`);
+                } catch (createError: any) {
+                    // Race condition: another process created the index between our exists check and create call
+                    if (createError.meta?.body?.error?.type === 'resource_already_exists_exception') {
+                        Logger.info(`Index '${indexName}' was created by another process, skipping.`);
+                    } else {
+                        throw createError;
+                    }
+                }
             } else {
                 try {
                     // Update settings for existing index
