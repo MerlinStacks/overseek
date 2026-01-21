@@ -21,22 +21,28 @@ async function md5Hash(str: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(str.toLowerCase().trim());
 
-    try {
-        // Use SubtleCrypto for modern browsers (but it doesn't support MD5)
-        // Gravatar also accepts SHA256, let's use that as primary
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch {
-        // Simple fallback hash for older browsers
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+    // crypto.subtle is only available in secure contexts (HTTPS or localhost)
+    // Check existence before use to avoid TypeError in HTTP contexts
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+        try {
+            // Use SubtleCrypto for modern browsers (but it doesn't support MD5)
+            // Gravatar also accepts SHA256, let's use that as primary
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch {
+            // Fall through to simple hash
         }
-        return Math.abs(hash).toString(16);
     }
+
+    // Simple fallback hash for older browsers or non-secure contexts
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16);
 }
 
 const sizeClasses = {
