@@ -275,6 +275,13 @@ export function OrderDetailPage() {
 
                 {/* Sidebar - Customer Details */}
                 <div className="space-y-6">
+                    {/* Tags Panel - First for visibility */}
+                    <OrderTagPanel
+                        orderId={order.id || order.wooId?.toString() || id || ''}
+                        currentTags={order.tags || []}
+                        onTagsChange={handleTagsChange}
+                    />
+
                     {/* Customer Card */}
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                         <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
@@ -352,13 +359,6 @@ export function OrderDetailPage() {
                             )}
                         </div>
                     </div>
-
-                    {/* Tags Panel */}
-                    <OrderTagPanel
-                        orderId={order.id || order.wooId?.toString() || id || ''}
-                        currentTags={order.tags || []}
-                        onTagsChange={handleTagsChange}
-                    />
 
                     {/* Attribution Card */}
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">

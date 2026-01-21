@@ -168,7 +168,7 @@ export function OrdersSkeleton() {
  */
 export function InboxSkeleton() {
     return (
-        <div className="space-y-4 animate-fade-in">
+        <div className="min-h-full flex flex-col space-y-4 animate-fade-in">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <Skeleton className="h-6 w-24" />
@@ -179,7 +179,7 @@ export function InboxSkeleton() {
             <Skeleton className="h-11 w-full rounded-xl" />
 
             {/* Conversation List */}
-            <div className="space-y-2">
+            <div className="flex-1 space-y-2">
                 {[...Array(6)].map((_, i) => (
                     <div
                         key={i}

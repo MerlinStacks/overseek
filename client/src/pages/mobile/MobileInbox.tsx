@@ -176,7 +176,7 @@ export function MobileInbox() {
     }
 
     return (
-        <div className="space-y-4 animate-fade-slide-up">
+        <div className="min-h-full flex flex-col space-y-4 animate-fade-slide-up">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -253,7 +253,7 @@ export function MobileInbox() {
             )}
 
             {/* Conversation List */}
-            <div className="space-y-2">
+            <div className="flex-1 space-y-2">
                 {filteredConversations.length === 0 ? (
                     <div className="text-center py-16">
                         <div className="w-20 h-20 mx-auto mb-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl flex items-center justify-center">
