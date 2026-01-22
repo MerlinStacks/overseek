@@ -50,10 +50,11 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
     }, [fetchSales]);
 
     // Real-time: Listen for new orders and update sales
+    // Using typeof check to ensure data.total is a valid number before arithmetic
     useWidgetSocket<{ total?: number }>('order:new', (data) => {
-        if (data.total && sales !== null) {
-            setSales(prev => (prev || 0) + data.total!);
-            setOrderCount(prev => (prev || 0) + 1);
+        if (typeof data.total === 'number' && !isNaN(data.total)) {
+            setSales(prev => (prev ?? 0) + data.total!);
+            setOrderCount(prev => (prev ?? 0) + 1);
             setHasRealtimeUpdate(true);
             // Clear the indicator after 3 seconds
             setTimeout(() => setHasRealtimeUpdate(false), 3000);

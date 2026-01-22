@@ -75,9 +75,6 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     // This prevents refetching when variants array reference changes but IDs are the same
     const variantIdsRef = useRef<string>('');
 
-    // Track whether we've synchronized with parent to prevent initial mount callback
-    const hasInitializedRef = useRef(false);
-
     // Track BOM COGS for each variant (keyed by variant ID)
     // When a variant has BOM components, this stores the calculated total cost
     const [bomCogsMap, setBomCogsMap] = useState<Record<number, number | null>>({});
@@ -123,6 +120,9 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         saveAllBOMs
     }), []);
 
+    // Track the variants we received from props to detect user edits vs prop syncs
+    const lastSyncedVariantsRef = useRef<ProductVariant[]>(variants);
+
     useEffect(() => {
         setEditingVariants(variants);
         // Initialize stock edit values from variants
@@ -131,8 +131,8 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
             stockValues[v.id] = v.stockQuantity?.toString() ?? '';
         });
         setStockEditValues(stockValues);
-        // Mark as initialized after first sync
-        hasInitializedRef.current = true;
+        // Update the ref to track what we synced from props
+        lastSyncedVariantsRef.current = variants;
     }, [variants]);
 
     /**
@@ -200,11 +200,13 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         ));
     }, []);
 
-    // Sync changes with parent when editingVariants changes
-    // Skip the initial mount to prevent unnecessary parent updates
+    // Sync changes with parent when editingVariants changes due to USER edits.
+    // Skip when editingVariants exactly matches what we synced from props (prevents initial mount callback).
     useEffect(() => {
-        if (!hasInitializedRef.current) return;
-        if (onUpdate) onUpdate(editingVariants);
+        // Only call onUpdate if this is a user edit, not a prop sync
+        if (editingVariants !== lastSyncedVariantsRef.current && onUpdate) {
+            onUpdate(editingVariants);
+        }
     }, [editingVariants, onUpdate]);
 
     /**
