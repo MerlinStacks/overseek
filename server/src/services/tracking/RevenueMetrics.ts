@@ -69,10 +69,21 @@ function getDateRangeForDays(days: number, timezone: string = 'Australia/Sydney'
  * Days parameter is capped at 365 to prevent unbounded queries.
  */
 export async function getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-    // Cap days to prevent unbounded queries
+    // Cap days to prevent unbounded queries, but preserve special values (-1 = yesterday)
     const MAX_DAYS = 365;
-    const cappedDays = Math.min(Math.abs(days), MAX_DAYS);
-    const { startDate, endDate } = getDateRangeForDays(cappedDays === days ? days : cappedDays, timezone);
+    const effectiveDays = days === -1 ? -1 : Math.min(Math.max(days, 1), MAX_DAYS);
+    const { startDate, endDate } = getDateRangeForDays(effectiveDays, timezone);
+
+    // DEBUG: Log date range for troubleshooting
+    console.log('[Revenue DEBUG]', {
+        requestedDays: days,
+        effectiveDays,
+        timezone,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        startDateLocal: startDate.toString(),
+        endDateLocal: endDate.toString()
+    });
 
     // Primary source: WooCommerce orders
     const orders = await prisma.wooOrder.findMany({
@@ -81,8 +92,15 @@ export async function getRevenue(accountId: string, days: number = 30, timezone:
             dateCreated: { gte: startDate, lte: endDate },
             status: { in: ['completed', 'processing'] }
         },
-        select: { wooId: true, total: true, rawData: true }
+        select: { wooId: true, total: true, rawData: true, dateCreated: true }
     });
+
+    // DEBUG: Log order dates found
+    console.log('[Revenue DEBUG] Orders found:', orders.length, 'First 5:', orders.slice(0, 5).map(o => ({
+        wooId: o.wooId,
+        total: o.total,
+        dateCreated: o.dateCreated?.toISOString()
+    })));
 
     // Secondary source: Analytics sessions for attribution
     const purchaseEvents = await prisma.analyticsEvent.findMany({
