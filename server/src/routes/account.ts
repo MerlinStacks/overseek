@@ -11,6 +11,7 @@ import { IndexingService } from '../services/search/IndexingService';
 import { GoldPriceService } from '../services/GoldPriceService';
 import { WooService } from '../services/woo';
 import { OrderTaggingService } from '../services/OrderTaggingService';
+import { AuditService, AuditActions } from '../services/AuditService';
 
 const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -193,6 +194,17 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 data: { accountId, userId: targetUser.id, role: (role || 'STAFF') as any },
                 include: { user: { select: { id: true, fullName: true, email: true, avatarUrl: true } } }
             });
+
+            // Audit log: team member invited
+            await AuditService.log(
+                accountId,
+                userId,
+                AuditActions.TEAM_MEMBER_INVITED,
+                'TEAM',
+                targetUser.id,
+                { email: targetUser.email, role: role || 'STAFF' }
+            );
+
             return newUser;
         } catch (e) {
             Logger.error('Failed to add user to account', { error: e });
@@ -214,6 +226,17 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             await prisma.accountUser.delete({ where: { userId_accountId: { userId: targetUserId, accountId } } });
+
+            // Audit log: team member removed
+            await AuditService.log(
+                accountId,
+                userId,
+                AuditActions.TEAM_MEMBER_REMOVED,
+                'TEAM',
+                targetUserId,
+                { removedBy: userId }
+            );
+
             return { success: true };
         } catch (e) {
             return reply.code(500).send({ error: 'Failed' });
@@ -279,6 +302,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 data: updateData,
                 include: { user: { select: { id: true, fullName: true, email: true, avatarUrl: true } }, maxRole: true }
             });
+
+            // Audit log: role changed
+            await AuditService.log(
+                accountId,
+                userId,
+                AuditActions.ROLE_CHANGED,
+                'TEAM',
+                targetUserId,
+                { previousRole: targetMembership.role, newRole: role, roleId, permissions }
+            );
 
             return updated;
         } catch (e) {

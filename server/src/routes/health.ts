@@ -104,6 +104,26 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/live', async (request, reply) => {
         return reply.code(200).send('OK');
     });
+
+    /**
+     * GET /health/version
+     * App version check for PWA update detection.
+     * Returns current server version and optional update metadata.
+     */
+    fastify.get('/version', async (_request, _reply) => {
+        // Build version - auto-generated at build time or from environment
+        const version = process.env.APP_VERSION || new Date().toISOString().split('T')[0].replace(/-/g, '.');
+
+        return {
+            version,
+            // Optional: Add release notes or feature highlights
+            message: 'Latest improvements and bug fixes',
+            features: [
+                'Performance improvements',
+                'Bug fixes and stability'
+            ]
+        };
+    });
 };
 
 export default healthRoutes;

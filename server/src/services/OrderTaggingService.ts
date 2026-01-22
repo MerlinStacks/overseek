@@ -166,11 +166,10 @@ export class OrderTaggingService {
         }
 
         // Get unique product IDs from line items
-        const productIds = [...new Set(
-            lineItems
-                .map((item: any) => item.product_id)
-                .filter((id: number) => id && id > 0)
-        )] as number[];
+        const rawIds = lineItems
+            .map((item: any) => item.product_id)
+            .filter((id: number) => id && id > 0);
+        const productIds: number[] = Array.from(new Set(rawIds));
 
         if (productIds.length === 0) return [];
 
@@ -204,11 +203,14 @@ export class OrderTaggingService {
     /**
      * Get all unique product tags across all products for an account.
      * Used to populate the settings UI with available tags to map.
+     * Limited to 5000 products to prevent memory issues on large catalogs.
      */
     static async getAllProductTags(accountId: string): Promise<string[]> {
+        const MAX_PRODUCTS = 5000;
         const products = await prisma.wooProduct.findMany({
             where: { accountId },
-            select: { rawData: true }
+            select: { rawData: true },
+            take: MAX_PRODUCTS
         });
 
         const tagSet = new Set<string>();

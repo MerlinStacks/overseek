@@ -276,8 +276,16 @@ export function AdminCredentialsPage() {
             });
 
             if (!res.ok) {
-                const err = await res.json();
-                setMessage({ type: 'error', text: err.error || 'Failed to generate keys' });
+                const text = await res.text();
+                let errorMsg = `Server error (${res.status})`;
+                try {
+                    const err = JSON.parse(text);
+                    errorMsg = err.error || err.message || errorMsg;
+                } catch {
+                    // Response isn't JSON - use status text
+                    errorMsg = `${res.statusText || 'Server error'} (${res.status})`;
+                }
+                setMessage({ type: 'error', text: errorMsg });
                 return;
             }
 
@@ -307,8 +315,9 @@ export function AdminCredentialsPage() {
 
             // Refresh to show updated status
             fetchCredentials();
-        } catch (err) {
-            setMessage({ type: 'error', text: 'Network error generating keys' });
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Network error generating keys';
+            setMessage({ type: 'error', text: `Failed to generate keys: ${errorMessage}` });
         } finally {
             setGenerating(false);
         }

@@ -90,7 +90,9 @@ export class LTVAnalyzer {
         };
 
         try {
-            // Get all customers with their order history
+            // Get customers with their order history (limit to prevent OOM)
+            // For very large accounts, we sample the most recent customers
+            const MAX_CUSTOMERS = 10000;
             const customers = await prisma.wooCustomer.findMany({
                 where: { accountId },
                 select: {
@@ -100,14 +102,17 @@ export class LTVAnalyzer {
                     totalSpent: true,
                     ordersCount: true,
                     createdAt: true
-                }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: MAX_CUSTOMERS
             });
 
             if (customers.length === 0) {
                 return result;
             }
 
-            // Get all orders for order date analysis
+            // Get orders for order date analysis (limit to recent orders)
+            const MAX_ORDERS = 20000;
             const orders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
@@ -119,10 +124,12 @@ export class LTVAnalyzer {
                     dateCreated: true,
                     rawData: true
                 },
-                orderBy: { dateCreated: 'asc' }
+                orderBy: { dateCreated: 'desc' },
+                take: MAX_ORDERS
             });
 
-            // Get first-touch attribution for customers
+            // Get first-touch attribution for customers (limit events)
+            const MAX_EVENTS = 20000;
             const purchaseEvents = await prisma.analyticsEvent.findMany({
                 where: {
                     session: { accountId },
@@ -136,7 +143,8 @@ export class LTVAnalyzer {
                         }
                     }
                 },
-                orderBy: { createdAt: 'asc' }
+                orderBy: { createdAt: 'desc' },
+                take: MAX_EVENTS
             });
 
             // Build customer -> first acquisition channel map

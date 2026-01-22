@@ -12,8 +12,9 @@ import { RefreshCw, AlertTriangle, Download, X, Sparkles } from 'lucide-react';
  * - Force update option for critical updates
  */
 
-// Current app version - UPDATE THIS ON EACH RELEASE
-export const APP_VERSION = '2026.01.17.1';
+// Vite-injected build version (auto-generated at build time)
+declare const __APP_VERSION__: string;
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2026.01.22';
 
 interface UpdateInfo {
     type: 'minor' | 'major' | 'critical';
@@ -185,7 +186,7 @@ export function usePWAUpdate() {
     const checkVersion = async () => {
         try {
             // Check version from server
-            const response = await fetch('/api/version', {
+            const response = await fetch('/health/version', {
                 headers: { 'Cache-Control': 'no-cache' }
             }).catch(() => null);
 

@@ -66,9 +66,13 @@ function getDateRangeForDays(days: number, timezone: string = 'Australia/Sydney'
  * Get revenue analytics: AOV, total, by source.
  * Uses WooCommerce orders as the primary source of truth for revenue totals,
  * enriched with analytics session data for attribution when available.
+ * Days parameter is capped at 365 to prevent unbounded queries.
  */
 export async function getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-    const { startDate, endDate } = getDateRangeForDays(days, timezone);
+    // Cap days to prevent unbounded queries
+    const MAX_DAYS = 365;
+    const cappedDays = Math.min(Math.abs(days), MAX_DAYS);
+    const { startDate, endDate } = getDateRangeForDays(cappedDays === days ? days : cappedDays, timezone);
 
     // Primary source: WooCommerce orders
     const orders = await prisma.wooOrder.findMany({

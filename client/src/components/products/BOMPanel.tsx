@@ -109,50 +109,89 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                     results = [...results, ...internalProducts];
                 }
 
-                // Smart sorting: prioritize products/variants that match the search term in name, SKU, or variant attributes
-                const searchLower = searchTerm.toLowerCase().trim();
+                /**
+                 * Smart sorting: prioritize products matching more search words.
+                 * For "hoodie small", products with "Hoodie" in name AND "Small" variant rank highest.
+                 */
+                const searchWords = searchTerm.toLowerCase().trim().split(/\s+/).filter(w => w.length > 0);
+
                 const sortedResults = results.sort((a, b) => {
                     /**
-                     * Calculates a relevance score for a product based on how well it matches the search term.
-                     * Lower scores = higher priority (sorted ascending).
+                     * Calculates relevance score based on how many search words match.
+                     * Higher match count = lower score = higher priority.
                      */
                     const getRelevanceScore = (product: any): number => {
                         const nameLower = (product.name || '').toLowerCase();
                         const skuLower = (product.sku || '').toLowerCase();
 
-                        // Exact name/SKU match gets highest priority
-                        if (nameLower === searchLower || skuLower === searchLower) return 0;
+                        // Gather all variant attribute strings for this product
+                        const variantStrings: string[] = (product.searchableVariants || []).map((v: any) =>
+                            `${(v.attributeString || '')} ${(v.sku || '')}`.toLowerCase()
+                        );
 
-                        // Name starts with search term
-                        if (nameLower.startsWith(searchLower)) return 1;
+                        // Count how many search words match in name, SKU, or variants
+                        let matchCount = 0;
+                        let variantMatchCount = 0;
 
-                        // SKU starts with search term
-                        if (skuLower.startsWith(searchLower)) return 2;
+                        for (const word of searchWords) {
+                            const matchesName = nameLower.includes(word);
+                            const matchesSku = skuLower.includes(word);
+                            const matchesVariant = variantStrings.some(vs => vs.includes(word));
 
-                        // Check variant attributes for matches (e.g., "2XL" in size)
-                        if (product.searchableVariants?.length > 0) {
-                            const hasMatchingVariant = product.searchableVariants.some((v: any) => {
-                                const attrString = (v.attributeString || '').toLowerCase();
-                                const variantSku = (v.sku || '').toLowerCase();
-                                return attrString.includes(searchLower) || variantSku.includes(searchLower);
-                            });
-                            if (hasMatchingVariant) return 3;
+                            if (matchesName || matchesSku) {
+                                matchCount++;
+                            }
+                            if (matchesVariant) {
+                                variantMatchCount++;
+                            }
                         }
 
-                        // Name contains search term
-                        if (nameLower.includes(searchLower)) return 4;
+                        // Total matches (name/SKU + variants contribute)
+                        const totalMatches = matchCount + variantMatchCount;
 
-                        // SKU contains search term
-                        if (skuLower.includes(searchLower)) return 5;
+                        // Higher total matches = lower (better) score
+                        // Use negative to invert: more matches = more negative = sorts first
+                        // Then add secondary criteria for tie-breaking
+                        if (totalMatches === 0) return 1000; // No matches at all
 
-                        // Fallback
-                        return 10;
+                        // Base score: negative match count (more matches = lower score)
+                        let score = -totalMatches * 100;
+
+                        // Bonus for name matching more words (prioritize main product name matches)
+                        score -= matchCount * 10;
+
+                        // Slight bonus if name starts with first search word
+                        if (searchWords.length > 0 && nameLower.startsWith(searchWords[0])) {
+                            score -= 5;
+                        }
+
+                        return score;
                     };
 
                     return getRelevanceScore(a) - getRelevanceScore(b);
                 });
 
-                setSearchResults(sortedResults);
+                // Also sort variants within each product so matching variants appear first
+                const sortedWithVariants = sortedResults.map((product: any) => {
+                    if (!product.searchableVariants || product.searchableVariants.length === 0) {
+                        return product;
+                    }
+
+                    const sortedVariants = [...product.searchableVariants].sort((va: any, vb: any) => {
+                        const aStr = `${(va.attributeString || '')} ${(va.sku || '')}`.toLowerCase();
+                        const bStr = `${(vb.attributeString || '')} ${(vb.sku || '')}`.toLowerCase();
+
+                        // Count how many search words each variant matches
+                        const aMatches = searchWords.filter(w => aStr.includes(w)).length;
+                        const bMatches = searchWords.filter(w => bStr.includes(w)).length;
+
+                        return bMatches - aMatches; // Higher matches first
+                    });
+
+                    return { ...product, searchableVariants: sortedVariants };
+                });
+
+                setSearchResults(sortedWithVariants);
             } catch (err) {
                 Logger.error('Failed to search products', { error: err });
             }

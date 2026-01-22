@@ -78,7 +78,8 @@ export class ProductOpportunityAnalyzer {
 
             const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-            // Get all products with their COGS data
+            // Get products with their COGS data (limit to prevent OOM on very large catalogs)
+            const MAX_PRODUCTS = 5000;
             const products = await prisma.wooProduct.findMany({
                 where: { accountId },
                 select: {
@@ -88,7 +89,9 @@ export class ProductOpportunityAnalyzer {
                     price: true,
                     cogs: true,
                     stockStatus: true
-                }
+                },
+                orderBy: { wooId: 'desc' },
+                take: MAX_PRODUCTS
             });
 
             result.summary.totalProductsAnalyzed = products.length;

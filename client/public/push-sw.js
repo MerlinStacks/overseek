@@ -10,8 +10,9 @@
  * IMPORTANT: Update CACHE_VERSION on each deployment to bust caches.
  */
 
-// Cache version - UPDATE THIS ON EVERY DEPLOYMENT
-const CACHE_VERSION = '2026-01-19-v1';
+// Cache version - AUTOMATICALLY SET AT BUILD TIME
+// The __BUILD_TIMESTAMP__ placeholder is replaced by Vite during build
+const CACHE_VERSION = '__BUILD_TIMESTAMP__';
 const CACHE_NAME = `overseek-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 const SYNC_TAG = 'sync-offline-actions';

@@ -58,34 +58,50 @@ export class OrderSync extends BaseSync {
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
 
-            // Batch prepare upsert operations
-            const upsertOperations = orders.map((order) => {
-                wooOrderIds.add(order.id);
-                return prisma.wooOrder.upsert({
-                    where: { accountId_wooId: { accountId, wooId: order.id } },
-                    update: {
-                        status: order.status.toLowerCase(),
-                        total: order.total === '' ? '0' : order.total,
-                        currency: order.currency,
-                        dateModified: new Date(order.date_modified || new Date()),
-                        rawData: order as any
-                    },
-                    create: {
-                        accountId,
-                        wooId: order.id,
-                        number: order.number,
-                        status: order.status.toLowerCase(),
-                        total: order.total === '' ? '0' : order.total,
-                        currency: order.currency,
-                        dateCreated: new Date(order.date_created || new Date()),
-                        dateModified: new Date(order.date_modified || new Date()),
-                        rawData: order as any
-                    }
-                });
-            });
+            // Use interactive transaction with extended timeout (30s) to handle heavy load.
+            // Batch transactions ($transaction([...ops])) don't support the timeout option.
+            // Under load with Redis issues, even small batches can exceed the default 5s timeout.
+            const UPSERT_CHUNK_SIZE = 10;
+            for (let i = 0; i < orders.length; i += UPSERT_CHUNK_SIZE) {
+                const chunk = orders.slice(i, i + UPSERT_CHUNK_SIZE);
 
-            // Execute batch transaction
-            await prisma.$transaction(upsertOperations);
+                // Track IDs before transaction for recovery in case of failure
+                for (const order of chunk) {
+                    wooOrderIds.add(order.id);
+                }
+
+                await prisma.$transaction(
+                    async (tx) => {
+                        for (const order of chunk) {
+                            await tx.wooOrder.upsert({
+                                where: { accountId_wooId: { accountId, wooId: order.id } },
+                                update: {
+                                    status: order.status.toLowerCase(),
+                                    total: order.total === '' ? '0' : order.total,
+                                    currency: order.currency,
+                                    dateModified: new Date(order.date_modified || new Date()),
+                                    rawData: order as any
+                                },
+                                create: {
+                                    accountId,
+                                    wooId: order.id,
+                                    number: order.number,
+                                    status: order.status.toLowerCase(),
+                                    total: order.total === '' ? '0' : order.total,
+                                    currency: order.currency,
+                                    dateCreated: new Date(order.date_created || new Date()),
+                                    dateModified: new Date(order.date_modified || new Date()),
+                                    rawData: order as any
+                                }
+                            });
+                        }
+                    },
+                    {
+                        timeout: 30000, // 30 seconds - sufficient for 10 upserts under heavy load
+                        maxWait: 10000  // Max 10s to acquire a connection from the pool
+                    }
+                );
+            }
 
             // Fetch tags for all orders in batch
             let orderTagsMap: Map<number, string[]> | undefined;

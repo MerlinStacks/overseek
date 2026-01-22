@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import fs from 'fs'
 import { createRequire } from 'module'
 import { visualizer } from 'rollup-plugin-visualizer'
 
@@ -14,6 +15,24 @@ export default defineConfig(({ mode }) => {
         plugins: [
             react(),
             tailwindcss(),
+            // Auto-version the service worker on each build to bust caches
+            // Uses writeBundle hook since public/ files are copied, not transformed
+            {
+                name: 'sw-version',
+                writeBundle: {
+                    sequential: true,
+                    handler() {
+                        const swPath = path.join(__dirname, 'dist', 'push-sw.js');
+                        if (fs.existsSync(swPath)) {
+                            let content = fs.readFileSync(swPath, 'utf-8');
+                            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                            content = content.replaceAll('__BUILD_TIMESTAMP__', timestamp);
+                            fs.writeFileSync(swPath, content);
+                            console.log(`[sw-version] Service worker versioned: ${timestamp}`);
+                        }
+                    }
+                }
+            },
             // Bundle analyzer - run with: ANALYZE=true npm run build
             env.ANALYZE === 'true' && visualizer({
                 open: true,
@@ -22,6 +41,10 @@ export default defineConfig(({ mode }) => {
                 brotliSize: true,
             }),
         ].filter(Boolean),
+        // Auto-generate app version at build time for PWA update detection
+        define: {
+            __APP_VERSION__: JSON.stringify(new Date().toISOString().split('T')[0].replace(/-/g, '.'))
+        },
         resolve: {
             dedupe: [
                 'react',
@@ -58,6 +81,12 @@ export default defineConfig(({ mode }) => {
             port: parseInt(env.PORT) || 5173,
             watch: {
                 usePolling: true
+            },
+            // Disable caching for critical files to prevent stale asset issues
+            headers: {
+                'Cache-Control': 'no-store, no-cache, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             },
             proxy: {
                 '/uploads': {

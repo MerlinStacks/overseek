@@ -31,8 +31,9 @@ import { ImplementationGuideModal } from '../components/marketing/Implementation
 import { StrategicThemeCard, StrategicTheme } from '../components/marketing/StrategicThemeCard';
 import { ActionableChangeCard } from '../components/marketing/ActionableChangeCard';
 
-// Cache duration: 5 minutes (in milliseconds)
-const CACHE_DURATION_MS = 5 * 60 * 1000;
+// Cache duration: 15 minutes for stale threshold (in milliseconds)
+// Data older than this triggers a background refresh
+const STALE_THRESHOLD_MS = 15 * 60 * 1000;
 const CACHE_KEY_PREFIX = 'adai_suggestions_';
 
 interface CachedData {
@@ -140,34 +141,14 @@ export function AdAIPage() {
     const [guideModalOpen, setGuideModalOpen] = useState(false);
     const [activeGuideRec, setActiveGuideRec] = useState<ActionableRecommendation | null>(null);
 
-    const fetchSuggestions = useCallback(async (isRefresh = false) => {
-        if (!currentAccount || !token) return;
+    /**
+     * Fetch fresh data from API and update cache
+     * Why: Separated to allow background revalidation without blocking UI
+     */
+    const fetchFromApi = useCallback(async (isBackgroundRefresh = false): Promise<SuggestionsData | null> => {
+        if (!currentAccount || !token) return null;
 
         const cacheKey = `${CACHE_KEY_PREFIX}${currentAccount.id}`;
-
-        // Check cache first (unless explicitly refreshing)
-        if (!isRefresh) {
-            try {
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    const parsedCache: CachedData = JSON.parse(cached);
-                    const now = Date.now();
-
-                    if (parsedCache.accountId === currentAccount.id &&
-                        (now - parsedCache.timestamp) < CACHE_DURATION_MS) {
-                        setData(parsedCache.data);
-                        setError(null);
-                        setLoading(false);
-                        return;
-                    }
-                }
-            } catch (e) {
-                // Cache read failed, continue to fetch
-            }
-        }
-
-        if (isRefresh) setRefreshing(true);
-        else setLoading(true);
 
         try {
             const res = await fetch('/api/dashboard/ad-suggestions', {
@@ -178,9 +159,8 @@ export function AdAIPage() {
             });
             if (res.ok) {
                 const result = await res.json();
-                setData(result);
-                setError(null);
 
+                // Update cache
                 try {
                     const cacheEntry: CachedData = {
                         data: result,
@@ -191,16 +171,81 @@ export function AdAIPage() {
                 } catch (e) {
                     // Cache write failed, ignore
                 }
+
+                return result;
+            }
+            return null;
+        } catch (err) {
+            Logger.error('Failed to fetch ad suggestions', { error: err, isBackground: isBackgroundRefresh });
+            return null;
+        }
+    }, [currentAccount, token]);
+
+    /**
+     * Stale-while-revalidate pattern:
+     * 1. Show cached data immediately if available (instant load)
+     * 2. If cache is stale, refresh in background without spinner
+     * 3. Only show loading spinner if no cached data exists
+     */
+    const fetchSuggestions = useCallback(async (isManualRefresh = false) => {
+        if (!currentAccount || !token) return;
+
+        const cacheKey = `${CACHE_KEY_PREFIX}${currentAccount.id}`;
+
+        // For manual refresh, show refreshing indicator and fetch fresh
+        if (isManualRefresh) {
+            setRefreshing(true);
+            const freshData = await fetchFromApi(false);
+            if (freshData) {
+                setData(freshData);
+                setError(null);
             } else {
                 setError('Failed to load suggestions');
             }
-        } catch (err) {
-            setError('Failed to load suggestions');
-        } finally {
-            setLoading(false);
             setRefreshing(false);
+            return;
         }
-    }, [currentAccount, token]);
+
+        // Check cache first
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const parsedCache: CachedData = JSON.parse(cached);
+                const now = Date.now();
+                const cacheAge = now - parsedCache.timestamp;
+
+                if (parsedCache.accountId === currentAccount.id) {
+                    // Show cached data immediately (no loading spinner)
+                    setData(parsedCache.data);
+                    setError(null);
+                    setLoading(false);
+
+                    // If stale, revalidate in background silently
+                    if (cacheAge >= STALE_THRESHOLD_MS) {
+                        fetchFromApi(true).then(freshData => {
+                            if (freshData) {
+                                setData(freshData);
+                            }
+                        });
+                    }
+                    return;
+                }
+            }
+        } catch (e) {
+            // Cache read failed, continue to fetch
+        }
+
+        // No valid cache - show loading and fetch
+        setLoading(true);
+        const freshData = await fetchFromApi(false);
+        if (freshData) {
+            setData(freshData);
+            setError(null);
+        } else {
+            setError('Failed to load suggestions');
+        }
+        setLoading(false);
+    }, [currentAccount, token, fetchFromApi]);
 
     useEffect(() => {
         fetchSuggestions();

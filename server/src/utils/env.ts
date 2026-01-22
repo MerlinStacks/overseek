@@ -67,10 +67,26 @@ export function validateEnvironment(): void {
     Logger.info('[ENV] Environment validation passed');
 
     // JWT diagnostic fingerprint (safe to log - just a hash of first 8 chars)
+    // CRITICAL: All containers MUST have identical JWT_SECRET to share sessions
     const jwtSecret = process.env.JWT_SECRET;
     if (jwtSecret) {
         const fingerprint = crypto.createHash('sha256').update(jwtSecret.substring(0, 8)).digest('hex').substring(0, 12);
-        Logger.warn('[ENV] JWT_SECRET fingerprint', { fingerprint, length: jwtSecret.length });
+
+        // Validate JWT secret strength (minimum 32 characters for production)
+        if (jwtSecret.length < 32 && process.env.NODE_ENV === 'production') {
+            Logger.error('[ENV] JWT_SECRET is too short for production (minimum 32 characters)', {
+                length: jwtSecret.length,
+                fingerprint
+            });
+            throw new Error('JWT_SECRET must be at least 32 characters in production');
+        }
+
+        // Log fingerprint at INFO level for multi-container debugging
+        Logger.info('[ENV] JWT_SECRET fingerprint for multi-container validation', {
+            fingerprint,
+            length: jwtSecret.length,
+            tip: 'All containers must show the same fingerprint to share sessions'
+        });
     }
 
     // DEVELOPMENT OVERRIDES

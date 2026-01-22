@@ -33,6 +33,9 @@ export class JanitorService {
             // 4. Prune old sync logs (> 30 days)
             deleted.syncLogs = await this.pruneSyncLogs(30);
 
+            // 5. Prune notification delivery logs (> 30 days)
+            deleted.notificationDeliveries = await this.pruneNotificationDeliveries(30);
+
             Logger.info('Janitor cleanup complete', { deleted });
         } catch (error) {
             Logger.error('Janitor cleanup failed', { error });
@@ -130,6 +133,24 @@ export class JanitorService {
         });
 
         Logger.debug(`Pruned ${result.count} sync logs older than ${daysOld} days`);
+        return result.count;
+    }
+
+    /**
+     * Prune notification delivery logs older than specified days.
+     * These are debug logs for tracking push/in-app delivery, not user-facing.
+     */
+    private static async pruneNotificationDeliveries(daysOld: number): Promise<number> {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - daysOld);
+
+        const result = await prisma.notificationDelivery.deleteMany({
+            where: {
+                createdAt: { lt: cutoff }
+            }
+        });
+
+        Logger.debug(`Pruned ${result.count} notification delivery logs older than ${daysOld} days`);
         return result.count;
     }
 }

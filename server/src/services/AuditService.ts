@@ -1,6 +1,38 @@
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 
+/**
+ * Standardized audit action constants for consistent logging.
+ */
+export const AuditActions = {
+    // Team management
+    TEAM_MEMBER_INVITED: 'TEAM_MEMBER_INVITED',
+    TEAM_MEMBER_REMOVED: 'TEAM_MEMBER_REMOVED',
+    ROLE_CHANGED: 'ROLE_CHANGED',
+    CUSTOM_ROLE_CREATED: 'CUSTOM_ROLE_CREATED',
+    CUSTOM_ROLE_UPDATED: 'CUSTOM_ROLE_UPDATED',
+    CUSTOM_ROLE_DELETED: 'CUSTOM_ROLE_DELETED',
+
+    // Security
+    TWO_FACTOR_ENABLED: 'TWO_FACTOR_ENABLED',
+    TWO_FACTOR_DISABLED: 'TWO_FACTOR_DISABLED',
+    PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+    LOGIN_SUCCESS: 'LOGIN_SUCCESS',
+    LOGIN_FAILED: 'LOGIN_FAILED',
+
+    // Credentials
+    CREDENTIALS_CREATED: 'CREDENTIALS_CREATED',
+    CREDENTIALS_UPDATED: 'CREDENTIALS_UPDATED',
+    CREDENTIALS_DELETED: 'CREDENTIALS_DELETED',
+
+    // Account settings
+    ACCOUNT_UPDATED: 'ACCOUNT_UPDATED',
+    WOOCOMMERCE_CONNECTED: 'WOOCOMMERCE_CONNECTED',
+    EMAIL_SETTINGS_UPDATED: 'EMAIL_SETTINGS_UPDATED',
+} as const;
+
+export type AuditAction = typeof AuditActions[keyof typeof AuditActions];
+
 export class AuditService {
     /**
      * Log an action to the Audit Trail.

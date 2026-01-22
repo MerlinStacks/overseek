@@ -2,6 +2,7 @@ import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
 import https from 'https';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { retryWithBackoff, isRetryableError } from '../utils/retryWithBackoff';
 
 // Mock data removed - demo mode is currently disabled (see isDemo flag)
 type MockProduct = { id: number; name: string; price: string };
@@ -96,32 +97,26 @@ export class WooService {
         });
     }
 
+    /**
+     * Execute a WooCommerce API request with automatic retry on transient failures.
+     * Uses exponential backoff with jitter for rate limits and network errors.
+     */
     private async requestWithRetry(method: string, endpoint: string, params: any = {}): Promise<any> {
-        let retries = 0;
-        while (retries < this.maxRetries) {
-            try {
+        return retryWithBackoff(
+            async () => {
                 const response = await this.api.get(endpoint, params);
                 return {
                     data: response.data,
                     total: parseInt(response.headers['x-wp-total'] || '0', 10),
                     totalPages: parseInt(response.headers['x-wp-totalpages'] || '0', 10)
                 };
-            } catch (error: any) {
-                // Check for 429 Too Many Requests
-                if (error.response && error.response.status === 429) {
-                    retries++;
-                    const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2s, 4s, 8s
-                    Logger.warn(`Rate limited on ${endpoint}. Retrying in ${waitTime}ms`, { endpoint, waitTime });
-                    await new Promise(resolve => setTimeout(resolve, waitTime));
-                    continue;
-                }
-
-                // Throw specific error for other cases
-                Logger.error(`Error fetching ${endpoint}`, { error: error.message });
-                throw error;
+            },
+            {
+                maxRetries: this.maxRetries,
+                baseDelayMs: 1000,
+                context: `WooCommerce:${endpoint}`
             }
-        }
-        throw new Error(`Failed to fetch ${endpoint} after ${this.maxRetries} retries`);
+        );
     }
 
     async getOrders(params: { after?: string; page?: number; per_page?: number } = {}) {
