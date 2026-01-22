@@ -37,6 +37,82 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 };
 
 /**
+ * Safely converts any value to a displayable string
+ * Handles nested objects, arrays, and primitive types
+ */
+const safeStringify = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    if (Array.isArray(val)) return val.map(v => safeStringify(v)).join(', ');
+    if (typeof val === 'object') {
+        const entries = Object.entries(val);
+        if (entries.length === 0) return '';
+        return entries.map(([_k, v]) => safeStringify(v)).filter(Boolean).join(', ');
+    }
+    return String(val);
+};
+
+/**
+ * Extracts user-facing metadata from an order line item
+ * Filters out internal plugin/system keys and returns label/value pairs
+ */
+const getItemMeta = (item: any): { label: string; value: string }[] => {
+    const meta: { label: string; value: string }[] = [];
+
+    // Keys to always exclude (internal plugin/system keys)
+    const excludedKeyPatterns = [
+        /^_/,                    // Internal underscore-prefixed keys
+        /^pa_/,                  // Already handled separately for variations
+        /wcpa/i,                 // WCPA plugin internal data
+        /meta_data/i,            // Nested meta references
+        /^reduced_stock/i,       // Stock management internal
+        /label_map/i,            // Internal mappings
+        /droppable/i,            // UI state fields
+    ];
+
+    const isExcludedKey = (key: string) =>
+        excludedKeyPatterns.some(pattern => pattern.test(key));
+
+    // Standard fields
+    if (item.sku) meta.push({ label: 'SKU', value: item.sku });
+
+    // Variation attributes only
+    if (item.variation_id && item.variation_id > 0) {
+        const attrs = item.meta_data?.filter((m: any) =>
+            m.key?.startsWith('pa_') || (m.display_key && !isExcludedKey(m.key || ''))
+        ) || [];
+        attrs.forEach((attr: any) => {
+            const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
+            const rawValue = attr.display_value || attr.value;
+            const strValue = safeStringify(rawValue);
+            if (strValue.length < 200) {
+                meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
+            }
+        });
+    }
+
+    // Custom meta fields - strict filtering
+    const customMeta = item.meta_data?.filter((m: any) => {
+        const key = m.key || '';
+        if (isExcludedKey(key)) return false;
+        if (!m.display_key && !m.display_value) return false;
+        return true;
+    }) || [];
+
+    customMeta.forEach((m: any) => {
+        const rawValue = m.display_value || m.value;
+        const strValue = safeStringify(rawValue);
+        if (strValue.length < 200 && strValue.length > 0) {
+            const label = m.display_key || m.key.replace(/_/g, ' ');
+            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
+        }
+    });
+
+    return meta;
+};
+
+/**
  * Generates specific invoice PDF based on layout and order data
  */
 export const generateInvoicePDF = async (order: OrderData, grid: any[], items: any[], _templateName: string = 'Invoice') => {
@@ -145,17 +221,39 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                 }
             }
 
-            // Render business details (right side)
+            // Render business details (right-aligned within header bounds)
             if (itemConfig.businessDetails) {
-                const textX = x + (w * 0.35); // Start after logo area
-                const textWidth = w * 0.65;
-                doc.setFontSize(10);
-                doc.setFont("helvetica", "normal");
+                // Right-align business details to header element's right edge
+                // This respects the element bounds set in the designer
+                const textX = x + w; // Right edge of the header element
+
+                // Dynamic font sizing based on header height
+                // Calculate based on number of lines and available height
                 const lines = itemConfig.businessDetails.split('\n');
-                let currentY = y + 5;
+                const lineCount = lines.length || 1;
+
+                // Calculate optimal font size to fit content in available height
+                // Each line needs ~1.2x font size in mm for proper spacing
+                // h is in mm, we need pt (1mm ≈ 2.83pt)
+                const availableHeightMM = h - 4; // Leave 4mm padding (2mm top + 2mm bottom)
+                const lineHeightMM = availableHeightMM / lineCount;
+
+                // Convert to points and clamp between readable bounds
+                // lineHeightMM * 2.83 gives pt, divide by ~1.3 for actual font size
+                const calculatedFontSize = (lineHeightMM * 2.83) / 1.3;
+                const fontSize = Math.max(7, Math.min(12, calculatedFontSize));
+
+                // Line spacing in mm (font size in pt / 2.83 * 1.2 for spacing)
+                const lineSpacing = (fontSize / 2.83) * 1.2;
+
+                doc.setFontSize(fontSize);
+                doc.setFont("helvetica", "normal");
+
+                // Start text from top of element with small padding
+                let currentY = y + 2 + (fontSize / 2.83); // Account for baseline
                 lines.forEach((line: string) => {
-                    doc.text(line, textX, currentY, { maxWidth: textWidth });
-                    currentY += 4;
+                    doc.text(line, textX, currentY, { align: 'right' });
+                    currentY += lineSpacing;
                 });
             }
         }
@@ -290,13 +388,27 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             });
         }
         else if (type === 'order_table') {
-            // Use AutoTable with integrated totals in footer
-            const tableData = order.line_items.map(p => [
-                p.name,
-                p.quantity,
-                formatPrice(p.price, order.currency),
-                formatPrice(p.total, order.currency)
-            ]);
+            // Build table data with item metadata (SKU, variations, custom fields)
+            const tableData = order.line_items.map(p => {
+                const itemMeta = getItemMeta(p);
+                // Build description with product name and metadata
+                let description = p.name;
+                if (itemMeta.length > 0) {
+                    const metaStr = itemMeta.map(m => `${m.label}: ${m.value}`).join('\n');
+                    description = `${p.name}\n${metaStr}`;
+                }
+
+                const unitPrice = p.quantity > 0
+                    ? (parseFloat(p.total || 0) / p.quantity)
+                    : parseFloat(p.price || 0);
+
+                return [
+                    description,
+                    p.quantity,
+                    formatPrice(unitPrice, order.currency),
+                    formatPrice(p.total, order.currency)
+                ];
+            });
 
             // Calculate totals
             const subtotal = Number(order.total) - Number(order.total_tax || 0) - Number(order.shipping_total || 0);
@@ -318,13 +430,19 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                 startY: y,
                 margin: { left: x },
                 tableWidth: w,
-                head: [['Item', 'Qty', 'Price', 'Total']],
+                head: [['Description', 'Qty', 'Unit Price', 'Total']],
                 body: tableData,
                 foot: footerRows,
                 theme: 'grid',
-                styles: { fontSize: 9 },
+                styles: { fontSize: 9, cellPadding: 3 },
                 headStyles: { fillColor: [66, 66, 66] },
                 footStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0] },
+                columnStyles: {
+                    0: { cellWidth: 'auto' },  // Description column - flexible width
+                    1: { cellWidth: 15, halign: 'center' },  // Qty
+                    2: { cellWidth: 25, halign: 'right' },   // Unit Price
+                    3: { cellWidth: 25, halign: 'right' },   // Total
+                },
                 // Keep line items together - avoid page breaks within rows
                 rowPageBreak: 'avoid'
             });

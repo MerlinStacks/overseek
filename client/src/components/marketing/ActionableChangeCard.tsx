@@ -156,24 +156,14 @@ export function ActionableChangeCard({
                 </div>
             )}
 
-            {/* Action Button */}
-            {hasGuide ? (
-                <button
-                    onClick={onImplementationGuide}
-                    className="w-full py-3 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                    Implementation Guide
-                    <ArrowRight className="w-4 h-4" />
-                </button>
-            ) : (
-                <button
-                    onClick={onApply}
-                    className="w-full py-3 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                    View Details
-                    <Eye className="w-4 h-4" />
-                </button>
-            )}
+            {/* Action Button - Always opens guide modal, which handles both cases */}
+            <button
+                onClick={onImplementationGuide}
+                className="w-full py-3 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors flex items-center justify-center gap-2"
+            >
+                {hasGuide ? 'Implementation Guide' : 'View Details'}
+                {hasGuide ? <ArrowRight className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
         </div>
     );
 }

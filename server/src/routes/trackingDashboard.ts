@@ -83,7 +83,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { days?: string };
             const days = parseInt(query.days || '30');
-            return await TrackingService.getStats(accountId, days);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await TrackingService.getStats(accountId, days, timezone);
         } catch (error) {
             Logger.error('Stats Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch stats' });
@@ -96,7 +97,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { days?: string };
             const days = parseInt(query.days || '30');
-            return await TrackingService.getFunnel(accountId, days);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await TrackingService.getFunnel(accountId, days, timezone);
         } catch (error) {
             Logger.error('Funnel Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch funnel' });
@@ -123,7 +125,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { days?: string };
             const days = parseInt(query.days || '30');
-            return await TrackingService.getAttribution(accountId, days);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await TrackingService.getAttribution(accountId, days, timezone);
         } catch (error) {
             Logger.error('Attribution Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch attribution' });
@@ -136,7 +139,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { days?: string };
             const days = parseInt(query.days || '30');
-            return await TrackingService.getAbandonmentRate(accountId, days);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await TrackingService.getAbandonmentRate(accountId, days, timezone);
         } catch (error) {
             Logger.error('Abandonment Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch abandonment' });

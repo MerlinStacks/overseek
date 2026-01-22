@@ -12,26 +12,56 @@ export { getRevenue } from './RevenueMetrics';
 export { getSearches, getExitPages } from './EngagementMetrics';
 
 /**
- * Calculate proper date range based on days parameter.
- * - days = 1: Today only (from midnight local time to now)
- * - days = -1: Yesterday only (full yesterday in local time)
+ * Calculate proper date range based on days parameter and timezone.
+ * Uses the user's timezone to correctly determine "today" boundaries.
+ * - days = 1: Today only (from midnight in user's timezone to now)
+ * - days = -1: Yesterday only (full yesterday in user's timezone)
  * - days > 1: Last N days
  */
-function getDateRangeForDays(days: number): { startDate: Date; endDate: Date } {
+function getDateRangeForDays(days: number, timezone: string = 'Australia/Sydney'): { startDate: Date; endDate: Date } {
     const now = new Date();
 
+    // Helper: Get date components in the specified timezone
+    const getDatePartsInTz = (date: Date, tz: string) => {
+        const formatter = new Intl.DateTimeFormat('en-AU', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        const parts = formatter.formatToParts(date);
+        const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0');
+        return { year: get('year'), month: get('month') - 1, day: get('day') };
+    };
+
+    // Helper: Create a Date from timezone-local midnight
+    const getMidnightInTz = (year: number, month: number, day: number, tz: string): Date => {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00`;
+        const tempDate = new Date(dateStr + 'Z');
+        const tzOffset = new Date(tempDate.toLocaleString('en-US', { timeZone: tz })).getTime() -
+            new Date(tempDate.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
+        return new Date(tempDate.getTime() - tzOffset);
+    };
+
     if (days === 1) {
-        // Today: from start of today to now
-        const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        // Today: from midnight in user's timezone to now
+        const { year, month, day } = getDatePartsInTz(now, timezone);
+        const startDate = getMidnightInTz(year, month, day, timezone);
         return { startDate, endDate: now };
     } else if (days === -1) {
-        // Yesterday: full day
-        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        const startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
-        const endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+        // Yesterday: full day in user's timezone
+        const { year, month, day } = getDatePartsInTz(now, timezone);
+        const yesterdayDate = new Date(year, month, day - 1);
+        const startDate = getMidnightInTz(yesterdayDate.getFullYear(), yesterdayDate.getMonth(), yesterdayDate.getDate(), timezone);
+        const endDate = getMidnightInTz(year, month, day, timezone);
+        endDate.setMilliseconds(endDate.getMilliseconds() - 1);
         return { startDate, endDate };
     } else {
-        // Last N days: from N days ago to now
+        // Last N days: simple offset from now
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
         return { startDate, endDate: now };
     }
@@ -40,8 +70,8 @@ function getDateRangeForDays(days: number): { startDate: Date; endDate: Date } {
 /**
  * Get aggregated stats for dashboard.
  */
-export async function getStats(accountId: string, days: number = 30) {
-    const { startDate, endDate } = getDateRangeForDays(days);
+export async function getStats(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+    const { startDate, endDate } = getDateRangeForDays(days, timezone);
 
     const sessions = await prisma.analyticsSession.findMany({
         where: { accountId, createdAt: { gte: startDate, lte: endDate } },
@@ -81,8 +111,8 @@ export async function getStats(accountId: string, days: number = 30) {
 /**
  * Get funnel data for dashboard.
  */
-export async function getFunnel(accountId: string, days: number = 30) {
-    const { startDate, endDate } = getDateRangeForDays(days);
+export async function getFunnel(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+    const { startDate, endDate } = getDateRangeForDays(days, timezone);
 
     const events = await prisma.analyticsEvent.findMany({
         where: { session: { accountId }, createdAt: { gte: startDate, lte: endDate } },
@@ -114,8 +144,8 @@ export async function getFunnel(accountId: string, days: number = 30) {
 /**
  * Get attribution data: first-touch vs last-touch.
  */
-export async function getAttribution(accountId: string, days: number = 30) {
-    const { startDate, endDate } = getDateRangeForDays(days);
+export async function getAttribution(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+    const { startDate, endDate } = getDateRangeForDays(days, timezone);
 
     const sessions = await prisma.analyticsSession.findMany({
         where: { accountId, createdAt: { gte: startDate, lte: endDate } },
@@ -142,8 +172,8 @@ export async function getAttribution(accountId: string, days: number = 30) {
 /**
  * Get cart abandonment rate.
  */
-export async function getAbandonmentRate(accountId: string, days: number = 30) {
-    const { startDate, endDate } = getDateRangeForDays(days);
+export async function getAbandonmentRate(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+    const { startDate, endDate } = getDateRangeForDays(days, timezone);
 
     const events = await prisma.analyticsEvent.findMany({
         where: {

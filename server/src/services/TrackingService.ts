@@ -76,24 +76,24 @@ export class TrackingService {
         return _maskIpAddress(ip);
     }
 
-    static getStats(accountId: string, days: number = 30) {
-        return _getStats(accountId, days);
+    static getStats(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+        return _getStats(accountId, days, timezone);
     }
 
-    static getFunnel(accountId: string, days: number = 30) {
-        return _getFunnel(accountId, days);
+    static getFunnel(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+        return _getFunnel(accountId, days, timezone);
     }
 
     static getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
         return _getRevenue(accountId, days, timezone);
     }
 
-    static getAttribution(accountId: string, days: number = 30) {
-        return _getAttribution(accountId, days);
+    static getAttribution(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+        return _getAttribution(accountId, days, timezone);
     }
 
-    static getAbandonmentRate(accountId: string, days: number = 30) {
-        return _getAbandonmentRate(accountId, days);
+    static getAbandonmentRate(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+        return _getAbandonmentRate(accountId, days, timezone);
     }
 
     static getSearches(accountId: string, days: number = 30) {

@@ -427,20 +427,25 @@ export class InventoryForecastService {
             return salesMap;
         }
 
+        // Convert to Sets for O(1) lookups when processing buckets
+        const simpleProductIdSet = new Set(simpleProductWooIds);
+        const variationIdSet = new Set(variationWooIds);
+
         try {
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
 
             // Build the nested query to match either productId OR variationId
+            // ES mapping uses keyword type, so convert numeric IDs to strings
             const nestedShouldClauses: any[] = [];
             if (simpleProductWooIds.length > 0) {
                 nestedShouldClauses.push({
-                    terms: { 'line_items.productId': simpleProductWooIds }
+                    terms: { 'line_items.productId': simpleProductWooIds.map(String) }
                 });
             }
             if (variationWooIds.length > 0) {
                 nestedShouldClauses.push({
-                    terms: { 'line_items.variationId': variationWooIds }
+                    terms: { 'line_items.variationId': variationWooIds.map(String) }
                 });
             }
 
@@ -523,8 +528,9 @@ export class InventoryForecastService {
                 // Process simple products (by productId)
                 const productBuckets = dayBucket.line_items_nested?.by_product?.buckets || [];
                 for (const productBucket of productBuckets) {
-                    const productId = productBucket.key as number;
-                    if (!simpleProductWooIds.includes(productId)) continue;
+                    // ES keyword fields return string keys - convert to number for Map key
+                    const productId = Number(productBucket.key);
+                    if (isNaN(productId) || !simpleProductIdSet.has(productId)) continue;
 
                     const quantity = productBucket.total_qty?.value || 0;
                     if (quantity <= 0) continue;
@@ -538,9 +544,10 @@ export class InventoryForecastService {
                 // Process variations (by variationId)
                 const variationBuckets = dayBucket.line_items_nested?.by_variation?.buckets || [];
                 for (const variationBucket of variationBuckets) {
-                    const variationId = variationBucket.key as number;
-                    // Skip 0 (means no variation) and non-matching IDs
-                    if (variationId === 0 || !variationWooIds.includes(variationId)) continue;
+                    // ES keyword fields return string keys - convert to number for Map key
+                    const variationId = Number(variationBucket.key);
+                    // Skip NaN, 0 (means no variation), and non-matching IDs
+                    if (isNaN(variationId) || variationId === 0 || !variationIdSet.has(variationId)) continue;
 
                     const quantity = variationBucket.total_qty?.value || 0;
                     if (quantity <= 0) continue;
