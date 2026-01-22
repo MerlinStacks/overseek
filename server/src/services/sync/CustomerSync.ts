@@ -46,14 +46,16 @@ export class CustomerSync extends BaseSync {
                 continue;
             }
 
-            // Batch prepare upsert operations and execute in sub-batches to avoid transaction timeout
-            // Split into chunks of 10 to stay well within the 5-second transaction limit
+            // Batch prepare upsert operations and execute sequentially to avoid deadlocks
+            // PostgreSQL can deadlock when concurrent workers upsert on the same unique constraint
             const SUB_BATCH_SIZE = 10;
             for (let i = 0; i < customers.length; i += SUB_BATCH_SIZE) {
                 const batch = customers.slice(i, i + SUB_BATCH_SIZE);
-                const upsertOperations = batch.map((c) => {
+
+                // Execute upserts sequentially within batch to prevent lock contention
+                for (const c of batch) {
                     wooCustomerIds.add(c.id);
-                    return prisma.wooCustomer.upsert({
+                    await prisma.wooCustomer.upsert({
                         where: { accountId_wooId: { accountId, wooId: c.id } },
                         update: {
                             totalSpent: c.total_spent ?? 0,
@@ -71,10 +73,7 @@ export class CustomerSync extends BaseSync {
                             rawData: c as any
                         }
                     });
-                });
-
-                // Execute sub-batch transaction
-                await prisma.$transaction(upsertOperations);
+                }
             }
 
             // Index customers in parallel

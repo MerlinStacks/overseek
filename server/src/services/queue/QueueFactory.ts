@@ -55,12 +55,22 @@ export class QueueFactory {
     }
 
     static createWorker(name: string, processor: (job: any) => Promise<void>) {
+        // Long-running jobs (BOM_SYNC, report generation) need extended lock durations
+        // to prevent false stall detection when processing many items
+        const isLongRunning = [QUEUES.BOM_SYNC, QUEUES.REPORTS].includes(name);
+
         const worker = new Worker(name, async (job) => {
             Logger.info(`Processing Job ${job.id}`, { jobId: job.id, accountId: job.data.accountId });
             await processor(job);
         }, {
             connection: createWorkerConnection() as any,
             concurrency: QUEUE_LIMITS.WORKER_CONCURRENCY,
+            lockDuration: isLongRunning
+                ? QUEUE_LIMITS.LONG_RUNNING_LOCK_DURATION_MS
+                : QUEUE_LIMITS.DEFAULT_LOCK_DURATION_MS,
+            stalledInterval: isLongRunning
+                ? QUEUE_LIMITS.LONG_RUNNING_STALL_INTERVAL_MS
+                : QUEUE_LIMITS.DEFAULT_LOCK_DURATION_MS,
         });
 
         worker.on('completed', (job) => {

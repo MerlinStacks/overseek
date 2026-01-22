@@ -76,6 +76,12 @@ export const QUEUE_LIMITS = {
     COMPLETED_JOBS_KEEP: 100,
     /** Remove failed jobs after N seconds (24 hours) */
     FAILED_JOBS_TTL_SECONDS: 86_400,
+    /** Default lock duration in milliseconds (30 seconds) */
+    DEFAULT_LOCK_DURATION_MS: 30_000,
+    /** Extended lock duration for long-running jobs (5 minutes) */
+    LONG_RUNNING_LOCK_DURATION_MS: 300_000,
+    /** Stall check interval for long-running jobs (2 minutes) */
+    LONG_RUNNING_STALL_INTERVAL_MS: 120_000,
 } as const;
 
 // ============================================================================
