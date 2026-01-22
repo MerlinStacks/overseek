@@ -30,7 +30,8 @@ fi
 
 echo "[Startup] Database ready."
 
-# Start the application
+# Start the application with increased heap memory (4GB) to prevent OOM during heavy processing
 echo "[Startup] Starting Node.js application..."
+export NODE_OPTIONS="--max-old-space-size=4096"
 exec npm start
 

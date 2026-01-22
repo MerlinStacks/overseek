@@ -17,6 +17,9 @@ const DEFAULT_TTL = 300;
 /** Cache key prefix to namespace all cache entries */
 const CACHE_PREFIX = 'cache:';
 
+/** Maximum safe cache value size (10MB) - larger values may cause OOM during JSON.parse */
+const MAX_SAFE_CACHE_SIZE = 10 * 1024 * 1024;
+
 /**
  * Cache configuration options
  */
@@ -45,6 +48,18 @@ export async function cacheGet<T>(key: string, options?: CacheOptions): Promise<
     try {
         const cached = await redisClient.get(fullKey);
         if (cached) {
+            // Guard against massive payloads that could OOM during JSON.parse
+            if (cached.length > MAX_SAFE_CACHE_SIZE) {
+                Logger.error('[Cache] DANGEROUS: Cached value exceeds safe size limit', {
+                    key: fullKey,
+                    sizeBytes: cached.length,
+                    sizeMB: (cached.length / 1024 / 1024).toFixed(2),
+                    limitMB: (MAX_SAFE_CACHE_SIZE / 1024 / 1024).toFixed(0)
+                });
+                // Delete the corrupted/oversized entry and return null
+                await redisClient.del(fullKey);
+                return null;
+            }
             return JSON.parse(cached) as T;
         }
         return null;

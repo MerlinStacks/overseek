@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
-dotenv.config();
+// Silence dotenv v17+ stdout output to prevent corrupting Pino's JSON log stream
+dotenv.config({ quiet: true });
 
 import { appPromise, app } from './app';
 import { SchedulerService } from './services/scheduler';

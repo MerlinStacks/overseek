@@ -157,7 +157,16 @@ export class WooService {
         try {
             const cached = await redisClient.get(cacheKey);
             if (cached) {
-                return JSON.parse(cached);
+                // Guard: reject cached values over 5MB (products shouldn't be this large)
+                if (cached.length > 5 * 1024 * 1024) {
+                    Logger.warn('[WooService] Cached product exceeds safe size, skipping cache', {
+                        cacheKey,
+                        sizeMB: (cached.length / 1024 / 1024).toFixed(2)
+                    });
+                    await redisClient.del(cacheKey);
+                } else {
+                    return JSON.parse(cached);
+                }
             }
         } catch (e) {
             // Cache miss or Redis error - continue to API

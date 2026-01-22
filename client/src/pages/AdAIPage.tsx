@@ -142,22 +142,40 @@ export function AdAIPage() {
     const [activeGuideRec, setActiveGuideRec] = useState<ActionableRecommendation | null>(null);
 
     /**
-     * Fetch fresh data from API and update cache
-     * Why: Separated to allow background revalidation without blocking UI
+     * Stale-while-revalidate pattern:
+     * 1. Show cached data immediately if available (instant load)
+     * 2. If cache is stale, refresh in background without spinner
+     * 3. Only show loading spinner if no cached data exists
      */
-    const fetchFromApi = useCallback(async (isBackgroundRefresh = false): Promise<SuggestionsData | null> => {
-        if (!currentAccount || !token) return null;
+    const fetchSuggestions = useCallback(async (isManualRefresh = false) => {
+        if (!currentAccount || !token) return;
 
         const cacheKey = `${CACHE_KEY_PREFIX}${currentAccount.id}`;
 
-        try {
-            const res = await fetch('/api/dashboard/ad-suggestions', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+        /**
+         * Fetch fresh data from API and update cache
+         * Why: Inlined to avoid useCallback dependency cycle that could cause infinite re-renders
+         */
+        const fetchFromApi = async (isBackgroundRefresh = false): Promise<SuggestionsData | null> => {
+            try {
+                const res = await fetch('/api/dashboard/ad-suggestions', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+
+                if (!res.ok) {
+                    const errorBody = await res.text();
+                    Logger.error('Ad suggestions API error', {
+                        status: res.status,
+                        statusText: res.statusText,
+                        body: errorBody,
+                        isBackground: isBackgroundRefresh
+                    });
+                    return null;
                 }
-            });
-            if (res.ok) {
+
                 const result = await res.json();
 
                 // Update cache
@@ -173,24 +191,11 @@ export function AdAIPage() {
                 }
 
                 return result;
+            } catch (err) {
+                Logger.error('Failed to fetch ad suggestions', { error: err, isBackground: isBackgroundRefresh });
+                return null;
             }
-            return null;
-        } catch (err) {
-            Logger.error('Failed to fetch ad suggestions', { error: err, isBackground: isBackgroundRefresh });
-            return null;
-        }
-    }, [currentAccount, token]);
-
-    /**
-     * Stale-while-revalidate pattern:
-     * 1. Show cached data immediately if available (instant load)
-     * 2. If cache is stale, refresh in background without spinner
-     * 3. Only show loading spinner if no cached data exists
-     */
-    const fetchSuggestions = useCallback(async (isManualRefresh = false) => {
-        if (!currentAccount || !token) return;
-
-        const cacheKey = `${CACHE_KEY_PREFIX}${currentAccount.id}`;
+        };
 
         // For manual refresh, show refreshing indicator and fetch fresh
         if (isManualRefresh) {
@@ -245,7 +250,7 @@ export function AdAIPage() {
             setError('Failed to load suggestions');
         }
         setLoading(false);
-    }, [currentAccount, token, fetchFromApi]);
+    }, [currentAccount, token]);
 
     useEffect(() => {
         fetchSuggestions();
