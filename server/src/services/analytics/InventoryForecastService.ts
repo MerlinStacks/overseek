@@ -125,6 +125,15 @@ export class InventoryForecastService {
                 90 // Use 90 days for consistency with direct sales prediction window
             );
 
+            // Debug: Log BOM-derived demand calculation results
+            Logger.debug('[InventoryForecastService] BOM-derived demand calculation', {
+                accountId,
+                componentCount: componentIds.length,
+                bomMappingsFound: bomMappings.length,
+                componentsWithDerivedDemand: derivedDemandByComponent.size,
+                derivedDemandEntries: Array.from(derivedDemandByComponent.entries()).slice(0, 5)
+            });
+
             // 4. Calculate monthly seasonality from full year data (direct sales only)
             const seasonalityByProduct = this.calculateProductSeasonality(salesData);
 
@@ -713,6 +722,8 @@ export class InventoryForecastService {
      * Get BOM component mappings for managed products.
      * Returns a map of component product IDs to their parent BOM relationships.
      * This tells us which products use each component and how many units per assembly.
+     * 
+     * Handles both WooProduct components (childProductId) and InternalProduct components (internalProductId).
      */
     private static async getBOMComponentMappings(
         accountId: string,
@@ -720,13 +731,17 @@ export class InventoryForecastService {
     ): Promise<BOMComponentMapping[]> {
         if (componentProductIds.length === 0) return [];
 
-        // Find all BOMItems where childProductId is one of our managed components
+        // Find all BOMItems where childProductId OR internalProductId is one of our managed components
         const bomItems = await prisma.bOMItem.findMany({
             where: {
-                childProductId: { in: componentProductIds }
+                OR: [
+                    { childProductId: { in: componentProductIds } },
+                    { internalProductId: { in: componentProductIds } }
+                ]
             },
             select: {
                 childProductId: true,
+                internalProductId: true,
                 quantity: true,
                 wasteFactor: true,
                 bom: {
@@ -749,22 +764,36 @@ export class InventoryForecastService {
             item => item.bom.product.accountId === accountId
         );
 
-        // Group by component product ID
+        Logger.debug('[InventoryForecastService] getBOMComponentMappings query', {
+            accountId,
+            componentIdsSearched: componentProductIds.length,
+            bomItemsFound: bomItems.length,
+            accountBomItemsAfterFilter: accountBomItems.length
+        });
+
+        // Group by component product ID (either childProductId or internalProductId)
         const mappingsByComponent = new Map<string, BOMComponentMapping>();
 
         for (const item of accountBomItems) {
-            const componentId = item.childProductId!;
+            // Determine which component ID is being used
+            const componentId = item.childProductId || item.internalProductId;
+            if (!componentId) continue;
 
             if (!mappingsByComponent.has(componentId)) {
-                // Look up the component's wooId
-                const component = await prisma.wooProduct.findUnique({
-                    where: { id: componentId },
-                    select: { wooId: true }
-                });
+                // Look up the component's wooId (will be null for internal products)
+                let componentWooId = 0;
+                if (item.childProductId) {
+                    const component = await prisma.wooProduct.findUnique({
+                        where: { id: componentId },
+                        select: { wooId: true }
+                    });
+                    componentWooId = component?.wooId || 0;
+                }
+                // Internal products have no wooId, they remain 0
 
                 mappingsByComponent.set(componentId, {
                     componentProductId: componentId,
-                    componentWooId: component?.wooId || 0,
+                    componentWooId,
                     parentMappings: []
                 });
             }

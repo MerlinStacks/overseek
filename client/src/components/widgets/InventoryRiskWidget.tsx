@@ -140,7 +140,7 @@ export function InventoryRiskWidget() {
                 ))}
             </div>
 
-            <a href="/inventory" className="mt-4 flex items-center justify-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 pt-2 border-t border-gray-100">
+            <a href="/inventory/forecast" className="mt-4 flex items-center justify-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 pt-2 border-t border-gray-100">
                 View All Risks <ArrowRight size={12} />
             </a>
         </div>

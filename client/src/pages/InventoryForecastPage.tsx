@@ -254,7 +254,7 @@ export function InventoryForecastPage() {
                                 {alerts.critical.slice(0, 5).map(p => (
                                     <Link
                                         key={p.id}
-                                        to={`/inventory/product/${p.id}`}
+                                        to={`/inventory/product/${p.wooId}`}
                                         className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-red-200 rounded-lg text-sm text-red-800 hover:bg-red-100 transition-colors"
                                     >
                                         {p.name.slice(0, 30)}{p.name.length > 30 ? '...' : ''}
@@ -383,7 +383,7 @@ export function InventoryForecastPage() {
                                     {/* Name */}
                                     <td className="px-4 py-3">
                                         <Link
-                                            to={`/inventory/product/${forecast.id}`}
+                                            to={`/inventory/product/${forecast.wooId}`}
                                             className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
                                         >
                                             {forecast.name}

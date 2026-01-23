@@ -462,12 +462,17 @@ export class BOMInventorySyncService {
         failed: number;
         results: SyncResult[];
     }> {
-        // Find all BOMs with child product items for this account
+        // Find all BOMs with child product items OR internal product items for this account
         const bomsWithChildProducts = await prisma.bOM.findMany({
             where: {
                 product: { accountId },
                 items: {
-                    some: { childProductId: { not: null } }
+                    some: {
+                        OR: [
+                            { childProductId: { not: null } },
+                            { internalProductId: { not: null } }
+                        ]
+                    }
                 }
             },
             select: {

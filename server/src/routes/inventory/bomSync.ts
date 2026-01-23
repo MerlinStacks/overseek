@@ -54,7 +54,12 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             where: {
                 product: { accountId },
                 items: {
-                    some: { childProductId: { not: null } }
+                    some: {
+                        OR: [
+                            { childProductId: { not: null } },
+                            { internalProductId: { not: null } }
+                        ]
+                    }
                 }
             }
         });
@@ -130,7 +135,12 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                 where: {
                     product: { accountId },
                     items: {
-                        some: { childProductId: { not: null } }
+                        some: {
+                            OR: [
+                                { childProductId: { not: null } },
+                                { internalProductId: { not: null } }
+                            ]
+                        }
                     }
                 },
                 include: {
