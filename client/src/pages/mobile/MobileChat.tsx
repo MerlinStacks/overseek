@@ -359,9 +359,12 @@ export function MobileChat() {
     }
 
     return (
-        <div className="fixed inset-0 bg-slate-900 z-[60] flex flex-col h-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div
+            className="fixed inset-0 bg-slate-900 z-[60] flex flex-col"
+            style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
+        >
             {/* Header */}
-            <header className="bg-slate-800/90 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-3">
+            <header className="flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-3">
                 <button
                     onClick={() => navigate('/m/inbox')}
                     className="p-2 -ml-2 rounded-full hover:bg-slate-700 active:bg-slate-600 text-white"
@@ -391,18 +394,18 @@ export function MobileChat() {
                                 onClick={() => setShowMenu(false)}
                             />
                             {/* Menu */}
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-slate-800 rounded-xl shadow-xl border border-white/10 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                                 <button
                                     onClick={handleResolve}
-                                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 active:bg-gray-100"
+                                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-slate-200 hover:bg-slate-700 active:bg-slate-600"
                                 >
-                                    <CheckCircle2 size={18} className="text-emerald-600" />
+                                    <CheckCircle2 size={18} className="text-emerald-400" />
                                     <span>Mark Resolved</span>
                                 </button>
                                 {conversation?.customerEmail && (
                                     <button
                                         onClick={handleBlock}
-                                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50 active:bg-red-100"
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-400 hover:bg-red-500/20 active:bg-red-500/30"
                                     >
                                         <Ban size={18} />
                                         <span>Block Contact</span>
@@ -471,7 +474,7 @@ export function MobileChat() {
 
             {/* Message Composer */}
             <div
-                className="bg-slate-800/90 backdrop-blur-sm border-t border-white/10"
+                className="flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-t border-white/10"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
                 {/* Canned Responses Dropdown */}
@@ -515,32 +518,32 @@ export function MobileChat() {
                     <button
                         onClick={handleGenerateAIDraft}
                         disabled={isGeneratingDraft || messages.length === 0}
-                        className="p-2 rounded-full hover:bg-purple-50 active:bg-purple-100 transition-colors disabled:opacity-40"
+                        className="p-2 rounded-full hover:bg-purple-500/20 active:bg-purple-500/30 transition-colors disabled:opacity-40"
                         title="Generate AI Draft"
                     >
                         {isGeneratingDraft ? (
-                            <Loader2 size={20} className="text-purple-500 animate-spin" />
+                            <Loader2 size={20} className="text-purple-400 animate-spin" />
                         ) : (
-                            <Sparkles size={20} className="text-purple-500" />
+                            <Sparkles size={20} className="text-purple-400" />
                         )}
                     </button>
                     <button
                         onClick={() => handleInputChange('/')}
-                        className="p-2 rounded-full hover:bg-amber-50 active:bg-amber-100 transition-colors"
+                        className="p-2 rounded-full hover:bg-amber-500/20 active:bg-amber-500/30 transition-colors"
                         title="Canned Responses"
                     >
-                        <Zap size={20} className="text-amber-500" />
+                        <Zap size={20} className="text-amber-400" />
                     </button>
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploading}
-                        className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-40"
+                        className="p-2 rounded-full hover:bg-slate-600 active:bg-slate-500 transition-colors disabled:opacity-40"
                         title="Attach File"
                     >
                         {isUploading ? (
-                            <Loader2 size={20} className="text-gray-500 animate-spin" />
+                            <Loader2 size={20} className="text-slate-400 animate-spin" />
                         ) : (
-                            <Paperclip size={20} className="text-gray-500" />
+                            <Paperclip size={20} className="text-slate-400" />
                         )}
                     </button>
                 </div>

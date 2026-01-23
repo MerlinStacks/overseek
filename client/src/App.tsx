@@ -249,12 +249,14 @@ function App() {
 
                                         {/* Mobile PWA Routes */}
                                         <Route element={<ProtectedRoute />}>
+                                            {/* Full-screen chat route - outside MobileLayout to avoid nav interference */}
+                                            <Route path="/m/inbox/:id" element={<AccountGuard><MobileChat /></AccountGuard>} />
+
                                             <Route element={<MobileLayout><ErrorBoundary><Outlet /></ErrorBoundary></MobileLayout>}>
                                                 <Route path="/m/dashboard" element={<AccountGuard><MobileDashboard /></AccountGuard>} />
                                                 <Route path="/m/orders" element={<AccountGuard><MobileOrders /></AccountGuard>} />
                                                 <Route path="/m/orders/:id" element={<AccountGuard><MobileOrderDetail /></AccountGuard>} />
                                                 <Route path="/m/inbox" element={<AccountGuard><MobileInbox /></AccountGuard>} />
-                                                <Route path="/m/inbox/:id" element={<AccountGuard><MobileChat /></AccountGuard>} />
                                                 <Route path="/m/inbox/share" element={<AccountGuard><MobileShareHandler /></AccountGuard>} />
                                                 <Route path="/m/analytics" element={<AccountGuard><MobileAnalytics /></AccountGuard>} />
                                                 <Route path="/m/inventory" element={<AccountGuard><MobileInventory /></AccountGuard>} />

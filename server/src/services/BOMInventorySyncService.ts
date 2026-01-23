@@ -91,6 +91,14 @@ export class BOMInventorySyncService {
 
         // No BOM or no child product items
         if (!bom || bom.items.length === 0) {
+            Logger.debug(`[BOMInventorySync] No BOM/items for product`, {
+                accountId,
+                productId,
+                variationId,
+                productName: product.name,
+                bomFound: !!bom,
+                itemCount: bom?.items.length ?? 0
+            });
             return null;
         }
 

@@ -62,6 +62,7 @@ export function BOMSyncPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncingProductId, setSyncingProductId] = useState<string | null>(null);
     const [syncResult, setSyncResult] = useState<{ synced: number; failed: number } | null>(null);
+    const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
 
     const [stats, setStats] = useState({ total: 0, needsSync: 0, inSync: 0 });
 
@@ -95,7 +96,10 @@ export function BOMSyncPage() {
 
     async function handleSyncSingle(productId: string, variationId: number) {
         if (!currentAccount) return;
-        setSyncingProductId(`${productId}-${variationId}`);
+        const key = `${productId}-${variationId}`;
+        setSyncingProductId(key);
+        // Clear previous error for this product
+        setSyncErrors(prev => ({ ...prev, [key]: '' }));
         try {
             const res = await fetch(`/api/inventory/products/${productId}/bom/sync?variationId=${variationId}`, {
                 method: 'POST',
@@ -104,11 +108,21 @@ export function BOMSyncPage() {
                     'x-account-id': currentAccount.id
                 }
             });
-            if (res.ok) {
+            const data = await res.json();
+            if (!res.ok) {
+                // Store error for this product
+                const errorMsg = data.error || data.result?.error || 'Sync failed';
+                setSyncErrors(prev => ({ ...prev, [key]: errorMsg }));
+                Logger.error('Sync failed', { productId, variationId, error: errorMsg });
+            } else {
+                // Success - clear any previous error
+                setSyncErrors(prev => ({ ...prev, [key]: '' }));
                 await fetchPendingChanges();
                 await fetchSyncHistory();
             }
-        } catch (err) {
+        } catch (err: any) {
+            const errorMsg = err.message || 'Network error';
+            setSyncErrors(prev => ({ ...prev, [key]: errorMsg }));
             Logger.error('Failed to sync single product', { error: err });
         } finally {
             setSyncingProductId(null);
@@ -382,9 +396,11 @@ export function BOMSyncPage() {
                         <tbody className="divide-y divide-gray-100">
                             {pendingChanges.filter(item => item.needsSync).map((item) => {
                                 const diff = item.effectiveStock - (item.currentWooStock ?? 0);
-                                const isSyncingThis = syncingProductId === `${item.productId}-${item.variationId}`;
+                                const key = `${item.productId}-${item.variationId}`;
+                                const isSyncingThis = syncingProductId === key;
+                                const errorMsg = syncErrors[key];
                                 return (
-                                    <tr key={`${item.productId}-${item.variationId}`} className="hover:bg-gray-50">
+                                    <tr key={key} className="hover:bg-gray-50">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
@@ -402,6 +418,12 @@ export function BOMSyncPage() {
                                                         <div className="text-xs text-purple-600">Variant #{item.variationId}</div>
                                                     )}
                                                     {item.sku && <div className="text-xs text-gray-500 font-mono">{item.sku}</div>}
+                                                    {/* Show error message under product name */}
+                                                    {errorMsg && (
+                                                        <div className="mt-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                                                            ⚠ {errorMsg}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>

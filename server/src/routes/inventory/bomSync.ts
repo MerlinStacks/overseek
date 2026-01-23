@@ -42,6 +42,121 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
+     * GET /products/:productId/bom/diagnose
+     * Diagnose why a product's BOM sync might not be working.
+     */
+    fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/diagnose', async (request, reply) => {
+        const accountId = request.accountId!;
+        const { productId } = request.params;
+        const query = request.query as { variationId?: string };
+        const variationId = parseInt(query.variationId || '0');
+
+        try {
+            // Step 1: Check if product exists
+            const product = await prisma.wooProduct.findUnique({
+                where: { id: productId },
+                select: { id: true, wooId: true, name: true, accountId: true }
+            });
+
+            if (!product) {
+                return {
+                    status: 'error',
+                    reason: 'PRODUCT_NOT_FOUND',
+                    message: `Product with ID ${productId} does not exist in the database.`
+                };
+            }
+
+            if (product.accountId !== accountId) {
+                return {
+                    status: 'error',
+                    reason: 'WRONG_ACCOUNT',
+                    message: `Product belongs to a different account.`
+                };
+            }
+
+            // Step 2: Check if BOM exists
+            const bom = await prisma.bOM.findUnique({
+                where: {
+                    productId_variationId: { productId, variationId }
+                },
+                include: {
+                    items: {
+                        include: {
+                            childProduct: { select: { id: true, wooId: true, name: true } },
+                            childVariation: { select: { wooId: true, sku: true, stockQuantity: true } },
+                            internalProduct: { select: { id: true, name: true, stockQuantity: true } }
+                        }
+                    }
+                }
+            });
+
+            if (!bom) {
+                return {
+                    status: 'error',
+                    reason: 'NO_BOM',
+                    message: `No BOM found for product "${product.name}" with variationId=${variationId}. ` +
+                        `If this is a variation, make sure variationId matches the WooCommerce variation ID.`,
+                    productName: product.name,
+                    wooId: product.wooId,
+                    variationIdUsed: variationId
+                };
+            }
+
+            if (bom.items.length === 0) {
+                return {
+                    status: 'error',
+                    reason: 'NO_BOM_ITEMS',
+                    message: `BOM exists but has no component items. Add child products or internal products to the BOM.`,
+                    productName: product.name,
+                    bomId: bom.id
+                };
+            }
+
+            // Step 3: Categorize items
+            const wooItems = bom.items.filter(i => i.childProductId);
+            const internalItems = bom.items.filter(i => i.internalProductId);
+
+            // Step 4: Try the calculation
+            const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(productId, variationId);
+
+            return {
+                status: 'ok',
+                message: 'BOM configuration looks correct. Sync should work.',
+                productName: product.name,
+                wooId: product.wooId,
+                variationId,
+                bomId: bom.id,
+                itemBreakdown: {
+                    total: bom.items.length,
+                    wooCommerceProducts: wooItems.length,
+                    internalProducts: internalItems.length
+                },
+                items: bom.items.map(item => ({
+                    type: item.internalProductId ? 'internal' : 'woocommerce',
+                    quantity: item.quantity,
+                    childName: item.childProduct?.name || item.internalProduct?.name || 'Unknown',
+                    childStock: item.childVariation?.stockQuantity ??
+                        item.internalProduct?.stockQuantity ??
+                        'N/A (fetch from WooCommerce)'
+                })),
+                effectiveStockCalculation: calculation ? {
+                    effectiveStock: calculation.effectiveStock,
+                    currentWooStock: calculation.currentWooStock,
+                    needsSync: calculation.needsSync,
+                    components: calculation.components
+                } : 'Calculation returned null - check component stock values'
+            };
+        } catch (error: any) {
+            Logger.error('Error diagnosing BOM sync', { error, accountId, productId });
+            return reply.code(500).send({
+                status: 'error',
+                reason: 'EXCEPTION',
+                message: error.message
+            });
+        }
+    });
+
+    /**
      * POST /bom/sync-all
      * Bulk sync ALL BOM parent products for the account to WooCommerce.
      */
