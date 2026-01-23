@@ -346,7 +346,7 @@ export function MobileChat() {
 
     if (loading) {
         return (
-            <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col animate-pulse">
+            <div className="fixed inset-0 bg-slate-900 z-[60] flex flex-col animate-pulse">
                 <div className="h-16 bg-slate-800" />
                 <div className="flex-1 p-4 space-y-4">
                     <div className="h-16 bg-slate-800 rounded-2xl w-3/4" />
@@ -359,7 +359,7 @@ export function MobileChat() {
     }
 
     return (
-        <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col h-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="fixed inset-0 bg-slate-900 z-[60] flex flex-col h-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             {/* Header */}
             <header className="bg-slate-800/90 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-3">
                 <button

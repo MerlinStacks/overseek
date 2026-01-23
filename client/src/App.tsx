@@ -116,7 +116,7 @@ function AccountGuard({ children }: { children: React.ReactNode }) {
 /**
  * MobileRedirect - Redirects mobile devices from desktop routes to mobile routes.
  * 
- * Detects mobile via user-agent and standalone PWA mode.
+ * Detects mobile via user-agent and standalone PWA mode or Capacitor native context.
  * Maps common desktop routes to their /m/* equivalents.
  */
 function MobileRedirect({ children }: { children: React.ReactNode }) {
@@ -124,11 +124,15 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as any).standalone === true;
 
+    // Check if running inside Capacitor native app
+    const capacitor = (window as any).Capacitor;
+    const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
+
     // Check if mobile device
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    // Only redirect if in PWA mode, not just mobile browser
-    if (!isStandalone) {
+    // Only redirect if in PWA mode or Capacitor native, not just mobile browser
+    if (!isStandalone && !isCapacitorNative) {
         return <>{children}</>;
     }
 

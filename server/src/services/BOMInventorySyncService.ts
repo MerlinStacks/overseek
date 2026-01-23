@@ -68,13 +68,21 @@ export class BOMInventorySyncService {
             },
             include: {
                 items: {
-                    where: { childProductId: { not: null } },
+                    where: {
+                        OR: [
+                            { childProductId: { not: null } },
+                            { internalProductId: { not: null } }
+                        ]
+                    },
                     include: {
                         childProduct: {
                             select: { id: true, wooId: true, name: true }
                         },
                         childVariation: {
                             select: { wooId: true, sku: true, stockQuantity: true }
+                        },
+                        internalProduct: {
+                            select: { id: true, name: true, stockQuantity: true }
                         }
                     }
                 }
@@ -121,56 +129,72 @@ export class BOMInventorySyncService {
         let minBuildableUnits = Infinity;
 
         for (const bomItem of bom.items) {
-            if (!bomItem.childProduct) continue;
-
             const requiredQty = Number(bomItem.quantity);
             if (requiredQty <= 0) continue;
 
+            let childStock = 0;
+            let childName = '';
+            let childProductId = '';
+            let childWooId = 0;
+
             try {
-                let childStock = 0;
-                let childWooId = bomItem.childProduct.wooId;
-                let childName = bomItem.childProduct.name;
+                // Handle internal product components (priority check)
+                if (bomItem.internalProductId && bomItem.internalProduct) {
+                    childStock = bomItem.internalProduct.stockQuantity;
+                    childName = `[Internal] ${bomItem.internalProduct.name}`;
+                    childProductId = bomItem.internalProductId;
+                    childWooId = 0; // Internal products have no WooCommerce ID
+                }
+                // Handle WooCommerce product components
+                else if (bomItem.childProduct) {
+                    childProductId = bomItem.childProduct.id;
+                    childWooId = bomItem.childProduct.wooId;
+                    childName = bomItem.childProduct.name;
 
-                // Check if this is a variant component
-                if (bomItem.childVariationId && bomItem.childVariation) {
-                    childWooId = bomItem.childVariation.wooId;
-                    childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + childWooId})`;
+                    // Check if this is a variant component
+                    if (bomItem.childVariationId && bomItem.childVariation) {
+                        childWooId = bomItem.childVariation.wooId;
+                        childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + childWooId})`;
 
-                    // Fetch variant stock from WooCommerce, fallback to local data
-                    try {
-                        const variant = await wooService.getProduct(childWooId);
-                        childStock = variant.stock_quantity ?? 0;
-                    } catch {
-                        // Fallback to local data if live fetch fails
-                        childStock = bomItem.childVariation.stockQuantity ?? 0;
+                        // Fetch variant stock from WooCommerce, fallback to local data
+                        try {
+                            const variant = await wooService.getProduct(childWooId);
+                            childStock = variant.stock_quantity ?? 0;
+                        } catch {
+                            // Fallback to local data if live fetch fails
+                            childStock = bomItem.childVariation.stockQuantity ?? 0;
+                        }
+                    } else {
+                        // Standard product component
+                        try {
+                            const childWooProduct = await wooService.getProduct(childWooId);
+                            childStock = childWooProduct.stock_quantity ?? 0;
+                        } catch {
+                            // Fallback to local stockQuantity from DB if WooCommerce API fails
+                            const localProduct = await prisma.wooProduct.findUnique({
+                                where: { id: bomItem.childProduct.id },
+                                select: { stockQuantity: true }
+                            });
+                            childStock = localProduct?.stockQuantity ?? 0;
+                            Logger.warn(`[BOMInventorySync] Using local stock for child product`, {
+                                accountId,
+                                childWooId,
+                                localStock: childStock
+                            });
+                        }
                     }
                 } else {
-                    // Standard product component
-                    try {
-                        const childWooProduct = await wooService.getProduct(childWooId);
-                        childStock = childWooProduct.stock_quantity ?? 0;
-                    } catch {
-                        // Fallback to local stockQuantity from DB if WooCommerce API fails
-                        const localProduct = await prisma.wooProduct.findUnique({
-                            where: { id: bomItem.childProduct.id },
-                            select: { stockQuantity: true }
-                        });
-                        childStock = localProduct?.stockQuantity ?? 0;
-                        Logger.warn(`[BOMInventorySync] Using local stock for child product`, {
-                            accountId,
-                            childWooId,
-                            localStock: childStock
-                        });
-                    }
+                    // No valid component, skip
+                    continue;
                 }
 
                 // Calculate buildable units from this component
                 const buildableUnits = Math.floor(childStock / requiredQty);
 
                 components.push({
-                    childProductId: bomItem.childProduct.id,
-                    childName: bomItem.childProduct.name,
-                    childWooId: bomItem.childProduct.wooId,
+                    childProductId,
+                    childName,
+                    childWooId,
                     requiredQty,
                     childStock,
                     buildableUnits
@@ -182,10 +206,10 @@ export class BOMInventorySyncService {
                 }
 
             } catch (err) {
-                Logger.error(`[BOMInventorySync] Failed to process child product in BOM`, {
+                Logger.error(`[BOMInventorySync] Failed to process component in BOM`, {
                     accountId,
-                    childProductId: bomItem.childProduct.id,
-                    childWooId: bomItem.childProduct.wooId,
+                    childProductId: childProductId || bomItem.childProductId || bomItem.internalProductId,
+                    childWooId,
                     error: err
                 });
                 // Continue processing other components instead of failing entirely

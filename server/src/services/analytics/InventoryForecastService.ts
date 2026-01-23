@@ -27,6 +27,8 @@ import {
 export interface SkuForecast {
     id: string;
     wooId: number;
+    /** For variations, the parent product's WooCommerce ID for navigation */
+    parentWooId?: number;
     name: string;
     sku: string | null;
     image: string | null;
@@ -177,6 +179,7 @@ export class InventoryForecastService {
                 forecasts.push({
                     id: product.id,
                     wooId: product.wooId,
+                    parentWooId: product.parentWooId,
                     name: product.name,
                     sku: product.sku,
                     image: product.image,
@@ -293,6 +296,7 @@ export class InventoryForecastService {
     private static async getManagedStockProducts(accountId: string): Promise<Array<{
         id: string;
         wooId: number;
+        parentWooId?: number;
         name: string;
         sku: string | null;
         image: string | null;
@@ -341,6 +345,7 @@ export class InventoryForecastService {
         const result: Array<{
             id: string;
             wooId: number;
+            parentWooId?: number;
             name: string;
             sku: string | null;
             image: string | null;
@@ -405,6 +410,7 @@ export class InventoryForecastService {
                     result.push({
                         id: v.id,
                         wooId: v.wooId,
+                        parentWooId: p.wooId,
                         name: `${p.name} - ${variationSuffix}`,
                         sku: v.sku,
                         image: p.mainImage, // Use parent image for variations

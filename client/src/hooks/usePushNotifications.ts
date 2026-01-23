@@ -49,6 +49,11 @@ export function usePushNotifications(): UsePushNotificationsReturn {
             const hasSW = 'serviceWorker' in navigator;
             const hasPushManager = 'PushManager' in window;
 
+            // Detect if running inside Capacitor native app
+            // Capacitor injects a global object that we can check for
+            const capacitor = (window as any).Capacitor;
+            const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
+
             // Detect iOS
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
@@ -56,12 +61,14 @@ export function usePushNotifications(): UsePushNotificationsReturn {
             const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
                 (window.navigator as any).standalone === true;
 
-            // On iOS, push only works when installed to Home Screen as PWA
+            // On iOS, push only works when:
+            // 1. Installed to Home Screen as PWA (standalone mode), OR
+            // 2. Running inside a Capacitor native app
             // Safari in browser shows PushManager but it won't work until installed
-            if (isIOS && !isStandalone) {
+            if (isIOS && !isStandalone && !isCapacitorNative) {
                 setIsSupported(false);
                 setPermissionState('unsupported');
-                Logger.debug('[usePushNotifications] iOS detected but not in standalone mode - push not available');
+                Logger.debug('[usePushNotifications] iOS detected but not in standalone/native mode - push not available');
                 setIsLoading(false);
                 return;
             }

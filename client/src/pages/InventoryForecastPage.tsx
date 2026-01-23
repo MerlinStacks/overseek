@@ -16,6 +16,8 @@ type TrendDirection = 'up' | 'down' | 'stable';
 interface SkuForecast {
     id: string;
     wooId: number;
+    /** For variations, the parent product's WooCommerce ID for navigation */
+    parentWooId?: number;
     name: string;
     sku: string | null;
     image: string | null;
@@ -254,7 +256,7 @@ export function InventoryForecastPage() {
                                 {alerts.critical.slice(0, 5).map(p => (
                                     <Link
                                         key={p.id}
-                                        to={`/inventory/product/${p.wooId}`}
+                                        to={`/inventory/product/${p.parentWooId || p.wooId}`}
                                         className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-red-200 rounded-lg text-sm text-red-800 hover:bg-red-100 transition-colors"
                                     >
                                         {p.name.slice(0, 30)}{p.name.length > 30 ? '...' : ''}
@@ -383,7 +385,7 @@ export function InventoryForecastPage() {
                                     {/* Name */}
                                     <td className="px-4 py-3">
                                         <Link
-                                            to={`/inventory/product/${forecast.wooId}`}
+                                            to={`/inventory/product/${forecast.parentWooId || forecast.wooId}`}
                                             className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
                                         >
                                             {forecast.name}

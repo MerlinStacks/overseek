@@ -147,6 +147,9 @@ export function MobileNotifications() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as any).standalone === true;
+    // Check if running inside Capacitor native app
+    const capacitor = (window as any).Capacitor;
+    const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -162,8 +165,8 @@ export function MobileNotifications() {
             </header>
 
             <div className="p-4 space-y-4">
-                {/* iOS Not-Installed Warning */}
-                {isIOS && !isStandalone && !isSupported && (
+                {/* iOS Not-Installed Warning - only show if not in native app */}
+                {isIOS && !isStandalone && !isCapacitorNative && !isSupported && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                         <p className="font-medium text-amber-800">Add to Home Screen Required</p>
                         <p className="text-sm text-amber-700 mt-1">
