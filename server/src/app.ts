@@ -496,20 +496,6 @@ async function initializeApp() {
             }
         });
 
-        // Handle disconnect - clean up conversation presence
-        socket.on('disconnecting', async () => {
-            const rooms: string[] = Array.from(socket.rooms) as string[];
-            const convRooms = rooms.filter((r: string) => r.startsWith('conversation:'));
-
-            const { CollaborationService } = await import('./services/CollaborationService');
-            for (const room of convRooms) {
-                const conversationId = room.replace('conversation:', '');
-                await CollaborationService.leaveDocument(`conv:${conversationId}`, socket.id);
-                const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
-                io.to(room).emit('viewers:sync', viewers);
-            }
-        });
-
         socket.on('typing:start', ({ conversationId }) => {
             socket.to(`conversation:${conversationId}`).emit('typing:start', { conversationId });
         });
@@ -542,12 +528,29 @@ async function initializeApp() {
             io.to(`document:${docId}`).emit('presence:sync', presenceList);
         });
 
-        /*
+        // Heartbeat listener - clients send this every 30s to keep presence alive
+        socket.on('presence:heartbeat', async ({ docId }) => {
+            if (!docId) return;
+            const { CollaborationService } = await import('./services/CollaborationService');
+            await CollaborationService.refreshPresence(docId, socket.id);
+        });
+
+        // Handle disconnect - clean up BOTH conversation AND document presence
         socket.on('disconnecting', async () => {
             const rooms: string[] = Array.from(socket.rooms) as string[];
-            const docRooms = rooms.filter((r: any) => r.startsWith('document:'));
-
             const { CollaborationService } = await import('./services/CollaborationService');
+
+            // Clean up conversation presence
+            const convRooms = rooms.filter((r: string) => r.startsWith('conversation:'));
+            for (const room of convRooms) {
+                const conversationId = room.replace('conversation:', '');
+                await CollaborationService.leaveDocument(`conv:${conversationId}`, socket.id);
+                const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
+                io.to(room).emit('viewers:sync', viewers);
+            }
+
+            // Clean up document presence
+            const docRooms = rooms.filter((r: string) => r.startsWith('document:'));
             for (const room of docRooms) {
                 const docId = room.replace('document:', '');
                 await CollaborationService.leaveDocument(docId, socket.id);
@@ -555,7 +558,6 @@ async function initializeApp() {
                 io.to(room).emit('presence:sync', presenceList);
             }
         });
-        */
     });
 
     // --- CRON / SCHEDULERS ---

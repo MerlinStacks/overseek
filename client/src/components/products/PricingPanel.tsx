@@ -57,7 +57,12 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                                 type="number"
                                 step="0.01"
                                 value={formData.cogs}
-                                onChange={(e) => onChange && onChange({ cogs: e.target.value })}
+                                onChange={(e) => {
+                                    // Limit input length to prevent performance issues
+                                    if (e.target.value.length <= 10) {
+                                        onChange && onChange({ cogs: e.target.value });
+                                    }
+                                }}
                                 className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                                 placeholder="0.00"
                             />

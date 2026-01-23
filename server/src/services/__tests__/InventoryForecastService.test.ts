@@ -14,6 +14,13 @@ vi.mock('../../utils/prisma', () => ({
     prisma: {
         wooProduct: {
             findMany: vi.fn(),
+            findUnique: vi.fn(),
+        },
+        internalProduct: {
+            findMany: vi.fn(),
+        },
+        bOMItem: {
+            findMany: vi.fn(),
         },
     }
 }));
@@ -58,6 +65,10 @@ vi.mock('../analytics/utils/forecastUtils', () => ({
 describe('InventoryForecastService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // Set default returns for required Prisma mocks
+        (prisma.internalProduct.findMany as any).mockResolvedValue([]);
+        (prisma.bOMItem.findMany as any).mockResolvedValue([]);
+        (prisma.wooProduct.findUnique as any).mockResolvedValue(null);
     });
 
     describe('getSkuForecasts', () => {
@@ -79,7 +90,9 @@ describe('InventoryForecastService', () => {
                     sku: 'WIDGET-A',
                     mainImage: 'https://example.com/widget.jpg',
                     rawData: { manage_stock: true, stock_quantity: 50 },
-                    supplier: { leadTimeDefault: 7 }
+                    supplier: { leadTimeDefault: 7 },
+                    boms: [],
+                    variations: []
                 },
                 {
                     id: 'prod_2',
@@ -88,7 +101,9 @@ describe('InventoryForecastService', () => {
                     sku: 'WIDGET-B',
                     mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 10 },
-                    supplier: null
+                    supplier: null,
+                    boms: [],
+                    variations: []
                 }
             ]);
 
@@ -132,7 +147,9 @@ describe('InventoryForecastService', () => {
                     sku: 'WIDGET-A',
                     mainImage: null,
                     rawData: { manage_stock: false }, // Not managed
-                    supplier: null
+                    supplier: null,
+                    boms: [],
+                    variations: []
                 },
                 {
                     id: 'prod_2',
@@ -141,7 +158,9 @@ describe('InventoryForecastService', () => {
                     sku: null,
                     mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 25 },
-                    supplier: null
+                    supplier: null,
+                    boms: [],
+                    variations: []
                 }
             ]);
 
@@ -159,13 +178,15 @@ describe('InventoryForecastService', () => {
                     id: 'prod_1', wooId: 101, name: 'Low Risk',
                     sku: 'LR', mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 1000 },
-                    supplier: { leadTimeDefault: 7 }
+                    supplier: { leadTimeDefault: 7 },
+                    boms: [], variations: []
                 },
                 {
                     id: 'prod_2', wooId: 102, name: 'Critical Risk',
                     sku: 'CR', mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 5 },
-                    supplier: { leadTimeDefault: 7 }
+                    supplier: { leadTimeDefault: 7 },
+                    boms: [], variations: []
                 }
             ]);
 
@@ -183,7 +204,8 @@ describe('InventoryForecastService', () => {
                     id: 'prod_1', wooId: 101, name: 'Widget',
                     sku: 'W1', mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 50 },
-                    supplier: null
+                    supplier: null,
+                    boms: [], variations: []
                 }
             ]);
 
@@ -203,13 +225,15 @@ describe('InventoryForecastService', () => {
                     id: 'prod_1', wooId: 101, name: 'Critical Item',
                     sku: 'C1', mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 5 },
-                    supplier: { leadTimeDefault: 7 }
+                    supplier: { leadTimeDefault: 7 },
+                    boms: [], variations: []
                 },
                 {
                     id: 'prod_2', wooId: 102, name: 'Safe Item',
                     sku: 'S1', mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 500 },
-                    supplier: { leadTimeDefault: 7 }
+                    supplier: { leadTimeDefault: 7 },
+                    boms: [], variations: []
                 }
             ]);
 
@@ -240,7 +264,8 @@ describe('InventoryForecastService', () => {
                     id: 'prod_1', wooId: 101, name: 'Widget',
                     sku: 'W1', mainImage: null,
                     rawData: { manage_stock: true, stock_quantity: 50 },
-                    supplier: null
+                    supplier: null,
+                    boms: [], variations: []
                 }
             ]);
 

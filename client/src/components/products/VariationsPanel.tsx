@@ -598,7 +598,12 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                                                         <input
                                                                             type="number" step="0.01"
                                                                             value={v.cogs || ''}
-                                                                            onChange={(e) => handleFieldChange(v.id, 'cogs', e.target.value)}
+                                                                            onChange={(e) => {
+                                                                                // Limit input length to prevent performance issues
+                                                                                if (e.target.value.length <= 10) {
+                                                                                    handleFieldChange(v.id, 'cogs', e.target.value);
+                                                                                }
+                                                                            }}
                                                                             className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg"
                                                                             placeholder="0.00"
                                                                         />

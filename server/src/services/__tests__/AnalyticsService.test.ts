@@ -113,4 +113,55 @@ describe('AnalyticsService.getProfitabilityReport', () => {
         expect(result.summary.paymentFees).toBe(8);
         expect(result.summary.profit).toBe(172);
     });
+
+    it('should use variant COGS when variation_id is present', async () => {
+        const accountId = 'acc_123';
+        const startDate = new Date('2023-01-01');
+        const endDate = new Date('2023-01-31');
+
+        // Mock Order with variation
+        const mockOrders = [
+            {
+                id: 'ord_1',
+                wooId: 101,
+                number: '1001',
+                dateCreated: new Date('2023-01-10'),
+                rawData: {
+                    total: '150.00',
+                    line_items: [
+                        {
+                            product_id: 1,
+                            variation_id: 10, // This is a variant
+                            quantity: 1,
+                            total: '150.00',
+                            name: 'Product A - Size Large'
+                        }
+                    ],
+                    meta_data: []
+                }
+            }
+        ];
+        (prisma.wooOrder.findMany as any).mockResolvedValue(mockOrders);
+
+        // Parent product has COGS of 50
+        (prisma.wooProduct.findMany as any).mockResolvedValue([
+            { wooId: 1, cogs: '50.00', sku: 'A', name: 'Product A' }
+        ]);
+
+        // Variant has COGS of 75 - this should be used instead
+        (prisma.productVariation.findMany as any).mockResolvedValue([
+            { wooId: 10, cogs: '75.00', sku: 'A-L' }
+        ]);
+
+        const result = await AnalyticsService.getProfitabilityReport(accountId, startDate, endDate);
+
+        // Revenue: 150
+        // Cost should use variant COGS (75), not parent COGS (50)
+        // Profit: 150 - 75 = 75
+
+        expect(result.summary.revenue).toBe(150);
+        expect(result.summary.cost).toBe(75); // Variant COGS, not parent
+        expect(result.summary.profit).toBe(75);
+        expect(result.breakdown[0].cogsUnit).toBe(75);
+    });
 });

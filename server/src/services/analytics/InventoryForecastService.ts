@@ -32,6 +32,8 @@ export interface SkuForecast {
     image: string | null;
     currentStock: number;
     dailyDemand: number;
+    /** Demand derived from BOM consumption (parent products using this as a component) */
+    derivedDemand: number;
     forecastedDemand: number;
     daysUntilStockout: number;
     stockoutRisk: StockoutRisk;
@@ -42,6 +44,19 @@ export interface SkuForecast {
     recommendedReorderQty: number;
     supplierLeadTime: number | null;
     reorderPoint: number;
+}
+
+/** Maps a component product ID to its BOM usage across parent products */
+interface BOMComponentMapping {
+    componentProductId: string;
+    componentWooId: number;
+    parentMappings: Array<{
+        parentProductId: string;
+        parentWooId: number;
+        parentVariationId: number;
+        quantity: number; // BOMItem.quantity (how many of this component per parent unit)
+        wasteFactor: number; // BOMItem.wasteFactor (e.g., 0.10 for 10% waste)
+    }>;
 }
 
 export interface StockoutAlert {
@@ -76,6 +91,8 @@ export class InventoryForecastService {
 
     /**
      * Get forecasts for all managed-stock products.
+     * Includes BOM-derived demand: if a component is used in assembled products,
+     * the demand from parent product sales is factored into the component's forecast.
      */
     static async getSkuForecasts(
         accountId: string,
@@ -90,7 +107,7 @@ export class InventoryForecastService {
             const simpleProducts = products.filter(p => !p.isVariation);
             const variations = products.filter(p => p.isVariation);
 
-            // 2. Get historical sales data from Elasticsearch
+            // 2. Get historical sales data from Elasticsearch (direct sales)
             // Query by productId for simple products, by variationId for variations
             const salesData = await this.getHistoricalSales(
                 accountId,
@@ -99,11 +116,19 @@ export class InventoryForecastService {
                 365
             );
 
+            // 3. Get BOM component mappings and calculate derived demand
+            const componentIds = products.map(p => p.id);
+            const bomMappings = await this.getBOMComponentMappings(accountId, componentIds);
+            const derivedDemandByComponent = await this.calculateBOMDerivedDemand(
+                accountId,
+                bomMappings,
+                90 // Use 90 days for consistency with direct sales prediction window
+            );
 
-            // 3. Calculate monthly seasonality from full year data
+            // 4. Calculate monthly seasonality from full year data (direct sales only)
             const seasonalityByProduct = this.calculateProductSeasonality(salesData);
 
-            // 4. Generate forecasts for each product
+            // 5. Generate forecasts for each product
             const targetMonth = new Date().getMonth() + 1; // 1-12
             const forecasts: SkuForecast[] = [];
 
@@ -114,26 +139,30 @@ export class InventoryForecastService {
                 // Get daily sales (last 90 days for prediction)
                 const dailySales = this.aggregateToDailySales(productSales, 90);
 
-                // Predict demand
+                // Predict direct demand using ensemble algorithm
                 const prediction = predictDailyDemand(dailySales, targetMonth, seasonality);
 
-                // Calculate stockout metrics
+                // Add BOM-derived demand (already calculated as daily average)
+                const derivedDemand = derivedDemandByComponent.get(product.id) || 0;
+                const totalDailyDemand = prediction.dailyDemand + derivedDemand;
+
+                // Calculate stockout metrics using TOTAL demand (direct + derived)
                 const daysUntilStockout = calculateDaysUntilStockout(
                     product.currentStock,
-                    prediction.dailyDemand
+                    totalDailyDemand
                 );
 
                 const leadTime = product.supplierLeadTime || ANALYTICS_CONFIG.forecasting.defaultLeadTimeDays;
                 const stockoutRisk = classifyStockoutRisk(daysUntilStockout, leadTime);
 
                 const reorderQty = calculateReorderQuantity(
-                    prediction.dailyDemand,
+                    totalDailyDemand,
                     leadTime,
                     ANALYTICS_CONFIG.forecasting.safetyStockDays
                 );
 
                 const reorderPoint = Math.ceil(
-                    prediction.dailyDemand * (leadTime + ANALYTICS_CONFIG.forecasting.safetyStockDays)
+                    totalDailyDemand * (leadTime + ANALYTICS_CONFIG.forecasting.safetyStockDays)
                 );
 
                 forecasts.push({
@@ -143,8 +172,9 @@ export class InventoryForecastService {
                     sku: product.sku,
                     image: product.image,
                     currentStock: product.currentStock,
-                    dailyDemand: prediction.dailyDemand,
-                    forecastedDemand: Math.round(prediction.dailyDemand * daysToForecast),
+                    dailyDemand: totalDailyDemand,
+                    derivedDemand, // Expose how much comes from BOM consumption
+                    forecastedDemand: Math.round(totalDailyDemand * daysToForecast),
                     daysUntilStockout,
                     stockoutRisk,
                     confidence: prediction.confidence,
@@ -677,6 +707,153 @@ export class InventoryForecastService {
         }
 
         return curve;
+    }
+
+    /**
+     * Get BOM component mappings for managed products.
+     * Returns a map of component product IDs to their parent BOM relationships.
+     * This tells us which products use each component and how many units per assembly.
+     */
+    private static async getBOMComponentMappings(
+        accountId: string,
+        componentProductIds: string[]
+    ): Promise<BOMComponentMapping[]> {
+        if (componentProductIds.length === 0) return [];
+
+        // Find all BOMItems where childProductId is one of our managed components
+        const bomItems = await prisma.bOMItem.findMany({
+            where: {
+                childProductId: { in: componentProductIds }
+            },
+            select: {
+                childProductId: true,
+                quantity: true,
+                wasteFactor: true,
+                bom: {
+                    select: {
+                        productId: true,
+                        variationId: true,
+                        product: {
+                            select: {
+                                accountId: true,
+                                wooId: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Filter to only BOMs belonging to this account
+        const accountBomItems = bomItems.filter(
+            item => item.bom.product.accountId === accountId
+        );
+
+        // Group by component product ID
+        const mappingsByComponent = new Map<string, BOMComponentMapping>();
+
+        for (const item of accountBomItems) {
+            const componentId = item.childProductId!;
+
+            if (!mappingsByComponent.has(componentId)) {
+                // Look up the component's wooId
+                const component = await prisma.wooProduct.findUnique({
+                    where: { id: componentId },
+                    select: { wooId: true }
+                });
+
+                mappingsByComponent.set(componentId, {
+                    componentProductId: componentId,
+                    componentWooId: component?.wooId || 0,
+                    parentMappings: []
+                });
+            }
+
+            mappingsByComponent.get(componentId)!.parentMappings.push({
+                parentProductId: item.bom.productId,
+                parentWooId: item.bom.product.wooId,
+                parentVariationId: item.bom.variationId,
+                quantity: Number(item.quantity),
+                wasteFactor: Number(item.wasteFactor)
+            });
+        }
+
+        return Array.from(mappingsByComponent.values());
+    }
+
+    /**
+     * Calculate BOM-derived demand for components based on parent product sales.
+     * For each component, sums up: (parent daily sales × BOM quantity × (1 + wasteFactor))
+     * across all parent products that use this component.
+     * 
+     * @returns Map of component product ID → average daily derived demand
+     */
+    private static async calculateBOMDerivedDemand(
+        accountId: string,
+        bomMappings: BOMComponentMapping[],
+        days: number
+    ): Promise<Map<string, number>> {
+        const derivedDemand = new Map<string, number>();
+
+        if (bomMappings.length === 0) return derivedDemand;
+
+        // Collect all unique parent product wooIds we need to query
+        const parentWooIds = new Set<number>();
+        const parentVariationWooIds = new Set<number>();
+
+        for (const mapping of bomMappings) {
+            for (const parent of mapping.parentMappings) {
+                if (parent.parentVariationId > 0) {
+                    // This BOM is for a specific variation
+                    parentVariationWooIds.add(parent.parentVariationId);
+                } else {
+                    // This BOM is for the parent product
+                    parentWooIds.add(parent.parentWooId);
+                }
+            }
+        }
+
+        // Fetch parent sales from Elasticsearch
+        const parentSales = await this.getHistoricalSales(
+            accountId,
+            Array.from(parentWooIds),
+            Array.from(parentVariationWooIds),
+            days
+        );
+
+        // Calculate derived demand for each component
+        for (const mapping of bomMappings) {
+            let totalDerivedDemand = 0;
+
+            for (const parent of mapping.parentMappings) {
+                // Get the parent's wooId based on whether it's a parent BOM or variation BOM
+                const parentLookupId = parent.parentVariationId > 0
+                    ? parent.parentVariationId
+                    : parent.parentWooId;
+
+                const parentSalesData = parentSales.get(parentLookupId) || [];
+
+                // Calculate total units sold by parent in the period
+                const totalParentSold = parentSalesData.reduce(
+                    (sum, sale) => sum + sale.quantity,
+                    0
+                );
+
+                // Calculate average daily parent sales
+                const avgDailyParentSales = days > 0 ? totalParentSold / days : 0;
+
+                // Derived demand = parent sales × quantity per unit × (1 + waste factor)
+                const effectiveQuantity = parent.quantity * (1 + parent.wasteFactor);
+                totalDerivedDemand += avgDailyParentSales * effectiveQuantity;
+            }
+
+            // Store the total derived demand for this component
+            if (totalDerivedDemand > 0) {
+                derivedDemand.set(mapping.componentProductId, totalDerivedDemand);
+            }
+        }
+
+        return derivedDemand;
     }
 
     /**

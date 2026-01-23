@@ -137,7 +137,9 @@ export class ProductsService {
                 height: productData.height ? parseFloat(productData.height) : undefined,
                 isGoldPriceApplied: productData.isGoldPriceApplied,
                 goldPriceType: productData.goldPriceType,
-                cogs: productData.cogs ? parseFloat(productData.cogs) : undefined,
+                cogs: productData.cogs !== undefined
+                    ? (productData.cogs ? parseFloat(productData.cogs) : null)
+                    : undefined,
                 miscCosts: productData.miscCosts || undefined,
                 supplierId: productData.supplierId || null,
                 images: productData.images || undefined,
@@ -178,7 +180,7 @@ export class ProductsService {
                     await prisma.productVariation.upsert({
                         where: { productId_wooId: { productId: updated.id, wooId: v.id } },
                         update: {
-                            cogs: v.cogs ? parseFloat(v.cogs) : undefined,
+                            cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
                             miscCosts: v.miscCosts || undefined,
                             binLocation: v.binLocation,
                             isGoldPriceApplied: v.isGoldPriceApplied,
@@ -195,7 +197,7 @@ export class ProductsService {
                         create: {
                             productId: updated.id,
                             wooId: v.id,
-                            cogs: v.cogs ? parseFloat(v.cogs) : undefined,
+                            cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
                             miscCosts: v.miscCosts || undefined,
                             binLocation: v.binLocation,
                             isGoldPriceApplied: v.isGoldPriceApplied || false,
@@ -336,11 +338,16 @@ export class ProductsService {
                 return this.searchProductsFromDB(accountId, query, page, limit);
             }
 
-            // Supplement ES results with products matching variant SKU (ES doesn't index variant SKUs)
+            // Supplement ES results with products matching variant SKU or attributes (ES doesn't index these)
             if (query) {
                 try {
                     const existingProductIds = productsWithBomStatus.map((p: any) => p.id);
-                    const matchingVariants = await prisma.productVariation.findMany({
+
+                    // Split query into words for multi-word searches like "pink 2xl"
+                    const searchWords = query.toLowerCase().trim().split(/\s+/).filter(w => w.length >= 2);
+
+                    // First, find by variant SKU
+                    const skuMatches = await prisma.productVariation.findMany({
                         where: {
                             product: { accountId },
                             sku: { contains: query, mode: 'insensitive' },
@@ -351,10 +358,51 @@ export class ProductsService {
                         take: limit
                     });
 
-                    if (matchingVariants.length > 0) {
+                    // Also search variant attributes in rawData
+                    // Since Prisma can't directly query JSON attributes, we fetch all variants
+                    // and filter client-side (limited to recent products for performance)
+                    let attributeMatchProductIds: string[] = [];
+                    if (searchWords.length > 0 && existingProductIds.length < limit) {
+                        const candidateVariants = await prisma.productVariation.findMany({
+                            where: {
+                                product: { accountId },
+                                productId: { notIn: existingProductIds }
+                            },
+                            select: { productId: true, rawData: true },
+                            take: 500 // Limit for performance
+                        });
+
+                        // Filter variants where attributes match any search word
+                        const matchingProductIds = new Set<string>();
+                        for (const v of candidateVariants) {
+                            const rawData = v.rawData as any || {};
+                            const attributes = rawData.attributes || [];
+                            const attrString = attributes
+                                .map((a: any) => `${a.option || ''} ${a.value || ''}`)
+                                .join(' ')
+                                .toLowerCase();
+
+                            // Check if any search word matches the attribute string
+                            const matchCount = searchWords.filter(w => attrString.includes(w)).length;
+                            if (matchCount > 0) {
+                                matchingProductIds.add(v.productId);
+                            }
+                        }
+                        attributeMatchProductIds = Array.from(matchingProductIds);
+                    }
+
+                    // Combine SKU and attribute matches
+                    const allMatchedProductIds = [
+                        ...new Set([
+                            ...skuMatches.map(v => v.productId),
+                            ...attributeMatchProductIds
+                        ])
+                    ].filter(id => !existingProductIds.includes(id)).slice(0, limit);
+
+                    if (allMatchedProductIds.length > 0) {
                         // Fetch full product details for variant-matched products
                         const additionalProducts = await prisma.wooProduct.findMany({
-                            where: { id: { in: matchingVariants.map(v => v.productId) } },
+                            where: { id: { in: allMatchedProductIds } },
                             select: {
                                 id: true,
                                 wooId: true,
@@ -392,7 +440,7 @@ export class ProductsService {
                         productsWithBomStatus = [...productsWithBomStatus, ...mappedAdditional];
                     }
                 } catch (err) {
-                    Logger.warn('Failed to supplement ES results with variant SKU matches', { error: err });
+                    Logger.warn('Failed to supplement ES results with variant SKU/attribute matches', { error: err });
                 }
             }
 

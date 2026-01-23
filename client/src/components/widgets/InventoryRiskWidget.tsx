@@ -5,6 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
 
+/**
+ * RiskProduct - Normalized shape for widget display.
+ * Sourced from InventoryForecastService.getStockoutAlerts() SkuForecast type.
+ */
 interface RiskProduct {
     id: string;
     wooId: number;
@@ -13,6 +17,31 @@ interface RiskProduct {
     velocity: string;
     daysRemaining: number;
     image?: string;
+}
+
+/** Shape returned by /api/analytics/inventory/stockout-alerts */
+interface StockoutAlertsResponse {
+    critical: SkuForecast[];
+    high: SkuForecast[];
+    medium: SkuForecast[];
+    summary: {
+        totalAtRisk: number;
+        criticalCount: number;
+        highCount: number;
+        mediumCount: number;
+    };
+}
+
+interface SkuForecast {
+    id: string;
+    wooId: number;
+    name: string;
+    sku: string | null;
+    image: string | null;
+    currentStock: number;
+    dailyDemand: number;
+    daysUntilStockout: number;
+    stockoutRisk: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export function InventoryRiskWidget() {
@@ -25,14 +54,26 @@ export function InventoryRiskWidget() {
         if (!currentAccount || !token) return;
 
         try {
-            const res = await fetch('/api/analytics/health', {
+            // Use forecast service stockout-alerts for consistency with InventoryForecastPage
+            const res = await fetch('/api/analytics/inventory/stockout-alerts', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
                 }
             });
             if (res.ok) {
-                setProducts(await res.json());
+                const data: StockoutAlertsResponse = await res.json();
+                // Merge critical and high risk products, sorted by urgency
+                const atRisk = [...data.critical, ...data.high].map(f => ({
+                    id: f.id,
+                    wooId: f.wooId,
+                    name: f.name,
+                    stock: f.currentStock,
+                    velocity: f.dailyDemand.toFixed(2),
+                    daysRemaining: f.daysUntilStockout,
+                    image: f.image ?? undefined
+                }));
+                setProducts(atRisk);
             }
         } catch (error) {
             Logger.error('Failed to load inventory risk', { error: error });

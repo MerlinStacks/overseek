@@ -357,10 +357,10 @@ export class AnalyticsService {
         });
         const productMap = new Map(products.map(p => [p.wooId, p]));
 
-        // Variations
+        // Variations - filter by account via parent product
         const variations = await prisma.productVariation.findMany({
             where: {
-                // product: { accountId }, // safe enough for now
+                product: { accountId },
                 wooId: { in: Array.from(variationIds) }
             },
             select: { wooId: true, cogs: true, sku: true }
