@@ -175,8 +175,8 @@ export class AdCopyGenerator {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://overseek.io',
-                'X-Title': 'Overseek Ad Copy Generator'
+                'HTTP-Referer': process.env.APP_URL || 'https://localhost:3000',
+                'X-Title': `${process.env.APP_NAME || 'Commerce Platform'} Ad Copy Generator`
             },
             body: JSON.stringify({
                 model,

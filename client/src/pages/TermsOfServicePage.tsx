@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, FileText } from 'lucide-react';
+import { siteConfig } from '../config/site';
 
 export function TermsOfServicePage() {
     return (
@@ -28,17 +29,17 @@ export function TermsOfServicePage() {
 
                     <div className="p-8 prose prose-indigo max-w-none">
                         <p className="lead text-gray-600">
-                            Welcome to Overseek. By accessing or using our services, you agree to be bound by these Terms of Service. Please read them carefully.
+                            Welcome to {siteConfig.appName}. By accessing or using our services, you agree to be bound by these Terms of Service. Please read them carefully.
                         </p>
 
                         <h3>1. Acceptance of Terms</h3>
                         <p>
-                            By accessing and using Overseek ("the Service"), you accept and agree to be bound by these Terms of Service and our Privacy Policy. If you do not agree to these terms, you may not use the Service.
+                            By accessing and using {siteConfig.appName} ("the Service"), you accept and agree to be bound by these Terms of Service and our Privacy Policy. If you do not agree to these terms, you may not use the Service.
                         </p>
 
                         <h3>2. Description of Service</h3>
                         <p>
-                            Overseek provides analytics, marketing automation, and business intelligence tools for e-commerce businesses. Our services include:
+                            {siteConfig.appName} provides analytics, marketing automation, and business intelligence tools for e-commerce businesses. Our services include:
                         </p>
                         <ul>
                             <li>Website analytics and visitor tracking</li>
@@ -80,7 +81,7 @@ export function TermsOfServicePage() {
 
                         <h3>6. Intellectual Property</h3>
                         <p>
-                            The Service and its original content, features, and functionality are owned by Overseek and are protected by international copyright, trademark, and other intellectual property laws.
+                            The Service and its original content, features, and functionality are owned by {siteConfig.appName} and are protected by international copyright, trademark, and other intellectual property laws.
                         </p>
 
                         <h3>7. Data and Privacy</h3>
@@ -90,7 +91,7 @@ export function TermsOfServicePage() {
 
                         <h3>8. Limitation of Liability</h3>
                         <p>
-                            To the maximum extent permitted by law, Overseek shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred directly or indirectly.
+                            To the maximum extent permitted by law, {siteConfig.appName} shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred directly or indirectly.
                         </p>
 
                         <h3>9. Termination</h3>
@@ -110,13 +111,13 @@ export function TermsOfServicePage() {
 
                         <h3>12. Contact Us</h3>
                         <p>
-                            If you have any questions about these Terms, please contact us at <a href="mailto:legal@overseek.com">legal@overseek.com</a>.
+                            If you have any questions about these Terms, please contact us at <a href={`mailto:${siteConfig.legalEmail}`}>{siteConfig.legalEmail}</a>.
                         </p>
                     </div>
 
                     <div className="px-8 py-6 bg-gray-50 border-t border-gray-100 flex justify-center">
                         <p className="text-sm text-gray-500">
-                            © {new Date().getFullYear()} Overseek. All rights reserved.
+                            © {new Date().getFullYear()} {siteConfig.appName}. All rights reserved.
                         </p>
                     </div>
                 </div>

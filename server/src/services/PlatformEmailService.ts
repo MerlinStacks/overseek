@@ -47,7 +47,7 @@ export class PlatformEmailService {
                 username: creds.username || '',
                 password: creds.password || '',
                 fromEmail: creds.fromEmail || '',
-                fromName: creds.fromName || 'OverSeek',
+                fromName: creds.fromName || process.env.APP_NAME || 'Commerce Platform',
                 secure: creds.secure === 'true'
             };
         } catch (error) {

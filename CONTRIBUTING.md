@@ -55,8 +55,21 @@ To contribute code, please ensure your environment matches our "Iron Core" stack
 - **Node.js**: v22.x or higher (Required for Prisma 7)
 - **Database**: PostgreSQL 16+
 - **Search**: Elasticsearch 9.x
+- **Cache**: Redis 7+
 - **Backend Framework**: Fastify 5.x (We no longer use Express)
 - **Frontend Framework**: React 19.x with Vite
+
+### Getting Started
+
+```bash
+git clone https://github.com/MerlinStacks/overseek.git
+cd overseek
+npm install
+cp stack.env.example stack.env
+# Edit stack.env with your local database/Redis/ES connection details
+cd server && npx prisma migrate dev && cd ..
+npm run dev
+```
 
 Please run `npm run lint` before submitting PRs to ensure your code follows our ESLint 9 Flat Config standards.
 

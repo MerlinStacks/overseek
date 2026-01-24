@@ -7,7 +7,9 @@
     "server"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\""
+    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
+    "db:migrate": "cd server && npx prisma migrate deploy",
+    "db:generate": "cd server && npx prisma generate"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

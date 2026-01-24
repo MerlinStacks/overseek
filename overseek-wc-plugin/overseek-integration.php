@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: OverSeek Integration for WooCommerce
- * Plugin URI:  https://overseek.io
- * Description: Seamlessly integrates OverSeek analytics and live chat with your WooCommerce store. Server-side tracking, HPOS compatible.
+ * Plugin URI:  https://github.com/MerlinStacks/overseek
+ * Description: Connects your WooCommerce store to your self-hosted OverSeek server. Server-side tracking, live chat, and full data sync. Requires OverSeek server.
  * Version:     2.2.0
- * Author:      OverSeek
- * Author URI:  https://overseek.io
+ * Author:      OverSeek Contributors
+ * Author URI:  https://github.com/MerlinStacks/overseek
  * Text Domain: overseek-wc
  * Domain Path: /languages
  * WC requires at least: 7.0

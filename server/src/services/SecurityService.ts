@@ -26,7 +26,7 @@ export class SecurityService {
 
     static async generateTwoFactorSecret(user: User) {
         const secret = authenticator.generateSecret();
-        const otpauth = authenticator.keyuri(user.email, 'Overseek', secret);
+        const otpauth = authenticator.keyuri(user.email, process.env.APP_NAME || 'Commerce Platform', secret);
         const qrCodeUrl = await qrcode.toDataURL(otpauth);
 
         return {

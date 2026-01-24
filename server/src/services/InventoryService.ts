@@ -495,7 +495,7 @@ export class InventoryService {
                 </tbody>
             </table>
             ${atRisk.length > 15 ? `<p>...and ${atRisk.length - 15} more.</p>` : ''}
-            <p><a href="https://app.overseek.com/inventory">Manage Inventory</a></p>
+            <p><a href="${process.env.APP_URL || 'http://localhost:5173'}/inventory">Manage Inventory</a></p>
         `;
 
         // Resolve default email account

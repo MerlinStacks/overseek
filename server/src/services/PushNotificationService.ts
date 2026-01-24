@@ -238,7 +238,7 @@ export class PushNotificationService {
 
         // Configure web-push
         webpush.setVapidDetails(
-            'mailto:notifications@overseek.io',
+            `mailto:${process.env.CONTACT_EMAIL || 'notifications@localhost'}`,
             keys.publicKey,
             keys.privateKey
         );
@@ -364,7 +364,7 @@ export class PushNotificationService {
         }
 
         webpush.setVapidDetails(
-            'mailto:notifications@overseek.io',
+            `mailto:${process.env.CONTACT_EMAIL || 'notifications@localhost'}`,
             keys.publicKey,
             keys.privateKey
         );
@@ -442,7 +442,7 @@ export class PushNotificationService {
         }
 
         webpush.setVapidDetails(
-            'mailto:notifications@overseek.io',
+            `mailto:${process.env.CONTACT_EMAIL || 'notifications@localhost'}`,
             keys.publicKey,
             keys.privateKey
         );
@@ -520,7 +520,7 @@ export class PushNotificationService {
         if (!keys) return { sent: 0, failed: 0 };
 
         webpush.setVapidDetails(
-            'mailto:notifications@overseek.io',
+            `mailto:${process.env.CONTACT_EMAIL || 'notifications@localhost'}`,
             keys.publicKey,
             keys.privateKey
         );
@@ -565,7 +565,7 @@ export class PushNotificationService {
         }
 
         webpush.setVapidDetails(
-            'mailto:notifications@overseek.io',
+            `mailto:${process.env.CONTACT_EMAIL || 'notifications@localhost'}`,
             keys.publicKey,
             keys.privateKey
         );

@@ -14,7 +14,7 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 async function main() {
-    const email = process.env.ADMIN_EMAIL || 'admin@overseek.com';
+    const email = process.env.ADMIN_EMAIL || 'admin@localhost';
     // Use env variable or generate secure random password
     const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString('hex');
     const fullName = 'System Admin';

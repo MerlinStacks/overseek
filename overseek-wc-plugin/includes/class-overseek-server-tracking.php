@@ -28,19 +28,19 @@ class OverSeek_Server_Tracking
 
     private $api_url;
     private $account_id;
-    
+
     /**
      * Cached visitor ID to avoid repeated cookie operations.
      * @var string|null
      */
     private $visitor_id = null;
-    
+
     /**
      * Event queue for deferred sending at shutdown.
      * @var array
      */
     private $event_queue = array();
-    
+
     /**
      * Guard flags to prevent duplicate event tracking per request.
      * Some WooCommerce hooks can fire multiple times per page load.
@@ -53,16 +53,16 @@ class OverSeek_Server_Tracking
      * Key = URL parameter name, Value = platform identifier.
      */
     private static $click_id_params = array(
-        'gclid'     => 'google',    // Google Ads
-        'gbraid'    => 'google',    // Google Ads (iOS App campaigns)
-        'wbraid'    => 'google',    // Google Ads (web-to-app)
-        'dclid'     => 'google',    // Google Display & Video 360
-        'fbclid'    => 'facebook',  // Facebook/Meta Ads
-        'msclkid'   => 'microsoft', // Microsoft/Bing Ads
-        'ttclid'    => 'tiktok',    // TikTok Ads
-        'twclid'    => 'twitter',   // Twitter/X Ads
+        'gclid' => 'google',    // Google Ads
+        'gbraid' => 'google',    // Google Ads (iOS App campaigns)
+        'wbraid' => 'google',    // Google Ads (web-to-app)
+        'dclid' => 'google',    // Google Display & Video 360
+        'fbclid' => 'facebook',  // Facebook/Meta Ads
+        'msclkid' => 'microsoft', // Microsoft/Bing Ads
+        'ttclid' => 'tiktok',    // TikTok Ads
+        'twclid' => 'twitter',   // Twitter/X Ads
         'li_fat_id' => 'linkedin',  // LinkedIn Ads
-        'epik'      => 'pinterest', // Pinterest Ads
+        'epik' => 'pinterest', // Pinterest Ads
     );
 
     /**
@@ -70,10 +70,10 @@ class OverSeek_Server_Tracking
      */
     public function __construct()
     {
-        $this->api_url = untrailingslashit(get_option('overseek_api_url', 'https://api.overseek.com'));
+        $this->api_url = untrailingslashit(get_option('overseek_api_url', ''));
         $this->account_id = get_option('overseek_account_id');
 
-        if (empty($this->account_id)) {
+        if (empty($this->account_id) || empty($this->api_url)) {
             return;
         }
 
@@ -81,7 +81,7 @@ class OverSeek_Server_Tracking
         // 'init' hook fires early enough that headers haven't been sent yet.
         // This ensures the cookie is properly set and persisted across requests.
         add_action('init', array($this, 'init_visitor_cookie'), 1);
-        
+
         // Flush event queue at shutdown (non-blocking for performance)
         add_action('shutdown', array($this, 'flush_event_queue'));
 
@@ -99,7 +99,7 @@ class OverSeek_Server_Tracking
 
         // Purchase completed - most important event (classic checkout)
         add_action('woocommerce_thankyou', array($this, 'track_purchase'), 10, 1);
-        
+
         // WooCommerce Blocks checkout support (block-based checkout)
         // This hook fires when an order is placed via the Store API (Blocks checkout)
         add_action('woocommerce_store_api_checkout_order_processed', array($this, 'track_purchase_blocks'), 10, 1);
@@ -110,7 +110,7 @@ class OverSeek_Server_Tracking
 
         // Cart View - track when cart page is viewed
         add_action('woocommerce_before_cart', array($this, 'track_cart_view'));
-        
+
         // Checkout View - track when checkout page is viewed (not processing)
         add_action('woocommerce_before_checkout_form', array($this, 'track_checkout_view'));
 
@@ -119,13 +119,13 @@ class OverSeek_Server_Tracking
 
         // Review Tracking - when customers leave product reviews
         add_action('comment_post', array($this, 'track_review'), 10, 3);
-        
+
         // WooCommerce Store API (Blocks) cart update support
         // The shutdown hook may not fire reliably for REST API requests,
         // so we hook into cart response to ensure events are sent
         add_filter('woocommerce_store_api_cart_response', array($this, 'flush_on_store_api_response'), 999, 2);
     }
-    
+
     /**
      * Initialize the visitor cookie early, before any output is sent.
      * This MUST run before headers are sent to ensure cookies work.
@@ -137,37 +137,37 @@ class OverSeek_Server_Tracking
         if (is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
             return;
         }
-        
+
         // Check consent before setting any cookies
         if (!$this->has_tracking_consent()) {
             return;
         }
-        
+
         $cookie_name = '_os_vid';
-        
+
         // Check if cookie already exists
         if (isset($_COOKIE[$cookie_name]) && !empty($_COOKIE[$cookie_name])) {
             $this->visitor_id = sanitize_text_field($_COOKIE[$cookie_name]);
         } else {
             // Generate new visitor ID
             $this->visitor_id = $this->generate_uuid();
-            
+
             // Set cookie with admin-configured retention period
             $expires = time() + $this->get_cookie_retention_seconds();
             $this->set_cookie_safe($cookie_name, $this->visitor_id, $expires);
         }
-        
+
         // Persist UTM parameters in session cookie if present in URL
         // This ensures attribution survives page navigation
         $this->persist_utm_parameters();
-        
+
         // Persist click ID from ad platforms (gclid, fbclid, etc.)
         $this->persist_click_id();
-        
+
         // Persist landing page referrer (only if external)
         $this->persist_landing_referrer();
     }
-    
+
     /**
      * Persist UTM/MTM parameters from URL into a session cookie.
      * Only updates if new params are present in the URL (first-touch on landing).
@@ -177,16 +177,16 @@ class OverSeek_Server_Tracking
     {
         $utm_cookie = '_os_utm';
         $utm_params = array();
-        
+
         // Check if new UTM or MTM parameters are in the current URL
         // MTM is Matomo's rename of UTM parameters
-        $has_new_utm = isset($_GET['utm_source']) || isset($_GET['utm_medium']) || 
-                       isset($_GET['utm_campaign']) || isset($_GET['utm_content']) || 
-                       isset($_GET['utm_term']) ||
-                       isset($_GET['mtm_source']) || isset($_GET['mtm_medium']) || 
-                       isset($_GET['mtm_campaign']) || isset($_GET['mtm_content']) || 
-                       isset($_GET['mtm_cid']);
-        
+        $has_new_utm = isset($_GET['utm_source']) || isset($_GET['utm_medium']) ||
+            isset($_GET['utm_campaign']) || isset($_GET['utm_content']) ||
+            isset($_GET['utm_term']) ||
+            isset($_GET['mtm_source']) || isset($_GET['mtm_medium']) ||
+            isset($_GET['mtm_campaign']) || isset($_GET['mtm_content']) ||
+            isset($_GET['mtm_cid']);
+
         if ($has_new_utm) {
             // Capture parameters from URL (UTM takes precedence over MTM)
             // Source
@@ -219,27 +219,27 @@ class OverSeek_Server_Tracking
             } elseif (isset($_GET['mtm_cid'])) {
                 $utm_params['term'] = sanitize_text_field($_GET['mtm_cid']);
             }
-            
+
             // Store in session cookie with SameSite=Lax
             $utm_json = wp_json_encode($utm_params);
             $this->set_cookie_safe($utm_cookie, $utm_json, 0);
         }
     }
-    
+
     /**
      * Persist click ID from ad platforms (gclid, fbclid, etc.) into session cookie.
      */
     private function persist_click_id()
     {
         $click_cookie = '_os_click';
-        
+
         // Check for any known click ID parameter
         foreach (self::$click_id_params as $param => $platform) {
             if (isset($_GET[$param]) && !empty($_GET[$param])) {
                 $click_data = array(
-                    'id'       => sanitize_text_field($_GET[$param]),
+                    'id' => sanitize_text_field($_GET[$param]),
                     'platform' => $platform,
-                    'param'    => $param,
+                    'param' => $param,
                 );
                 $click_json = wp_json_encode($click_data);
                 $this->set_cookie_safe($click_cookie, $click_json, 0);
@@ -247,33 +247,33 @@ class OverSeek_Server_Tracking
             }
         }
     }
-    
+
     /**
      * Persist landing page referrer if it's from an external domain.
      */
     private function persist_landing_referrer()
     {
         $ref_cookie = '_os_lref';
-        
+
         // Only set if cookie doesn't exist (first visit in session)
         if (isset($_COOKIE[$ref_cookie]) && !empty($_COOKIE[$ref_cookie])) {
             return;
         }
-        
+
         $referrer = isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : '';
         if (empty($referrer)) {
             return;
         }
-        
+
         // Check if referrer is external (different domain)
         $site_host = wp_parse_url(home_url(), PHP_URL_HOST);
         $ref_host = wp_parse_url($referrer, PHP_URL_HOST);
-        
+
         if ($ref_host && $ref_host !== $site_host) {
             $this->set_cookie_safe($ref_cookie, $referrer, 0);
         }
     }
-    
+
     /**
      * Get persisted click ID data from cookie or URL.
      * @return array{id: string, platform: string}|array Empty array if none found.
@@ -284,27 +284,27 @@ class OverSeek_Server_Tracking
         foreach (self::$click_id_params as $param => $platform) {
             if (isset($_GET[$param]) && !empty($_GET[$param])) {
                 return array(
-                    'id'       => sanitize_text_field($_GET[$param]),
+                    'id' => sanitize_text_field($_GET[$param]),
                     'platform' => $platform,
                 );
             }
         }
-        
+
         // Fall back to cookie
         $click_cookie = '_os_click';
         if (isset($_COOKIE[$click_cookie]) && !empty($_COOKIE[$click_cookie])) {
             $click_data = json_decode(stripslashes($_COOKIE[$click_cookie]), true);
             if (is_array($click_data) && !empty($click_data['id'])) {
                 return array(
-                    'id'       => $click_data['id'],
+                    'id' => $click_data['id'],
                     'platform' => $click_data['platform'] ?? 'unknown',
                 );
             }
         }
-        
+
         return array();
     }
-    
+
     /**
      * Get persisted landing page referrer from cookie.
      * @return string The original external referrer, or empty string.
@@ -317,7 +317,7 @@ class OverSeek_Server_Tracking
         }
         return '';
     }
-    
+
     /**
      * Get persisted UTM/MTM parameters from cookie or URL.
      * Returns array with source, medium, campaign, content, term keys (if set).
@@ -326,26 +326,26 @@ class OverSeek_Server_Tracking
     private function get_utm_parameters()
     {
         $utm_cookie = '_os_utm';
-        
+
         // First check URL (takes precedence) - check both UTM and MTM
         $has_url_params = isset($_GET['utm_source']) || isset($_GET['utm_campaign']) ||
-                          isset($_GET['mtm_source']) || isset($_GET['mtm_campaign']);
-        
+            isset($_GET['mtm_source']) || isset($_GET['mtm_campaign']);
+
         if ($has_url_params) {
             return array(
-                'source' => isset($_GET['utm_source']) ? sanitize_text_field($_GET['utm_source']) 
-                          : (isset($_GET['mtm_source']) ? sanitize_text_field($_GET['mtm_source']) : null),
-                'medium' => isset($_GET['utm_medium']) ? sanitize_text_field($_GET['utm_medium']) 
-                          : (isset($_GET['mtm_medium']) ? sanitize_text_field($_GET['mtm_medium']) : null),
-                'campaign' => isset($_GET['utm_campaign']) ? sanitize_text_field($_GET['utm_campaign']) 
-                            : (isset($_GET['mtm_campaign']) ? sanitize_text_field($_GET['mtm_campaign']) : null),
-                'content' => isset($_GET['utm_content']) ? sanitize_text_field($_GET['utm_content']) 
-                           : (isset($_GET['mtm_content']) ? sanitize_text_field($_GET['mtm_content']) : null),
-                'term' => isset($_GET['utm_term']) ? sanitize_text_field($_GET['utm_term']) 
-                        : (isset($_GET['mtm_cid']) ? sanitize_text_field($_GET['mtm_cid']) : null),
+                'source' => isset($_GET['utm_source']) ? sanitize_text_field($_GET['utm_source'])
+                    : (isset($_GET['mtm_source']) ? sanitize_text_field($_GET['mtm_source']) : null),
+                'medium' => isset($_GET['utm_medium']) ? sanitize_text_field($_GET['utm_medium'])
+                    : (isset($_GET['mtm_medium']) ? sanitize_text_field($_GET['mtm_medium']) : null),
+                'campaign' => isset($_GET['utm_campaign']) ? sanitize_text_field($_GET['utm_campaign'])
+                    : (isset($_GET['mtm_campaign']) ? sanitize_text_field($_GET['mtm_campaign']) : null),
+                'content' => isset($_GET['utm_content']) ? sanitize_text_field($_GET['utm_content'])
+                    : (isset($_GET['mtm_content']) ? sanitize_text_field($_GET['mtm_content']) : null),
+                'term' => isset($_GET['utm_term']) ? sanitize_text_field($_GET['utm_term'])
+                    : (isset($_GET['mtm_cid']) ? sanitize_text_field($_GET['mtm_cid']) : null),
             );
         }
-        
+
         // Fall back to cookie
         if (isset($_COOKIE[$utm_cookie]) && !empty($_COOKIE[$utm_cookie])) {
             $utm_data = json_decode(stripslashes($_COOKIE[$utm_cookie]), true);
@@ -353,7 +353,7 @@ class OverSeek_Server_Tracking
                 return $utm_data;
             }
         }
-        
+
         return array();
     }
 
@@ -367,7 +367,7 @@ class OverSeek_Server_Tracking
         if ($this->visitor_id !== null) {
             return $this->visitor_id;
         }
-        
+
         $cookie_name = '_os_vid';
 
         if (isset($_COOKIE[$cookie_name]) && !empty($_COOKIE[$cookie_name])) {
@@ -378,7 +378,7 @@ class OverSeek_Server_Tracking
         // Fallback: Generate new visitor ID (cookie may have failed to set)
         // This should rarely happen now that we set in init hook
         $this->visitor_id = $this->generate_uuid();
-        
+
         // Attempt to set cookie - may fail if headers already sent
         if (!headers_sent()) {
             setcookie($cookie_name, $this->visitor_id, time() + (365 * 24 * 60 * 60), '/', '', is_ssl(), false);
@@ -396,12 +396,12 @@ class OverSeek_Server_Tracking
     {
         // Use cryptographically secure random bytes
         $data = random_bytes(16);
-        
+
         // Set version to 0100 (UUID v4)
         $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
         // Set variant to 10xx
         $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
-        
+
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
     }
 
@@ -412,7 +412,7 @@ class OverSeek_Server_Tracking
     private function get_visitor_ip()
     {
         $ip = '';
-        
+
         // Check for proxied IP first
         if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
             // X-Forwarded-For can contain multiple IPs, get the first one
@@ -425,12 +425,12 @@ class OverSeek_Server_Tracking
         } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
             $ip = $_SERVER['REMOTE_ADDR'];
         }
-        
+
         // Validate IP
         if (filter_var($ip, FILTER_VALIDATE_IP)) {
             return $ip;
         }
-        
+
         return '';
     }
 
@@ -473,27 +473,51 @@ class OverSeek_Server_Tracking
     private function is_bot_request()
     {
         $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower($_SERVER['HTTP_USER_AGENT']) : '';
-        
+
         if (empty($user_agent)) {
             return true; // No user agent = likely a bot
         }
-        
+
         // Common bot patterns
         $bot_patterns = array(
-            'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider',
-            'yandexbot', 'sogou', 'exabot', 'facebot', 'ia_archiver',
-            'mj12bot', 'ahrefsbot', 'semrushbot', 'dotbot', 'rogerbot',
-            'screaming frog', 'gtmetrix', 'pingdom', 'uptimerobot',
-            'crawler', 'spider', 'bot/', '/bot', 'headless', 'phantomjs',
-            'wget', 'curl', 'python-requests', 'go-http-client', 'apache-httpclient'
+            'googlebot',
+            'bingbot',
+            'slurp',
+            'duckduckbot',
+            'baiduspider',
+            'yandexbot',
+            'sogou',
+            'exabot',
+            'facebot',
+            'ia_archiver',
+            'mj12bot',
+            'ahrefsbot',
+            'semrushbot',
+            'dotbot',
+            'rogerbot',
+            'screaming frog',
+            'gtmetrix',
+            'pingdom',
+            'uptimerobot',
+            'crawler',
+            'spider',
+            'bot/',
+            '/bot',
+            'headless',
+            'phantomjs',
+            'wget',
+            'curl',
+            'python-requests',
+            'go-http-client',
+            'apache-httpclient'
         );
-        
+
         foreach ($bot_patterns as $pattern) {
             if (strpos($user_agent, $pattern) !== false) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -506,26 +530,53 @@ class OverSeek_Server_Tracking
     private function is_static_resource()
     {
         $request_uri = isset($_SERVER['REQUEST_URI']) ? strtolower($_SERVER['REQUEST_URI']) : '';
-        
+
         // Remove query string for extension check
         $path = strtok($request_uri, '?');
-        
+
         // Static file extensions to ignore
         $static_extensions = array(
-            '.js', '.css', '.map', '.json', '.xml',
-            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.bmp', '.avif',
-            '.woff', '.woff2', '.ttf', '.eot', '.otf',
-            '.mp4', '.webm', '.mp3', '.ogg', '.wav',
-            '.pdf', '.doc', '.docx', '.xls', '.xlsx',
-            '.zip', '.tar', '.gz', '.rar'
+            '.js',
+            '.css',
+            '.map',
+            '.json',
+            '.xml',
+            '.jpg',
+            '.jpeg',
+            '.png',
+            '.gif',
+            '.svg',
+            '.webp',
+            '.ico',
+            '.bmp',
+            '.avif',
+            '.woff',
+            '.woff2',
+            '.ttf',
+            '.eot',
+            '.otf',
+            '.mp4',
+            '.webm',
+            '.mp3',
+            '.ogg',
+            '.wav',
+            '.pdf',
+            '.doc',
+            '.docx',
+            '.xls',
+            '.xlsx',
+            '.zip',
+            '.tar',
+            '.gz',
+            '.rar'
         );
-        
+
         foreach ($static_extensions as $ext) {
             if (substr($path, -strlen($ext)) === $ext) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -540,12 +591,12 @@ class OverSeek_Server_Tracking
         if (!is_user_logged_in()) {
             return array();
         }
-        
+
         $user = wp_get_current_user();
         if (!$user || !$user->ID) {
             return array();
         }
-        
+
         return array(
             'customerId' => $user->ID,
             'email' => $user->user_email,
@@ -561,29 +612,33 @@ class OverSeek_Server_Tracking
     private function get_referrer_data()
     {
         $referrer = isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '';
-        
+
         if (empty($referrer)) {
             return array('referrer' => '', 'referrerDomain' => '', 'referrerType' => 'direct');
         }
-        
+
         $parsed = wp_parse_url($referrer);
         $domain = isset($parsed['host']) ? strtolower($parsed['host']) : '';
-        
+
         // Classify referrer type
         $type = 'referral';
         $site_host = strtolower(wp_parse_url(home_url(), PHP_URL_HOST));
-        
+
         if ($domain === $site_host || strpos($domain, $site_host) !== false) {
             $type = 'internal';
-        } elseif (strpos($domain, 'google') !== false || strpos($domain, 'bing') !== false || 
-                  strpos($domain, 'yahoo') !== false || strpos($domain, 'duckduckgo') !== false) {
+        } elseif (
+            strpos($domain, 'google') !== false || strpos($domain, 'bing') !== false ||
+            strpos($domain, 'yahoo') !== false || strpos($domain, 'duckduckgo') !== false
+        ) {
             $type = 'organic';
-        } elseif (strpos($domain, 'facebook') !== false || strpos($domain, 'instagram') !== false ||
-                  strpos($domain, 'twitter') !== false || strpos($domain, 'linkedin') !== false ||
-                  strpos($domain, 'pinterest') !== false || strpos($domain, 'tiktok') !== false) {
+        } elseif (
+            strpos($domain, 'facebook') !== false || strpos($domain, 'instagram') !== false ||
+            strpos($domain, 'twitter') !== false || strpos($domain, 'linkedin') !== false ||
+            strpos($domain, 'pinterest') !== false || strpos($domain, 'tiktok') !== false
+        ) {
             $type = 'social';
         }
-        
+
         return array(
             'referrer' => esc_url_raw($referrer),
             'referrerDomain' => $domain,
@@ -604,10 +659,10 @@ class OverSeek_Server_Tracking
         if (headers_sent()) {
             return;
         }
-        
+
         $secure = is_ssl();
         $samesite = 'Lax';
-        
+
         // PHP 7.3+ supports options array with SameSite
         if (PHP_VERSION_ID >= 70300) {
             setcookie($name, $value, array(
@@ -622,7 +677,7 @@ class OverSeek_Server_Tracking
             // Fallback for older PHP - SameSite via header hack
             setcookie($name, $value, $expires, '/; SameSite=' . $samesite, '', $secure, false);
         }
-        
+
         $_COOKIE[$name] = $value;
     }
 
@@ -638,12 +693,12 @@ class OverSeek_Server_Tracking
         if (!apply_filters('overseek_require_consent', get_option('overseek_require_consent', false))) {
             return true; // Consent not required
         }
-        
+
         // Check WP Consent API if available
         if (function_exists('wp_has_consent')) {
             return wp_has_consent('statistics');
         }
-        
+
         // If consent is required but WP Consent API is not installed,
         // default to no consent (safe approach for GDPR)
         return false;
@@ -669,26 +724,26 @@ class OverSeek_Server_Tracking
     {
         $transient_key = '_overseek_failed_events';
         $failed_events = get_transient($transient_key);
-        
+
         if (!is_array($failed_events)) {
             $failed_events = array();
         }
-        
+
         // Add retry count to event
         if (!isset($data['_retry_count'])) {
             $data['_retry_count'] = 0;
         }
-        
+
         // Only store if under max retries (3)
         if ($data['_retry_count'] < 3) {
             $data['_retry_count']++;
             $failed_events[] = $data;
-            
+
             // Limit queue size to prevent memory issues
             if (count($failed_events) > 50) {
                 $failed_events = array_slice($failed_events, -50);
             }
-            
+
             set_transient($transient_key, $failed_events, HOUR_IN_SECONDS);
         }
     }
@@ -703,14 +758,14 @@ class OverSeek_Server_Tracking
     {
         $transient_key = '_overseek_failed_events';
         $failed_events = get_transient($transient_key);
-        
+
         if (!is_array($failed_events) || empty($failed_events)) {
             return array();
         }
-        
+
         // Clear the transient - we'll re-add any that fail again
         delete_transient($transient_key);
-        
+
         return $failed_events;
     }
 
@@ -796,10 +851,10 @@ class OverSeek_Server_Tracking
     {
         // Get any failed events from previous requests to retry
         $retry_events = $this->get_failed_events_for_retry();
-        
+
         // Merge retry events with current queue
         $all_events = array_merge($retry_events, $this->event_queue);
-        
+
         if (empty($all_events)) {
             return;
         }
@@ -808,7 +863,7 @@ class OverSeek_Server_Tracking
         // before wp_die() terminates the request
         $is_ajax = wp_doing_ajax();
         $is_rest = defined('REST_REQUEST') && REST_REQUEST;
-        
+
         // RELIABILITY FIX: Always use blocking requests with reasonable timeout
         // Non-blocking wp_remote_post is unreliable - requests can be dropped
         // before the HTTP connection is established. The shutdown hook runs
@@ -857,7 +912,7 @@ class OverSeek_Server_Tracking
                 $data['visitorIp'] = $visitor_ip;
                 $data['_retry_count'] = $retry_count;
                 $this->store_failed_event($data);
-                
+
                 // Log errors for debugging (only if WP_DEBUG is enabled)
                 if (defined('WP_DEBUG') && WP_DEBUG) {
                     error_log('OverSeek Tracking Error: ' . $response->get_error_message() . ' | Event: ' . $event_type . ' | Retry: ' . ($retry_count + 1));
@@ -886,10 +941,10 @@ class OverSeek_Server_Tracking
             if (defined('WP_DEBUG') && WP_DEBUG && defined('OVERSEEK_DEBUG') && OVERSEEK_DEBUG) {
                 error_log('OverSeek: Store API response intercepted, flushing ' . count($this->event_queue) . ' events');
             }
-            
+
             $this->flush_event_queue();
         }
-        
+
         return $response;
     }
 
@@ -1028,7 +1083,7 @@ class OverSeek_Server_Tracking
 
         if ($removed_item) {
             $product = $this->get_product_safely($removed_item['product_id']);
-            
+
             $payload['productId'] = $removed_item['product_id'];
             $payload['variationId'] = $removed_item['variation_id'] ?? 0;
             $payload['quantity'] = $removed_item['quantity'];
@@ -1132,7 +1187,7 @@ class OverSeek_Server_Tracking
         if (!$order || !is_object($order)) {
             return;
         }
-        
+
         // Delegate to standard purchase tracking using order ID
         $this->track_purchase($order->get_id());
     }
@@ -1179,12 +1234,12 @@ class OverSeek_Server_Tracking
     public function track_product_view()
     {
         global $product;
-        
+
         // Validate product object - may be null or an ID on some themes
         if (!$product) {
             return;
         }
-        
+
         // If $product is an ID, convert to product object
         if (!is_object($product)) {
             $product = $this->get_product_safely($product);
@@ -1226,7 +1281,7 @@ class OverSeek_Server_Tracking
             return;
         }
         $this->cart_view_tracked = true;
-        
+
         $payload = array();
 
         $cart = $this->get_cart_safely();
@@ -1262,7 +1317,7 @@ class OverSeek_Server_Tracking
             return;
         }
         $this->checkout_view_tracked = true;
-        
+
         $payload = array();
 
         $cart = $this->get_cart_safely();

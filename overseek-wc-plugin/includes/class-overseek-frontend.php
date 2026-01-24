@@ -32,8 +32,8 @@ class OverSeek_Frontend
 	public function print_scripts(): void
 	{
 		$chat_enabled = get_option('overseek_enable_chat');
-		$api_url      = get_option('overseek_api_url', 'https://api.overseek.com');
-		$account_id   = get_option('overseek_account_id');
+		$api_url = get_option('overseek_api_url', '');
+		$account_id = get_option('overseek_account_id');
 
 		// Early exit if chat not configured.
 		if (!$chat_enabled || empty($account_id)) {
@@ -77,10 +77,10 @@ class OverSeek_Frontend
 		}
 
 		$business_hours = $config['businessHours'];
-		$timezone       = $config['businessTimezone'] ?? 'Australia/Sydney';
+		$timezone = $config['businessTimezone'] ?? 'Australia/Sydney';
 
 		try {
-			$tz  = new DateTimeZone($timezone);
+			$tz = new DateTimeZone($timezone);
 			$now = new DateTime('now', $tz);
 
 			$day_map = ['Sun' => 'sun', 'Mon' => 'mon', 'Tue' => 'tue', 'Wed' => 'wed', 'Thu' => 'thu', 'Fri' => 'fri', 'Sat' => 'sat'];
@@ -98,10 +98,10 @@ class OverSeek_Frontend
 
 			$current_minutes = (int) $now->format('H') * 60 + (int) $now->format('i');
 
-			[$open_h, $open_m]   = array_map('intval', explode(':', $schedule['open'] ?? '09:00'));
+			[$open_h, $open_m] = array_map('intval', explode(':', $schedule['open'] ?? '09:00'));
 			[$close_h, $close_m] = array_map('intval', explode(':', $schedule['close'] ?? '17:00'));
 
-			$open_minutes  = $open_h * 60 + $open_m;
+			$open_minutes = $open_h * 60 + $open_m;
 			$close_minutes = $close_h * 60 + $close_m;
 
 			return $current_minutes >= $open_minutes && $current_minutes <= $close_minutes;
@@ -121,13 +121,13 @@ class OverSeek_Frontend
 	private function get_chat_config(string $api_url, string $account_id): array
 	{
 		$transient_key = 'overseek_chat_config_' . md5($account_id);
-		$cached        = get_transient($transient_key);
+		$cached = get_transient($transient_key);
 
 		if ($cached !== false && is_array($cached)) {
 			return $cached;
 		}
 
-		$api_url  = untrailingslashit($api_url);
+		$api_url = untrailingslashit($api_url);
 		$response = wp_remote_get(
 			$api_url . '/api/chat/config/' . $account_id,
 			[

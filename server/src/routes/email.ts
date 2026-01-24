@@ -345,7 +345,7 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 subject: '[OverSeek Test] Relay Connection Test',
                 html: '<p>This is a test email to verify the HTTP relay connection is working.</p>',
                 from_name: 'OverSeek Test',
-                from_email: 'noreply@overseek.com.au',
+                from_email: process.env.CONTACT_EMAIL || 'noreply@localhost',
                 test_mode: true // Tell WP plugin this is just a test, don't actually send
             };
 

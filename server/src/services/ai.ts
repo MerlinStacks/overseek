@@ -146,7 +146,7 @@ export class AIService {
             }
         }
 
-        const systemPrompt = `You are OverSeek's AI Analyst, an intelligent assistant for WooCommerce.
+        const systemPrompt = `You are ${process.env.APP_NAME || 'Commerce Platform'}'s AI Analyst, an intelligent assistant for WooCommerce.
 
 **NEW COMPETENCIES:**
 - **Forecasting:** You can predict next week's sales.
@@ -220,8 +220,8 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${apiKey}`,
-                        "HTTP-Referer": "https://overseek.app",
-                        "X-Title": "OverSeek",
+                        "HTTP-Referer": process.env.APP_URL || 'http://localhost:5173',
+                        "X-Title": process.env.APP_NAME || 'Commerce Platform',
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
