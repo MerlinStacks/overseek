@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-01-25
+
+### 🏷️ White-Label & Self-Hosting Support
+- **Environment-Based Branding**: All hardcoded domain references removed from codebase.
+  - Server: `APP_NAME`, `APP_URL`, `API_URL`, `CONTACT_EMAIL` environment variables.
+  - Client: `VITE_APP_NAME`, `VITE_SUPPORT_EMAIL`, `VITE_LEGAL_EMAIL`, `VITE_PRIVACY_EMAIL` for frontend branding.
+- **Configurable Legal Pages**: Terms of Service, Privacy Policy, and Data Deletion pages now use environment-configured contact emails.
+- **Site Configuration Module**: New `client/src/config/site.ts` centralizes all frontend branding settings.
+
+### 📚 Documentation Improvements
+- **Environment Template**: Created `stack.env.example` with comprehensive documentation for all configuration options.
+- **README Configuration Section**: Added detailed environment variable tables for branding, URLs, and CORS settings.
+- **WordPress Plugin README**: New documentation covering installation, configuration, REST API endpoints, and troubleshooting.
+- **Contributing Guide**: Updated with Redis requirement and Getting Started setup commands.
+
+### 🔌 WordPress Plugin Enhancements
+- **Removed Hardcoded Defaults**: API URL now requires explicit configuration (no fallback to external domains).
+- **Server Tracking Improvements**: All endpoints use configured API URL instead of hardcoded values.
+
+### ⚙️ Infrastructure
+- **Elasticsearch 9.2.4**: Confirmed compatibility with fresh deployments.
+- **Build Verification**: Full Docker build and deployment tested successfully.
+
+---
+
 ## [2.2.0] - 2026-01-19
 
 ### 💬 Unified Chat & Inbox System
