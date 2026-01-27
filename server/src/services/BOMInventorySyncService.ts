@@ -13,6 +13,41 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { StockValidationService } from './StockValidationService';
 
+/**
+ * Retry wrapper for database operations to handle transient DNS errors.
+ * Docker's internal DNS can intermittently fail with EAI_AGAIN.
+ */
+async function withDbRetry<T>(
+    operation: () => Promise<T>,
+    options: { maxRetries?: number; delayMs?: number; context?: string } = {}
+): Promise<T> {
+    const { maxRetries = 3, delayMs = 500, context = 'DB operation' } = options;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (err: any) {
+            lastError = err;
+            const isRetryable = err.message?.includes('EAI_AGAIN') ||
+                err.message?.includes('ECONNREFUSED') ||
+                err.message?.includes('ETIMEDOUT') ||
+                err.code === 'EAI_AGAIN';
+
+            if (isRetryable && attempt < maxRetries) {
+                Logger.warn(`[withDbRetry] ${context} failed (attempt ${attempt}/${maxRetries}), retrying...`, {
+                    error: err.message
+                });
+                await new Promise(res => setTimeout(res, delayMs * attempt));
+            } else {
+                throw err;
+            }
+        }
+    }
+
+    throw lastError;
+}
+
 interface EffectiveStockResult {
     productId: string;
     wooId: number;
@@ -54,44 +89,50 @@ export class BOMInventorySyncService {
     ): Promise<EffectiveStockResult | null> {
         const wooService = await WooService.forAccount(accountId);
 
-        // Get the product details
-        const product = await prisma.wooProduct.findUnique({
-            where: { id: productId },
-            select: { id: true, wooId: true, name: true, rawData: true }
-        });
+        // Get the product details (with retry for transient DNS errors)
+        const product = await withDbRetry(
+            () => prisma.wooProduct.findUnique({
+                where: { id: productId },
+                select: { id: true, wooId: true, name: true, rawData: true }
+            }),
+            { context: 'Get product for BOM sync' }
+        );
 
         if (!product) {
             Logger.warn(`[BOMInventorySync] Product ${productId} not found`, { accountId });
             return null;
         }
 
-        // Find the BOM for this product/variation
-        const bom = await prisma.bOM.findUnique({
-            where: {
-                productId_variationId: { productId, variationId }
-            },
-            include: {
-                items: {
-                    where: {
-                        OR: [
-                            { childProductId: { not: null } },
-                            { internalProductId: { not: null } }
-                        ]
-                    },
-                    include: {
-                        childProduct: {
-                            select: { id: true, wooId: true, name: true }
+        // Find the BOM for this product/variation (with retry for transient DNS errors)
+        const bom = await withDbRetry(
+            () => prisma.bOM.findUnique({
+                where: {
+                    productId_variationId: { productId, variationId }
+                },
+                include: {
+                    items: {
+                        where: {
+                            OR: [
+                                { childProductId: { not: null } },
+                                { internalProductId: { not: null } }
+                            ]
                         },
-                        childVariation: {
-                            select: { wooId: true, sku: true, stockQuantity: true }
-                        },
-                        internalProduct: {
-                            select: { id: true, name: true, stockQuantity: true }
+                        include: {
+                            childProduct: {
+                                select: { id: true, wooId: true, name: true }
+                            },
+                            childVariation: {
+                                select: { wooId: true, sku: true, stockQuantity: true }
+                            },
+                            internalProduct: {
+                                select: { id: true, name: true, stockQuantity: true }
+                            }
                         }
                     }
                 }
-            }
-        });
+            }),
+            { context: 'Get BOM for sync' }
+        );
 
         // No BOM or no child product items
         if (!bom || bom.items.length === 0) {
@@ -555,23 +596,29 @@ export class BOMInventorySyncService {
         results: SyncResult[];
     }> {
         // Find all BOMs with child product items OR internal product items for this account
-        const bomsWithChildProducts = await prisma.bOM.findMany({
-            where: {
-                product: { accountId },
-                items: {
-                    some: {
-                        OR: [
-                            { childProductId: { not: null } },
-                            { internalProductId: { not: null } }
-                        ]
+        // Wrapped in retry for transient DB errors
+        const bomsWithChildProducts = await withDbRetry(
+            () => prisma.bOM.findMany({
+                where: {
+                    product: { accountId },
+                    items: {
+                        some: {
+                            OR: [
+                                { childProductId: { not: null } },
+                                { internalProductId: { not: null } }
+                            ]
+                        }
                     }
+                },
+                select: {
+                    productId: true,
+                    variationId: true
                 }
-            },
-            select: {
-                productId: true,
-                variationId: true
-            }
-        });
+            }),
+            { context: 'Find BOMs for bulk sync' }
+        );
+
+        Logger.info(`[BOMInventorySync] Starting bulk sync for ${bomsWithChildProducts.length} products`, { accountId });
 
         const results: SyncResult[] = [];
         let synced = 0;
@@ -579,17 +626,36 @@ export class BOMInventorySyncService {
         let failed = 0;
 
         for (const bom of bomsWithChildProducts) {
-            const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId);
-            results.push(result);
+            // Wrap each product sync in try/catch so one failure doesn't crash the entire job
+            try {
+                const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId);
+                results.push(result);
 
-            if (result.success) {
-                if (result.previousStock === result.newStock) {
-                    skipped++;
+                if (result.success) {
+                    if (result.previousStock === result.newStock) {
+                        skipped++;
+                    } else {
+                        synced++;
+                    }
                 } else {
-                    synced++;
+                    failed++;
                 }
-            } else {
+            } catch (err: any) {
+                Logger.error(`[BOMInventorySync] Uncaught error syncing product ${bom.productId}`, {
+                    accountId,
+                    productId: bom.productId,
+                    variationId: bom.variationId,
+                    error: err.message
+                });
                 failed++;
+                results.push({
+                    success: false,
+                    productId: bom.productId,
+                    wooId: 0,
+                    previousStock: null,
+                    newStock: 0,
+                    error: err.message
+                });
             }
         }
 
