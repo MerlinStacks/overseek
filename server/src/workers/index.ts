@@ -4,6 +4,7 @@ import { OrderSync } from '../services/sync/OrderSync';
 import { ProductSync } from '../services/sync/ProductSync';
 import { CustomerSync } from '../services/sync/CustomerSync';
 import { ReviewSync } from '../services/sync/ReviewSync';
+import { EventBus, EVENTS } from '../services/events';
 
 export async function startWorkers() {
     Logger.info('Starting Workers...');
@@ -52,6 +53,28 @@ export async function startWorkers() {
                 failed: result.failed
             });
         });
+    });
+
+    // BOM Consumption on Order Creation/Sync
+    // When an order is synced, check if it's in 'processing' status and consume BOM components
+    await import('../services/BOMConsumptionService').then(({ BOMConsumptionService }) => {
+        EventBus.on(EVENTS.ORDER.SYNCED, async ({ accountId, order }) => {
+            try {
+                const status = (order?.status || '').toLowerCase();
+                if (status === 'processing') {
+                    Logger.info(`[BOMConsumption] Triggering consumption for order ${order.id} (status: processing)`, { accountId });
+                    await BOMConsumptionService.consumeOrderComponents(accountId, order);
+                }
+            } catch (err: any) {
+                Logger.error('[BOMConsumption] Failed to consume components', {
+                    accountId,
+                    orderId: order?.id,
+                    error: err.message
+                });
+            }
+        });
+
+        Logger.info('[Workers] BOM Consumption event listener registered');
     });
 
     // Graceful Shutdown
