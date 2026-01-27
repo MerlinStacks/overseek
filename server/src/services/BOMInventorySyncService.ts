@@ -219,6 +219,18 @@ export class BOMInventorySyncService {
 
                             if (!targetVariation) {
                                 Logger.warn(`[BOMInventorySync] Variation ${childWooId} not found in parent ${parentWooId}`, { accountId });
+                            } else {
+                                // Update local DB with live stock so UI calculations match
+                                const liveStock = targetVariation.stock_quantity;
+                                if (liveStock !== null && liveStock !== undefined && liveStock !== bomItem.childVariation.stockQuantity) {
+                                    await prisma.productVariation.updateMany({
+                                        where: {
+                                            wooId: childWooId,
+                                            product: { id: bomItem.childProduct.id }
+                                        },
+                                        data: { stockQuantity: liveStock }
+                                    });
+                                }
                             }
                         } catch {
                             // Fallback to local data if live fetch fails
@@ -229,6 +241,20 @@ export class BOMInventorySyncService {
                         try {
                             const childWooProduct = await wooService.getProduct(childWooId);
                             childStock = childWooProduct.stock_quantity ?? 0;
+
+                            // Update local DB with live stock so UI calculations match
+                            const liveStock = childWooProduct.stock_quantity;
+                            const localStock = (await prisma.wooProduct.findUnique({
+                                where: { id: bomItem.childProduct.id },
+                                select: { stockQuantity: true }
+                            }))?.stockQuantity;
+
+                            if (liveStock !== null && liveStock !== undefined && liveStock !== localStock) {
+                                await prisma.wooProduct.update({
+                                    where: { id: bomItem.childProduct.id },
+                                    data: { stockQuantity: liveStock }
+                                });
+                            }
                         } catch {
                             // Fallback to local stockQuantity from DB if WooCommerce API fails
                             const localProduct = await prisma.wooProduct.findUnique({
