@@ -239,6 +239,60 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
+     * DELETE /bom/sync-cancel
+     * Cancel a stuck or running BOM sync job for this account.
+     */
+    fastify.delete('/bom/sync-cancel', async (request, reply) => {
+        const accountId = request.accountId!;
+        const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
+
+        const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
+        const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
+
+        try {
+            const existingJob = await queue.getJob(jobId);
+            if (existingJob) {
+                const state = await existingJob.getState();
+
+                // For active jobs, we need to use moveToFailed or just remove
+                // For waiting/delayed jobs, we can just remove them
+                try {
+                    await existingJob.remove();
+                    Logger.info(`[BOMSync] Cancelled sync job`, { accountId, jobId, previousState: state });
+                    return {
+                        success: true,
+                        message: 'Sync job cancelled successfully',
+                        previousState: state
+                    };
+                } catch (removeErr: any) {
+                    // Job might be locked by a worker - try to move it to failed
+                    if (removeErr.message?.includes('locked')) {
+                        await existingJob.moveToFailed(new Error('Cancelled by user'), '0');
+                        Logger.info(`[BOMSync] Force-failed locked sync job`, { accountId, jobId });
+                        return {
+                            success: true,
+                            message: 'Sync job force-cancelled (was locked)',
+                            previousState: state
+                        };
+                    }
+                    throw removeErr;
+                }
+            }
+
+            return {
+                success: true,
+                message: 'No active sync job found to cancel'
+            };
+        } catch (err) {
+            Logger.error('Error cancelling BOM sync', { error: err, accountId });
+            return reply.code(500).send({
+                success: false,
+                error: 'Failed to cancel sync job'
+            });
+        }
+    });
+
+    /**
      * GET /bom/pending-changes
      * Returns all BOM products with current vs effective stock comparison.
      */
@@ -260,7 +314,22 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                 },
                 include: {
                     product: {
-                        select: { id: true, wooId: true, name: true, sku: true, mainImage: true }
+                        select: {
+                            id: true,
+                            wooId: true,
+                            name: true,
+                            sku: true,
+                            mainImage: true,
+                            // Include variations so we can lookup variant-specific data
+                            variations: {
+                                select: {
+                                    wooId: true,
+                                    sku: true,
+                                    images: true,
+                                    rawData: true
+                                }
+                            }
+                        }
                     }
                 }
             });
@@ -278,12 +347,47 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                     );
 
                     if (calculation) {
+                        // For variants, get variant-specific data
+                        let displayName = bom.product.name;
+                        let displaySku = bom.product.sku;
+                        let displayImage = bom.product.mainImage;
+                        let displayWooId = bom.product.wooId;
+
+                        if (bom.variationId > 0) {
+                            // Find the matching variation
+                            const variation = bom.product.variations.find(v => v.wooId === bom.variationId);
+                            if (variation) {
+                                displayWooId = variation.wooId;
+                                displaySku = variation.sku || displaySku;
+
+                                // Get variant name from rawData or construct from attributes
+                                const rawData = variation.rawData as any;
+                                if (rawData?.attributes?.length > 0) {
+                                    const attrStr = rawData.attributes
+                                        .map((a: any) => a.option)
+                                        .filter(Boolean)
+                                        .join(', ');
+                                    displayName = `${bom.product.name} - ${attrStr}`;
+                                } else {
+                                    displayName = `${bom.product.name} (Variant #${variation.wooId})`;
+                                }
+
+                                // Get variant image
+                                const images = variation.images as any[];
+                                if (images?.length > 0 && images[0]?.src) {
+                                    displayImage = images[0].src;
+                                } else if (rawData?.image?.src) {
+                                    displayImage = rawData.image.src;
+                                }
+                            }
+                        }
+
                         pendingChanges.push({
                             productId: bom.product.id,
-                            wooId: bom.product.wooId,
-                            name: bom.product.name,
-                            sku: bom.product.sku,
-                            mainImage: bom.product.mainImage,
+                            wooId: displayWooId,
+                            name: displayName,
+                            sku: displaySku,
+                            mainImage: displayImage,
                             variationId: bom.variationId,
                             currentWooStock: calculation.currentWooStock,
                             effectiveStock: calculation.effectiveStock,

@@ -36,8 +36,16 @@ export class SyncService {
                 // If completed/failed/unknown, we try to remove it to allow re-run
                 try {
                     await existingJob.remove();
-                } catch (err) {
-                    Logger.warn(`Failed to remove existing job ${stableJobId}`, { error: err });
+                } catch (err: any) {
+                    // Race condition: job became active between state check and removal
+                    // This is expected behavior - just skip as we would for active jobs
+                    if (err?.message?.includes('locked by another worker')) {
+                        Logger.info(`Skipping ${queueName} for ${accountId} - Job ${stableJobId} became active`);
+                        return;
+                    }
+                    // Any other removal error should also skip to prevent duplicate job creation
+                    Logger.warn(`Failed to remove existing job ${stableJobId}, skipping`, { error: err });
+                    return;
                 }
             }
 

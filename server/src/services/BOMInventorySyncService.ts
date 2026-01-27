@@ -304,9 +304,26 @@ export class BOMInventorySyncService {
             return null;
         }
 
-        // Get current stock from local DB or rawData
-        const rawData = product.rawData as any;
-        const currentWooStock = product.stockQuantity ?? rawData?.stock_quantity ?? null;
+        // Get current stock from local DB
+        // For variants, we need to lookup the ProductVariation stock, not the parent
+        let currentWooStock: number | null = null;
+        if (variationId > 0) {
+            // Lookup variant stock from ProductVariation table
+            const variation = await prisma.productVariation.findUnique({
+                where: {
+                    productId_wooId: { productId, wooId: variationId }
+                },
+                select: { stockQuantity: true, rawData: true }
+            });
+            if (variation) {
+                const varRawData = variation.rawData as any;
+                currentWooStock = variation.stockQuantity ?? varRawData?.stock_quantity ?? null;
+            }
+        } else {
+            // For parent products, use the product's stock
+            const rawData = product.rawData as any;
+            currentWooStock = product.stockQuantity ?? rawData?.stock_quantity ?? null;
+        }
 
         // Calculate effective stock based on each child component using local data only
         const components: EffectiveStockResult['components'] = [];
