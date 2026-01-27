@@ -597,6 +597,7 @@ export class BOMInventorySyncService {
     }> {
         // Find all BOMs with child product items OR internal product items for this account
         // Wrapped in retry for transient DB errors
+        console.log(`[DEBUG] syncAllBOMProducts called with accountId: ${accountId}`);
         const bomsWithChildProducts = await withDbRetry(
             () => prisma.bOM.findMany({
                 where: {
@@ -618,6 +619,7 @@ export class BOMInventorySyncService {
             { context: 'Find BOMs for bulk sync' }
         );
 
+        console.log(`[DEBUG] Query returned ${bomsWithChildProducts.length} BOMs for account ${accountId}`);
         Logger.info(`[BOMInventorySync] Starting bulk sync for ${bomsWithChildProducts.length} products`, { accountId });
 
         const results: SyncResult[] = [];
