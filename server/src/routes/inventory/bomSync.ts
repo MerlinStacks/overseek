@@ -432,32 +432,6 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
-     * DELETE /bom/sync-cancel
-     * Cancel or clear any stuck BOM sync job for the current account.
-     */
-    fastify.delete('/bom/sync-cancel', async (request, reply) => {
-        const accountId = request.accountId!;
-        const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
-
-        const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
-        const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
-
-        try {
-            const existingJob = await queue.getJob(jobId);
-            if (existingJob) {
-                const state = await existingJob.getState();
-                await existingJob.remove();
-                Logger.info(`[BOMSync] Canceled stuck job`, { accountId, jobId, previousState: state });
-                return { success: true, message: `Canceled BOM sync job (was: ${state})` };
-            }
-            return { success: true, message: 'No BOM sync job found to cancel' };
-        } catch (err: any) {
-            Logger.error('Failed to cancel BOM sync job', { error: err, accountId });
-            return reply.code(500).send({ error: 'Failed to cancel job', details: err.message });
-        }
-    });
-
-    /**
      * GET /bom/sync-history
      * Returns recent BOM sync logs from AuditLog.
      */
