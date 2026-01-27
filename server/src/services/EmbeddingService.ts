@@ -33,8 +33,8 @@ export class EmbeddingService {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`,
-                    'HTTP-Referer': process.env.APP_URL || 'https://overseek.app',
-                    'X-Title': 'Overseek Commerce Platform'
+                    'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
+                    'X-Title': `${process.env.APP_NAME || 'Commerce Platform'}`
                 },
                 body: JSON.stringify({
                     model: model,

@@ -594,8 +594,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${account.openRouterApiKey}`,
-                    'HTTP-Referer': 'https://overseek.app',
-                    'X-Title': 'OverSeek Product Rewrite',
+                    'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
+                    'X-Title': `${process.env.APP_NAME || 'Commerce Platform'} Product Rewrite`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({

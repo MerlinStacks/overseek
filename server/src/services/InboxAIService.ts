@@ -104,8 +104,8 @@ Generate a complete reply that incorporates and improves upon the current draft.
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
-                    'HTTP-Referer': 'https://overseek.app',
-                    'X-Title': 'OverSeek',
+                    'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
+                    'X-Title': process.env.APP_NAME || 'Commerce Platform',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({

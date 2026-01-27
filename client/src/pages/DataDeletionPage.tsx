@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Trash2 } from 'lucide-react';
+import { siteConfig } from '../config/site';
 
 export function DataDeletionPage() {
     return (
@@ -28,12 +29,12 @@ export function DataDeletionPage() {
 
                     <div className="p-8 prose prose-red max-w-none">
                         <p className="lead text-gray-600">
-                            At Overseek, we respect your right to control your personal data. This page explains how you can request the deletion of your data from our systems.
+                            At {siteConfig.appName}, we respect your right to control your personal data. This page explains how you can request the deletion of your data from our systems.
                         </p>
 
                         <h3>1. What Data We Store</h3>
                         <p>
-                            When you use Overseek through Facebook Login, we may collect and store the following information:
+                            When you use {siteConfig.appName} through Facebook Login, we may collect and store the following information:
                         </p>
                         <ul>
                             <li>Your Facebook User ID</li>
@@ -50,7 +51,7 @@ export function DataDeletionPage() {
                         <div className="bg-gray-50 p-4 rounded-lg my-4">
                             <h4 className="font-semibold text-gray-900 mb-2">Option 1: Email Request</h4>
                             <p className="text-gray-700 mb-0">
-                                Send an email to <a href="mailto:privacy@overseek.com" className="text-red-600 hover:underline">privacy@overseek.com</a> with the subject line "Data Deletion Request" and include:
+                                Send an email to <a href={`mailto:${siteConfig.privacyEmail}`} className="text-red-600 hover:underline">{siteConfig.privacyEmail}</a> with the subject line "Data Deletion Request" and include:
                             </p>
                             <ul className="mt-2 text-gray-700">
                                 <li>Your registered email address</li>
@@ -62,12 +63,12 @@ export function DataDeletionPage() {
                         <div className="bg-gray-50 p-4 rounded-lg my-4">
                             <h4 className="font-semibold text-gray-900 mb-2">Option 2: Remove via Facebook</h4>
                             <p className="text-gray-700 mb-0">
-                                You can remove Overseek's access to your data directly from Facebook:
+                                You can remove {siteConfig.appName}'s access to your data directly from Facebook:
                             </p>
                             <ol className="mt-2 text-gray-700">
                                 <li>Go to your Facebook Settings</li>
                                 <li>Navigate to "Apps and Websites"</li>
-                                <li>Find Overseek and click "Remove"</li>
+                                <li>Find {siteConfig.appName} and click "Remove"</li>
                                 <li>This will revoke our access to your Facebook data</li>
                             </ol>
                         </div>
@@ -95,13 +96,13 @@ export function DataDeletionPage() {
 
                         <h3>5. Contact Us</h3>
                         <p>
-                            If you have any questions about data deletion or this policy, please contact us at <a href="mailto:privacy@overseek.com">privacy@overseek.com</a>.
+                            If you have any questions about data deletion or this policy, please contact us at <a href={`mailto:${siteConfig.privacyEmail}`}>{siteConfig.privacyEmail}</a>.
                         </p>
                     </div>
 
                     <div className="px-8 py-6 bg-gray-50 border-t border-gray-100 flex justify-center">
                         <p className="text-sm text-gray-500">
-                            © {new Date().getFullYear()} Overseek. All rights reserved.
+                            © {new Date().getFullYear()} {siteConfig.appName}. All rights reserved.
                         </p>
                     </div>
                 </div>

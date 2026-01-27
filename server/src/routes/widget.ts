@@ -14,7 +14,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /api/chat/widget.js
      */
     fastify.get('/widget.js', async (request, reply) => {
-        const api_url = process.env.API_URL || "https://api.overseek.com";
+        const api_url = process.env.API_URL || "http://localhost:3000";
         const query = request.query as { id?: string };
         const accountId = query.id;
 

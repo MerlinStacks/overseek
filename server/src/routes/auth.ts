@@ -361,7 +361,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 });
 
                 await transporter.sendMail({
-                    from: process.env.SMTP_FROM || '"Overseek Security" <no-reply@overseek.com>',
+                    from: process.env.SMTP_FROM || `"${process.env.APP_NAME || 'Commerce Platform'} Security" <${process.env.CONTACT_EMAIL || 'no-reply@localhost'}>`,
                     to: email,
                     subject: 'Password Reset Request',
                     html: `<p>You requested a password reset. Click <a href="${resetLink}">here</a> to reset your password.</p>`

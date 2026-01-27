@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Shield } from 'lucide-react';
+import { siteConfig } from '../config/site';
 
 export function PrivacyPolicyPage() {
     return (
@@ -28,7 +29,7 @@ export function PrivacyPolicyPage() {
 
                     <div className="p-8 prose prose-blue max-w-none">
                         <p className="lead text-gray-600">
-                            At Overseek, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclosure, and safeguard your information when you visit our website or use our application.
+                            At {siteConfig.appName}, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclosure, and safeguard your information when you visit our website or use our application.
                         </p>
 
                         <h3>1. Information We Collect</h3>
@@ -59,13 +60,13 @@ export function PrivacyPolicyPage() {
 
                         <h3>5. Contact Us</h3>
                         <p>
-                            If you have questions or comments about this policy, you may email us at <a href="mailto:support@overseek.com">support@overseek.com</a>.
+                            If you have questions or comments about this policy, you may email us at <a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>.
                         </p>
                     </div>
 
                     <div className="px-8 py-6 bg-gray-50 border-t border-gray-100 flex justify-center">
                         <p className="text-sm text-gray-500">
-                            © {new Date().getFullYear()} Overseek. All rights reserved.
+                            © {new Date().getFullYear()} {siteConfig.appName}. All rights reserved.
                         </p>
                     </div>
                 </div>
