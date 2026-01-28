@@ -7,3 +7,6 @@
 export * from './types';
 export * from './constants';
 export * from './backupStorage';
+export * from './backupGenerator';
+export * from './restoreService';
+

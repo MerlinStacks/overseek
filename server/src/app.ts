@@ -8,7 +8,6 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import fastifyMultipart from '@fastify/multipart';
-// Unused import removed: Client from '@elastic/elasticsearch'
 import path from 'path';
 import { prisma } from './utils/prisma';
 import { esClient } from './utils/elastic';
@@ -22,12 +21,14 @@ import { AutomationEngine } from './services/AutomationEngine';
 import { setIO } from './socket';
 import { RATE_LIMITS, UPLOAD_LIMITS, SCHEDULER_LIMITS } from './config/limits';
 import { verifyToken } from './utils/auth';
+import { registerRoutes } from './config/routes';
+import { setupSocketHandlers } from './config/socketHandlers';
 const { Logger, fastifyLoggerConfig } = require('./utils/logger');
 
 // Init Queues for Bull Board
 QueueFactory.init();
 
-const automationEngine = new AutomationEngine(); // Keep for event listeners
+const automationEngine = new AutomationEngine();
 import { InventoryService } from './services/InventoryService';
 import { NotificationEngine } from './services/NotificationEngine';
 
@@ -36,18 +37,16 @@ InventoryService.setupListeners();
 
 // Create Fastify instance
 const fastify = Fastify({
-    logger: fastifyLoggerConfig, // Disabled - using our own Logger wrapper to prevent duplicates
-    disableRequestLogging: true, // Disable default logging to avoid double-logging with our custom hook
-    trustProxy: true, // Trust Docker/Nginx proxy for Rate Limiting
+    logger: fastifyLoggerConfig,
+    disableRequestLogging: true,
+    trustProxy: true,
 });
 
 // Build function to initialize all plugins and routes
 async function build() {
-    // Register CORS - permissive for tracking endpoints first
+    // Register CORS
     await fastify.register(cors, {
         origin: (origin, cb) => {
-            // Permissive for tracking endpoints (handled in route-level hook)
-            // Strict for dashboard routes
             const envOrigins = process.env.CORS_ORIGINS
                 ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
                 : [];
@@ -61,7 +60,7 @@ async function build() {
             if (!origin || allowedOrigins.includes(origin) || origin === '*') {
                 cb(null, true);
             } else {
-                cb(null, !enforceAllowlist); // Allow all unless explicit allowlist set
+                cb(null, !enforceAllowlist);
             }
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -69,21 +68,15 @@ async function build() {
     });
 
     // Rate Limiting
-    // Exclude sync, webhook, and health routes from rate limiting to prevent
-    // sync operations from exhausting request quota during data synchronization
     await fastify.register(rateLimit, {
         max: RATE_LIMITS.MAX_REQUESTS,
         timeWindow: RATE_LIMITS.WINDOW,
         allowList: (req) => {
             const url = req.url || '';
-            // Sync routes make many rapid calls during data synchronization
             if (url.startsWith('/api/sync')) return true;
-            // Webhooks are inbound from external services (WooCommerce, Meta, TikTok)
             if (url.startsWith('/api/webhooks')) return true;
             if (url.startsWith('/api/webhook/')) return true;
-            // Health checks for infrastructure monitoring
             if (url.startsWith('/health')) return true;
-            // Tracking ingestion from WooCommerce plugin (high volume)
             if (url.startsWith('/api/t/')) return true;
             if (url.startsWith('/api/tracking')) return true;
             return false;
@@ -93,7 +86,7 @@ async function build() {
         })
     });
 
-    // Helmet security headers (with permissive CSP for Bull Board routes)
+    // Helmet security headers
     await fastify.register(helmet, {
         contentSecurityPolicy: {
             directives: {
@@ -116,23 +109,21 @@ async function build() {
     await fastify.register(fastifyStatic, {
         root: path.join(__dirname, '../uploads'),
         prefix: '/uploads/',
-        maxAge: '1h', // Cache uploaded files for 1 hour
+        maxAge: '1h',
     });
 
-    // Response compression (Brotli/gzip) - skip small responses
+    // Response compression
     await fastify.register(fastifyCompress, {
         encodings: ['br', 'gzip', 'deflate'],
-        threshold: 1024, // Only compress responses > 1KB
+        threshold: 1024,
     });
 
-    // Multipart file uploads (replaces multer)
+    // Multipart file uploads
     await fastify.register(fastifyMultipart, {
-        limits: {
-            fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE,
-        },
+        limits: { fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE },
     });
 
-    // Request ID for correlation (hook)
+    // Request ID hook
     fastify.addHook('onRequest', async (request, reply) => {
         const existingId = request.headers['x-request-id'] as string;
         const requestId = existingId || `req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -140,10 +131,9 @@ async function build() {
         reply.header('x-request-id', requestId);
     });
 
-    // Request Logging (hook)
+    // Request logging hooks
     fastify.addHook('onRequest', async (request, _reply) => {
-        const start = Date.now();
-        (request as any).startTime = start;
+        (request as any).startTime = Date.now();
     });
 
     fastify.addHook('onResponse', async (request, reply) => {
@@ -157,7 +147,7 @@ async function build() {
         }
     });
 
-    // Global: Disable caching for all API responses
+    // Disable caching for API responses
     fastify.addHook('onSend', async (request, reply, payload) => {
         reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         reply.header('Pragma', 'no-cache');
@@ -165,104 +155,10 @@ async function build() {
         return payload;
     });
 
-    // =====================================================
-    // ALL ROUTES ARE NOW NATIVE FASTIFY PLUGINS
-    // Express bridge removed - migration complete!
-    // =====================================================
+    // Register all routes (extracted to config/routes.ts)
+    await registerRoutes(fastify);
 
-    const healthRoutes = (await import('./routes/health')).default;
-    const customersRoutes = (await import('./routes/customers')).default;
-    const ordersRoutes = (await import('./routes/orders')).default;
-    const reviewsRoutes = (await import('./routes/reviews')).default;
-    const segmentsRoutes = (await import('./routes/segments')).default;
-    const policiesRoutes = (await import('./routes/policies')).default;
-    const auditsRoutes = (await import('./routes/audits')).default;
-    const sessionsRoutes = (await import('./routes/sessions')).default;
-    const invoicesRoutes = (await import('./routes/invoices')).default;
-    const notificationsRoutes = (await import('./routes/notifications')).default;
-    const helpRoutes = (await import('./routes/help')).default;
-    const searchRoutes = (await import('./routes/search')).default;
-    const inventoryRoutes = (await import('./routes/inventory')).default;
-    const aiRoutes = (await import('./routes/ai')).default;
-    const dashboardRoutes = (await import('./routes/dashboard')).default;
-
-    // Register native Fastify plugins
-    await fastify.register(healthRoutes, { prefix: '/health' });
-    await fastify.register(customersRoutes, { prefix: '/api/customers' });
-    await fastify.register(ordersRoutes, { prefix: '/api/orders' });
-    await fastify.register(reviewsRoutes, { prefix: '/api/reviews' });
-    await fastify.register(segmentsRoutes, { prefix: '/api/segments' });
-    await fastify.register(policiesRoutes, { prefix: '/api/policies' });
-    await fastify.register(auditsRoutes, { prefix: '/api/audits' });
-    await fastify.register(sessionsRoutes, { prefix: '/api/sessions' });
-    await fastify.register(invoicesRoutes, { prefix: '/api/invoices' });
-    await fastify.register(notificationsRoutes, { prefix: '/api/notifications' });
-    await fastify.register(helpRoutes, { prefix: '/api/help' });
-    await fastify.register(searchRoutes, { prefix: '/api/search' });
-    await fastify.register(inventoryRoutes, { prefix: '/api/inventory' });
-    const internalProductsRoutes = (await import('./routes/internalProducts')).default;
-    await fastify.register(internalProductsRoutes, { prefix: '/api/inventory/internal-products' });
-    await fastify.register(aiRoutes, { prefix: '/api/ai' });
-    await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
-    const adsRoutes = (await import('./routes/ads')).default;
-    await fastify.register(adsRoutes, { prefix: '/api/ads' });
-    const marketingRoutes = (await import('./routes/marketing')).default;
-    await fastify.register(marketingRoutes, { prefix: '/api/marketing' });
-    const emailRoutes = (await import('./routes/email')).default;
-    await fastify.register(emailRoutes, { prefix: '/api/email' });
-    const emailTrackingRoutes = (await import('./routes/email-tracking')).default;
-    await fastify.register(emailTrackingRoutes, { prefix: '/api/email' });
-    const widgetRoutes = (await import('./routes/widget')).default;
-    await fastify.register(widgetRoutes, { prefix: '/api/chat' });
-    const productsRoutes = (await import('./routes/products')).default;
-    await fastify.register(productsRoutes, { prefix: '/api/products' });
-    const metaWebhookRoutes = (await import('./routes/meta-webhook')).default;
-    await fastify.register(metaWebhookRoutes, { prefix: '/api/webhook/meta' });
-    const tiktokWebhookRoutes = (await import('./routes/tiktok-webhook')).default;
-    await fastify.register(tiktokWebhookRoutes, { prefix: '/api/webhook/tiktok' });
-    const wooRoutes = (await import('./routes/woo')).default;
-    await fastify.register(wooRoutes, { prefix: '/api/woo' });
-    const syncRoutes = (await import('./routes/sync')).default;
-    await fastify.register(syncRoutes, { prefix: '/api/sync' });
-    const statusCenterRoutes = (await import('./routes/statusCenter')).default;
-    await fastify.register(statusCenterRoutes, { prefix: '/api/status-center' });
-    const webhookRoutes = (await import('./routes/webhook')).default;
-    await fastify.register(webhookRoutes, { prefix: '/api/webhooks' });
-    const adminRoutes = (await import('./routes/admin')).default;
-    await fastify.register(adminRoutes, { prefix: '/api/admin' });
-    const rolesRoutes = (await import('./routes/roles')).default;
-    await fastify.register(rolesRoutes, { prefix: '/api/roles' });
-    const authRoutes = (await import('./routes/auth')).default;
-    await fastify.register(authRoutes, { prefix: '/api/auth' });
-    const accountRoutes = (await import('./routes/account')).default;
-    await fastify.register(accountRoutes, { prefix: '/api/accounts' });
-    const oauthRoutes = (await import('./routes/oauth')).default;
-    await fastify.register(oauthRoutes, { prefix: '/api/oauth' });
-    const analyticsRoutes = (await import('./routes/analytics')).default;
-    await fastify.register(analyticsRoutes, { prefix: '/api/analytics' });
-    const goldPriceReportRoutes = (await import('./routes/goldPriceReport')).default;
-    await fastify.register(goldPriceReportRoutes, { prefix: '/api/reports' });
-    const trackingRoutes = (await import('./routes/tracking')).default;
-    await fastify.register(trackingRoutes, { prefix: '/api/tracking' });
-
-    // Labels routes (conversation tagging)
-    const labelsRoutes = (await import('./routes/labels')).default;
-    await fastify.register(labelsRoutes, { prefix: '/api/labels' });
-
-    // Alias for short tracking URL used by WooCommerce plugin (OverSeek Integration)
-    // The plugin sends events to /api/t/e which maps to /api/t prefix + /e route
-    const trackingIngestionRoutes = (await import('./routes/trackingIngestion')).default;
-    await fastify.register(trackingIngestionRoutes, { prefix: '/api/t' });
-
-    // =====================================================
-    // ALL ROUTES NOW NATIVE FASTIFY ✓
-    // Express bridge no longer needed for routes
-    // =====================================================
-
-    // Chat routes need special handling (require ChatService)
-    // We'll mount these after server creation
-
-    // Mount Bull Board (Fastify native)
+    // Mount Bull Board
     const bullBoardAdapter = QueueFactory.createBoard();
     await fastify.register(bullBoardAdapter.registerPlugin(), {
         prefix: '/admin/queues',
@@ -286,40 +182,29 @@ async function build() {
             status: 'ok',
             framework: 'fastify',
             timestamp: new Date().toISOString(),
-            services: {
-                elasticsearch: esStatus,
-                socket: 'active'
-            }
+            services: { elasticsearch: esStatus, socket: 'active' }
         };
     });
 
-    // Global Error Handler with structured responses
+    // Global Error Handler
     fastify.setErrorHandler((error: FastifyError, request, reply) => {
         const statusCode = error.statusCode || 500;
         const isClientError = statusCode >= 400 && statusCode < 500;
 
-        // Only log server errors as errors, client errors as warnings
         if (isClientError) {
             Logger.warn('Client Error', {
-                error: error.message,
-                path: request.url,
-                method: request.method,
-                statusCode,
+                error: error.message, path: request.url, method: request.method, statusCode,
             });
         } else {
             Logger.error('Server Error', {
-                error: error.message,
-                stack: error.stack,
-                path: request.url,
-                method: request.method,
-                requestId: (request as any).requestId,
+                error: error.message, stack: error.stack, path: request.url,
+                method: request.method, requestId: (request as any).requestId,
             });
         }
 
         reply.status(statusCode).send({
             error: isClientError ? error.message : 'Internal Server Error',
-            statusCode,
-            requestId: (request as any).requestId,
+            statusCode, requestId: (request as any).requestId,
         });
     });
 
@@ -342,7 +227,6 @@ let chatService: ChatService;
 async function initializeApp() {
     await build();
 
-    // Get the underlying HTTP server from Fastify
     server = fastify.server;
 
     // Setup Socket.IO
@@ -352,10 +236,7 @@ async function initializeApp() {
     const socketOriginSetting = socketOrigins.length > 0 ? socketOrigins : "*";
 
     io = new Server(server, {
-        cors: {
-            origin: socketOriginSetting,
-            methods: ["GET", "POST"]
-        }
+        cors: { origin: socketOriginSetting, methods: ["GET", "POST"] }
     });
 
     // Socket.IO auth middleware
@@ -367,9 +248,7 @@ async function initializeApp() {
                 (authHeader ? authHeader.split(' ')[1] : undefined) ||
                 (socket.handshake.query?.token as string | undefined);
 
-            if (!token) {
-                return next(new Error('Unauthorized'));
-            }
+            if (!token) return next(new Error('Unauthorized'));
 
             const decoded = verifyToken(token) as { userId: string };
             const user = await prisma.user.findUnique({
@@ -392,7 +271,7 @@ async function initializeApp() {
         }
     });
 
-    // Apply Redis adapter for horizontal scaling (multi-instance support)
+    // Apply Redis adapter for horizontal scaling
     try {
         const { createSocketAdapter } = await import('./utils/socketAdapter');
         io.adapter(createSocketAdapter());
@@ -401,13 +280,13 @@ async function initializeApp() {
         Logger.warn('[Socket.IO] Redis adapter not available, running in single-instance mode', { error });
     }
 
-    // Register Socket.IO globally for services
+    // Register Socket.IO globally
     setIO(io);
 
     // Initialize Chat Service
     chatService = new ChatService(io);
 
-    // Mount Chat Routes (native Fastify - require ChatService)
+    // Mount Chat Routes (require ChatService)
     const { createChatRoutes } = await import('./routes/chat');
     const { createPublicChatRoutes } = await import('./routes/chat-public');
     const { createSmsRoutes } = await import('./routes/sms');
@@ -425,142 +304,16 @@ async function initializeApp() {
     });
 
     EventBus.on(EVENTS.EMAIL.RECEIVED, async (data) => {
-        // EmailIngestion.handleIncomingEmail already handles push notifications
-        // with proper accountId lookup from emailAccountId
         await chatService.handleIncomingEmail(data);
     });
 
-    // Initialize Notification Engine (handles push notifications for all events)
+    // Initialize Notification Engine
     NotificationEngine.init();
 
-    // Socket.io Connection Logic
-    io.on('connection', (socket) => {
-        socket.on('join:account', (accountId) => {
-            if (!accountId) return;
-            if (!socket.data.isSuperAdmin && !socket.data.accountIds?.includes(accountId)) {
-                Logger.warn('[Socket] Unauthorized account join attempt', { accountId, socketId: socket.id });
-                socket.emit('auth:error', { message: 'Forbidden' });
-                return;
-            }
-            Logger.warn(`[Socket] Client joined account room: account:${accountId}`, { socketId: socket.id });
-            socket.join(`account:${accountId}`);
-        });
+    // Setup Socket.IO handlers (extracted to config/socketHandlers.ts)
+    setupSocketHandlers(io);
 
-        // Conversation presence tracking for collision detection
-        socket.on('join:conversation', async (payload) => {
-            const { conversationId, user } = typeof payload === 'string'
-                ? { conversationId: payload, user: undefined }
-                : (payload || {});
-
-            if (!conversationId) return;
-
-            if (!socket.data.isSuperAdmin) {
-                const conversation = await prisma.conversation.findUnique({
-                    where: { id: conversationId },
-                    select: { accountId: true }
-                });
-
-                if (!conversation || !socket.data.accountIds?.includes(conversation.accountId)) {
-                    Logger.warn('[Socket] Unauthorized conversation join attempt', { conversationId, socketId: socket.id });
-                    socket.emit('auth:error', { message: 'Forbidden' });
-                    return;
-                }
-            }
-
-            socket.join(`conversation:${conversationId}`);
-
-            // Track viewer presence if user info provided
-            if (user && conversationId) {
-                const userInfo = {
-                    userId: user.id || 'anon',
-                    name: user.name || 'Anonymous',
-                    avatarUrl: user.avatarUrl,
-                    connectedAt: Date.now()
-                };
-                const { CollaborationService } = await import('./services/CollaborationService');
-                await CollaborationService.joinDocument(`conv:${conversationId}`, socket.id, userInfo);
-                const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
-                io.to(`conversation:${conversationId}`).emit('viewers:sync', viewers);
-            }
-        });
-
-        socket.on('leave:conversation', async ({ conversationId }) => {
-            socket.leave(`conversation:${conversationId}`);
-
-            // Remove from presence tracking
-            if (conversationId) {
-                const { CollaborationService } = await import('./services/CollaborationService');
-                await CollaborationService.leaveDocument(`conv:${conversationId}`, socket.id);
-                const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
-                io.to(`conversation:${conversationId}`).emit('viewers:sync', viewers);
-            }
-        });
-
-        socket.on('typing:start', ({ conversationId }) => {
-            socket.to(`conversation:${conversationId}`).emit('typing:start', { conversationId });
-        });
-
-        socket.on('typing:stop', ({ conversationId }) => {
-            socket.to(`conversation:${conversationId}`).emit('typing:stop', { conversationId });
-        });
-
-        socket.on('join:document', async ({ docId, user }) => {
-            socket.join(`document:${docId}`);
-            const userInfo = {
-                userId: user.id || 'anon',
-                name: user.name || 'Anonymous',
-                avatarUrl: user.avatarUrl,
-                color: user.color,
-                connectedAt: Date.now()
-            };
-
-            const { CollaborationService } = await import('./services/CollaborationService');
-            await CollaborationService.joinDocument(docId, socket.id, userInfo);
-            const presenceList = await CollaborationService.getPresence(docId);
-            io.to(`document:${docId}`).emit('presence:sync', presenceList);
-        });
-
-        socket.on('leave:document', async ({ docId }) => {
-            socket.leave(`document:${docId}`);
-            const { CollaborationService } = await import('./services/CollaborationService');
-            await CollaborationService.leaveDocument(docId, socket.id);
-            const presenceList = await CollaborationService.getPresence(docId);
-            io.to(`document:${docId}`).emit('presence:sync', presenceList);
-        });
-
-        // Heartbeat listener - clients send this every 30s to keep presence alive
-        socket.on('presence:heartbeat', async ({ docId }) => {
-            if (!docId) return;
-            const { CollaborationService } = await import('./services/CollaborationService');
-            await CollaborationService.refreshPresence(docId, socket.id);
-        });
-
-        // Handle disconnect - clean up BOTH conversation AND document presence
-        socket.on('disconnecting', async () => {
-            const rooms: string[] = Array.from(socket.rooms) as string[];
-            const { CollaborationService } = await import('./services/CollaborationService');
-
-            // Clean up conversation presence
-            const convRooms = rooms.filter((r: string) => r.startsWith('conversation:'));
-            for (const room of convRooms) {
-                const conversationId = room.replace('conversation:', '');
-                await CollaborationService.leaveDocument(`conv:${conversationId}`, socket.id);
-                const viewers = await CollaborationService.getPresence(`conv:${conversationId}`);
-                io.to(room).emit('viewers:sync', viewers);
-            }
-
-            // Clean up document presence
-            const docRooms = rooms.filter((r: string) => r.startsWith('document:'));
-            for (const room of docRooms) {
-                const docId = room.replace('document:', '');
-                await CollaborationService.leaveDocument(docId, socket.id);
-                const presenceList = await CollaborationService.getPresence(docId);
-                io.to(room).emit('presence:sync', presenceList);
-            }
-        });
-    });
-
-    // --- CRON / SCHEDULERS ---
+    // CRON / SCHEDULERS
     setInterval(async () => {
         try {
             await automationEngine.runTicker();
@@ -573,6 +326,4 @@ async function initializeApp() {
 // Initialize on import
 const appPromise = initializeApp();
 
-// Export fastify instance, server, io, automationEngine
-// Note: These may not be ready immediately - use appPromise to wait
 export { fastify as app, server, io, automationEngine, appPromise };

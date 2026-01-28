@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Link } from 'react-router-dom';
@@ -77,13 +77,7 @@ export function InventoryForecastPage() {
         };
     });
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchData();
-        }
-    }, [currentAccount, token]);
-
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         setError(null);
@@ -94,10 +88,16 @@ export function InventoryForecastPage() {
                 'X-Account-ID': currentAccount.id
             };
 
-            // Parallel fetch
+            // Parallel fetch with cache bypass to ensure fresh data on refresh
             const [forecastRes, alertRes] = await Promise.all([
-                fetch('/api/analytics/inventory/sku-forecasts?days=30', { headers }),
-                fetch('/api/analytics/inventory/stockout-alerts?threshold=30', { headers })
+                fetch('/api/analytics/inventory/sku-forecasts?days=30', {
+                    headers,
+                    cache: 'no-store'
+                }),
+                fetch('/api/analytics/inventory/stockout-alerts?threshold=30', {
+                    headers,
+                    cache: 'no-store'
+                })
             ]);
 
             if (forecastRes.ok) {
@@ -116,7 +116,13 @@ export function InventoryForecastPage() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (currentAccount && token) {
+            fetchData();
+        }
+    }, [currentAccount, token, fetchData]);
 
     // Sorting handler
     function handleSort(field: SortField) {

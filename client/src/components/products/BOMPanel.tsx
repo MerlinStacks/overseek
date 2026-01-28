@@ -231,8 +231,13 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                                 .map((a: any) => a.option || a.value)
                                 .filter(Boolean)
                                 .join(' / ');
-                            displayName = item.childProduct
-                                ? `${item.childProduct.name} - ${attrString || item.childVariation.sku || `#${item.childVariation.wooId}`}`
+
+                            // Use childProduct.name if available, otherwise fall back to _parentProductName
+                            // (synthetic variants hydrated from rawData include _parentProductName)
+                            const parentName = item.childProduct?.name || item.childVariation._parentProductName;
+
+                            displayName = parentName
+                                ? `${parentName} - ${attrString || item.childVariation.sku || `#${item.childVariation.wooId}`}`
                                 : attrString || item.childVariation.sku || `Variant #${item.childVariation.wooId}`;
                         } else if (item.childProduct) {
                             displayName = item.childProduct.name;

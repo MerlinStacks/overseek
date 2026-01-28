@@ -1,281 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Logger } from '../utils/logger';
-import { useSearchParams, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useAccount } from '../context/AccountContext';
-import { formatDate, formatCurrency } from '../utils/format';
+/**
+ * Orders Page
+ *
+ * Displays a paginated, searchable list of WooCommerce orders with tag filtering.
+ * State management delegated to useOrders hook.
+ */
+
+import { Link } from 'react-router-dom';
 import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye } from 'lucide-react';
+import { formatDate, formatCurrency } from '../utils/format';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderPreviewModal } from '../components/orders/OrderPreviewModal';
 import { OrderStatusTabs } from '../components/orders/OrderStatusTabs';
 import { FraudIcon } from '../components/orders/FraudIcon';
-import { printPicklist } from '../utils/printPicklist';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
-
-interface Order {
-    id: number;
-    status: string;
-    total: number;
-    currency: string;
-    date_created: string;
-    customer_id?: number;
-    tags?: string[];
-    billing: {
-        first_name: string;
-        last_name: string;
-        email: string;
-    };
-    line_items: Array<{
-        name: string;
-        quantity: number;
-    }>;
-}
-
-interface OrderAttribution {
-    lastTouchSource: string;
-}
+import { useOrders } from '../hooks/useOrders';
 
 export function OrdersPage() {
-    const [searchParams, setSearchParams] = useSearchParams();
-
-    // Initialize state from URL query params
-    const tagsFromUrl = searchParams.get('tags');
-    const searchFromUrl = searchParams.get('q');
-    const statusFromUrl = searchParams.get('status');
-
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [searchQuery, setSearchQuery] = useState(searchFromUrl || '');
-
-    // Picklist State
-    const [picklistStatus, setPicklistStatus] = useState('processing');
-    const [isGeneratingPicklist, setIsGeneratingPicklist] = useState(false);
-
-    const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(20);
-    const [totalPages, setTotalPages] = useState(1);
-    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
-
-    // Tag filtering - initialize from URL
-    const [availableTags, setAvailableTags] = useState<string[]>([]);
-    const [tagColors, setTagColors] = useState<Record<string, string>>({});
-    const [selectedTags, setSelectedTags] = useState<string[]>(
-        tagsFromUrl ? tagsFromUrl.split(',').filter(Boolean) : []
-    );
-    const [showTagDropdown, setShowTagDropdown] = useState(false);
-    const [attributions, setAttributions] = useState<Record<number, OrderAttribution | null>>({});
-
-    // Status filter
-    const [selectedStatus, setSelectedStatus] = useState(statusFromUrl || 'all');
-    // Status counts trigger refetch key - increments when orders change
-    const [statusCountsKey, setStatusCountsKey] = useState(0);
-
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    // Debounce search query to prevent API calls on every keystroke
-    const debouncedSearch = useDebouncedValue(searchQuery, 400);
-
-    // Sync filter state to URL
-    useEffect(() => {
-        const params: Record<string, string> = {};
-        if (selectedTags.length > 0) params.tags = selectedTags.join(',');
-        if (debouncedSearch) params.q = debouncedSearch;
-        if (selectedStatus && selectedStatus !== 'all') params.status = selectedStatus;
-        setSearchParams(params, { replace: true });
-    }, [selectedTags, debouncedSearch, selectedStatus, setSearchParams]);
-
-    useEffect(() => {
-        fetchOrders();
-    }, [currentAccount, token, debouncedSearch, page, limit, selectedTags, selectedStatus]);
-
-
-    // Fetch available tags and colors
-    useEffect(() => {
-        if (!currentAccount || !token) return;
-        fetch('/api/sync/orders/tags', {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount.id
-            }
-        })
-            .then(res => res.json())
-            .then(data => {
-                setAvailableTags(data.tags || []);
-                setTagColors(data.tagColors || {});
-            })
-            .catch(() => {
-                setAvailableTags([]);
-                setTagColors({});
-            });
-    }, [currentAccount, token]);
-
-    async function fetchOrders() {
-        if (!currentAccount || !token) return;
-
-        setIsLoading(true);
-        try {
-            const params = new URLSearchParams();
-            params.append('page', page.toString());
-            params.append('limit', limit.toString());
-            if (searchQuery) params.append('q', searchQuery);
-            if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
-            if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus);
-
-            const res = await fetch(`/api/sync/orders/search?${params}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-
-            if (!res.ok) throw new Error('Failed to fetch orders');
-
-            const data = await res.json();
-            setOrders(data.orders || data); // Handle both object and array response (fallback)
-            if (data.totalPages) setTotalPages(data.totalPages);
-            else setTotalPages(1); // Standard fallback
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-        } finally {
-            setIsLoading(false);
-        }
-    }
-
-    // Reset page on search, tag, or status change
-    useEffect(() => {
-        setPage(1);
-    }, [debouncedSearch, selectedTags, selectedStatus]);
-
-    // Fetch attributions for visible orders
-    useEffect(() => {
-        if (!orders.length || !token || !currentAccount) return;
-
-        const fetchAttributions = async () => {
-            const newAttributions: Record<number, OrderAttribution | null> = {};
-
-            // Fetch attribution for each order (in parallel with a limit)
-            const batchSize = 5;
-            for (let i = 0; i < orders.length; i += batchSize) {
-                const batch = orders.slice(i, i + batchSize);
-                await Promise.all(batch.map(async (order) => {
-                    if (attributions[order.id] !== undefined) {
-                        newAttributions[order.id] = attributions[order.id];
-                        return;
-                    }
-                    try {
-                        const res = await fetch(`/api/orders/${order.id}/attribution`, {
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'X-Account-ID': currentAccount.id
-                            }
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            newAttributions[order.id] = data.attribution ? {
-                                lastTouchSource: data.attribution.lastTouchSource
-                            } : null;
-                        } else {
-                            newAttributions[order.id] = null;
-                        }
-                    } catch {
-                        newAttributions[order.id] = null;
-                    }
-                }));
-            }
-
-            setAttributions(prev => ({ ...prev, ...newAttributions }));
-        };
-
-        fetchAttributions();
-    }, [orders, token, currentAccount]);
-
-    async function handleSync() {
-        if (!currentAccount || !token) return;
-        setIsSyncing(true);
-        try {
-            const res = await fetch('/api/sync/manual', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                },
-                body: JSON.stringify({
-                    accountId: currentAccount.id,
-                    types: ['orders']
-                })
-            });
-
-            if (!res.ok) throw new Error('Sync failed');
-
-            const result = await res.json();
-            alert(`Sync started! Status: ${result.status}`);
-
-            // Wait a bit before refreshing to allow some items to process? 
-            // Better to just let the user refresh manually or poll, but for now just wait 2s
-            setTimeout(fetchOrders, 2000);
-
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            alert('Sync failed. Check backend logs.');
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-
-    async function handleGeneratePicklist() {
-        if (!currentAccount || !token) return;
-        setIsGeneratingPicklist(true);
-        try {
-            const params = new URLSearchParams({ status: picklistStatus, limit: '100' });
-            const res = await fetch(`/api/inventory/picklist?${params}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.length === 0) {
-                    alert('No items found for the selected status.');
-                } else {
-                    printPicklist(data);
-                }
-            } else {
-                alert('Failed to generate picklist');
-            }
-        } catch (error) {
-            Logger.error('An error occurred', { error: error });
-            alert('Error generating picklist');
-        } finally {
-            setIsGeneratingPicklist(false);
-        }
-    }
-
-    async function removeTag(orderId: number, tag: string) {
-        if (!currentAccount || !token) return;
-        try {
-            const res = await fetch(`/api/orders/${orderId}/tags/${encodeURIComponent(tag)}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
-            });
-            if (res.ok) {
-                // Update the local order state to remove the tag immediately
-                setOrders(prev => prev.map(order =>
-                    order.id === orderId
-                        ? { ...order, tags: (order.tags || []).filter(t => t !== tag) }
-                        : order
-                ));
-            }
-        } catch (err) {
-            Logger.error('Failed to remove tag', { error: err });
-        }
-    }
+    const {
+        orders, isLoading, isSyncing, searchQuery, setSearchQuery,
+        page, setPage, limit, setLimit, totalPages,
+        selectedOrderId, setSelectedOrderId,
+        availableTags, tagColors, selectedTags, setSelectedTags,
+        showTagDropdown, setShowTagDropdown, attributions,
+        selectedStatus, setSelectedStatus, statusCountsKey,
+        picklistStatus, setPicklistStatus, isGeneratingPicklist,
+        currentAccount,
+        handleSync, handleGeneratePicklist, removeTag
+    } = useOrders();
 
     return (
         <div className="space-y-6">
@@ -312,6 +62,7 @@ export function OrdersPage() {
                             Picklist
                         </button>
                     </div>
+
                     <div className="relative flex-1 sm:flex-none">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
@@ -343,28 +94,19 @@ export function OrdersPage() {
                                     <div className="p-2 border-b border-gray-100 flex justify-between items-center">
                                         <span className="text-xs font-semibold text-gray-500 uppercase">Filter by Tag</span>
                                         {selectedTags.length > 0 && (
-                                            <button
-                                                onClick={() => setSelectedTags([])}
-                                                className="text-xs text-blue-600 hover:underline"
-                                            >
+                                            <button onClick={() => setSelectedTags([])} className="text-xs text-blue-600 hover:underline">
                                                 Clear all
                                             </button>
                                         )}
                                     </div>
                                     {availableTags.map(tag => (
-                                        <label
-                                            key={tag}
-                                            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                                        >
+                                        <label key={tag} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedTags.includes(tag)}
                                                 onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setSelectedTags([...selectedTags, tag]);
-                                                    } else {
-                                                        setSelectedTags(selectedTags.filter(t => t !== tag));
-                                                    }
+                                                    if (e.target.checked) setSelectedTags([...selectedTags, tag]);
+                                                    else setSelectedTags(selectedTags.filter(t => t !== tag));
                                                 }}
                                                 className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
@@ -375,8 +117,6 @@ export function OrdersPage() {
                             )}
                         </div>
                     )}
-
-
 
                     <button
                         onClick={handleSync}
@@ -390,12 +130,7 @@ export function OrdersPage() {
                 </div>
             </div>
 
-            {/* Status Tab Filter */}
-            <OrderStatusTabs
-                key={statusCountsKey}
-                selectedStatus={selectedStatus}
-                onStatusChange={setSelectedStatus}
-            />
+            <OrderStatusTabs key={statusCountsKey} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
 
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
@@ -419,25 +154,14 @@ export function OrdersPage() {
                                 <tr><td colSpan={8} className="p-12 text-center text-gray-500">No orders found. Try syncing!</td></tr>
                             ) : (
                                 orders.map((order) => (
-                                    <tr
-                                        key={order.id}
-                                        className="hover:bg-gray-50 transition-colors"
-                                    >
+                                    <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-3 md:px-6 py-3 md:py-4 font-medium outline-hidden">
                                             <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => setSelectedOrderId(order.id)}
-                                                    className="p-1 hover:bg-blue-100 rounded text-gray-400 hover:text-blue-600 transition-colors"
-                                                    title="Quick preview"
-                                                >
+                                                <button onClick={() => setSelectedOrderId(order.id)} className="p-1 hover:bg-blue-100 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Quick preview">
                                                     <Eye size={16} />
                                                 </button>
                                                 <FraudIcon orderId={order.id} />
-                                                <Link
-                                                    to={`/orders/${order.id}`}
-                                                    className="text-blue-600 hover:text-blue-800 hover:underline"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
+                                                <Link to={`/orders/${order.id}`} className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>
                                                     #{order.id}
                                                 </Link>
                                             </div>
@@ -445,7 +169,7 @@ export function OrdersPage() {
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-gray-600 text-sm">{formatDate(order.date_created)}</td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-                        ${order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                                ${order.status === 'completed' ? 'bg-green-100 text-green-800' :
                                                     order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                                                         order.status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
                                                 {order.status}
@@ -453,11 +177,7 @@ export function OrdersPage() {
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-900">
                                             {order.customer_id && order.customer_id > 0 ? (
-                                                <Link
-                                                    to={`/customers/${order.customer_id}`}
-                                                    className="block hover:text-blue-600"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
+                                                <Link to={`/customers/${order.customer_id}`} className="block hover:text-blue-600" onClick={(e) => e.stopPropagation()}>
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
                                                 </Link>
@@ -468,39 +188,22 @@ export function OrdersPage() {
                                                 </>
                                             )}
                                         </td>
-                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm font-medium">
-                                            {formatCurrency(order.total, order.currency)}
-                                        </td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm font-medium">{formatCurrency(order.total, order.currency)}</td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             <div className="flex flex-wrap gap-1 max-w-[180px]">
-                                                {(order.tags || []).slice(0, 3).map(tag => {
-                                                    const bgColor = tagColors[tag] || '#E5E7EB';
-                                                    return (
-                                                        <span
-                                                            key={tag}
-                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-xs group"
-                                                            style={{
-                                                                backgroundColor: bgColor,
-                                                                color: tagColors[tag] ? '#ffffff' : '#4B5563'
-                                                            }}
-                                                        >
-                                                            {tag}
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    removeTag(order.id, tag);
-                                                                }}
-                                                                className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
-                                                                title="Remove tag"
-                                                            >
-                                                                <X size={10} />
-                                                            </button>
-                                                        </span>
-                                                    );
-                                                })}
-                                                {(order.tags || []).length > 3 && (
-                                                    <span className="text-xs text-gray-400">+{order.tags!.length - 3}</span>
-                                                )}
+                                                {(order.tags || []).slice(0, 3).map(tag => (
+                                                    <span
+                                                        key={tag}
+                                                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-xs group"
+                                                        style={{ backgroundColor: tagColors[tag] || '#E5E7EB', color: tagColors[tag] ? '#ffffff' : '#4B5563' }}
+                                                    >
+                                                        {tag}
+                                                        <button onClick={(e) => { e.stopPropagation(); removeTag(order.id, tag); }} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity" title="Remove tag">
+                                                            <X size={10} />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                                {(order.tags || []).length > 3 && <span className="text-xs text-gray-400">+{order.tags!.length - 3}</span>}
                                             </div>
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
@@ -515,9 +218,7 @@ export function OrdersPage() {
                                                 <span className="text-xs text-gray-300">...</span>
                                             )}
                                         </td>
-                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-500">
-                                            {order.line_items.length} items
-                                        </td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-500">{order.line_items.length} items</td>
                                     </tr>
                                 ))
                             )}
@@ -530,14 +231,11 @@ export function OrdersPage() {
                         totalPages={totalPages}
                         onPageChange={setPage}
                         itemsPerPage={limit}
-                        onItemsPerPageChange={(newLimit) => {
-                            setLimit(newLimit);
-                            setPage(1);
-                        }}
+                        onItemsPerPageChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
                         allowItemsPerPage={true}
                     />
                 )}
             </div>
-        </div >
+        </div>
     );
 }

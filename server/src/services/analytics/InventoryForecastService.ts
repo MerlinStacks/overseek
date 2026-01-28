@@ -119,8 +119,16 @@ export class InventoryForecastService {
             );
 
             // 3. Get BOM component mappings and calculate derived demand
-            const componentIds = products.map(p => p.id);
-            const bomMappings = await this.getBOMComponentMappings(accountId, componentIds);
+            // Separate product IDs from variation wooIds for proper BOM lookup
+            const productIds = simpleProducts.map(p => p.id);
+            const internalProductIds = products.filter(p => p.wooId === 0).map(p => p.id);
+            const variationWooIds = variations.map(v => v.wooId);
+            const bomMappings = await this.getBOMComponentMappings(
+                accountId,
+                [...productIds, ...internalProductIds],
+                variationWooIds,
+                products
+            );
             const derivedDemandByComponent = await this.calculateBOMDerivedDemand(
                 accountId,
                 bomMappings,
@@ -130,7 +138,8 @@ export class InventoryForecastService {
             // Debug: Log BOM-derived demand calculation results
             Logger.debug('[InventoryForecastService] BOM-derived demand calculation', {
                 accountId,
-                componentCount: componentIds.length,
+                productCount: productIds.length,
+                variationCount: variationWooIds.length,
                 bomMappingsFound: bomMappings.length,
                 componentsWithDerivedDemand: derivedDemandByComponent.size,
                 derivedDemandEntries: Array.from(derivedDemandByComponent.entries()).slice(0, 5)
@@ -421,6 +430,7 @@ export class InventoryForecastService {
                 }
             }
         }
+
 
         // 2. Fetch internal products (component-only, not synced to WooCommerce)
         // These are always included in forecasts since they're managed locally
@@ -729,24 +739,35 @@ export class InventoryForecastService {
      * Returns a map of component product IDs to their parent BOM relationships.
      * This tells us which products use each component and how many units per assembly.
      * 
-     * Handles both WooProduct components (childProductId) and InternalProduct components (internalProductId).
+     * Handles:
+     * - WooProduct components (childProductId)
+     * - ProductVariation components (childVariationId)
+     * - InternalProduct components (internalProductId)
      */
     private static async getBOMComponentMappings(
         accountId: string,
-        componentProductIds: string[]
+        productIds: string[],
+        variationWooIds: number[],
+        products: Array<{ id: string; wooId: number; isVariation?: boolean }>
     ): Promise<BOMComponentMapping[]> {
-        if (componentProductIds.length === 0) return [];
+        if (productIds.length === 0 && variationWooIds.length === 0) return [];
 
-        // Find all BOMItems where childProductId OR internalProductId is one of our managed components
+        // Build OR conditions for the query
+        const orConditions: Array<Record<string, unknown>> = [];
+        if (productIds.length > 0) {
+            orConditions.push({ childProductId: { in: productIds } });
+            orConditions.push({ internalProductId: { in: productIds } });
+        }
+        if (variationWooIds.length > 0) {
+            orConditions.push({ childVariationId: { in: variationWooIds } });
+        }
+
+        // Find all BOMItems matching our components
         const bomItems = await prisma.bOMItem.findMany({
-            where: {
-                OR: [
-                    { childProductId: { in: componentProductIds } },
-                    { internalProductId: { in: componentProductIds } }
-                ]
-            },
+            where: { OR: orConditions },
             select: {
                 childProductId: true,
+                childVariationId: true,
                 internalProductId: true,
                 quantity: true,
                 wasteFactor: true,
@@ -772,31 +793,47 @@ export class InventoryForecastService {
 
         Logger.debug('[InventoryForecastService] getBOMComponentMappings query', {
             accountId,
-            componentIdsSearched: componentProductIds.length,
+            productIdsSearched: productIds.length,
+            variationWooIdsSearched: variationWooIds.length,
             bomItemsFound: bomItems.length,
             accountBomItemsAfterFilter: accountBomItems.length
         });
 
-        // Group by component product ID (either childProductId or internalProductId)
+        // Create a lookup map from wooId to product id for variations
+        const variationWooIdToId = new Map<number, string>();
+        for (const p of products) {
+            if (p.isVariation && p.wooId > 0) {
+                variationWooIdToId.set(p.wooId, p.id);
+            }
+        }
+
+        // Group by component product ID
         const mappingsByComponent = new Map<string, BOMComponentMapping>();
 
         for (const item of accountBomItems) {
             // Determine which component ID is being used
-            const componentId = item.childProductId || item.internalProductId;
+            let componentId: string | null = null;
+            let componentWooId = 0;
+
+            if (item.childVariationId && variationWooIdToId.has(item.childVariationId)) {
+                // This is a variation component - map wooId back to our product id
+                componentId = variationWooIdToId.get(item.childVariationId)!;
+                componentWooId = item.childVariationId;
+            } else if (item.childProductId) {
+                componentId = item.childProductId;
+                const component = await prisma.wooProduct.findUnique({
+                    where: { id: componentId },
+                    select: { wooId: true }
+                });
+                componentWooId = component?.wooId || 0;
+            } else if (item.internalProductId) {
+                componentId = item.internalProductId;
+                // Internal products have no wooId, remains 0
+            }
+
             if (!componentId) continue;
 
             if (!mappingsByComponent.has(componentId)) {
-                // Look up the component's wooId (will be null for internal products)
-                let componentWooId = 0;
-                if (item.childProductId) {
-                    const component = await prisma.wooProduct.findUnique({
-                        where: { id: componentId },
-                        select: { wooId: true }
-                    });
-                    componentWooId = component?.wooId || 0;
-                }
-                // Internal products have no wooId, they remain 0
-
                 mappingsByComponent.set(componentId, {
                     componentProductId: componentId,
                     componentWooId,

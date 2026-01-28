@@ -1,9 +1,15 @@
+/**
+ * Marketing Service
+ * 
+ * Manages marketing campaigns, automations, and email templates.
+ * Merge tag resolution delegated to MergeTagResolver.
+ */
 
 import { MarketingCampaign, MarketingAutomation, EmailTemplate } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
-
 import { SegmentService } from './SegmentService';
+import { resolveMergeTags } from './MergeTagResolver';
 
 export class MarketingService {
     private segmentService: SegmentService;
@@ -30,7 +36,6 @@ export class MarketingService {
     }
 
     async createCampaign(accountId: string, data: Partial<MarketingCampaign>) {
-        // Sanitize segmentId: if it's an empty string, set to null/undefined
         const segmentId = data.segmentId && data.segmentId.trim() !== '' ? data.segmentId : undefined;
 
         Logger.info(`Creating campaign`, { accountId, segmentId: segmentId || 'ALL' });
@@ -52,23 +57,16 @@ export class MarketingService {
         const { id: _, accountId: __, createdAt: ___, ...updateData } = data;
         return prisma.marketingCampaign.updateMany({
             where: { id, accountId },
-            data: {
-                ...(updateData as any),
-                updatedAt: new Date()
-            }
+            data: { ...(updateData as any), updatedAt: new Date() }
         });
     }
 
     async deleteCampaign(id: string, accountId: string) {
-        return prisma.marketingCampaign.deleteMany({
-            where: { id, accountId }
-        });
+        return prisma.marketingCampaign.deleteMany({ where: { id, accountId } });
     }
 
     async sendTestEmail(campaignId: string, email: string) {
         Logger.info(`Sending test email`, { campaignId, email });
-        // Basic test send
-        // In real app, render template/campaign content
         return { success: true };
     }
 
@@ -78,7 +76,6 @@ export class MarketingService {
 
         let totalRecipients = 0;
 
-        // 1. Get Count
         if (campaign.segmentId) {
             totalRecipients = await this.segmentService.getSegmentCount(accountId, campaign.segmentId);
         } else {
@@ -89,20 +86,17 @@ export class MarketingService {
 
         Logger.info(`Sending Campaign`, { campaignId, recipientCount: totalRecipients, segmentId: campaign.segmentId || 'ALL' });
 
-        // Update status to SENDING
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
             data: { status: 'SENDING', sentAt: new Date(), recipientsCount: totalRecipients }
         });
 
-        // Trigger Async Send (Batched)
         let processedCount = 0;
         const BATCH_SIZE = 1000;
 
         try {
             if (campaign.segmentId) {
                 for await (const batch of this.segmentService.iterateCustomersInSegment(accountId, campaign.segmentId, BATCH_SIZE)) {
-                    // Simulate processing (e.g., add to queue)
                     processedCount += batch.length;
                 }
             } else {
@@ -121,10 +115,8 @@ export class MarketingService {
                     }
 
                     const customers = await prisma.wooCustomer.findMany(params);
-
                     if (customers.length === 0) break;
 
-                    // Simulate processing
                     processedCount += customers.length;
 
                     if (customers.length < BATCH_SIZE) break;
@@ -133,20 +125,16 @@ export class MarketingService {
             }
         } catch (err) {
             Logger.error('Error sending campaign', err);
-            // Consider updating status to FAILED here
         }
 
-        // Update status to SENT
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
-            data: {
-                status: 'SENT',
-                sentCount: processedCount // assuming success
-            }
+            data: { status: 'SENT', sentCount: processedCount }
         });
 
         return { success: true, count: processedCount };
     }
+
     // -------------------
     // Automations
     // -------------------
@@ -157,7 +145,7 @@ export class MarketingService {
             include: {
                 enrollments: {
                     where: { status: 'ACTIVE' },
-                    select: { id: true } // just counting
+                    select: { id: true }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -167,26 +155,15 @@ export class MarketingService {
     async getAutomation(id: string, accountId: string) {
         return prisma.marketingAutomation.findFirst({
             where: { id, accountId },
-            include: {
-                steps: {
-                    orderBy: { stepOrder: 'asc' }
-                }
-            }
+            include: { steps: { orderBy: { stepOrder: 'asc' } } }
         });
     }
 
     async upsertAutomation(accountId: string, data: any) {
         const { id, name, triggerType, triggerConfig, steps, isActive } = data;
 
-        let automation;
-
         if (id) {
-            // Update existing
-            // Update existing
-            // Legacy steps cleanup only if needed, or ignore
-            // await prisma.automationStep.deleteMany({ where: { automationId: id } });
-
-            automation = await prisma.marketingAutomation.update({
+            return prisma.marketingAutomation.update({
                 where: { id },
                 data: {
                     name,
@@ -197,28 +174,23 @@ export class MarketingService {
                     status: isActive ? 'ACTIVE' : 'PAUSED'
                 }
             });
-        } else {
-            // Create new
-            automation = await prisma.marketingAutomation.create({
-                data: {
-                    accountId,
-                    name,
-                    triggerType,
-                    triggerConfig,
-                    isActive: isActive || false,
-                    flowDefinition: data.flowDefinition, // Save graph
-                    status: isActive ? 'ACTIVE' : 'PAUSED'
-                }
-            });
         }
 
-        return automation;
+        return prisma.marketingAutomation.create({
+            data: {
+                accountId,
+                name,
+                triggerType,
+                triggerConfig,
+                isActive: isActive || false,
+                flowDefinition: data.flowDefinition,
+                status: isActive ? 'ACTIVE' : 'PAUSED'
+            }
+        });
     }
 
     async deleteAutomation(id: string, accountId: string) {
-        return prisma.marketingAutomation.deleteMany({
-            where: { id, accountId }
-        });
+        return prisma.marketingAutomation.deleteMany({ where: { id, accountId } });
     }
 
     // -------------------
@@ -248,214 +220,9 @@ export class MarketingService {
     }
 
     async deleteTemplate(id: string, accountId: string) {
-        return prisma.emailTemplate.deleteMany({
-            where: { id, accountId }
-        });
+        return prisma.emailTemplate.deleteMany({ where: { id, accountId } });
     }
 
-    // -------------------
-    // WooCommerce Merge Tag Resolution
-    // -------------------
-
-    /**
-     * Replace WooCommerce merge tags with actual order/customer data
-     * Called before sending marketing emails with order context
-     */
-    resolveWooCommerceMergeTags(html: string, context: {
-        order?: any;
-        customer?: any;
-        product?: any;
-        coupon?: any;
-    }): string {
-        let result = html;
-
-        // Order merge tags
-        if (context.order) {
-            const order = context.order;
-
-            result = result.replace(/\{\{order\.number\}\}/g, order.orderNumber || order.id || '');
-            result = result.replace(/\{\{order\.date\}\}/g, this.formatDate(order.dateCreated));
-            result = result.replace(/\{\{order\.status\}\}/g, this.formatStatus(order.status));
-            result = result.replace(/\{\{order\.paymentMethod\}\}/g, order.paymentMethodTitle || '');
-            result = result.replace(/\{\{order\.subtotal\}\}/g, this.formatCurrency(order.subtotal, order.currency));
-            result = result.replace(/\{\{order\.shippingTotal\}\}/g, this.formatCurrency(order.shippingTotal, order.currency));
-            result = result.replace(/\{\{order\.discountTotal\}\}/g, this.formatCurrency(order.discountTotal, order.currency));
-            result = result.replace(/\{\{order\.total\}\}/g, this.formatCurrency(order.total, order.currency));
-            result = result.replace(/\{\{order\.customerNote\}\}/g, order.customerNote || '');
-
-            // Address blocks
-            result = result.replace(/\{\{order\.billingAddress\}\}/g, this.formatAddress(order.billingAddress || order.billing));
-            result = result.replace(/\{\{order\.shippingAddress\}\}/g, this.formatAddress(order.shippingAddress || order.shipping));
-
-            // Items table
-            result = result.replace(/\{\{order\.itemsTable\}\}/g, this.renderOrderItemsTable(order.lineItems || order.items || []));
-
-            // Downloads
-            result = result.replace(/\{\{order\.downloads\}\}/g, this.renderDownloadsTable(order.downloads || []));
-        }
-
-        // Customer merge tags
-        if (context.customer) {
-            const customer = context.customer;
-
-            result = result.replace(/\{\{customer\.firstName\}\}/g, customer.firstName || customer.first_name || '');
-            result = result.replace(/\{\{customer\.lastName\}\}/g, customer.lastName || customer.last_name || '');
-            result = result.replace(/\{\{customer\.email\}\}/g, customer.email || '');
-            result = result.replace(/\{\{customer\.phone\}\}/g, customer.phone || customer.billing?.phone || '');
-        }
-
-        // Product merge tags (for single product blocks)
-        if (context.product) {
-            const product = context.product;
-
-            result = result.replace(/\{\{product\.name\}\}/g, product.name || '');
-            result = result.replace(/\{\{product\.price\}\}/g, this.formatCurrency(product.price, 'AUD'));
-            result = result.replace(/\{\{product\.image\}\}/g, product.images?.[0]?.src || '');
-            result = result.replace(/\{\{product\.description\}\}/g, product.shortDescription || product.description || '');
-        }
-
-        // Coupon merge tags
-        if (context.coupon) {
-            const coupon = context.coupon;
-
-            result = result.replace(/\{\{coupon\.code\}\}/g, coupon.code || '');
-            result = result.replace(/\{\{coupon\.discount\}\}/g, coupon.discountType === 'percent'
-                ? `${coupon.amount}%`
-                : this.formatCurrency(coupon.amount, 'AUD'));
-            result = result.replace(/\{\{coupon\.description\}\}/g, coupon.description || '');
-        }
-
-        return result;
-    }
-
-    /**
-     * Format address object into HTML string
-     */
-    private formatAddress(address: any): string {
-        if (!address) return '';
-
-        const parts = [
-            [address.firstName, address.lastName].filter(Boolean).join(' ') ||
-            [address.first_name, address.last_name].filter(Boolean).join(' '),
-            address.company,
-            address.address1 || address.address_1,
-            address.address2 || address.address_2,
-            [address.city, address.state, address.postcode].filter(Boolean).join(', '),
-            address.country
-        ].filter(Boolean);
-
-        return parts.join('<br>');
-    }
-
-    /**
-     * Render order line items as HTML table
-     */
-    private renderOrderItemsTable(items: any[]): string {
-        if (!items || items.length === 0) {
-            return '<p style="color: #6b7280; font-style: italic;">No items</p>';
-        }
-
-        const rows = items.map(item => `
-            <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px; vertical-align: top;">
-                    ${item.image ? `<img src="${item.image}" alt="${item.name}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;" />` : ''}
-                </td>
-                <td style="padding: 12px; color: #374151;">
-                    ${item.name || item.productName || 'Product'}
-                    ${item.meta?.length ? `<br><span style="font-size: 12px; color: #6b7280;">${item.meta.map((m: any) => `${m.key}: ${m.value}`).join(', ')}</span>` : ''}
-                </td>
-                <td style="padding: 12px; text-align: center; color: #374151;">${item.quantity || 1}</td>
-                <td style="padding: 12px; text-align: right; color: #374151;">${this.formatCurrency(item.total || item.price, item.currency)}</td>
-            </tr>
-        `).join('');
-
-        return `
-            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif;">
-                <thead>
-                    <tr style="background: #f3f4f6;">
-                        <th style="padding: 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 60px;"></th>
-                        <th style="padding: 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase;">Product</th>
-                        <th style="padding: 12px; text-align: center; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 60px;">Qty</th>
-                        <th style="padding: 12px; text-align: right; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 100px;">Price</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
-        `;
-    }
-
-    /**
-     * Render downloadable products as HTML
-     */
-    private renderDownloadsTable(downloads: any[]): string {
-        if (!downloads || downloads.length === 0) {
-            return '<p style="color: #6b7280; font-style: italic;">No downloads available</p>';
-        }
-
-        const items = downloads.map(dl => `
-            <div style="padding: 16px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <p style="margin: 0 0 4px 0; color: #111827; font-size: 14px; font-weight: 500;">${dl.name || dl.product_name || 'Download'}</p>
-                    ${dl.access_expires ? `<p style="margin: 0; color: #6b7280; font-size: 12px;">Expires: ${this.formatDate(dl.access_expires)}</p>` : ''}
-                </div>
-                <a href="${dl.download_url || dl.file?.file || '#'}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500;">Download</a>
-            </div>
-        `).join('');
-
-        return `
-            <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; font-family: Arial, sans-serif;">
-                ${items}
-            </div>
-        `;
-    }
-
-    /**
-     * Format currency value
-     */
-    private formatCurrency(amount: number | string | undefined, currency: string = 'AUD'): string {
-        if (amount === undefined || amount === null) return '$0.00';
-
-        const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-
-        return new Intl.NumberFormat('en-AU', {
-            style: 'currency',
-            currency: currency || 'AUD'
-        }).format(num);
-    }
-
-    /**
-     * Format date for display
-     */
-    private formatDate(date: string | Date | undefined): string {
-        if (!date) return '';
-
-        const d = typeof date === 'string' ? new Date(date) : date;
-
-        return d.toLocaleDateString('en-AU', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
-    }
-
-    /**
-     * Format order status for display
-     */
-    private formatStatus(status: string | undefined): string {
-        if (!status) return '';
-
-        const statusMap: Record<string, string> = {
-            'pending': 'Pending Payment',
-            'processing': 'Processing',
-            'on-hold': 'On Hold',
-            'completed': 'Completed',
-            'cancelled': 'Cancelled',
-            'refunded': 'Refunded',
-            'failed': 'Failed'
-        };
-
-        return statusMap[status.toLowerCase()] || status.charAt(0).toUpperCase() + status.slice(1);
-    }
+    // Delegate merge tag resolution to MergeTagResolver
+    resolveWooCommerceMergeTags = resolveMergeTags;
 }

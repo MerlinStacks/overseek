@@ -86,15 +86,156 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         include: {
                             supplierItem: { include: { supplier: true } },
                             childProduct: true,
-                            childVariation: true, // Include variant details for name/COGS
-                            internalProduct: true // Include internal product details
+                            childVariation: true,
+                            internalProduct: true
                         }
                     }
                 }
             });
-            return bom || { items: [] };
+
+            if (!bom || !bom.items || bom.items.length === 0) {
+                return { items: [] };
+            }
+
+            // Log items for debugging missing relations
+            for (const item of bom.items) {
+                if (item.internalProductId && !item.internalProduct) {
+                    Logger.warn('BOM item has internalProductId but internalProduct relation is null', {
+                        bomItemId: item.id,
+                        internalProductId: item.internalProductId
+                    });
+                }
+                if (item.childProductId && item.childVariationId && !item.childVariation) {
+                    Logger.debug('BOM item has childVariationId but childVariation relation is null', {
+                        bomItemId: item.id,
+                        childProductId: item.childProductId,
+                        childVariationId: item.childVariationId
+                    });
+                }
+            }
+
+            /**
+             * Hydrate missing internalProduct data.
+             * This handles orphaned references where the internal product exists but the relation didn't resolve.
+             */
+            const internalItemsNeedingHydration = bom.items.filter(
+                item => item.internalProductId && !item.internalProduct
+            );
+
+            /**
+             * Hydrate missing childVariation data from parent product's rawData.variationsData.
+             */
+            const variantItemsNeedingHydration = bom.items.filter(
+                item => item.childProductId && item.childVariationId && !item.childVariation
+            );
+
+            let enrichedItems: any[] = [...bom.items];
+
+            // Hydrate internal products
+            if (internalItemsNeedingHydration.length > 0) {
+                const internalProductIds = [...new Set(internalItemsNeedingHydration.map(item => item.internalProductId!))];
+
+                const internalProducts = await prisma.internalProduct.findMany({
+                    where: { id: { in: internalProductIds } }
+                });
+
+                const internalProductMap = new Map(internalProducts.map(p => [p.id, p]));
+
+                enrichedItems = enrichedItems.map(item => {
+                    if (!item.internalProductId || item.internalProduct) return item;
+
+                    const internalProduct = internalProductMap.get(item.internalProductId);
+                    if (internalProduct) {
+                        Logger.info('Hydrated missing internalProduct relation', {
+                            bomItemId: item.id,
+                            internalProductId: item.internalProductId,
+                            internalProductName: internalProduct.name
+                        });
+                        return { ...item, internalProduct };
+                    }
+
+                    Logger.warn('Internal product not found for BOM item', {
+                        bomItemId: item.id,
+                        internalProductId: item.internalProductId
+                    });
+                    return item;
+                });
+            }
+
+            // Hydrate variants
+            if (variantItemsNeedingHydration.length > 0) {
+                const parentProductIds = [...new Set(variantItemsNeedingHydration.map(item => item.childProductId!))];
+
+                const parentProducts = await prisma.wooProduct.findMany({
+                    where: { id: { in: parentProductIds } },
+                    select: { id: true, name: true, rawData: true }
+                });
+
+                const parentMap = new Map(parentProducts.map(p => [p.id, p]));
+
+                const variationKeys = variantItemsNeedingHydration.map(item => ({
+                    productId: item.childProductId!,
+                    wooId: item.childVariationId!
+                }));
+
+                const existingVariations = await prisma.productVariation.findMany({
+                    where: {
+                        OR: variationKeys.map(k => ({
+                            productId: k.productId,
+                            wooId: k.wooId
+                        }))
+                    }
+                });
+
+                const variationLookup = new Map(
+                    existingVariations.map(v => [`${v.productId}:${v.wooId}`, v])
+                );
+
+                enrichedItems = enrichedItems.map(item => {
+                    if (item.childVariation) return item;
+                    if (!item.childProductId || !item.childVariationId) return item;
+
+                    const lookupKey = `${item.childProductId}:${item.childVariationId}`;
+
+                    const dbVariation = variationLookup.get(lookupKey);
+                    if (dbVariation) {
+                        return { ...item, childVariation: dbVariation };
+                    }
+
+                    const parentProduct = parentMap.get(item.childProductId);
+                    if (!parentProduct) return item;
+
+                    const rawData = parentProduct.rawData as any || {};
+                    const variationsData: any[] = rawData.variationsData || [];
+
+                    const matchingVariation = variationsData.find(
+                        (v: any) => v.id === item.childVariationId
+                    );
+
+                    if (matchingVariation) {
+                        const syntheticVariation = {
+                            id: `synthetic:${item.childProductId}:${item.childVariationId}`,
+                            productId: item.childProductId,
+                            wooId: item.childVariationId,
+                            sku: matchingVariation.sku || null,
+                            price: matchingVariation.price ? parseFloat(matchingVariation.price) : null,
+                            salePrice: matchingVariation.sale_price ? parseFloat(matchingVariation.sale_price) : null,
+                            stockStatus: matchingVariation.stock_status || 'instock',
+                            stockQuantity: matchingVariation.stock_quantity ?? null,
+                            cogs: null,
+                            rawData: matchingVariation,
+                            _parentProductName: parentProduct.name
+                        };
+                        return { ...item, childVariation: syntheticVariation };
+                    }
+
+                    return item;
+                });
+            }
+
+            return { ...bom, items: enrichedItems };
         } catch (error) {
-            Logger.error('Error', { error });
+            Logger.error('Error fetching BOM', { error, productId, variationId });
             return reply.code(500).send({ error: 'Failed to fetch BOM' });
         }
     });
