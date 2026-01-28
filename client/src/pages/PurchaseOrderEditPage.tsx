@@ -174,7 +174,7 @@ export function PurchaseOrderEditPage() {
     const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
     return (
-        <div className="max-w-5xl mx-auto space-y-6">
+        <div className="max-w-7xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <button onClick={() => navigate('/inventory')} className="p-2 hover:bg-gray-100 rounded-full">
@@ -238,9 +238,11 @@ export function PurchaseOrderEditPage() {
                                         <label className="text-xs font-medium text-gray-500">Item Name / SKU</label>
                                         <ProductSearchInput
                                             initialValue={item.name}
-                                            placeholder="Search products..."
+                                            placeholder="Search by SKU or name..."
                                             onSelect={(product: ProductSelection) => {
                                                 const newItems = [...items];
+                                                // Use COGS as primary cost, fallback to price
+                                                const costToUse = product.cogs || product.price || 0;
                                                 newItems[idx] = {
                                                     ...newItems[idx],
                                                     productId: product.productId,
@@ -248,8 +250,8 @@ export function PurchaseOrderEditPage() {
                                                     variationWooId: product.variationWooId,
                                                     name: product.name,
                                                     sku: product.sku,
-                                                    unitCost: product.cogs || product.price || newItems[idx].unitCost,
-                                                    totalCost: newItems[idx].quantity * (product.cogs || product.price || newItems[idx].unitCost)
+                                                    unitCost: costToUse,
+                                                    totalCost: newItems[idx].quantity * costToUse
                                                 };
                                                 setItems(newItems);
                                             }}

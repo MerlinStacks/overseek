@@ -1,14 +1,15 @@
 /**
  * ProductSearchInput - Combobox for searching and selecting products
  * 
- * Fetches products via the existing search API and allows selection
- * with variant support for variable products.
+ * Fetches products via the existing search API and allows selection.
+ * Variants are flattened into the same list for single-click selection.
+ * SKU matches are prioritized in results.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Search, Package, ChevronDown, X, Loader2 } from 'lucide-react';
+import { Search, Package, X, Loader2 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 
 export interface ProductSelection {
@@ -35,15 +36,31 @@ interface ProductResult {
     main_image?: string;
     type?: string;
     variations?: VariationResult[];
-    hasBOM?: boolean;  // Products with BOMs can't receive stock directly
+    hasBOM?: boolean;
 }
 
 interface VariationResult {
     wooId: number;
     sku?: string;
     price?: number;
+    cogs?: number;
     attributes?: { name: string; option: string }[];
     stock_quantity?: number;
+}
+
+/** Flattened item for display - can be a simple product or a variant */
+interface FlatItem {
+    productId: string;
+    wooId: number;
+    variationWooId?: number;
+    name: string;
+    sku?: string;
+    price?: number;
+    cogs?: number;
+    stock?: number;
+    image?: string;
+    isVariant: boolean;
+    parentName?: string;
 }
 
 interface ProductSearchInputProps {
@@ -55,7 +72,7 @@ interface ProductSearchInputProps {
 
 export function ProductSearchInput({
     onSelect,
-    placeholder = 'Search products by name or SKU...',
+    placeholder = 'Search by SKU or product name...',
     disabled = false,
     initialValue = ''
 }: ProductSearchInputProps) {
@@ -63,26 +80,91 @@ export function ProductSearchInput({
     const { currentAccount } = useAccount();
 
     const [query, setQuery] = useState(initialValue);
-    const [results, setResults] = useState<ProductResult[]>([]);
+    const [flatResults, setFlatResults] = useState<FlatItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    const [selectedProduct, setSelectedProduct] = useState<ProductResult | null>(null);
-    const [showVariants, setShowVariants] = useState(false);
 
     const inputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Debounced search
+    /**
+     * Flatten products + their variants into a single list.
+     * SKU matches are prioritized to the top.
+     */
+    const flattenAndSort = (products: ProductResult[], searchQuery: string): FlatItem[] => {
+        const items: FlatItem[] = [];
+        const queryLower = searchQuery.toLowerCase().trim();
+
+        for (const product of products) {
+            // Skip BOM products
+            if (product.hasBOM) continue;
+
+            const hasVariations = product.type === 'variable' &&
+                product.variations && product.variations.length > 0;
+
+            if (hasVariations && product.variations) {
+                // Add each variant as a separate item
+                for (const variation of product.variations) {
+                    const variantLabel = variation.attributes
+                        ?.map(attr => attr.option)
+                        .join(' / ') || `Variant ${variation.wooId}`;
+
+                    items.push({
+                        productId: product.id,
+                        wooId: product.woo_id || 0,
+                        variationWooId: variation.wooId,
+                        name: `${product.name} - ${variantLabel}`,
+                        sku: variation.sku || product.sku,
+                        price: variation.price || product.price,
+                        cogs: variation.cogs || product.cogs,
+                        stock: variation.stock_quantity,
+                        image: product.main_image || product.images?.[0]?.src,
+                        isVariant: true,
+                        parentName: product.name
+                    });
+                }
+            } else {
+                // Simple product
+                items.push({
+                    productId: product.id,
+                    wooId: product.woo_id || 0,
+                    name: product.name,
+                    sku: product.sku,
+                    price: product.price,
+                    cogs: product.cogs,
+                    stock: product.stock_quantity,
+                    image: product.main_image || product.images?.[0]?.src,
+                    isVariant: false
+                });
+            }
+        }
+
+        // Sort: SKU exact match first, then SKU contains, then name match
+        items.sort((a, b) => {
+            const aSkuExact = a.sku?.toLowerCase() === queryLower ? 1 : 0;
+            const bSkuExact = b.sku?.toLowerCase() === queryLower ? 1 : 0;
+            if (aSkuExact !== bSkuExact) return bSkuExact - aSkuExact;
+
+            const aSkuContains = a.sku?.toLowerCase().includes(queryLower) ? 1 : 0;
+            const bSkuContains = b.sku?.toLowerCase().includes(queryLower) ? 1 : 0;
+            if (aSkuContains !== bSkuContains) return bSkuContains - aSkuContains;
+
+            return 0;
+        });
+
+        return items;
+    };
+
     const searchProducts = useCallback(async (searchQuery: string) => {
         if (!searchQuery.trim() || !token || !currentAccount) {
-            setResults([]);
+            setFlatResults([]);
             return;
         }
 
         setIsLoading(true);
         try {
-            const res = await fetch(`/api/products?q=${encodeURIComponent(searchQuery)}&limit=10`, {
+            const res = await fetch(`/api/products?q=${encodeURIComponent(searchQuery)}&limit=20`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
@@ -92,9 +174,8 @@ export function ProductSearchInput({
             if (res.ok) {
                 const data = await res.json();
                 const products = data.products || data || [];
-                // Filter out BOM products since they derive stock from components
-                const nonBomProducts = products.filter((p: ProductResult) => !p.hasBOM);
-                setResults(nonBomProducts);
+                const flattened = flattenAndSort(products, searchQuery);
+                setFlatResults(flattened.slice(0, 15)); // Cap at 15 items
             }
         } catch (error) {
             Logger.error('Product search failed', { error });
@@ -113,7 +194,7 @@ export function ProductSearchInput({
                 searchProducts(query);
             }, 300);
         } else {
-            setResults([]);
+            setFlatResults([]);
         }
 
         return () => {
@@ -123,18 +204,15 @@ export function ProductSearchInput({
         };
     }, [query, searchProducts]);
 
-    // Close dropdown on outside click
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
-                setShowVariants(false);
             }
         }
         function handleEscape(event: KeyboardEvent) {
             if (event.key === 'Escape') {
                 setIsOpen(false);
-                setShowVariants(false);
             }
         }
 
@@ -146,62 +224,25 @@ export function ProductSearchInput({
         };
     }, []);
 
-    const handleSelectProduct = (product: ProductResult) => {
-        // Check if product has variations
-        const hasVariations = product.type === 'variable' ||
-            (product.variations && product.variations.length > 0);
-
-        if (hasVariations && product.variations && product.variations.length > 0) {
-            setSelectedProduct(product);
-            setShowVariants(true);
-        } else {
-            // Simple product - select directly
-            completeSelection(product);
-        }
-    };
-
-    const handleSelectVariation = (product: ProductResult, variation: VariationResult) => {
-        const variantName = variation.attributes
-            ?.map(attr => attr.option)
-            .join(' / ') || `Variant ${variation.wooId}`;
-
+    const handleSelect = (item: FlatItem) => {
         onSelect({
-            productId: product.id,
-            wooId: product.woo_id || 0,
-            variationWooId: variation.wooId,
-            name: `${product.name} - ${variantName}`,
-            sku: variation.sku || product.sku,
-            price: variation.price || product.price,
-            cogs: product.cogs,
-            image: product.main_image || product.images?.[0]?.src
+            productId: item.productId,
+            wooId: item.wooId,
+            variationWooId: item.variationWooId,
+            name: item.name,
+            sku: item.sku,
+            price: item.price,
+            cogs: item.cogs,
+            image: item.image
         });
 
-        setQuery(`${product.name} - ${variantName}`);
+        setQuery(item.name);
         setIsOpen(false);
-        setShowVariants(false);
-        setSelectedProduct(null);
-    };
-
-    const completeSelection = (product: ProductResult) => {
-        onSelect({
-            productId: product.id,
-            wooId: product.woo_id || 0,
-            name: product.name,
-            sku: product.sku,
-            price: product.price,
-            cogs: product.cogs,
-            image: product.main_image || product.images?.[0]?.src
-        });
-
-        setQuery(product.name);
-        setIsOpen(false);
-        setResults([]);
+        setFlatResults([]);
     };
 
     const clearSelection = () => {
         setQuery('');
-        setSelectedProduct(null);
-        setShowVariants(false);
         inputRef.current?.focus();
     };
 
@@ -236,111 +277,69 @@ export function ProductSearchInput({
                 )}
             </div>
 
-            {/* Dropdown */}
-            {isOpen && (query.length >= 2 || results.length > 0) && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+            {/* Dropdown - Flattened list */}
+            {isOpen && (query.length >= 2 || flatResults.length > 0) && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
                     {isLoading ? (
                         <div className="p-4 text-center text-gray-500">
                             <Loader2 className="animate-spin inline mr-2" size={16} />
                             Searching...
                         </div>
-                    ) : showVariants && selectedProduct?.variations ? (
-                        // Variant selection
-                        <div>
-                            <div className="px-3 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 flex items-center gap-2">
-                                <button
-                                    onClick={() => setShowVariants(false)}
-                                    className="text-blue-600 hover:underline"
-                                >
-                                    ← Back
-                                </button>
-                                Select variant for {selectedProduct.name}
-                            </div>
-                            {selectedProduct.variations.map((variation) => {
-                                const variantLabel = variation.attributes
-                                    ?.map(attr => attr.option)
-                                    .join(' / ') || `Variant ${variation.wooId}`;
-
-                                return (
-                                    <button
-                                        key={variation.wooId}
-                                        type="button"
-                                        onClick={() => handleSelectVariation(selectedProduct, variation)}
-                                        className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center justify-between border-b border-gray-100 last:border-0"
-                                    >
-                                        <div>
-                                            <div className="text-sm font-medium text-gray-900">{variantLabel}</div>
-                                            <div className="text-xs text-gray-500">
-                                                {variation.sku && <span className="mr-2">SKU: {variation.sku}</span>}
-                                                {variation.stock_quantity !== undefined && (
-                                                    <span>Stock: {variation.stock_quantity}</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {variation.price !== undefined && (
-                                            <span className="text-sm text-gray-600">${Number(variation.price).toFixed(2)}</span>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    ) : results.length === 0 ? (
+                    ) : flatResults.length === 0 ? (
                         <div className="p-4 text-center text-gray-500 text-sm">
                             No products found for "{query}"
                         </div>
                     ) : (
-                        // Product list
-                        results.map((product) => {
-                            const hasVariations = product.type === 'variable' ||
-                                (product.variations && product.variations.length > 0);
+                        flatResults.map((item, idx) => (
+                            <button
+                                key={`${item.productId}-${item.variationWooId || 'simple'}-${idx}`}
+                                type="button"
+                                onClick={() => handleSelect(item)}
+                                className="w-full px-3 py-2.5 text-left hover:bg-blue-50 flex items-center gap-3 border-b border-gray-100 last:border-0"
+                            >
+                                {/* Product image */}
+                                <div className="w-10 h-10 bg-gray-100 rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                    {item.image ? (
+                                        <img src={item.image} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <Package size={20} className="text-gray-300" />
+                                    )}
+                                </div>
 
-                            return (
-                                <button
-                                    key={product.id}
-                                    type="button"
-                                    onClick={() => handleSelectProduct(product)}
-                                    className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center gap-3 border-b border-gray-100 last:border-0"
-                                >
-                                    {/* Product image or placeholder */}
-                                    <div className="w-10 h-10 bg-gray-100 rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden">
-                                        {product.main_image || product.images?.[0]?.src ? (
-                                            <img
-                                                src={product.main_image || product.images?.[0]?.src}
-                                                alt=""
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <Package size={20} className="text-gray-300" />
-                                        )}
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">
+                                        {item.name}
                                     </div>
-
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-gray-900 truncate">
-                                            {product.name}
-                                        </div>
-                                        <div className="text-xs text-gray-500 flex items-center gap-2">
-                                            {product.sku && <span>SKU: {product.sku}</span>}
-                                            {product.stock_quantity !== undefined && (
-                                                <span className={product.stock_quantity <= 0 ? 'text-red-500' : ''}>
-                                                    Stock: {product.stock_quantity}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        {product.price !== undefined && (
-                                            <span className="text-sm text-gray-600">
-                                                ${Number(product.price).toFixed(2)}
+                                    <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                                        {item.sku && (
+                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">
+                                                {item.sku}
                                             </span>
                                         )}
-                                        {hasVariations && (
-                                            <ChevronDown size={16} className="text-gray-400" />
+                                        {item.stock !== undefined && (
+                                            <span className={item.stock <= 0 ? 'text-red-500' : ''}>
+                                                Stock: {item.stock}
+                                            </span>
+                                        )}
+                                        {item.isVariant && (
+                                            <span className="text-blue-600 text-xs">Variant</span>
                                         )}
                                     </div>
-                                </button>
-                            );
-                        })
+                                </div>
+
+                                <div className="text-right flex-shrink-0">
+                                    {item.cogs !== undefined && item.cogs > 0 ? (
+                                        <span className="text-sm font-medium text-green-700">
+                                            ${Number(item.cogs).toFixed(2)}
+                                        </span>
+                                    ) : item.price !== undefined ? (
+                                        <span className="text-sm text-gray-500">
+                                            ${Number(item.price).toFixed(2)}
+                                        </span>
+                                    ) : null}
+                                </div>
+                            </button>
+                        ))
                     )}
                 </div>
             )}
