@@ -250,8 +250,8 @@ export function PurchaseOrderEditPage() {
                                             placeholder="Search by SKU or name..."
                                             onSelect={(product: ProductSelection) => {
                                                 const newItems = [...items];
-                                                // Use COGS as primary cost, fallback to price
-                                                const costToUse = product.cogs || product.price || 0;
+                                                // Use COGS as primary cost, fallback to price only if COGS is null/undefined
+                                                const costToUse = product.cogs ?? product.price ?? 0;
                                                 newItems[idx] = {
                                                     ...newItems[idx],
                                                     productId: product.productId,

@@ -100,15 +100,16 @@ export function ProductSearchInput({
             // Skip BOM products
             if (product.hasBOM) continue;
 
-            const hasVariations = product.type === 'variable' &&
-                product.variations && product.variations.length > 0;
+            // Use searchableVariants (contains full variant data with COGS) over variations (only WooCommerce IDs)
+            const searchableVariants = (product as any).searchableVariants || [];
+            const hasVariations = product.type === 'variable' && searchableVariants.length > 0;
 
-            if (hasVariations && product.variations) {
+            if (hasVariations) {
                 // Add each variant as a separate item
-                for (const variation of product.variations) {
-                    const variantLabel = variation.attributes
-                        ?.map(attr => attr.option)
-                        .join(' / ') || `Variant ${variation.wooId}`;
+                for (const variation of searchableVariants) {
+                    const variantLabel = variation.attributeString ||
+                        variation.attributes?.map((attr: any) => attr.option).join(' / ') ||
+                        `Variant ${variation.wooId}`;
 
                     items.push({
                         productId: product.id,
@@ -118,7 +119,7 @@ export function ProductSearchInput({
                         sku: variation.sku || product.sku,
                         price: variation.price || product.price,
                         cogs: variation.cogs || product.cogs,
-                        stock: variation.stock_quantity,
+                        stock: variation.stockQuantity ?? variation.stock_quantity,
                         image: product.main_image || product.images?.[0]?.src,
                         isVariant: true,
                         parentName: product.name
