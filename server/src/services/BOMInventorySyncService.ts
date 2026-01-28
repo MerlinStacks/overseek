@@ -305,6 +305,22 @@ export class BOMInventorySyncService {
 
         // If no valid components found
         if (components.length === 0 || minBuildableUnits === Infinity) {
+            Logger.warn(`[BOMInventorySync] BOM has no valid components - returning null`, {
+                accountId,
+                productId,
+                variationId,
+                productName: product.name,
+                bomItemCount: bom.items.length,
+                validComponentCount: components.length,
+                bomItemDetails: bom.items.map(item => ({
+                    childProductId: item.childProductId,
+                    internalProductId: item.internalProductId,
+                    childVariationId: item.childVariationId,
+                    quantity: item.quantity,
+                    hasChildProduct: !!item.childProduct,
+                    hasInternalProduct: !!item.internalProduct
+                }))
+            });
             return null;
         }
 
@@ -460,7 +476,7 @@ export class BOMInventorySyncService {
         }
 
         const effectiveStock = minBuildableUnits;
-        const needsSync = currentWooStock !== null && Number(currentWooStock) !== Number(effectiveStock);
+        const needsSync = currentWooStock === null || Number(currentWooStock) !== Number(effectiveStock);
 
         return {
             productId: product.id,

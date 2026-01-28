@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box } from 'lucide-react';
+import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { SuppliersList } from '../components/inventory/SuppliersList';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
@@ -55,6 +55,8 @@ export function InventoryPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [sortField, setSortField] = useState<'name' | 'price' | null>(null);
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
@@ -182,7 +184,20 @@ export function InventoryPage() {
                     <InternalProductsList />
                 ) : (
                     <>
-                        <div className="flex justify-end mb-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                                {sortField && (
+                                    <>
+                                        <span>Sorted by <span className="font-medium text-gray-700">{sortField === 'name' ? 'Name' : 'Price'}</span></span>
+                                        <button
+                                            onClick={() => setSortField(null)}
+                                            className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                        >
+                                            Clear
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                                 <input
@@ -200,10 +215,48 @@ export function InventoryPage() {
                                 <thead>
                                     <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
                                         <th className="px-6 py-4 w-16">Image</th>
-                                        <th className="px-6 py-4">Product Name</th>
+                                        <th className="px-6 py-4">
+                                            <button
+                                                onClick={() => {
+                                                    if (sortField === 'name') {
+                                                        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                                                    } else {
+                                                        setSortField('name');
+                                                        setSortDirection('asc');
+                                                    }
+                                                }}
+                                                className="flex items-center gap-1 hover:text-gray-700 transition-colors group"
+                                            >
+                                                Product Name
+                                                {sortField === 'name' ? (
+                                                    sortDirection === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />
+                                                ) : (
+                                                    <ArrowUpDown size={14} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                )}
+                                            </button>
+                                        </th>
                                         <th className="px-6 py-4">SKU</th>
                                         <th className="px-6 py-4">Stock</th>
-                                        <th className="px-6 py-4">Price</th>
+                                        <th className="px-6 py-4">
+                                            <button
+                                                onClick={() => {
+                                                    if (sortField === 'price') {
+                                                        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                                                    } else {
+                                                        setSortField('price');
+                                                        setSortDirection('asc');
+                                                    }
+                                                }}
+                                                className="flex items-center gap-1 hover:text-gray-700 transition-colors group"
+                                            >
+                                                Price
+                                                {sortField === 'price' ? (
+                                                    sortDirection === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />
+                                                ) : (
+                                                    <ArrowUpDown size={14} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                )}
+                                            </button>
+                                        </th>
                                         <th className="px-6 py-4">SEO / GMC</th>
                                         <th className="px-6 py-4 text-center">Actions</th>
                                     </tr>
@@ -217,90 +270,107 @@ export function InventoryPage() {
                                             <p>No products found.</p>
                                         </td></tr>
                                     ) : (
-                                        products.map((product) => (
-                                            <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                                                        {(product.mainImage || product.images?.[0]?.src) ? (
-                                                            <img src={product.mainImage || product.images?.[0]?.src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-gray-400"><Package size={16} /></div>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 font-medium text-gray-900">
-                                                    <Link to={`/inventory/product/${product.wooId || product.id}`} className="hover:text-blue-600 transition-colors">
-                                                        {product.name}
-                                                    </Link>
-                                                </td>
-                                                <td className="px-6 py-4 text-sm font-mono text-gray-500">{product.sku || '-'}</td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col gap-1">
-                                                        {product.variations && product.variations.length > 0 ? (
-                                                            // Variable Product Stock Logic
-                                                            (() => {
-                                                                const totalStock = product.variations.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
-                                                                const breakdown = product.variations.map(v => v.stock_quantity || 0).join(', ');
-                                                                return (
-                                                                    <div className="flex flex-col">
-                                                                        <span className={`text-lg font-bold text-gray-900`}>
-                                                                            {totalStock}
+                                        [...products]
+                                            .sort((a, b) => {
+                                                if (!sortField) return 0;
+                                                if (sortField === 'name') {
+                                                    const nameA = a.name.toLowerCase();
+                                                    const nameB = b.name.toLowerCase();
+                                                    return sortDirection === 'asc'
+                                                        ? nameA.localeCompare(nameB)
+                                                        : nameB.localeCompare(nameA);
+                                                }
+                                                if (sortField === 'price') {
+                                                    const priceA = parseFloat(a.price) || 0;
+                                                    const priceB = parseFloat(b.price) || 0;
+                                                    return sortDirection === 'asc' ? priceA - priceB : priceB - priceA;
+                                                }
+                                                return 0;
+                                            })
+                                            .map((product) => (
+                                                <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                                                    <td className="px-6 py-4">
+                                                        <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                                                            {(product.mainImage || product.images?.[0]?.src) ? (
+                                                                <img src={product.mainImage || product.images?.[0]?.src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-gray-400"><Package size={16} /></div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 font-medium text-gray-900">
+                                                        <Link to={`/inventory/product/${product.wooId || product.id}`} className="hover:text-blue-600 transition-colors">
+                                                            {product.name}
+                                                        </Link>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-mono text-gray-500">{product.sku || '-'}</td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col gap-1">
+                                                            {product.variations && product.variations.length > 0 ? (
+                                                                // Variable Product Stock Logic
+                                                                (() => {
+                                                                    const totalStock = product.variations.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
+                                                                    const breakdown = product.variations.map(v => v.stock_quantity || 0).join(', ');
+                                                                    return (
+                                                                        <div className="flex flex-col">
+                                                                            <span className={`text-lg font-bold text-gray-900`}>
+                                                                                {totalStock}
+                                                                            </span>
+                                                                            <span className="text-xs text-gray-500 font-mono">
+                                                                                ({breakdown})
+                                                                            </span>
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 mt-1 w-fit">
+                                                                                Variable
+                                                                            </span>
+                                                                        </div>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                // Simple Product Logic
+                                                                <>
+                                                                    {product.stock_quantity !== undefined && product.stock_quantity !== null && (
+                                                                        <span className={`text-lg font-bold ${product.stock_quantity === 0 ? 'text-red-600' :
+                                                                            (product.low_stock_amount && product.stock_quantity <= product.low_stock_amount) ? 'text-amber-600' :
+                                                                                'text-gray-900'
+                                                                            }`}>
+                                                                            {product.stock_quantity}
                                                                         </span>
-                                                                        <span className="text-xs text-gray-500 font-mono">
-                                                                            ({breakdown})
-                                                                        </span>
-                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 mt-1 w-fit">
-                                                                            Variable
-                                                                        </span>
-                                                                    </div>
-                                                                );
-                                                            })()
-                                                        ) : (
-                                                            // Simple Product Logic
-                                                            <>
-                                                                {product.stock_quantity !== undefined && product.stock_quantity !== null && (
-                                                                    <span className={`text-lg font-bold ${product.stock_quantity === 0 ? 'text-red-600' :
-                                                                        (product.low_stock_amount && product.stock_quantity <= product.low_stock_amount) ? 'text-amber-600' :
-                                                                            'text-gray-900'
-                                                                        }`}>
-                                                                        {product.stock_quantity}
-                                                                    </span>
-                                                                )}
-                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize w-fit
+                                                                    )}
+                                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize w-fit
                                                                 ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                    {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                                    {product.price ? `$${product.price}` : '-'}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <button
-                                                        onClick={() => setViewingSeo(product)}
-                                                        className="flex flex-col gap-1 items-start hover:opacity-80 transition-opacity"
-                                                    >
-                                                        <SeoScoreBadge score={product.seoScore || 0} size="sm" />
-                                                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${(product.merchantCenterScore || 0) === 100
-                                                            ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                                            : 'bg-orange-50 text-orange-700 border-orange-100'
-                                                            }`}>
-                                                            GMC: {product.merchantCenterScore || 0}%
-                                                        </span>
-                                                    </button>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <button
-                                                        onClick={() => navigate(`/inventory/product/${product.wooId || product.id}`)}
-                                                        className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
+                                                                        {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
+                                                                    </span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                                                        {product.price ? `$${product.price}` : '-'}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <button
+                                                            onClick={() => setViewingSeo(product)}
+                                                            className="flex flex-col gap-1 items-start hover:opacity-80 transition-opacity"
+                                                        >
+                                                            <SeoScoreBadge score={product.seoScore || 0} size="sm" />
+                                                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${(product.merchantCenterScore || 0) === 100
+                                                                ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                                                : 'bg-orange-50 text-orange-700 border-orange-100'
+                                                                }`}>
+                                                                GMC: {product.merchantCenterScore || 0}%
+                                                            </span>
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <button
+                                                            onClick={() => navigate(`/inventory/product/${product.wooId || product.id}`)}
+                                                            className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
                                     )}
                                 </tbody>
                             </table>
