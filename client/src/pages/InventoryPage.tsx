@@ -40,6 +40,14 @@ interface Product {
         price: string;
         sku: string;
     }>;
+    /** Variant data from ProductVariation table with accurate stock */
+    searchableVariants?: Array<{
+        id: string;
+        wooId: number;
+        sku: string;
+        stockQuantity: number | null;
+        stockStatus: string;
+    }>;
 }
 
 import { ProductService } from '../services/ProductService';
@@ -306,11 +314,11 @@ export function InventoryPage() {
                                                     <td className="px-6 py-4 text-sm font-mono text-gray-500">{product.sku || '-'}</td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex flex-col gap-1">
-                                                            {product.variations && product.variations.length > 0 ? (
-                                                                // Variable Product Stock Logic
+                                                            {product.searchableVariants && product.searchableVariants.length > 0 ? (
+                                                                // Variable Product Stock Logic - uses searchableVariants from ProductVariation table
                                                                 (() => {
-                                                                    const totalStock = product.variations.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
-                                                                    const breakdown = product.variations.map(v => v.stock_quantity || 0).join(', ');
+                                                                    const totalStock = product.searchableVariants.reduce((sum, v) => sum + (v.stockQuantity || 0), 0);
+                                                                    const breakdown = product.searchableVariants.map(v => v.stockQuantity || 0).join(', ');
                                                                     return (
                                                                         <div className="flex flex-col">
                                                                             <span className={`text-lg font-bold text-gray-900`}>

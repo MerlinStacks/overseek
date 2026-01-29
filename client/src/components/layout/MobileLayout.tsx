@@ -70,22 +70,27 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     // Page transition effect
     useEffect(() => {
         if (location.pathname !== prevPathRef.current) {
-            setIsTransitioning(true);
+            // Defer initial state update to avoid cascading renders
+            const initialTimer = setTimeout(() => {
+                setIsTransitioning(true);
 
-            // Short delay for exit animation
-            const exitTimer = setTimeout(() => {
-                setDisplayLocation(location);
-                prevPathRef.current = location.pathname;
+                // Short delay for exit animation
+                const exitTimer = setTimeout(() => {
+                    setDisplayLocation(location);
+                    prevPathRef.current = location.pathname;
 
-                // Allow enter animation
-                const enterTimer = setTimeout(() => {
-                    setIsTransitioning(false);
-                }, 50);
+                    // Allow enter animation
+                    const enterTimer = setTimeout(() => {
+                        setIsTransitioning(false);
+                    }, 50);
 
-                return () => clearTimeout(enterTimer);
-            }, 150);
+                    return () => clearTimeout(enterTimer);
+                }, 150);
 
-            return () => clearTimeout(exitTimer);
+                return () => clearTimeout(exitTimer);
+            }, 0);
+
+            return () => clearTimeout(initialTimer);
         }
     }, [location]);
 
@@ -357,8 +362,8 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             >
                 <div
                     className={`p-4 transition-all duration-150 ease-out ${isTransitioning
-                            ? 'opacity-0 translate-x-4'
-                            : 'opacity-100 translate-x-0'
+                        ? 'opacity-0 translate-x-4'
+                        : 'opacity-100 translate-x-0'
                         }`}
                 >
                     <MobileErrorBoundary>

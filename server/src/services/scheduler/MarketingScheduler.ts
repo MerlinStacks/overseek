@@ -39,7 +39,56 @@ export class MarketingScheduler {
             jobId: 'outcome-assessment-daily'
         });
         Logger.info('Scheduled Recommendation Outcome Assessment (Daily at 3 AM UTC)');
+
+        // Weekly Performance Digest (Monday at 9 AM UTC)
+        await this.queue.add('weekly-digest', {}, {
+            repeat: { pattern: '0 9 * * 1' },
+            jobId: 'weekly-digest-monday'
+        });
+        Logger.info('Scheduled Weekly Performance Digest (Monday at 9 AM UTC)');
+
+        // Weekly Audience Refresh (Sunday at 2 AM UTC)
+        // Refreshes all synced audiences with updated segment members
+        await this.queue.add('audience-refresh', {}, {
+            repeat: { pattern: '0 2 * * 0' },
+            jobId: 'audience-refresh-weekly'
+        });
+        Logger.info('Scheduled Weekly Audience Refresh (Sunday at 2 AM UTC)');
+
+        // Budget Rebalancer Analysis (Every 6 hours)
+        // Analyzes campaigns and generates ROAS-based recommendations
+        await this.queue.add('budget-rebalancer', {}, {
+            repeat: { pattern: '0 */6 * * *' },
+            jobId: 'budget-rebalancer-6h'
+        });
+        Logger.info('Scheduled Budget Rebalancer Analysis (Every 6 hours)');
+
+        // Auto-Execute Pending Actions (Every 15 minutes)
+        // Executes scheduled actions that have autoExecute enabled
+        await this.queue.add('execute-pending-actions', {}, {
+            repeat: { pattern: '*/15 * * * *' },
+            jobId: 'execute-pending-actions-15m'
+        });
+        Logger.info('Scheduled Auto-Execute Pending Actions (Every 15 minutes)');
+
+        // Experiment Metrics Refresh (Every 4 hours)
+        // Refreshes performance metrics for active A/B experiments
+        await this.queue.add('experiment-metrics-refresh', {}, {
+            repeat: { pattern: '0 */4 * * *' },
+            jobId: 'experiment-metrics-4h'
+        });
+        Logger.info('Scheduled Experiment Metrics Refresh (Every 4 hours)');
+
+        // Experiment Significance Check (Daily at 6 AM UTC)
+        // Analyzes experiments and auto-pauses underperforming variants
+        await this.queue.add('experiment-significance-check', {}, {
+            repeat: { pattern: '0 6 * * *' },
+            jobId: 'experiment-significance-daily'
+        });
+        Logger.info('Scheduled Experiment Significance Check (Daily at 6 AM UTC)');
     }
+
+
 
     /**
      * Start all marketing-related tickers
@@ -328,4 +377,152 @@ export class MarketingScheduler {
             Logger.error('[Scheduler] Outcome assessment dispatch failed', { error });
         }
     }
+
+    /**
+     * Dispatch weekly performance digests to all eligible accounts
+     */
+    static async dispatchWeeklyDigests() {
+        Logger.info('[Scheduler] Starting weekly performance digest dispatch');
+
+        try {
+            const { PerformanceDigestService } = await import('../PerformanceDigestService');
+
+            // Get all accounts with digest enabled (defaulting to all for now)
+            // Note: Could filter by accounts with ad accounts or recent activity
+            const accounts = await prisma.account.findMany({
+                select: { id: true, name: true }
+            });
+
+            Logger.info(`[Scheduler] Sending weekly digests to ${accounts.length} accounts`);
+
+            for (const account of accounts) {
+                try {
+                    await PerformanceDigestService.sendDigest(account.id);
+                    Logger.info(`[Scheduler] Weekly digest sent for ${account.name || account.id}`);
+                } catch (error) {
+                    Logger.error(`[Scheduler] Failed to send digest for account ${account.id}`, { error });
+                }
+            }
+        } catch (error) {
+            Logger.error('[Scheduler] Weekly digest dispatch failed', { error });
+        }
+    }
+
+    /**
+     * Dispatch weekly audience refresh - updates synced audiences with fresh segment data.
+     * Part of AI Co-Pilot v2 - Phase 2: Audience Intelligence.
+     */
+    static async dispatchAudienceRefresh() {
+        try {
+            const { AudienceSyncService } = await import('../ads/AudienceSyncService');
+
+            // Get all accounts with synced audiences
+            const accountsWithAudiences = await prisma.audienceSync.groupBy({
+                by: ['accountId'],
+                where: {
+                    status: 'SYNCED',
+                    isLookalike: false
+                }
+            });
+
+            Logger.info(`[Scheduler] Refreshing audiences for ${accountsWithAudiences.length} accounts`);
+
+            for (const { accountId } of accountsWithAudiences) {
+                try {
+                    const result = await AudienceSyncService.refreshAllAudiences(accountId);
+                    Logger.info(`[Scheduler] Audience refresh complete for ${accountId}`, result);
+                } catch (error) {
+                    Logger.error(`[Scheduler] Failed to refresh audiences for ${accountId}`, { error });
+                }
+            }
+        } catch (error) {
+            Logger.error('[Scheduler] Audience refresh dispatch failed', { error });
+        }
+    }
+
+    /**
+     * Dispatch budget rebalancer analysis for all accounts.
+     * Part of AI Co-Pilot v2 - Phase 3: Campaign Automation.
+     */
+    static async dispatchBudgetRebalancer() {
+        try {
+            const { BudgetRebalancerService } = await import('../ads/BudgetRebalancerService');
+
+            Logger.info('[Scheduler] Starting budget rebalancer analysis');
+
+            const result = await BudgetRebalancerService.processAllAccounts();
+
+            Logger.info('[Scheduler] Budget rebalancer complete', {
+                processed: result.processed,
+                recommendations: result.recommendations
+            });
+        } catch (error) {
+            Logger.error('[Scheduler] Budget rebalancer dispatch failed', { error });
+        }
+    }
+
+    /**
+     * Execute pending auto-execute actions.
+     * Part of AI Co-Pilot v2 - Phase 3: Campaign Automation.
+     */
+    static async dispatchPendingActions() {
+        try {
+            const { AdActionExecutor } = await import('../ads/AdActionExecutor');
+
+            const result = await AdActionExecutor.processPendingActions();
+
+            if (result.processed > 0) {
+                Logger.info('[Scheduler] Pending actions processed', {
+                    processed: result.processed,
+                    succeeded: result.succeeded,
+                    failed: result.failed
+                });
+            }
+        } catch (error) {
+            Logger.error('[Scheduler] Pending actions dispatch failed', { error });
+        }
+    }
+
+    /**
+     * Refresh metrics for all running A/B experiments.
+     * Part of AI Co-Pilot v2 - Phase 4: Creative A/B Engine.
+     */
+    static async dispatchExperimentMetricsRefresh() {
+        try {
+            const { CreativeVariantService } = await import('../ads/CreativeVariantService');
+
+            Logger.info('[Scheduler] Starting experiment metrics refresh');
+
+            const result = await CreativeVariantService.refreshAllExperiments();
+
+            Logger.info('[Scheduler] Experiment metrics refresh complete', {
+                refreshed: result.refreshed
+            });
+        } catch (error) {
+            Logger.error('[Scheduler] Experiment metrics refresh failed', { error });
+        }
+    }
+
+    /**
+     * Check experiments for statistical significance and auto-pause losers.
+     * Part of AI Co-Pilot v2 - Phase 4: Creative A/B Engine.
+     */
+    static async dispatchExperimentSignificanceCheck() {
+        try {
+            const { CreativeVariantService } = await import('../ads/CreativeVariantService');
+
+            Logger.info('[Scheduler] Starting experiment significance check');
+
+            const pausedCount = await CreativeVariantService.checkAndPauseLosers();
+
+            if (pausedCount > 0) {
+                Logger.info('[Scheduler] Experiment significance check complete', {
+                    variantsPaused: pausedCount
+                });
+            }
+        } catch (error) {
+            Logger.error('[Scheduler] Experiment significance check failed', { error });
+        }
+    }
 }
+

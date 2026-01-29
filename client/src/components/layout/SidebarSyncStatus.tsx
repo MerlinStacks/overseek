@@ -31,6 +31,16 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
         };
     }, []);
 
+    // Track current time for staleness checks (updated every minute to avoid impure function during render)
+    const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentTime(Date.now());
+        }, 60 * 1000); // Update every minute
+        return () => clearInterval(interval);
+    }, []);
+
     const healthState: SyncHealthState = useMemo(() => {
         if (isOffline) return 'OFFLINE';
         if (isSyncing) return 'SYNCING';
@@ -42,19 +52,18 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
             return 'FAILED';
         }
 
-        const now = Date.now();
         const oneHour = 60 * 60 * 1000;
         const lagging = (syncState || [])
             .filter(s => criticalEntities.includes(s.entityType))
             .some(s => {
                 if (!s.lastSyncedAt) return true;
-                return now - new Date(s.lastSyncedAt).getTime() > oneHour;
+                return currentTime - new Date(s.lastSyncedAt).getTime() > oneHour;
             });
 
         if (lagging) return 'LAGGING';
 
         return 'HEALTHY';
-    }, [isOffline, isSyncing, logs, syncState]);
+    }, [isOffline, isSyncing, logs, syncState, currentTime]);
 
     const config = {
         OFFLINE: {

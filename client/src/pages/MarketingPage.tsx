@@ -8,7 +8,10 @@ import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
 import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
 import { CampaignsList } from '../components/marketing/CampaignsList';
-import { Mail, Megaphone, BarChart2 } from 'lucide-react';
+import { ExperimentsPanel } from '../components/marketing/ExperimentsPanel';
+import { ExecutiveReportsPanel } from '../components/marketing/ExecutiveReportsPanel';
+import { AudienceSyncPanel } from '../components/marketing/AudienceSyncPanel';
+import { Mail, Megaphone, BarChart2, FlaskConical, FileText, Users } from 'lucide-react';
 
 // Lazy-load EmailDesignEditor to prevent react-email-editor from polluting React singleton
 const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
@@ -18,6 +21,7 @@ import { useAccountFeature } from '../hooks/useAccountFeature';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 type EditorMode = 'email' | null;
+
 
 interface EditingItem {
     id: string;
@@ -32,9 +36,11 @@ export function MarketingPage() {
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Initialize activeTab from URL query param or default to 'campaigns'
-    const tabFromUrl = searchParams.get('tab') as 'overview' | 'campaigns' | 'performance' | 'ads' | null;
-    const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'performance' | 'ads'>(
-        tabFromUrl && ['overview', 'campaigns', 'performance', 'ads'].includes(tabFromUrl) ? tabFromUrl : 'campaigns'
+    type TabId = 'campaigns' | 'performance' | 'ads' | 'experiments' | 'reports' | 'audiences';
+    const validTabs: TabId[] = ['campaigns', 'performance', 'ads', 'experiments', 'reports', 'audiences'];
+    const tabFromUrl = searchParams.get('tab') as TabId | null;
+    const [activeTab, setActiveTab] = useState<TabId>(
+        tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'campaigns'
     );
 
     // Editor State
@@ -56,6 +62,9 @@ export function MarketingPage() {
         ...(isAdTrackingEnabled ? [
             { id: 'performance', label: 'Ad Performance', icon: BarChart2 },
             { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
+            { id: 'experiments', label: 'A/B Tests', icon: FlaskConical },
+            { id: 'reports', label: 'Reports', icon: FileText },
+            { id: 'audiences', label: 'Audiences', icon: Users },
         ] : []),
     ];
 
@@ -146,6 +155,21 @@ export function MarketingPage() {
                     </ErrorBoundary>
                 )}
                 {activeTab === 'ads' && <AdsView />}
+                {activeTab === 'experiments' && (
+                    <ErrorBoundary>
+                        <ExperimentsPanel />
+                    </ErrorBoundary>
+                )}
+                {activeTab === 'reports' && (
+                    <ErrorBoundary>
+                        <ExecutiveReportsPanel />
+                    </ErrorBoundary>
+                )}
+                {activeTab === 'audiences' && (
+                    <ErrorBoundary>
+                        <AudienceSyncPanel />
+                    </ErrorBoundary>
+                )}
             </div>
         </div>
     );

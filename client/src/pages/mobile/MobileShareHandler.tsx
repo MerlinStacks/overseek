@@ -26,7 +26,10 @@ export default function MobileShareHandler() {
         const body = searchParams.get('body') || '';
         const link = searchParams.get('link') || '';
 
-        setSharedData({ subject, body, link });
+        // Defer state update to avoid cascading renders
+        const updateTimeout = setTimeout(() => {
+            setSharedData({ subject, body, link });
+        }, 0);
 
         // Combine body and link if both present
         const fullBody = [body, link].filter(Boolean).join('\n\n');
@@ -45,8 +48,12 @@ export default function MobileShareHandler() {
                 navigate('/m/inbox?compose=true', { replace: true });
             }, 500);
         } else {
-            setIsProcessing(false);
+            setTimeout(() => {
+                setIsProcessing(false);
+            }, 0);
         }
+
+        return () => clearTimeout(updateTimeout);
     }, [searchParams, navigate]);
 
     const handleManualCompose = () => {

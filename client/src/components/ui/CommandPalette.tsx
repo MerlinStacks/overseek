@@ -6,17 +6,18 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Package, FileText, Settings, LayoutDashboard, Truck, Users, BarChart2, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useCommandPalette } from '../../hooks/useCommandPalette';
 
 interface SearchResult {
     id: string | number;
     title: string;
     subtitle?: string;
-    type: 'product' | 'order' | 'semantic';
+    type: 'product' | 'order' | 'customer' | 'semantic';
     similarity?: number;
 }
 
 export function CommandPalette() {
-    const [open, setOpen] = useState(false);
+    const { isOpen, close } = useCommandPalette();
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [semanticResults, setSemanticResults] = useState<SearchResult[]>([]);
@@ -30,13 +31,24 @@ export function CommandPalette() {
         const down = (e: KeyboardEvent) => {
             if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                setOpen((open) => !open);
+                // Toggle handled by context - we just need to import toggle
+                const event = new CustomEvent('commandpalette:toggle');
+                window.dispatchEvent(event);
             }
         };
 
         document.addEventListener('keydown', down);
         return () => document.removeEventListener('keydown', down);
     }, []);
+
+    // Reset query when closing
+    useEffect(() => {
+        if (!isOpen) {
+            setQuery('');
+            setResults([]);
+            setSemanticResults([]);
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (!query || !token || !currentAccount) {
@@ -48,15 +60,11 @@ export function CommandPalette() {
         const timer = setTimeout(async () => {
             setLoading(true);
             try {
-                // Determine what to search based on query type or just parallel search
-                // For now, let's just search products and orders if query length > 2
                 if (query.length < 2) return;
 
                 const searches: Promise<Response>[] = [
-                    fetch(`/api/products?q=${encodeURIComponent(query)}&limit=5`, {
-                        headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                    }),
-                    fetch(`/api/sync/orders/search?q=${encodeURIComponent(query)}&limit=5`, {
+                    // Use unified global search endpoint
+                    fetch(`/api/search/global?q=${encodeURIComponent(query)}`, {
                         headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
                     })
                 ];
@@ -70,31 +78,43 @@ export function CommandPalette() {
                     );
                 }
 
-                const [productsRes, ordersRes, semanticRes] = await Promise.allSettled(searches);
+                const [globalRes, semanticRes] = await Promise.allSettled(searches);
 
                 const newResults: SearchResult[] = [];
 
-                if (productsRes.status === 'fulfilled' && productsRes.value.ok) {
-                    const data = await productsRes.value.json();
+                // Parse unified global search results
+                if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
+                    const data = await globalRes.value.json();
+
+                    // Products
                     if (data.products) {
-                        newResults.push(...data.products.map((p: any) => ({
+                        newResults.push(...data.products.slice(0, 5).map((p: any) => ({
                             id: p.id,
                             title: p.name,
-                            subtitle: p.sku,
+                            subtitle: p.sku ? `SKU: ${p.sku}` : undefined,
                             type: 'product' as const
                         })));
                     }
-                }
 
-                if (ordersRes.status === 'fulfilled' && ordersRes.value.ok) {
-                    const data = await ordersRes.value.json();
-                    const orders = data.orders || (Array.isArray(data) ? data : []);
-                    newResults.push(...orders.map((o: any) => ({
-                        id: o.id,
-                        title: `Order #${o.id}`,
-                        subtitle: `${o.billing?.first_name} ${o.billing?.last_name} - ${o.status}`,
-                        type: 'order' as const
-                    })));
+                    // Orders
+                    if (data.orders) {
+                        newResults.push(...data.orders.slice(0, 5).map((o: any) => ({
+                            id: o.id,
+                            title: `Order #${o.number || o.id}`,
+                            subtitle: o.status,
+                            type: 'order' as const
+                        })));
+                    }
+
+                    // Customers
+                    if (data.customers) {
+                        newResults.push(...data.customers.slice(0, 5).map((c: any) => ({
+                            id: c.id,
+                            title: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email,
+                            subtitle: c.email,
+                            type: 'customer' as const
+                        })));
+                    }
                 }
 
                 setResults(newResults);
@@ -125,21 +145,22 @@ export function CommandPalette() {
     }, [query, token, currentAccount, semanticMode]);
 
     const runCommand = (command: () => void) => {
-        setOpen(false);
+        close();
         command();
     };
 
-    if (!open) return null;
+
+    if (!isOpen) return null;
 
     return (
         <Command.Dialog
-            open={open}
-            onOpenChange={setOpen}
+            open={isOpen}
+            onOpenChange={(open) => !open && close()}
             label="Global Command Menu"
             shouldFilter={false}
             className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-slate-900/40 backdrop-blur-sm transition-all animate-in fade-in duration-200"
             onClick={(e) => {
-                if (e.target === e.currentTarget) setOpen(false);
+                if (e.target === e.currentTarget) close();
             }}
         >
             <div className="w-full max-w-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-2xl shadow-2xl shadow-black/20 border border-slate-200/50 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-black/5 dark:ring-white/5 relative transform">
@@ -234,6 +255,8 @@ export function CommandPalette() {
                                         onSelect={() => runCommand(() => {
                                             if (result.type === 'product') {
                                                 navigate(`/inventory/product/${result.id}`);
+                                            } else if (result.type === 'customer') {
+                                                navigate(`/customers/${result.id}`);
                                             } else {
                                                 navigate(`/orders/${result.id}`);
                                             }
@@ -241,6 +264,8 @@ export function CommandPalette() {
                                     >
                                         {result.type === 'product' ? (
                                             <Package className="w-4 h-4 mr-3 text-blue-500 dark:text-blue-400" />
+                                        ) : result.type === 'customer' ? (
+                                            <Users className="w-4 h-4 mr-3 text-amber-500 dark:text-amber-400" />
                                         ) : (
                                             <FileText className="w-4 h-4 mr-3 text-emerald-500 dark:text-emerald-400" />
                                         )}

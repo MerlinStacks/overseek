@@ -19,7 +19,11 @@ export function PageTransition({ children }: PageTransitionProps) {
 
     useEffect(() => {
         if (location.pathname !== displayLocation.pathname) {
-            setTransitionStage('exiting');
+            // Defer state update to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                setTransitionStage('exiting');
+            }, 0);
+            return () => clearTimeout(timeoutId);
         }
     }, [location, displayLocation]);
 

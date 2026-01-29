@@ -281,4 +281,79 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: error.message });
         }
     });
+
+    /**
+     * GET /roi/summary - Get ROI attribution summary
+     */
+    fastify.get<{ Querystring: { days?: string } }>('/roi/summary', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+        try {
+            const { CoPilotROIService } = await import('../../services/CoPilotROIService');
+            const days = parseInt(request.query.days || '30');
+            const summary = await CoPilotROIService.getROISummary(accountId, days);
+            return { success: true, data: summary };
+        } catch (error: any) {
+            Logger.error('Failed to get ROI summary', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /roi/quick-stats - Get quick stats for dashboard widget
+     */
+    fastify.get('/roi/quick-stats', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+        try {
+            const { CoPilotROIService } = await import('../../services/CoPilotROIService');
+            const stats = await CoPilotROIService.getQuickStats(accountId);
+            return { success: true, data: stats };
+        } catch (error: any) {
+            Logger.error('Failed to get ROI quick stats', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /action-history - Get audit trail of AI actions
+     */
+    fastify.get<{ Querystring: { page?: string; limit?: string } }>('/action-history', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+        try {
+            const page = parseInt(request.query.page || '1');
+            const limit = Math.min(parseInt(request.query.limit || '20'), 100);
+            const skip = (page - 1) * limit;
+
+            const [actions, total] = await Promise.all([
+                prisma.adActionLog.findMany({
+                    where: { accountId },
+                    orderBy: { createdAt: 'desc' },
+                    take: limit,
+                    skip
+                }),
+                prisma.adActionLog.count({ where: { accountId } })
+            ]);
+
+            return {
+                success: true,
+                data: {
+                    actions,
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages: Math.ceil(total / limit)
+                    }
+                }
+            };
+        } catch (error: any) {
+            Logger.error('Failed to get action history', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
 };

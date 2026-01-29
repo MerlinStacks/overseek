@@ -13,14 +13,18 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        if (isOpen) {
-            setIsVisible(true);
-        } else {
-            // Small delay for fade-out if we were to implement exit animations strictly,
-            // but for now we'll just unmount after a tiny delay or immediately.
-            // keeping it simple for now to match current patterns.
-            setIsVisible(false);
-        }
+        // Defer state update to avoid cascading renders
+        const timeoutId = setTimeout(() => {
+            if (isOpen) {
+                setIsVisible(true);
+            } else {
+                // Small delay for fade-out if we were to implement exit animations strictly,
+                // but for now we'll just unmount after a tiny delay or immediately.
+                // keeping it simple for now to match current patterns.
+                setIsVisible(false);
+            }
+        }, 0);
+        return () => clearTimeout(timeoutId);
     }, [isOpen]);
 
     if (!isOpen && !isVisible) return null;

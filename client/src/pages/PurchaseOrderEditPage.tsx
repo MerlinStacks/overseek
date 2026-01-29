@@ -161,9 +161,7 @@ export function PurchaseOrderEditPage() {
             });
 
             if (res.ok) {
-                navigate('/inventory'); // Or back to list tab? We need to ensure tab state... 
-                // Navigate to /inventory?tab=purchasing would be ideal if we supported query param tabs.
-                // For now just /inventory.
+                navigate('/inventory?tab=purchasing');
             } else {
                 alert('Failed to save');
             }
@@ -181,6 +179,8 @@ export function PurchaseOrderEditPage() {
 
     const grandTotal = items.reduce((acc, item) => acc + (item.totalCost || 0), 0);
     const selectedSupplier = suppliers.find(s => s.id === supplierId);
+    // Lock the PO from editing once marked as received
+    const isLocked = status === 'RECEIVED';
 
     return (
         <div className="max-w-7xl mx-auto space-y-6">
@@ -226,6 +226,7 @@ export function PurchaseOrderEditPage() {
                 <POStatusStepper
                     status={status as any}
                     onStatusChange={(newStatus) => setStatus(newStatus)}
+                    disabled={isLocked}
                 />
             )}
 
@@ -235,9 +236,11 @@ export function PurchaseOrderEditPage() {
                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold">Order Items</h2>
-                            <button onClick={addItem} className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1">
-                                <Plus size={16} /> Add Line Item
-                            </button>
+                            {!isLocked && (
+                                <button onClick={addItem} className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1">
+                                    <Plus size={16} /> Add Line Item
+                                </button>
+                            )}
                         </div>
 
                         <div className="space-y-3">
@@ -248,6 +251,7 @@ export function PurchaseOrderEditPage() {
                                         <ProductSearchInput
                                             initialValue={item.name}
                                             placeholder="Search by SKU or name..."
+                                            disabled={isLocked}
                                             onSelect={(product: ProductSelection) => {
                                                 const newItems = [...items];
                                                 // Use COGS as primary cost, fallback to price only if COGS is null/undefined
@@ -282,6 +286,7 @@ export function PurchaseOrderEditPage() {
                                             type="number"
                                             value={item.quantity}
                                             onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
+                                            disabled={isLocked}
                                             className="w-full text-sm p-2 border border-gray-300 rounded-sm"
                                         />
                                     </div>
@@ -291,15 +296,18 @@ export function PurchaseOrderEditPage() {
                                             type="number"
                                             value={item.unitCost}
                                             onChange={(e) => updateItem(idx, 'unitCost', Number(e.target.value))}
+                                            disabled={isLocked}
                                             className="w-full text-sm p-2 border border-gray-300 rounded-sm"
                                         />
                                     </div>
                                     <div className="w-24 text-right pb-2 font-medium">
                                         ${item.totalCost.toFixed(2)}
                                     </div>
-                                    <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 p-2">
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {!isLocked && (
+                                        <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 p-2">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                             {items.length === 0 && (
@@ -330,7 +338,7 @@ export function PurchaseOrderEditPage() {
                                 suppliers={suppliers.map(s => ({ id: s.id, name: s.name, currency: s.currency }))}
                                 onChange={(id) => setSupplierId(id)}
                                 onCreateNew={() => setShowCreateSupplier(true)}
-                                disabled={!isNew}
+                                disabled={!isNew || isLocked}
                                 placeholder="Search suppliers..."
                             />
                         </div>
@@ -340,7 +348,8 @@ export function PurchaseOrderEditPage() {
                             <select
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                disabled={isLocked}
+                                className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                             >
                                 <option value="DRAFT">Draft</option>
                                 <option value="ORDERED">Ordered</option>
@@ -357,6 +366,7 @@ export function PurchaseOrderEditPage() {
                                     type="date"
                                     value={orderDate}
                                     onChange={(e) => setOrderDate(e.target.value)}
+                                    disabled={isLocked}
                                     className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
@@ -370,6 +380,7 @@ export function PurchaseOrderEditPage() {
                                     type="date"
                                     value={expectedDate}
                                     onChange={(e) => setExpectedDate(e.target.value)}
+                                    disabled={isLocked}
                                     className="pl-10 w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
@@ -385,6 +396,7 @@ export function PurchaseOrderEditPage() {
                                         type="text"
                                         value={trackingNumber}
                                         onChange={(e) => setTrackingNumber(e.target.value)}
+                                        disabled={isLocked}
                                         placeholder="e.g. 1Z999AA10123456784"
                                         className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                                     />
@@ -396,6 +408,7 @@ export function PurchaseOrderEditPage() {
                                             type="url"
                                             value={trackingLink}
                                             onChange={(e) => setTrackingLink(e.target.value)}
+                                            disabled={isLocked}
                                             placeholder="https://tracking.example.com/..."
                                             className="flex-1 border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 text-sm"
                                         />
@@ -421,6 +434,7 @@ export function PurchaseOrderEditPage() {
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
                                 rows={4}
+                                disabled={isLocked}
                                 className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 resize-none"
                             ></textarea>
                         </div>

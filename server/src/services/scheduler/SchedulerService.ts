@@ -78,6 +78,24 @@ export class SchedulerService {
                 case 'ad-alerts':
                     await MarketingScheduler.dispatchAdAlerts();
                     break;
+                case 'weekly-digest':
+                    await MarketingScheduler.dispatchWeeklyDigests();
+                    break;
+                case 'audience-refresh':
+                    await MarketingScheduler.dispatchAudienceRefresh();
+                    break;
+                case 'budget-rebalancer':
+                    await MarketingScheduler.dispatchBudgetRebalancer();
+                    break;
+                case 'execute-pending-actions':
+                    await MarketingScheduler.dispatchPendingActions();
+                    break;
+                case 'experiment-metrics-refresh':
+                    await MarketingScheduler.dispatchExperimentMetricsRefresh();
+                    break;
+                case 'experiment-significance-check':
+                    await MarketingScheduler.dispatchExperimentSignificanceCheck();
+                    break;
 
                 default:
                     Logger.warn(`[Scheduler] Unknown job type: ${job.name}`);

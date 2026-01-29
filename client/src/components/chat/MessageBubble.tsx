@@ -74,61 +74,49 @@ function parseEmailContent(content: string): { subject: string | null; body: str
  * Use ^ anchors for line-start patterns or require specific orphaned formats.
  */
 function cleanEmailMetadata(content: string): string {
-    let cleaned = content;
-
-    // Remove CSS style attribute fragments ONLY at line start (orphaned from stripped tags)
-    // Matches lines starting with: t-size: 12pt; color: rgb(0, 0, 0);">
-    cleaned = cleaned.replace(/^[a-z-]*size:\s*\d+pt;[^>\n]*">\s*/gim, '');
-    cleaned = cleaned.replace(/^[a-z-]*color:\s*rgb\([^)]+\);?[^>\n]*">\s*/gim, '');
-
-    // Remove lines that are just orphaned style attributes ending with ">
-    // Must start with partial CSS and end with "> to be considered orphaned
-    cleaned = cleaned.replace(/^[a-z-]+:\s*[^;]{1,50};\s*">\s*/gim, '');
-
-    // Remove partial HTML tag fragments like "-html40">" at line start
-    cleaned = cleaned.replace(/^-?html\d*["']?\s*>\s*/gim, '');
-
-    // Remove standalone closing angle brackets with charset (at line start)
-    cleaned = cleaned.replace(/^[^<\n]{0,60}charset[^>]*>\s*/gim, '');
-
-    // Remove broken HTML meta tag fragments (attribute leakage from stripped tags)
-    cleaned = cleaned.replace(/[a-z-]+=["'][^"']*["']\s*[a-z-]*=["'][^"']*charset[^"']*["'][^>]*>/gi, '');
-
-    // Remove standalone Content-Type declarations (at line start)
-    cleaned = cleaned.replace(/^Content-Type[:\s]+[^\n<]+$/gim, '');
-
-    // Remove MIME boundary markers
-    cleaned = cleaned.replace(/--[a-zA-Z0-9_-]+--?/g, '');
-
-    // Remove charset declarations at line start
-    cleaned = cleaned.replace(/^charset\s*=\s*["']?[^"'\s>]+["']?\s*/gim, '');
-
-    // Remove X-headers from email (X-Mailer, X-Priority, etc.)
-    cleaned = cleaned.replace(/^X-[A-Za-z-]+:.*$/gim, '');
-
-    // Remove MIME-Version headers
-    cleaned = cleaned.replace(/^MIME-Version:.*$/gim, '');
-
-    // Clean up lines that are ONLY attribute fragments (nothing else on the line)
-    cleaned = cleaned.replace(/^[a-z-]+=["'][^"']*["']>?\s*$/gim, '');
-
-    // Remove orphaned closing angle brackets at start of lines
-    cleaned = cleaned.replace(/^["']?\s*>\s*$/gm, '');
-
-    // Remove email quote markers on their own lines: < <, <<, >>, > >
-    cleaned = cleaned.replace(/^[<>]\s*[<>]\s*$/gm, '');
-
-    return cleaned.trim();
+    return content
+        // Remove CSS style rule fragments leaked from Outlook/email clients
+        // Matches patterns like: "> P {margin-top:0;margin-bottom:0;}" or "P {font-...}"
+        .replace(/^>?\s*[A-Z]+\s*\{[^}]*\}\s*$/gim, '')
+        .replace(/>\s*[A-Z]+\s*\{[^}]*\}/gi, '')
+        // Remove CSS style attribute fragments ONLY at line start (orphaned from stripped tags)
+        // Matches lines starting with: t-size: 12pt; color: rgb(0, 0, 0);">
+        .replace(/^[a-z-]*size:\s*\d+pt;[^>\n]*">\s*/gim, '')
+        .replace(/^[a-z-]*color:\s*rgb\([^)]+\);?[^>\n]*">\s*/gim, '')
+        // Remove lines that are just orphaned style attributes ending with ">
+        // Must start with partial CSS and end with "> to be considered orphaned
+        .replace(/^[a-z-]+:\s*[^;]{1,50};\s*">\s*/gim, '')
+        // Remove partial HTML tag fragments like "-html40"> at line start
+        .replace(/^-?html\d*["']?\s*>\s*/gim, '')
+        // Remove standalone closing angle brackets with charset (at line start)
+        .replace(/^[^<\n]{0,60}charset[^>]*>\s*/gim, '')
+        // Remove broken HTML meta tag fragments (attribute leakage from stripped tags)
+        .replace(/[a-z-]+=["'][^"']*["']\s*[a-z-]*=["'][^"']*charset[^"']*["'][^>]*>/gi, '')
+        // Remove standalone Content-Type declarations (at line start)
+        .replace(/^Content-Type[:\s]+[^\n<]+$/gim, '')
+        // Remove MIME boundary markers
+        .replace(/--[a-zA-Z0-9_-]+--?/g, '')
+        // Remove charset declarations at line start
+        .replace(/^charset\s*=\s*["']?[^"'\s>]+["']?\s*/gim, '')
+        // Remove X-headers from email (X-Mailer, X-Priority, etc.)
+        .replace(/^X-[A-Za-z-]+:.*$/gim, '')
+        // Remove MIME-Version headers
+        .replace(/^MIME-Version:.*$/gim, '')
+        // Clean up lines that are ONLY attribute fragments (nothing else on the line)
+        .replace(/^[a-z-]+=["'][^"']*["']>?\s*$/gim, '')
+        // Remove orphaned closing angle brackets at start of lines
+        .replace(/^["']?\s*>\s*$/gm, '')
+        // Remove email quote markers on their own lines: < <, <<, >>, > >
+        .replace(/^[<>]\s*[<>]\s*$/gm, '')
+        .trim();
 }
 
 /**
  * Strips HTML tags and returns plain text for analysis.
  */
 function stripHtmlForAnalysis(html: string): string {
-    // First clean email metadata
-    let cleaned = cleanEmailMetadata(html);
-
-    return cleaned
+    // First clean email metadata then strip HTML
+    return cleanEmailMetadata(html)
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/p>/gi, '\n\n')
         .replace(/<\/div>/gi, '\n')
@@ -206,7 +194,8 @@ function parseQuotedContent(body: string): QuotedContentInfo {
 
     for (const pattern of htmlQuotePatterns) {
         const match = body.match(pattern);
-        if (match && match.index !== undefined && match.index > 50) {
+        // Require at least 200 chars before the quote marker to avoid hiding short customer replies
+        if (match && match.index !== undefined && match.index > 200) {
             return buildResult(
                 body.slice(0, match.index).trim(),
                 body.slice(match.index).trim()
@@ -244,7 +233,9 @@ function parseQuotedContent(body: string): QuotedContentInfo {
 
     for (const pattern of quoteStartPatterns) {
         const match = textBody.match(pattern);
-        if (match && match.index !== undefined && match.index > 20) {
+        // Require at least 100 chars before the quote marker to avoid hiding short customer replies
+        // This ensures messages like "I accept. Thanks!" followed by quoted headers are preserved
+        if (match && match.index !== undefined && match.index > 100) {
             if (splitIndex === -1 || match.index < splitIndex) {
                 splitIndex = match.index;
                 matchedInTextBody = true;

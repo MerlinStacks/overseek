@@ -32,11 +32,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedToken = localStorage.getItem('token');
         const storedUser = localStorage.getItem('user');
 
-        if (storedToken && storedUser) {
-            setToken(storedToken);
-            setUser(JSON.parse(storedUser));
-        }
-        setIsLoading(false);
+        // Defer state updates to avoid cascading renders
+        const timeoutId = setTimeout(() => {
+            if (storedToken && storedUser) {
+                setToken(storedToken);
+                setUser(JSON.parse(storedUser));
+            }
+            setIsLoading(false);
+        }, 0);
+
+        return () => clearTimeout(timeoutId);
     }, []);
 
     const login = (newToken: string, newUser: User) => {

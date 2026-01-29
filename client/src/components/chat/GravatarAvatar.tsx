@@ -71,18 +71,36 @@ export const GravatarAvatar = memo(function GravatarAvatar({
     const pixelSize = size === 'sm' ? 32 : size === 'md' ? 40 : 48;
 
     useEffect(() => {
+        let cancelled = false;
+
         if (!email) {
-            setGravatarUrl(null);
-            return;
+            // Defer to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                if (!cancelled) setGravatarUrl(null);
+            }, 0);
+            return () => {
+                cancelled = true;
+                clearTimeout(timeoutId);
+            };
         }
 
-        setImageError(false);
+        // Defer the error reset to avoid cascading renders
+        const resetTimeout = setTimeout(() => {
+            if (!cancelled) setImageError(false);
+        }, 0);
 
         // Generate Gravatar URL
         md5Hash(email).then(hash => {
-            // Use d=404 so we get a 404 if no Gravatar exists (triggers onError)
-            setGravatarUrl(`https://www.gravatar.com/avatar/${hash}?s=${pixelSize * 2}&d=404`);
+            if (!cancelled) {
+                // Use d=404 so we get a 404 if no Gravatar exists (triggers onError)
+                setGravatarUrl(`https://www.gravatar.com/avatar/${hash}?s=${pixelSize * 2}&d=404`);
+            }
         });
+
+        return () => {
+            cancelled = true;
+            clearTimeout(resetTimeout);
+        };
     }, [email, pixelSize]);
 
     const showImage = gravatarUrl && !imageError;

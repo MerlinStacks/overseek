@@ -232,7 +232,7 @@ export function useAdAI() {
         }
 
         try {
-            let parameters: any = {};
+            const parameters: Record<string, any> = {};
             let actionType = '';
 
             if (rec.action.actionType === 'budget_increase' || rec.action.actionType === 'budget_decrease') {

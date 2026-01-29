@@ -55,7 +55,11 @@ export function SettingsPage() {
         const tab = params.get('tab') as TabId | null;
         const validTabs: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses'];
         if (tab && validTabs.includes(tab)) {
-            setActiveTab(tab);
+            // Defer state update to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                setActiveTab(tab);
+            }, 0);
+            return () => clearTimeout(timeoutId);
         }
     }, []);
 

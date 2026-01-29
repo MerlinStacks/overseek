@@ -92,7 +92,7 @@ export class NotificationEngine {
         const itemCount = lineItems?.length || 0;
         const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
         const orderNumber = order.number || order.id;
-        const total = order.total;
+        const total = parseFloat(String(order.total)) || 0;
 
         await this.sendNotification({
             accountId,

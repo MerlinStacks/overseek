@@ -2,6 +2,7 @@ import { PrismaClient, PurchaseOrder, PurchaseOrderItem } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
 import { Logger } from '../utils/logger';
+import { BOMConsumptionService } from './BOMConsumptionService';
 
 export class PurchaseOrderService {
 
@@ -224,6 +225,7 @@ export class PurchaseOrderService {
         }
 
         const errors: string[] = [];
+        const updatedProductIds: string[] = [];
         let updated = 0;
 
         // Get WooService for syncing
@@ -287,10 +289,34 @@ export class PurchaseOrderService {
                 }
 
                 updated++;
+
+                // Track this product for cascade BOM sync
+                updatedProductIds.push(product.id);
             } catch (err) {
                 const errorMsg = `Failed to update stock for item "${item.name}": ${(err as Error).message}`;
                 Logger.error('Error receiving stock for PO item', { error: err, itemId: item.id });
                 errors.push(errorMsg);
+            }
+        }
+
+        // Cascade sync: Update all BOM parent products that use the received components
+        // This ensures derived stock levels are recalculated immediately
+        if (updatedProductIds.length > 0) {
+            Logger.info('Triggering cascade BOM sync for received components', {
+                poId,
+                componentCount: updatedProductIds.length
+            });
+
+            for (const productId of updatedProductIds) {
+                try {
+                    await BOMConsumptionService.cascadeSyncAffectedProducts(accountId, productId);
+                } catch (syncErr) {
+                    Logger.warn('Cascade BOM sync failed for component', {
+                        productId,
+                        error: (syncErr as Error).message
+                    });
+                    // Non-blocking: don't add to errors array as stock was still received
+                }
             }
         }
 

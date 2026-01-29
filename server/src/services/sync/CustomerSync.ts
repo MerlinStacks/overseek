@@ -20,7 +20,8 @@ export class CustomerSync extends BaseSync {
         const wooCustomerIds = new Set<number>();
 
         while (hasMore) {
-            const { data: rawCustomers, totalPages } = await woo.getCustomers({ page, after, per_page: 25 });
+            // Optimized: Increased page size from 25 to 100 for fewer API round-trips
+            const { data: rawCustomers, totalPages } = await woo.getCustomers({ page, after, per_page: 100 });
             if (!rawCustomers.length) {
                 hasMore = false;
                 break;
@@ -46,34 +47,39 @@ export class CustomerSync extends BaseSync {
                 continue;
             }
 
-            // Batch prepare upsert operations and execute sequentially to avoid deadlocks
-            // PostgreSQL can deadlock when concurrent workers upsert on the same unique constraint
-            const SUB_BATCH_SIZE = 10;
-            for (let i = 0; i < customers.length; i += SUB_BATCH_SIZE) {
-                const batch = customers.slice(i, i + SUB_BATCH_SIZE);
+            // Optimized: Batch upserts in transactions of 50 for better throughput
+            const BATCH_SIZE = 50;
+            for (let i = 0; i < customers.length; i += BATCH_SIZE) {
+                const batch = customers.slice(i, i + BATCH_SIZE);
 
-                // Execute upserts sequentially within batch to prevent lock contention
+                // Track wooIds for reconciliation
                 for (const c of batch) {
                     wooCustomerIds.add(c.id);
-                    await prisma.wooCustomer.upsert({
-                        where: { accountId_wooId: { accountId, wooId: c.id } },
-                        update: {
-                            totalSpent: c.total_spent ?? 0,
-                            ordersCount: c.orders_count ?? 0,
-                            rawData: c as any
-                        },
-                        create: {
-                            accountId,
-                            wooId: c.id,
-                            email: c.email,
-                            firstName: c.first_name,
-                            lastName: c.last_name,
-                            totalSpent: c.total_spent ?? 0,
-                            ordersCount: c.orders_count ?? 0,
-                            rawData: c as any
-                        }
-                    });
                 }
+
+                // Execute batch upserts in a single transaction
+                await prisma.$transaction(
+                    batch.map((c) =>
+                        prisma.wooCustomer.upsert({
+                            where: { accountId_wooId: { accountId, wooId: c.id } },
+                            update: {
+                                totalSpent: c.total_spent ?? 0,
+                                ordersCount: c.orders_count ?? 0,
+                                rawData: c as any
+                            },
+                            create: {
+                                accountId,
+                                wooId: c.id,
+                                email: c.email,
+                                firstName: c.first_name,
+                                lastName: c.last_name,
+                                totalSpent: c.total_spent ?? 0,
+                                ordersCount: c.orders_count ?? 0,
+                                rawData: c as any
+                            }
+                        })
+                    )
+                );
             }
 
             // Index customers in parallel
@@ -88,7 +94,7 @@ export class CustomerSync extends BaseSync {
             totalProcessed += customers.length;
 
             Logger.info(`Synced batch of ${customers.length} customers`, { accountId, syncId, page, totalPages });
-            if (customers.length < 25) hasMore = false;
+            if (customers.length < 100) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
@@ -102,31 +108,33 @@ export class CustomerSync extends BaseSync {
         // --- Reconciliation: Remove deleted customers ---
         // Only run on full sync (non-incremental) to ensure we have all WooCommerce IDs
         if (!incremental && wooCustomerIds.size > 0) {
-            const localCustomers = await prisma.wooCustomer.findMany({
+            // Optimized: Only fetch wooId column instead of full records
+            const localWooIds = await prisma.wooCustomer.findMany({
                 where: { accountId },
-                select: { id: true, wooId: true }
+                select: { wooId: true }
             });
 
-            // Collect IDs of customers to delete (exist locally but not in WooCommerce)
-            const orphanedCustomers = localCustomers.filter(
-                local => !wooCustomerIds.has(local.wooId)
-            );
+            // Collect wooIds of customers to delete (exist locally but not in WooCommerce)
+            const orphanedWooIds = localWooIds
+                .filter(local => !wooCustomerIds.has(local.wooId))
+                .map(local => local.wooId);
 
-            if (orphanedCustomers.length > 0) {
-                const orphanedIds = orphanedCustomers.map(c => c.id);
-                const orphanedWooIds = orphanedCustomers.map(c => c.wooId);
-
-                // Batch delete in a single transaction to avoid deadlocks
+            if (orphanedWooIds.length > 0) {
+                // Batch delete using wooId directly - single query, no need to fetch IDs first
                 await prisma.wooCustomer.deleteMany({
-                    where: { id: { in: orphanedIds } }
+                    where: { accountId, wooId: { in: orphanedWooIds } }
                 });
 
-                // Index deletions serially to avoid overwhelming the search index
-                for (const wooId of orphanedWooIds) {
-                    await IndexingService.deleteCustomer(accountId, wooId).catch(() => { });
+                // Index deletions in parallel batches
+                const DELETE_BATCH = 20;
+                for (let i = 0; i < orphanedWooIds.length; i += DELETE_BATCH) {
+                    const batch = orphanedWooIds.slice(i, i + DELETE_BATCH);
+                    await Promise.allSettled(
+                        batch.map(wooId => IndexingService.deleteCustomer(accountId, wooId).catch(() => { }))
+                    );
                 }
 
-                totalDeleted = orphanedCustomers.length;
+                totalDeleted = orphanedWooIds.length;
                 Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned customers`, { accountId, syncId });
             }
         }

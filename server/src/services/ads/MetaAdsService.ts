@@ -362,4 +362,273 @@ export class MetaAdsService {
             throw error;
         }
     }
+
+    // =========================================================================
+    // CUSTOM AUDIENCES (Phase 2: Audience Intelligence)
+    // =========================================================================
+
+    /**
+     * Create a Custom Audience for customer data uploads.
+     * Requires `ads_management` and `custom_audience` permissions.
+     */
+    static async createCustomAudience(
+        adAccountId: string,
+        name: string,
+        description: string
+    ): Promise<{ id: string }> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken || !adAccount.externalId) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
+        const url = `https://graph.facebook.com/v18.0/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
+
+        try {
+            Logger.info('[MetaAds] Creating Custom Audience', { actId, name });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    description,
+                    subtype: 'CUSTOM',
+                    customer_file_source: 'USER_PROVIDED_ONLY'
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Create Custom Audience Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            Logger.info('[MetaAds] Custom Audience created', { audienceId: data.id });
+
+            return { id: data.id };
+        } catch (error) {
+            Logger.error('Failed to create Meta Custom Audience', { error });
+            throw error;
+        }
+    }
+
+    /**
+     * Upload members to a Custom Audience (appends to existing).
+     * Emails must be SHA256 hashed before calling.
+     */
+    static async uploadCustomAudienceMembers(
+        adAccountId: string,
+        audienceId: string,
+        hashedEmails: string[]
+    ): Promise<{ numReceived: number; numInvalidEntries: number }> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const url = `https://graph.facebook.com/v18.0/${audienceId}/users?access_token=${adAccount.accessToken}`;
+
+        // Format data for Meta API
+        const payload = {
+            payload: {
+                schema: ['EMAIL_SHA256'],
+                data: hashedEmails.map(email => [email])
+            }
+        };
+
+        try {
+            Logger.info('[MetaAds] Uploading Custom Audience members', {
+                audienceId,
+                count: hashedEmails.length
+            });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Upload Audience Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            return {
+                numReceived: data.num_received || hashedEmails.length,
+                numInvalidEntries: data.num_invalid_entries || 0
+            };
+        } catch (error) {
+            Logger.error('Failed to upload Meta Custom Audience members', { error });
+            throw error;
+        }
+    }
+
+    /**
+     * Replace all members in a Custom Audience.
+     * Clears existing members and uploads new ones.
+     */
+    static async replaceCustomAudienceMembers(
+        adAccountId: string,
+        audienceId: string,
+        hashedEmails: string[]
+    ): Promise<{ numReceived: number }> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const url = `https://graph.facebook.com/v18.0/${audienceId}/usersreplace?access_token=${adAccount.accessToken}`;
+
+        const payload = {
+            payload: {
+                schema: ['EMAIL_SHA256'],
+                data: hashedEmails.map(email => [email])
+            },
+            session: {
+                session_id: Date.now(),
+                batch_seq: 1,
+                last_batch_flag: true
+            }
+        };
+
+        try {
+            Logger.info('[MetaAds] Replacing Custom Audience members', {
+                audienceId,
+                count: hashedEmails.length
+            });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Replace Audience Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            return {
+                numReceived: data.num_received || hashedEmails.length
+            };
+        } catch (error) {
+            Logger.error('Failed to replace Meta Custom Audience members', { error });
+            throw error;
+        }
+    }
+
+    /**
+     * Create a Lookalike Audience from a source Custom Audience.
+     * 
+     * @param percent - Lookalike percentage (1, 3, or 5%)
+     * @param countryCode - ISO country code for lookalike location
+     */
+    static async createLookalikeAudience(
+        adAccountId: string,
+        sourceAudienceId: string,
+        name: string,
+        percent: 1 | 3 | 5,
+        countryCode: string = 'US'
+    ): Promise<{ id: string }> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken || !adAccount.externalId) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
+        const url = `https://graph.facebook.com/v18.0/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
+
+        // Meta uses ratio format: 0.01 = 1%, 0.03 = 3%, etc.
+        const ratio = percent / 100;
+
+        try {
+            Logger.info('[MetaAds] Creating Lookalike Audience', {
+                sourceAudienceId,
+                percent,
+                countryCode
+            });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    subtype: 'LOOKALIKE',
+                    origin_audience_id: sourceAudienceId,
+                    lookalike_spec: JSON.stringify({
+                        type: 'similarity',
+                        ratio: ratio,
+                        country: countryCode
+                    })
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Create Lookalike Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            Logger.info('[MetaAds] Lookalike Audience created', { audienceId: data.id });
+
+            return { id: data.id };
+        } catch (error) {
+            Logger.error('Failed to create Meta Lookalike Audience', { error });
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a Custom Audience.
+     */
+    static async deleteCustomAudience(adAccountId: string, audienceId: string): Promise<boolean> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const url = `https://graph.facebook.com/v18.0/${audienceId}?access_token=${adAccount.accessToken}`;
+
+        try {
+            Logger.info('[MetaAds] Deleting Custom Audience', { audienceId });
+
+            const response = await fetch(url, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Delete Audience Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            return data.success === true;
+        } catch (error) {
+            Logger.error('Failed to delete Meta Custom Audience', { error });
+            throw error;
+        }
+    }
 }

@@ -158,7 +158,7 @@ export class BehaviourAnalytics {
                     JOIN "AnalyticsSession" s ON e."sessionId" = s.id
                     WHERE s."accountId" = ${accountId}
                     AND e."createdAt" >= ${sevenDaysAgo}
-                    AND e.type = 'pageview'
+                    AND e.type IN ('pageview', 'product_view')
                     AND (e.url = ${normalizedUrl} OR e.url = ${normalizedUrl + '/'})
                 `,
                 prisma.$queryRaw<[{ count: bigint }]>`
@@ -167,7 +167,7 @@ export class BehaviourAnalytics {
                     JOIN "AnalyticsSession" s ON e."sessionId" = s.id
                     WHERE s."accountId" = ${accountId}
                     AND e."createdAt" >= ${thirtyDaysAgo}
-                    AND e.type = 'pageview'
+                    AND e.type IN ('pageview', 'product_view')
                     AND (e.url = ${normalizedUrl} OR e.url = ${normalizedUrl + '/'})
                 `
             ]);

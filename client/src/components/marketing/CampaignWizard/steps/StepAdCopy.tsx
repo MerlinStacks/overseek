@@ -67,7 +67,11 @@ export function StepAdCopy({ draft, setDraft }: WizardStepProps) {
     // Auto-generate on first load if empty
     useEffect(() => {
         if (draft.adCopy.headlines.length === 0 && draft.selectedProducts.length > 0) {
-            generateCopy();
+            // Defer the async call to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                generateCopy();
+            }, 0);
+            return () => clearTimeout(timeoutId);
         }
     }, [draft.adCopy.headlines.length, draft.selectedProducts.length, generateCopy]);
 

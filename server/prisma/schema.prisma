@@ -135,6 +135,7 @@ model Account {
   emailTemplates       EmailTemplate[]
   AnalyticsSession     AnalyticsSession[]
   segments             CustomerSegment[]
+  audienceSyncs        AudienceSync[]
 
   reportTemplates ReportTemplate[]
   reportSchedules ReportSchedule[]
@@ -778,7 +779,8 @@ model AdAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  snapshots AdPerformanceSnapshot[]
+  snapshots     AdPerformanceSnapshot[]
+  audienceSyncs AudienceSync[]
 
   @@index([accountId])
 }
@@ -966,6 +968,12 @@ model ScheduledAdAction {
   executedAt    DateTime?
   status        String   @default("pending")  // "pending", "executed", "failed", "cancelled"
   
+  // Auto-execution settings (Phase 3: Campaign Automation)
+  autoExecute   Boolean  @default(false)  // If true, execute without user approval
+  executeAfter  DateTime?                 // Don't execute before this time (cooldown)
+  maxDailySpend Float?                    // Spend cap for the day (protection)
+  sourceType    String   @default("manual") // "manual", "rebalancer", "recommendation"
+  
   // Result tracking
   error         String?  @db.Text
   resultData    Json?    // Response from API after execution
@@ -978,6 +986,7 @@ model ScheduledAdAction {
   
   @@index([accountId, status])
   @@index([scheduledFor, status])
+  @@index([autoExecute, status, scheduledFor])
 }
 
 /// Audit log for executed ad actions (budget changes, status changes, etc.)
@@ -997,6 +1006,99 @@ model AdActionLog {
   
   @@index([accountId, executedAt])
   @@index([campaignId])
+}
+
+/// A/B test experiment for ad creatives (Phase 4: Creative A/B Engine)
+model CreativeExperiment {
+  id            String   @id @default(uuid())
+  accountId     String
+  
+  name          String
+  status        String   @default("RUNNING")  // RUNNING, PAUSED, COMPLETED
+  platform      String   // "google", "meta"
+  adAccountId   String
+  campaignId    String?
+  adGroupId     String?
+  
+  // Winning criteria
+  primaryMetric String   @default("ctr")  // ctr, conversions, roas
+  minSampleSize Int      @default(100)    // Min impressions per variant
+  confidenceLevel Float  @default(0.95)   // 95% confidence required
+  
+  // Timing
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  variants      CreativeVariant[]
+  
+  @@index([accountId, status])
+  @@index([adAccountId, status])
+}
+
+/// Individual variant in an A/B test (Phase 4: Creative A/B Engine)
+model CreativeVariant {
+  id            String   @id @default(uuid())
+  experimentId  String
+  
+  variantLabel  String   // "A", "B", "C", etc.
+  isControl     Boolean  @default(false)
+  status        String   @default("ACTIVE")  // ACTIVE, PAUSED, WINNER, LOSER
+  
+  // Creative content
+  headlines     Json?    // Array of headlines
+  descriptions  Json?    // Array of descriptions
+  primaryTexts  Json?    // Meta primary texts
+  externalAdId  String?  // ID in the ad platform
+  
+  // Performance metrics (refreshed periodically)
+  impressions   Int      @default(0)
+  clicks        Int      @default(0)
+  conversions   Int      @default(0)
+  spend         Float    @default(0)
+  revenue       Float    @default(0)
+  
+  // Calculated metrics
+  ctr           Float?   // Click-through rate
+  conversionRate Float?  // Conversion rate
+  roas          Float?   // Return on ad spend
+  
+  // Statistical analysis
+  pValue        Float?   // p-value vs control
+  isSignificant Boolean  @default(false)
+  
+  metricsUpdatedAt DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  experiment    CreativeExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  
+  @@index([experimentId, status])
+}
+
+/// Generated executive reports (Phase 5: Executive Report Generation)
+model ExecutiveReport {
+  id            String   @id @default(uuid())
+  accountId     String
+  
+  periodStart   DateTime
+  periodEnd     DateTime
+  
+  // Report file
+  fileName      String
+  filePath      String
+  fileSize      Int
+  
+  // Metadata
+  generatedBy   String?  // user ID who requested
+  metrics       Json?    // Snapshot of metrics at generation time
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([accountId, createdAt])
 }
 
 model WooCustomer {
@@ -1766,13 +1868,48 @@ model CustomerSegment {
   description String?
   criteria    Json // e.g. { type: "AND", rules: [{ field: "totalSpent", operator: "gt", value: 100 }] }
 
-  account   Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  campaigns MarketingCampaign[]
+  account       Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  campaigns     MarketingCampaign[]
+  audienceSyncs AudienceSync[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([accountId, name])
+}
+
+/// Tracks synchronization of customer segments to ad platform audiences.
+/// Used for Meta Custom Audiences and Google Customer Match.
+model AudienceSync {
+  id           String   @id @default(uuid())
+  accountId    String
+  segmentId    String
+  adAccountId  String   // Links to AdAccount for platform credentials
+  
+  platform     String   // 'GOOGLE' | 'META'
+  externalId   String?  // Platform's audience ID after creation
+  audienceName String   // Name on the platform
+  
+  status       String   @default("PENDING") // 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED'
+  lastSyncAt   DateTime?
+  lastError    String?  @db.Text
+  memberCount  Int?     // Number of matched users
+  
+  // Lookalike settings (if derived)
+  isLookalike       Boolean @default(false)
+  sourceAudienceId  String? // Parent AudienceSync ID if lookalike
+  lookalikePercent  Float?  // 1, 3, or 5 percent
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  account   Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  segment   CustomerSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  adAccount AdAccount       @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  
+  @@unique([accountId, segmentId, platform, adAccountId])
+  @@index([accountId, platform])
+  @@index([adAccountId])
 }
 
 // --------------------------------------

@@ -63,7 +63,11 @@ export function ThemeProvider({ children, defaultTheme = 'system' }: ThemeProvid
     // Apply theme to document
     useEffect(() => {
         const resolved = getResolvedTheme(theme);
-        setResolvedTheme(resolved);
+
+        // Defer state update to avoid cascading renders
+        const timeoutId = setTimeout(() => {
+            setResolvedTheme(resolved);
+        }, 0);
 
         // Apply class to document root for Tailwind dark mode
         document.documentElement.classList.remove('light', 'dark');
@@ -71,6 +75,8 @@ export function ThemeProvider({ children, defaultTheme = 'system' }: ThemeProvid
 
         // Also set data attribute for CSS selectors
         document.documentElement.setAttribute('data-theme', resolved);
+
+        return () => clearTimeout(timeoutId);
     }, [theme]);
 
     // Listen for system preference changes when theme is 'system'

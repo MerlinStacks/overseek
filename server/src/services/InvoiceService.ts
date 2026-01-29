@@ -185,7 +185,7 @@ export class InvoiceService {
                 const type = itemConfig.type;
 
                 switch (type) {
-                    case 'header':
+                    case 'header': {
                         // Header with logo and business details
                         doc.fontSize(10);
                         if (itemConfig.businessDetails) {
@@ -205,8 +205,9 @@ export class InvoiceService {
                         }
                         blockHeight = Math.max(blockHeight, 60);
                         break;
+                    }
 
-                    case 'customer_details':
+                    case 'customer_details': {
                         doc.fontSize(10).font('Helvetica-Bold');
                         doc.text('Bill To:', x, startY);
                         doc.font('Helvetica').fontSize(9);
@@ -246,8 +247,9 @@ export class InvoiceService {
                         }
                         blockHeight = custY - startY + 10;
                         break;
+                    }
 
-                    case 'order_details':
+                    case 'order_details': {
                         doc.fontSize(9);
                         const rawData = order.rawData as any || {};
                         const shippingMethod = rawData.shipping_lines?.[0]?.method_title || 'N/A';
@@ -268,8 +270,9 @@ export class InvoiceService {
                         });
                         blockHeight = detY - startY + 10;
                         break;
+                    }
 
-                    case 'order_table':
+                    case 'order_table': {
                         // Table header
                         doc.fontSize(9).font('Helvetica-Bold');
                         const tableX = x;
@@ -350,8 +353,9 @@ export class InvoiceService {
 
                         blockHeight = tableY - startY;
                         break;
+                    }
 
-                    case 'totals':
+                    case 'totals': {
                         // Standalone totals block (if not integrated into order_table)
                         const subtotalVal = parseFloat(order.total) - parseFloat(order.taxTotal || 0) - parseFloat(order.shippingTotal || 0);
                         doc.fontSize(9).font('Helvetica');
@@ -377,8 +381,9 @@ export class InvoiceService {
 
                         blockHeight = totY - startY + 20;
                         break;
+                    }
 
-                    case 'text':
+                    case 'text': {
                         let textContent = itemConfig.content || '';
                         // Simple handlebars replacement
                         textContent = textContent.replace(/\{\{order\.number\}\}/g, order.number || '');
@@ -392,15 +397,17 @@ export class InvoiceService {
                         doc.text(textContent, x, startY, { width, align: style.textAlign || 'left' });
                         blockHeight = doc.heightOfString(textContent, { width }) + 10;
                         break;
+                    }
 
-                    case 'footer':
+                    case 'footer': {
                         doc.fontSize(9).font('Helvetica');
                         const footerText = itemConfig.content || 'Thank you for your business!';
                         doc.text(footerText, x, startY, { width, align: 'center' });
                         blockHeight = doc.heightOfString(footerText, { width }) + 10;
                         break;
+                    }
 
-                    case 'row':
+                    case 'row': {
                         // Row container - render children horizontally
                         const children = itemConfig.children || [];
                         if (children.length > 0) {
@@ -418,6 +425,7 @@ export class InvoiceService {
                             blockHeight = maxChildHeight;
                         }
                         break;
+                    }
 
                     default:
                         blockHeight = 20;

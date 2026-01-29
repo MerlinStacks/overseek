@@ -83,6 +83,7 @@ export function ProductSearchInput({
     const [flatResults, setFlatResults] = useState<FlatItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
     const inputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -240,6 +241,39 @@ export function ProductSearchInput({
         setQuery(item.name);
         setIsOpen(false);
         setFlatResults([]);
+        setHighlightedIndex(-1);
+    };
+
+    /**
+     * Handle keyboard navigation in the dropdown
+     */
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!isOpen || flatResults.length === 0) return;
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                setHighlightedIndex(prev =>
+                    prev < flatResults.length - 1 ? prev + 1 : 0
+                );
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setHighlightedIndex(prev =>
+                    prev > 0 ? prev - 1 : flatResults.length - 1
+                );
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (highlightedIndex >= 0 && highlightedIndex < flatResults.length) {
+                    handleSelect(flatResults[highlightedIndex]);
+                }
+                break;
+            case 'Escape':
+                setIsOpen(false);
+                setHighlightedIndex(-1);
+                break;
+        }
     };
 
     const clearSelection = () => {
@@ -258,12 +292,15 @@ export function ProductSearchInput({
                     onChange={(e) => {
                         setQuery(e.target.value);
                         setIsOpen(true);
+                        setHighlightedIndex(-1);
                     }}
                     onFocus={() => setIsOpen(true)}
+                    onKeyDown={handleKeyDown}
                     placeholder={placeholder}
                     disabled={disabled}
                     className="w-full pl-10 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-500"
                     aria-label="Search products"
+                    aria-activedescendant={highlightedIndex >= 0 ? `product-option-${highlightedIndex}` : undefined}
                     aria-expanded={isOpen}
                     role="combobox"
                 />
@@ -293,10 +330,14 @@ export function ProductSearchInput({
                     ) : (
                         flatResults.map((item, idx) => (
                             <button
+                                id={`product-option-${idx}`}
                                 key={`${item.productId}-${item.variationWooId || 'simple'}-${idx}`}
                                 type="button"
                                 onClick={() => handleSelect(item)}
-                                className="w-full px-3 py-2.5 text-left hover:bg-blue-50 flex items-center gap-3 border-b border-gray-100 last:border-0"
+                                onMouseEnter={() => setHighlightedIndex(idx)}
+                                className={`w-full px-3 py-2.5 text-left flex items-center gap-3 border-b border-gray-100 last:border-0 ${highlightedIndex === idx ? 'bg-blue-50' : 'hover:bg-blue-50'}`}
+                                role="option"
+                                aria-selected={highlightedIndex === idx}
                             >
                                 {/* Product image */}
                                 <div className="w-10 h-10 bg-gray-100 rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden">

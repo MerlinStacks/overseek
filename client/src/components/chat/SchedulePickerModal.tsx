@@ -5,7 +5,7 @@
  * Provides preset options and a custom date/time picker.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { X, Clock, Calendar, Send } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -74,12 +74,16 @@ export function SchedulePickerModal({
     const [customTime, setCustomTime] = useState('');
     const [useCustom, setUseCustom] = useState(false);
 
-    const presets = getPresetOptions();
+    // Memoize presets to avoid impure function call during render
+    const presets = useMemo(() => getPresetOptions(), []);
 
-    // Get minimum date (now + 5 minutes)
-    const minDate = new Date(Date.now() + 5 * 60 * 1000);
-    const minDateString = minDate.toISOString().split('T')[0];
-    const minTimeString = minDate.toTimeString().slice(0, 5);
+    // Memoize minimum date calculation to avoid impure Date.now() call during render
+    const { minDateString } = useMemo(() => {
+        const minDate = new Date(Date.now() + 5 * 60 * 1000);
+        return {
+            minDateString: minDate.toISOString().split('T')[0],
+        };
+    }, []);
 
     const handlePresetSelect = (date: Date) => {
         setSelectedPreset(date);

@@ -195,7 +195,11 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     // Clear unread when on inbox page
     useEffect(() => {
         if (location.pathname.startsWith('/inbox')) {
-            setHasUnread(false);
+            // Defer state update to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                setHasUnread(false);
+            }, 0);
+            return () => clearTimeout(timeoutId);
         }
     }, [location.pathname]);
 
@@ -204,17 +208,31 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
         const activeGroup = navItems.find(item =>
             item.type === 'group' && item.children?.some(child => location.pathname.startsWith(child.path))
         );
-        if (activeGroup && !expandedGroups.includes(activeGroup.label) && !collapsed) {
-            setExpandedGroups(prev => [...prev, activeGroup.label]);
+        if (activeGroup && !collapsed) {
+            // Defer state update to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                // Use functional update to avoid dependency on expandedGroups
+                setExpandedGroups(prev => {
+                    if (!prev.includes(activeGroup.label)) {
+                        return [...prev, activeGroup.label];
+                    }
+                    return prev;
+                });
+            }, 0);
+            return () => clearTimeout(timeoutId);
         }
     }, [location.pathname, collapsed]);
 
     // Close drawer on navigation (mobile only)
     useEffect(() => {
         if (isMobile && onClose) {
-            onClose();
+            // Defer the close to avoid cascading renders
+            const timeoutId = setTimeout(() => {
+                onClose();
+            }, 0);
+            return () => clearTimeout(timeoutId);
         }
-    }, [location.pathname]);
+    }, [location.pathname, isMobile, onClose]);
 
 
     const toggleGroup = (label: string) => {

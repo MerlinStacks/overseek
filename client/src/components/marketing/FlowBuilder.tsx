@@ -187,9 +187,15 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     const onNodeCopy = useCallback((nodeId: string) => copyNodeRef.current(nodeId), []);
     const onNodeDelete = useCallback((nodeId: string) => deleteNodeRef.current(nodeId), []);
 
+    // --- Step Type Selection (+ button) ---
+    const handleOpenStepPopup = useCallback((nodeId: string, buttonPosition: { x: number; y: number }) => {
+        setPendingNodeParent(nodeId);
+        setStepPopupPosition(buttonPosition);
+        setShowStepPopup(true);
+    }, []);
+
     // --- Event (Trigger) Selection ---
     const handleEventSelect = useCallback((event: { triggerType: string; label: string }) => {
-        const viewport = getViewport();
         const newNode: Node = {
             id: getId(),
             type: 'trigger',
@@ -204,14 +210,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
         };
         setNodes([newNode]);
         setEdges([]);
-    }, [setNodes, setEdges, getViewport]);
-
-    // --- Step Type Selection (+ button) ---
-    const handleOpenStepPopup = useCallback((nodeId: string, buttonPosition: { x: number; y: number }) => {
-        setPendingNodeParent(nodeId);
-        setStepPopupPosition(buttonPosition);
-        setShowStepPopup(true);
-    }, []);
+    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
 
     // --- Recipe Selection ---
     const handleRecipeSelect = useCallback((recipe: AutomationRecipe) => {
