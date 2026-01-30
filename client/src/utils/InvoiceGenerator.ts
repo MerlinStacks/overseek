@@ -56,9 +56,20 @@ const safeStringify = (val: any): string => {
 /**
  * Extracts user-facing metadata from an order line item
  * Filters out internal plugin/system keys and returns label/value pairs
+ * Prevents duplicate entries by tracking seen labels
  */
 const getItemMeta = (item: any): { label: string; value: string }[] => {
     const meta: { label: string; value: string }[] = [];
+    const seenLabels = new Set<string>(); // Track labels to prevent duplicates
+
+    // Helper to add meta entry only if not already seen
+    const addMeta = (label: string, value: string) => {
+        const normalizedLabel = label.toLowerCase().trim();
+        if (!seenLabels.has(normalizedLabel) && value.length > 0 && value.length < 200) {
+            seenLabels.add(normalizedLabel);
+            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value });
+        }
+    };
 
     // Keys to always exclude (internal plugin/system keys)
     const excludedKeyPatterns = [
@@ -69,33 +80,34 @@ const getItemMeta = (item: any): { label: string; value: string }[] => {
         /^reduced_stock/i,       // Stock management internal
         /label_map/i,            // Internal mappings
         /droppable/i,            // UI state fields
+        /^id$/i,                 // Internal IDs
+        /^key$/i,                // Internal keys
     ];
 
     const isExcludedKey = (key: string) =>
         excludedKeyPatterns.some(pattern => pattern.test(key));
 
     // Standard fields
-    if (item.sku) meta.push({ label: 'SKU', value: item.sku });
+    if (item.sku) addMeta('SKU', item.sku);
 
-    // Variation attributes only
+    // Variation attributes only (pa_ prefixed keys)
     if (item.variation_id && item.variation_id > 0) {
         const attrs = item.meta_data?.filter((m: any) =>
-            m.key?.startsWith('pa_') || (m.display_key && !isExcludedKey(m.key || ''))
+            m.key?.startsWith('pa_')
         ) || [];
         attrs.forEach((attr: any) => {
             const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
             const rawValue = attr.display_value || attr.value;
             const strValue = safeStringify(rawValue);
-            if (strValue.length < 200) {
-                meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
-            }
+            addMeta(label, strValue);
         });
     }
 
-    // Custom meta fields - strict filtering
+    // Custom meta fields - strict filtering (non pa_ keys with display values)
     const customMeta = item.meta_data?.filter((m: any) => {
         const key = m.key || '';
         if (isExcludedKey(key)) return false;
+        if (key.startsWith('pa_')) return false; // Already handled above
         if (!m.display_key && !m.display_value) return false;
         return true;
     }) || [];
@@ -103,14 +115,15 @@ const getItemMeta = (item: any): { label: string; value: string }[] => {
     customMeta.forEach((m: any) => {
         const rawValue = m.display_value || m.value;
         const strValue = safeStringify(rawValue);
-        if (strValue.length < 200 && strValue.length > 0) {
+        if (strValue.length > 0) {
             const label = m.display_key || m.key.replace(/_/g, ' ');
-            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
+            addMeta(label, strValue);
         }
     });
 
     return meta;
 };
+
 
 /**
  * Generates specific invoice PDF based on layout and order data
@@ -388,22 +401,29 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             });
         }
         else if (type === 'order_table') {
-            // DEBUG: Log order data structure to diagnose metadata issue
-            console.log('[InvoiceGenerator] Order line_items count:', order.line_items?.length);
-            if (order.line_items?.[0]) {
-                console.log('[InvoiceGenerator] First line item keys:', Object.keys(order.line_items[0]));
-                console.log('[InvoiceGenerator] First line item meta_data:', order.line_items[0].meta_data);
-            }
+            // Helper to truncate long text values for PDF display
+            const truncateText = (text: string, maxLength: number = 80): string => {
+                if (text.length <= maxLength) return text;
+                return text.substring(0, maxLength - 3) + '...';
+            };
 
             // Build table data with item metadata (SKU, variations, custom fields)
             const tableData = order.line_items.map(p => {
                 const itemMeta = getItemMeta(p);
-                console.log('[InvoiceGenerator] Item:', p.name, 'Meta count:', itemMeta.length, 'Meta:', itemMeta);
 
                 // Build description with product name and metadata
+                // Limit metadata to avoid excessive table row heights
                 let description = p.name;
                 if (itemMeta.length > 0) {
-                    const metaStr = itemMeta.map(m => `${m.label}: ${m.value}`).join('\n');
+                    // Truncate long values and limit to max 6 metadata entries
+                    const limitedMeta = itemMeta.slice(0, 6).map(m => {
+                        const truncatedValue = truncateText(m.value, 60);
+                        return `${m.label}: ${truncatedValue}`;
+                    });
+                    if (itemMeta.length > 6) {
+                        limitedMeta.push(`... and ${itemMeta.length - 6} more`);
+                    }
+                    const metaStr = limitedMeta.join('\n');
                     description = `${p.name}\n${metaStr}`;
                 }
 
@@ -435,22 +455,35 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             footerRows.push(['', '', 'Tax', formatPrice(tax, order.currency)]);
             footerRows.push(['', '', { content: 'Total', styles: { fontStyle: 'bold', fontSize: 11 } }, { content: formatPrice(total, order.currency), styles: { fontStyle: 'bold', fontSize: 11 } }]);
 
+            // Calculate column widths proportionally based on table width
+            // Description should get ~66% of width, other columns share the rest
+            const qtyWidth = Math.min(12, w * 0.08);
+            const priceWidth = Math.min(22, w * 0.13);
+            const totalWidth = Math.min(22, w * 0.13);
+            // Description gets remaining space (at least 66% of table width)
+            const descWidth = w - qtyWidth - priceWidth - totalWidth;
+
             autoTable(doc, {
                 startY: y,
-                margin: { left: x },
+                margin: { left: x, right: pageWidth - x - w },
                 tableWidth: w,
                 head: [['Description', 'Qty', 'Unit Price', 'Total']],
                 body: tableData,
                 foot: footerRows,
                 theme: 'grid',
-                styles: { fontSize: 9, cellPadding: 3 },
+                styles: {
+                    fontSize: 9,
+                    cellPadding: 3,
+                    overflow: 'linebreak',
+                    cellWidth: 'wrap'
+                },
                 headStyles: { fillColor: [66, 66, 66] },
                 footStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0] },
                 columnStyles: {
-                    0: { cellWidth: 'auto' },  // Description column - flexible width
-                    1: { cellWidth: 15, halign: 'center' },  // Qty
-                    2: { cellWidth: 25, halign: 'right' },   // Unit Price
-                    3: { cellWidth: 25, halign: 'right' },   // Total
+                    0: { cellWidth: descWidth },  // Description column - proportional width
+                    1: { cellWidth: qtyWidth, halign: 'center' },  // Qty
+                    2: { cellWidth: priceWidth, halign: 'right' },   // Unit Price
+                    3: { cellWidth: totalWidth, halign: 'right' },   // Total
                 },
                 // Keep line items together - avoid page breaks within rows
                 rowPageBreak: 'avoid'

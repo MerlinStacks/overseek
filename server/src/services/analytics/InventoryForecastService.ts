@@ -322,6 +322,8 @@ export class InventoryForecastService {
                 name: true,
                 sku: true,
                 mainImage: true,
+                stockQuantity: true,   // Materialized DB field (prioritized for consistency)
+                manageStock: true,     // DB-tracked manage_stock flag
                 rawData: true,
                 supplier: {
                     select: { leadTimeDefault: true }
@@ -386,14 +388,18 @@ export class InventoryForecastService {
             // 3. No variations manage their own stock (avoids double-counting)
             if (!hasParentBOM && !anyVariationHasBOM && !hasStockManagedVariations) {
                 const raw = p.rawData as { manage_stock?: boolean; stock_quantity?: number };
-                if (raw.manage_stock && typeof raw.stock_quantity === 'number') {
+                // Prioritize materialized DB field, fall back to rawData (Jan 29 fix)
+                const managesStock = p.manageStock || raw.manage_stock;
+                const stockQty = p.stockQuantity ?? raw.stock_quantity;
+
+                if (managesStock && typeof stockQty === 'number') {
                     result.push({
                         id: p.id,
                         wooId: p.wooId,
                         name: p.name,
                         sku: p.sku,
                         image: p.mainImage,
-                        currentStock: raw.stock_quantity,
+                        currentStock: stockQty,
                         supplierLeadTime: p.supplier?.leadTimeDefault || null
                     });
                 }

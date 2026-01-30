@@ -29,13 +29,14 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId;
 
+            // Prioritize materialized DB field, fall back to rawData (Jan 29 fix)
             const products: any[] = await prisma.$queryRaw`
                 SELECT id, "wooId", name, sku, "mainImage", "price", 
-                       CAST("rawData"->>'stock_quantity' AS INTEGER) as stock_quantity
+                       COALESCE("stockQuantity", CAST("rawData"->>'stock_quantity' AS INTEGER)) as stock_quantity
                 FROM "WooProduct"
                 WHERE "accountId" = ${accountId}
-                AND "rawData"->>'manage_stock' = 'true'
-                AND "rawData"->>'stock_quantity' IS NOT NULL
+                AND ("manageStock" = true OR "rawData"->>'manage_stock' = 'true')
+                AND COALESCE("stockQuantity", CAST("rawData"->>'stock_quantity' AS INTEGER)) IS NOT NULL
             `;
 
             if (!products.length) return [];

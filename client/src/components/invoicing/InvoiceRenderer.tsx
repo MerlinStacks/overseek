@@ -206,9 +206,19 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     return String(val);
                 };
 
-                // Helper to extract item metadata
+                // Helper to extract item metadata (with deduplication)
                 const getItemMeta = (item: any) => {
                     const meta: { label: string; value: string }[] = [];
+                    const seenLabels = new Set<string>(); // Track labels to prevent duplicates
+
+                    // Helper to add meta entry only if not already seen
+                    const addMeta = (label: string, value: string) => {
+                        const normalizedLabel = label.toLowerCase().trim();
+                        if (!seenLabels.has(normalizedLabel) && value.length > 0 && value.length < 200) {
+                            seenLabels.add(normalizedLabel);
+                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value });
+                        }
+                    };
 
                     // Keys to always exclude (internal plugin/system keys)
                     const excludedKeyPatterns = [
@@ -219,36 +229,34 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         /^reduced_stock/i,       // Stock management internal
                         /label_map/i,            // Internal mappings
                         /droppable/i,            // UI state fields
+                        /^id$/i,                 // Internal IDs
+                        /^key$/i,                // Internal keys
                     ];
 
                     const isExcludedKey = (key: string) =>
                         excludedKeyPatterns.some(pattern => pattern.test(key));
 
                     // Standard fields
-                    if (item.sku) meta.push({ label: 'SKU', value: item.sku });
+                    if (item.sku) addMeta('SKU', item.sku);
 
-                    // Variation attributes only
+                    // Variation attributes only (pa_ prefixed keys)
                     if (item.variation_id && item.variation_id > 0) {
                         const attrs = item.meta_data?.filter((m: any) =>
-                            m.key?.startsWith('pa_') || (m.display_key && !isExcludedKey(m.key || ''))
+                            m.key?.startsWith('pa_')
                         ) || [];
                         attrs.forEach((attr: any) => {
                             const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
                             const rawValue = attr.display_value || attr.value;
                             const strValue = safeStringify(rawValue);
-                            // Only include if value is reasonable length
-                            if (strValue.length < 200) {
-                                meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
-                            }
+                            addMeta(label, strValue);
                         });
                     }
 
-                    // Custom meta fields - strict filtering
+                    // Custom meta fields - strict filtering (non pa_ keys with display values)
                     const customMeta = item.meta_data?.filter((m: any) => {
                         const key = m.key || '';
-                        // Exclude internal keys
                         if (isExcludedKey(key)) return false;
-                        // Must have a display_key to be user-facing
+                        if (key.startsWith('pa_')) return false; // Already handled above
                         if (!m.display_key && !m.display_value) return false;
                         return true;
                     }) || [];
@@ -256,10 +264,9 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     customMeta.forEach((m: any) => {
                         const rawValue = m.display_value || m.value;
                         const strValue = safeStringify(rawValue);
-                        // Only include if value is reasonable length (not giant internal data)
-                        if (strValue.length < 200 && strValue.length > 0) {
+                        if (strValue.length > 0) {
                             const label = m.display_key || m.key.replace(/_/g, ' ');
-                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value: strValue });
+                            addMeta(label, strValue);
                         }
                     });
 

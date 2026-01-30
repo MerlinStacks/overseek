@@ -23,7 +23,7 @@ export function MobileAnalytics() {
     const { currentAccount } = useAccount();
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
+    const [period, setPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
     const [liveCount, setLiveCount] = useState(0);
 
     useEffect(() => {
@@ -68,17 +68,20 @@ export function MobileAnalytics() {
             // Map mobile period to dateUtils options
             const periodMap: Record<string, DateRangeOption> = {
                 'today': 'today',
+                'yesterday': 'yesterday',
                 'week': '7d',
                 'month': '30d'
             };
             const currentRange = getDateRange(periodMap[period]);
             const comparisonRange = getComparisonRange(currentRange, 'previous_period');
 
-            // Fetch current period data
-            const [salesRes, customerRes, liveRes] = await Promise.all([
+            // Fetch current period data (including visitor sessions for the period)
+            const [salesRes, customerRes, liveRes, visitorSessionsRes] = await Promise.all([
                 fetch(`/api/analytics/sales?startDate=${currentRange.startDate}&endDate=${currentRange.endDate}`, { headers }),
                 fetch(`/api/analytics/customer-growth?startDate=${currentRange.startDate}&endDate=${currentRange.endDate}`, { headers }),
-                fetch('/api/analytics/visitors/log?live=true&limit=1', { headers })
+                fetch('/api/analytics/visitors/log?live=true&limit=1', { headers }),
+                // Fetch visitor count for the period (not live) for conversion calculation
+                fetch(`/api/analytics/visitors/log?startDate=${currentRange.startDate}&endDate=${currentRange.endDate}&limit=1`, { headers })
             ]);
 
             // Fetch comparison period data (if available)
@@ -106,8 +109,13 @@ export function MobileAnalytics() {
 
             if (liveRes.ok) {
                 const liveData = await liveRes.json();
-                visitorCount = liveData.total || 0;
-                setLiveCount(visitorCount);
+                setLiveCount(liveData.total || 0);
+            }
+
+            // Use period-based visitor count for accurate conversion rate
+            if (visitorSessionsRes.ok) {
+                const sessionData = await visitorSessionsRes.json();
+                visitorCount = sessionData.total || 0;
             }
 
             // Parse comparison period
@@ -170,7 +178,7 @@ export function MobileAnalytics() {
     const formatAccountCurrency = (amount: number) =>
         formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-    const periodLabels = { today: 'Today', week: 'This Week', month: 'This Month' };
+    const periodLabels = { today: 'Today', yesterday: 'Yesterday', week: 'This Week', month: 'This Month' };
 
     if (loading) {
         return (
@@ -217,12 +225,12 @@ export function MobileAnalytics() {
                 <ChevronRight size={24} className="text-green-200" />
             </button>
 
-            <div className="flex gap-2">
-                {(['today', 'week', 'month'] as const).map((p) => (
+            <div className="flex gap-2 overflow-x-auto">
+                {(['today', 'yesterday', 'week', 'month'] as const).map((p) => (
                     <button
                         key={p}
                         onClick={() => setPeriod(p)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${period === p ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${period === p ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                     >
                         {periodLabels[p]}
                     </button>

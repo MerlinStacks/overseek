@@ -38,11 +38,11 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/visitors/log', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const query = request.query as { page?: string; limit?: string; live?: string };
+            const query = request.query as { page?: string; limit?: string; live?: string; startDate?: string; endDate?: string };
             const page = parseInt(query.page || '1');
             const limit = parseInt(query.limit || '50');
             const liveMode = query.live === 'true';
-            return await AnalyticsService.getVisitorLog(accountId, page, limit, liveMode);
+            return await AnalyticsService.getVisitorLog(accountId, page, limit, liveMode, query.startDate, query.endDate);
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
     });
 
