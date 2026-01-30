@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Send, AlertTriangle, CheckCircle, Info, MessageSquare } from 'lucide-react';
+import { Send, AlertTriangle, CheckCircle, Info, MessageSquare, Bell } from 'lucide-react';
 
 export function AdminBroadcastPage() {
     const { token } = useAuth();
@@ -8,7 +9,8 @@ export function AdminBroadcastPage() {
         title: '',
         message: '',
         type: 'INFO',
-        link: ''
+        link: '',
+        sendPush: false
     });
     const [sending, setSending] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
@@ -19,7 +21,7 @@ export function AdminBroadcastPage() {
         setSuccessMsg('');
 
         try {
-            const res = await fetch('http://localhost:3000/api/admin/broadcast', {
+            const res = await fetch('/api/admin/broadcast', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -30,13 +32,17 @@ export function AdminBroadcastPage() {
 
             if (res.ok) {
                 const data = await res.json();
-                setSuccessMsg(`Successfully sent to ${data.count} accounts.`);
-                setFormData({ title: '', message: '', type: 'INFO', link: '' });
+                let msg = `Successfully sent to ${data.count} accounts.`;
+                if (formData.sendPush) {
+                    msg += ` Push: ${data.pushSent} sent, ${data.pushFailed} failed.`;
+                }
+                setSuccessMsg(msg);
+                setFormData({ title: '', message: '', type: 'INFO', link: '', sendPush: false });
             } else {
                 alert('Failed to send broadcast');
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Error sending broadcast');
         } finally {
             setSending(false);
@@ -54,13 +60,13 @@ export function AdminBroadcastPage() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-xs border border-slate-200 p-6 space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
                     <input
                         type="text"
                         required
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                         placeholder="e.g. Scheduled Maintenance"
                         value={formData.title}
                         onChange={e => setFormData({ ...formData, title: e.target.value })}
@@ -72,7 +78,7 @@ export function AdminBroadcastPage() {
                     <textarea
                         required
                         rows={4}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                         placeholder="Details about the update..."
                         value={formData.message}
                         onChange={e => setFormData({ ...formData, message: e.target.value })}
@@ -83,7 +89,7 @@ export function AdminBroadcastPage() {
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
                         <select
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={formData.type}
                             onChange={e => setFormData({ ...formData, type: e.target.value })}
                         >
@@ -97,12 +103,30 @@ export function AdminBroadcastPage() {
                         <label className="block text-sm font-medium text-slate-700 mb-1">Link (Optional)</label>
                         <input
                             type="text"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="/settings or https://..."
                             value={formData.link}
                             onChange={e => setFormData({ ...formData, link: e.target.value })}
                         />
                     </div>
+                </div>
+
+                {/* Push Notification Toggle */}
+                <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <input
+                        type="checkbox"
+                        id="sendPush"
+                        checked={formData.sendPush}
+                        onChange={e => setFormData({ ...formData, sendPush: e.target.checked })}
+                        className="w-5 h-5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="sendPush" className="flex items-center gap-2 cursor-pointer">
+                        <Bell size={18} className="text-indigo-600" />
+                        <div>
+                            <p className="font-medium text-slate-800">Send Push Notification</p>
+                            <p className="text-sm text-slate-500">Also send as a push notification to all subscribed devices</p>
+                        </div>
+                    </label>
                 </div>
 
                 <div className="pt-4">

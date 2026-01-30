@@ -1,205 +1,318 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Store, ArrowRight, SkipForward } from 'lucide-react';
+/**
+ * Setup Wizard
+ * 
+ * Multi-step onboarding wizard for new account creation.
+ * Guides users through store connection, plugin setup, email, and ad accounts.
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { Logger } from '../utils/logger';
 
+// Onboarding components
+import { OnboardingStepIndicator } from '../components/onboarding/OnboardingStepIndicator';
+import { StoreStep, PluginStep, EmailStep, AdsStep, ReviewStep } from '../components/onboarding/steps';
+import {
+    ONBOARDING_STEPS,
+    STEP_CONFIG,
+    OnboardingDraft,
+    createInitialDraft,
+    validateStep,
+    saveDraftToStorage,
+    loadDraftFromStorage,
+    clearDraftFromStorage
+} from '../components/onboarding/types';
+
+/**
+ * Multi-step setup wizard orchestrator.
+ * Manages step navigation, validation, persistence, and account creation.
+ */
 export function SetupWizard() {
-    const [formData, setFormData] = useState({
-        name: '',
-        domain: '',
-        wooUrl: '',
-        wooConsumerKey: '',
-        wooConsumerSecret: ''
-    });
+    // State - use explicit number type for step to allow any step value
+    const [currentStep, setCurrentStep] = useState<number>(ONBOARDING_STEPS.STORE);
+    const [draft, setDraft] = useState<OnboardingDraft>(createInitialDraft);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const { token, logout } = useAuth();
-    const { refreshAccounts, currentAccount, accounts, isLoading } = useAccount();
-    const navigate = useNavigate();
+    const [error, setError] = useState<string | null>(null);
 
+    // Hooks
+    const { token, logout, isLoading: authLoading } = useAuth();
+    const { refreshAccounts, accounts, isLoading: accountsLoading, currentAccount } = useAccount();
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const isAddingNew = searchParams.get('addNew') === 'true';
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Effects
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Redirect to login if not authenticated
     useEffect(() => {
-        if (!isLoading && accounts.length > 0) {
+        if (!authLoading && !token) {
+            navigate('/login', { replace: true });
+        }
+    }, [authLoading, token, navigate]);
+
+    // Redirect to dashboard if user already has accounts (unless adding new)
+    useEffect(() => {
+        if (!accountsLoading && accounts.length > 0 && !isAddingNew) {
+            Logger.debug('SetupWizard: User has accounts, redirecting to dashboard');
             navigate('/');
         }
-    }, [accounts, isLoading, navigate]);
+    }, [accounts, accountsLoading, navigate, isAddingNew]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
+    // Load saved draft from localStorage on mount
+    useEffect(() => {
+        const saved = loadDraftFromStorage();
+        if (saved && !isAddingNew) {
+            Logger.debug('SetupWizard: Resuming from saved draft', { step: saved.currentStep });
+            setDraft(saved.draft);
+            setCurrentStep(saved.currentStep);
+        }
+    }, [isAddingNew]);
 
-    const handleSkip = async () => {
-        // Create a demo account to satisfy the AccountGuard
+    // Save draft to localStorage on changes
+    useEffect(() => {
+        if (draft.store.name || draft.completedSteps.length > 0) {
+            saveDraftToStorage(draft, currentStep);
+        }
+    }, [draft, currentStep]);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Navigation Handlers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const handleNext = useCallback(() => {
+        // Validate current step
+        const validation = validateStep(currentStep, draft);
+        if (!validation.isValid) {
+            setError(validation.error || 'Please complete all required fields');
+            return;
+        }
+
+        setError(null);
+
+        // Mark current step as completed
+        if (!draft.completedSteps.includes(currentStep)) {
+            setDraft(prev => ({
+                ...prev,
+                completedSteps: [...prev.completedSteps, currentStep]
+            }));
+        }
+
+        // Move to next step or finalize
+        if (currentStep < ONBOARDING_STEPS.TOTAL) {
+            setCurrentStep(prev => prev + 1);
+        } else {
+            handleFinalize();
+        }
+    }, [currentStep, draft]);
+
+    const handleBack = useCallback(() => {
+        if (currentStep > ONBOARDING_STEPS.STORE) {
+            setCurrentStep(prev => prev - 1);
+            setError(null);
+        }
+    }, [currentStep]);
+
+    const handleSkip = useCallback(() => {
+        // Mark step as skipped (only for skippable steps)
+        const stepConfig = STEP_CONFIG.find(s => s.id === currentStep);
+        if (stepConfig?.skippable) {
+            if (!draft.skippedSteps.includes(currentStep)) {
+                setDraft(prev => ({
+                    ...prev,
+                    skippedSteps: [...prev.skippedSteps, currentStep]
+                }));
+            }
+        }
+
+        setError(null);
+
+        // Move to next step
+        if (currentStep < ONBOARDING_STEPS.TOTAL) {
+            setCurrentStep(prev => prev + 1);
+        }
+    }, [currentStep, draft]);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Finalization
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const handleFinalize = useCallback(async () => {
         setIsSubmitting(true);
-        try {
-            const demoData = {
-                name: 'Demo Store',
-                domain: 'https://demo.overseek.com',
-                wooUrl: 'https://demo.overseek.com',
-                wooConsumerKey: 'ck_demo',
-                wooConsumerSecret: 'cs_demo'
-            };
+        setError(null);
 
+        try {
+            // Check if account was already created in StoreStep
+            if (currentAccount?.id) {
+                // Account exists - just update additional settings if needed
+                Logger.info('SetupWizard: Account already exists, skipping creation', { accountId: currentAccount.id });
+
+                // Could add PATCH to update email/ads settings here if needed
+                // For now, just clear draft and navigate
+                clearDraftFromStorage();
+                await refreshAccounts();
+                navigate('/');
+                return;
+            }
+
+            // Fallback: Create account if it wasn't created in StoreStep
+            // This handles edge cases where early creation failed
             const res = await fetch('/api/accounts', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(demoData)
+                body: JSON.stringify({
+                    name: draft.store.name,
+                    domain: draft.store.domain || draft.store.wooUrl,
+                    wooUrl: draft.store.wooUrl,
+                    wooConsumerKey: draft.store.wooConsumerKey,
+                    wooConsumerSecret: draft.store.wooConsumerSecret,
+                    // Optional fields based on what was configured
+                    pluginVerified: draft.plugin.verified,
+                    emailConfigured: draft.email.enabled && draft.email.verified,
+                    adsConfigured: draft.ads.googleConnected || draft.ads.metaConnected
+                })
             });
 
             if (res.status === 401) {
                 logout();
-                alert('Session expired. Please log in again.');
                 return;
             }
 
-            if (!res.ok) throw new Error('Failed to create demo account');
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to create account');
+            }
 
+            // Clear saved draft
+            clearDraftFromStorage();
+
+            // Refresh accounts and navigate
             await refreshAccounts();
             navigate('/');
-        } catch (error) {
-            console.error('Skip failed:', error);
-            alert('Failed to set up demo account. Please try connecting a real store.');
+        } catch (err) {
+            Logger.error('SetupWizard: Account creation failed', { error: err });
+            setError(err instanceof Error ? err.message : 'Failed to create account');
         } finally {
             setIsSubmitting(false);
         }
+    }, [draft, token, logout, refreshAccounts, navigate, currentAccount]);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Render
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Loading state
+    if (authLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-gray-500">Loading...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Not authenticated
+    if (!token) {
+        return null;
+    }
+
+    // Step props passed to all step components
+    const stepProps = {
+        draft,
+        setDraft,
+        onNext: handleNext,
+        onBack: handleBack,
+        onSkip: handleSkip,
+        isSubmitting
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-
-        try {
-            const res = await fetch('/api/accounts', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (res.status === 401) {
-                logout();
-                alert('Session expired. Please log in again.');
-                return;
-            }
-
-            if (!res.ok) throw new Error('Failed to create account');
-
-            await refreshAccounts(); // Update context
-            navigate('/');
-        } catch (error) {
-            console.error(error);
-            alert('Error creating account. Please check your inputs.');
-        } finally {
-            setIsSubmitting(false);
+    // Render current step content
+    const renderStep = () => {
+        switch (currentStep) {
+            case ONBOARDING_STEPS.STORE:
+                return <StoreStep {...stepProps} />;
+            case ONBOARDING_STEPS.PLUGIN:
+                return <PluginStep {...stepProps} />;
+            case ONBOARDING_STEPS.EMAIL:
+                return <EmailStep {...stepProps} />;
+            case ONBOARDING_STEPS.ADS:
+                return <AdsStep {...stepProps} />;
+            case ONBOARDING_STEPS.REVIEW:
+                return <ReviewStep {...stepProps} />;
+            default:
+                return <StoreStep {...stepProps} />;
         }
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-            <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="bg-blue-600 p-8 text-white text-center">
-                    <Store className="w-16 h-16 mx-auto mb-4 opacity-90" />
-                    <h1 className="text-3xl font-bold mb-2">Welcome to OverSeek</h1>
-                    <p className="text-blue-100">Let's connect your WooCommerce store to get started.</p>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+            <div className="max-w-6xl mx-auto px-4 py-8">
+                {/* Header */}
+                <div className="text-center mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">
+                        {isAddingNew ? 'Add New Store' : 'Welcome to OverSeek'}
+                    </h1>
+                    <p className="text-gray-500 mt-2">
+                        {isAddingNew
+                            ? 'Connect another WooCommerce store to your account'
+                            : "Let's get your store set up in just a few steps"
+                        }
+                    </p>
                 </div>
 
-                <div className="p-8">
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
-                                <input
-                                    type="text"
-                                    name="name"
-                                    required
-                                    placeholder="My Awesome Store"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.name}
-                                    onChange={handleChange}
+                {/* Error Banner */}
+                {error && (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                        {error}
+                    </div>
+                )}
+
+                {/* Main Layout */}
+                <div className="flex gap-8">
+                    {/* Left Sidebar - Step Indicator */}
+                    <div className="hidden md:block w-64 flex-shrink-0">
+                        <div className="sticky top-8 bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                            <OnboardingStepIndicator
+                                currentStep={currentStep}
+                                completedSteps={draft.completedSteps}
+                                skippedSteps={draft.skippedSteps}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Right Content - Step Form */}
+                    <div className="flex-1 min-w-0">
+                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                            <div className="p-6 md:p-8">
+                                {renderStep()}
+                            </div>
+                        </div>
+
+                        {/* Mobile Step Indicator */}
+                        <div className="md:hidden mt-6 flex justify-center gap-2">
+                            {STEP_CONFIG.map((step) => (
+                                <div
+                                    key={step.id}
+                                    className={`w-2.5 h-2.5 rounded-full transition-colors ${step.id === currentStep
+                                        ? 'bg-blue-600'
+                                        : draft.completedSteps.includes(step.id)
+                                            ? 'bg-green-500'
+                                            : draft.skippedSteps.includes(step.id)
+                                                ? 'bg-amber-400'
+                                                : 'bg-gray-300'
+                                        }`}
                                 />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Domain URL</label>
-                                <input
-                                    type="url"
-                                    name="domain"
-                                    placeholder="https://mystore.com"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.domain}
-                                    onChange={handleChange}
-                                />
-                            </div>
+                            ))}
                         </div>
-
-                        <div className="border-t border-gray-100 pt-6">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">WooCommerce API Credentials</h3>
-                            <p className="text-sm text-gray-500 mb-6 bg-blue-50 p-4 rounded-lg">
-                                You can find these in WooCommerce &gt; Settings &gt; Advanced &gt; REST API.
-                                Make sure to set permissions to <strong>Read/Write</strong>.
-                            </p>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Store URL (with https://)</label>
-                                    <input
-                                        type="url"
-                                        name="wooUrl"
-                                        required
-                                        placeholder="https://mystore.com"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={formData.wooUrl}
-                                        onChange={handleChange}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Consumer Key (ck_...)</label>
-                                    <input
-                                        type="text"
-                                        name="wooConsumerKey"
-                                        required
-                                        placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxx"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                        value={formData.wooConsumerKey}
-                                        onChange={handleChange}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Consumer Secret (cs_...)</label>
-                                    <input
-                                        type="password"
-                                        name="wooConsumerSecret"
-                                        required
-                                        placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxx"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                        value={formData.wooConsumerSecret}
-                                        onChange={handleChange}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-6">
-                            <button
-                                type="button"
-                                onClick={handleSkip}
-                                className="text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"
-                            >
-                                <SkipForward size={18} /> Skip for now
-                            </button>
-
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-bold flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-70"
-                            >
-                                {isSubmitting ? 'Connecting...' : 'Connect Store'} <ArrowRight size={20} />
-                            </button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>

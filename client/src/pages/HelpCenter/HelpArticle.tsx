@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Calendar, User, Eye, Share2, Printer } from 'lucide-react';
+import { getArticleBySlug } from '../../data/helpContent';
+import { ArrowLeft, Calendar, User, Share2, Printer } from 'lucide-react';
 
 function SimpleMarkdown({ content }: { content: string }) {
     if (!content) return null;
@@ -14,7 +13,7 @@ function SimpleMarkdown({ content }: { content: string }) {
                 if (line.startsWith('### ')) return <h3 key={i} className="text-xl font-bold text-gray-900 mt-8 mb-3">{line.replace('### ', '')}</h3>;
                 if (line.startsWith('## ')) return <h2 key={i} className="text-2xl font-bold text-gray-900 mt-10 mb-5 pb-2 border-b border-gray-100">{line.replace('## ', '')}</h2>;
                 if (line.startsWith('# ')) return <h1 key={i} className="text-3xl font-bold text-gray-900 mt-10 mb-6">{line.replace('# ', '')}</h1>;
-                if (line.startsWith('- ')) return <div key={i} className="flex gap-3 ml-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2.5 flex-shrink-0"></div><p className="flex-1">{line.replace('- ', '')}</p></div>;
+                if (line.startsWith('- ')) return <div key={i} className="flex gap-3 ml-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2.5 shrink-0"></div><p className="flex-1">{line.replace('- ', '')}</p></div>;
                 if (line.trim() === '') return <div key={i} className="h-2"></div>;
 
                 // Handle bolding
@@ -36,45 +35,22 @@ function SimpleMarkdown({ content }: { content: string }) {
 
 export function HelpArticle() {
     const { slug } = useParams();
-    const { token } = useAuth();
     const navigate = useNavigate();
-    const [article, setArticle] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
 
-    useEffect(() => {
-        const fetchArticle = async () => {
-            try {
-                const res = await fetch(`/api/help/articles/${slug}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error('Article not found');
-                const data = await res.json();
-                setArticle(data);
-            } catch (err) {
-                setError('Article not found or unavailable.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchArticle();
-    }, [slug, token]);
+    // Get article from static content - no API call needed
+    const article = slug ? getArticleBySlug(slug) : null;
 
-    if (loading) return (
-        <div className="flex items-center justify-center min-h-[60vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-    );
-
-    if (error) return (
-        <div className="max-w-3xl mx-auto py-20 text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
-            <p className="text-gray-500 mb-6">{error}</p>
-            <button onClick={() => navigate('/help')} className="text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-2 mx-auto">
-                <ArrowLeft size={16} /> Back to Help Center
-            </button>
-        </div>
-    );
+    if (!article) {
+        return (
+            <div className="max-w-3xl mx-auto py-20 text-center">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
+                <p className="text-gray-500 mb-6">Article not found or unavailable.</p>
+                <button onClick={() => navigate('/help')} className="text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-2 mx-auto">
+                    <ArrowLeft size={16} /> Back to Help Center
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">
@@ -88,9 +64,9 @@ export function HelpArticle() {
                 Back to Help Center
             </button>
 
-            <article className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <article className="bg-white rounded-2xl shadow-xs border border-gray-100 overflow-hidden">
                 {/* Article Header */}
-                <div className="p-8 md:p-12 border-b border-gray-50 bg-gradient-to-b from-white to-gray-50/20">
+                <div className="p-8 md:p-12 border-b border-gray-50 bg-linear-to-b from-white to-gray-50/20">
                     <div className="flex items-center gap-2 mb-6">
                         <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold tracking-wide uppercase">
                             {article.collection?.title || 'Guide'}
@@ -140,14 +116,14 @@ export function HelpArticle() {
                     <SimpleMarkdown content={article.content} />
                 </div>
 
-                {/* Feedback Footer (Mock) */}
+                {/* Feedback Footer */}
                 <div className="bg-gray-50 p-8 text-center border-t border-gray-100">
                     <p className="text-gray-900 font-medium mb-4">Was this article helpful?</p>
                     <div className="flex justify-center gap-4">
-                        <button className="px-6 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-all shadow-sm">
+                        <button className="px-6 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-all shadow-xs">
                             Yes, thanks!
                         </button>
-                        <button className="px-6 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-all shadow-sm">
+                        <button className="px-6 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-all shadow-xs">
                             Not really
                         </button>
                     </div>

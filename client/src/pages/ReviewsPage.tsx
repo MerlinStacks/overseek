@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, RefreshCw, Search, Loader2, CheckCircle, ExternalLink } from 'lucide-react';
+import { Star, RefreshCw, Search, Loader2, CheckCircle, ExternalLink, Link2 } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
 export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
@@ -13,6 +15,7 @@ export const ReviewsPage = () => {
     const [reviews, setReviews] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isRematching, setIsRematching] = useState(false);
 
     // Filters & Pagination
     const [searchQuery, setSearchQuery] = useState('');
@@ -51,7 +54,7 @@ export const ReviewsPage = () => {
             setTotalReviews(data.pagination?.total || 0);
 
         } catch (error) {
-            console.error("Failed to fetch reviews", error);
+            Logger.error('Failed to fetch reviews', { error: error });
         } finally {
             setIsLoading(false);
         }
@@ -86,22 +89,51 @@ export const ReviewsPage = () => {
             setTimeout(fetchReviews, 2000);
 
         } catch (error) {
-            console.error("Sync failed", error);
+            Logger.error('Sync failed', { error: error });
             alert('Failed to start sync');
         } finally {
             setIsSyncing(false);
         }
     };
 
+    const handleRematch = async () => {
+        if (!currentAccount || !token) return;
+        setIsRematching(true);
+        try {
+            const res = await fetch('/api/reviews/rematch-all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({})
+            });
+
+            if (!res.ok) throw new Error('Rematch failed');
+            const result = await res.json();
+            alert(`Rematch complete!\n\nTotal: ${result.totalReviews}\nMatched: ${result.matchedReviews}\nUpdated: ${result.updatedReviews}\nMatch Rate: ${result.matchRate}`);
+            fetchReviews();
+        } catch (error) {
+            Logger.error('Rematch failed', { error: error });
+            alert('Failed to rematch reviews');
+        } finally {
+            setIsRematching(false);
+        }
+    };
+
+    // Debounce search query to prevent API calls on every keystroke
+    const debouncedSearch = useDebouncedValue(searchQuery, 400);
+
     // Reset page when filters change
     useEffect(() => {
         setPage(1);
-    }, [searchQuery, statusFilter]);
+    }, [debouncedSearch, statusFilter]);
 
     // Fetch on changes
     useEffect(() => {
         fetchReviews();
-    }, [currentAccount, token, page, limit, searchQuery, statusFilter]);
+    }, [currentAccount, token, page, limit, debouncedSearch, statusFilter]);
 
     return (
         <div className="p-6 space-y-6">
@@ -116,14 +148,14 @@ export const ReviewsPage = () => {
                         <input
                             type="text"
                             placeholder="Search reviews..."
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
 
                     <select
-                        className="border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        className="border border-gray-300 rounded-lg px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
@@ -133,6 +165,16 @@ export const ReviewsPage = () => {
                         <option value="spam">Spam</option>
                         <option value="trash">Trash</option>
                     </select>
+
+                    <button
+                        onClick={handleRematch}
+                        disabled={isRematching || isSyncing}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        title="Re-link reviews to their matching orders"
+                    >
+                        <Link2 size={18} className={isRematching ? "animate-pulse" : ""} />
+                        {isRematching ? 'Matching...' : 'Link to Orders'}
+                    </button>
 
                     <button
                         onClick={handleSync}
@@ -145,7 +187,7 @@ export const ReviewsPage = () => {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
@@ -185,7 +227,7 @@ export const ReviewsPage = () => {
                                                 {review.order && (
                                                     <div className="group relative">
                                                         <CheckCircle size={16} className="text-green-500 cursor-help" />
-                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded p-2 text-center whitespace-normal z-10 shadow-lg">
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded-sm p-2 text-center whitespace-normal z-10 shadow-lg">
                                                             Verified Owner via Order #{review.order.number}
                                                         </div>
                                                     </div>

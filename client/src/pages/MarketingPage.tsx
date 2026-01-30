@@ -1,15 +1,27 @@
-
-import { useState } from 'react';
+/**
+ * MarketingPage - Campaigns, Ad Performance, and Ad Accounts management.
+ * Flows/Automations moved to dedicated FlowsPage.
+ */
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { Logger } from '../utils/logger';
+import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
+import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
 import { CampaignsList } from '../components/marketing/CampaignsList';
-import { AutomationsList } from '../components/marketing/AutomationsList';
-import { EmailDesignEditor } from '../components/marketing/EmailDesignEditor';
-import { FlowBuilder } from '../components/marketing/FlowBuilder';
-import { LayoutGrid, Mail, Zap, Megaphone, ArrowLeft } from 'lucide-react';
+import { ExperimentsPanel } from '../components/marketing/ExperimentsPanel';
+import { ExecutiveReportsPanel } from '../components/marketing/ExecutiveReportsPanel';
+import { AudienceSyncPanel } from '../components/marketing/AudienceSyncPanel';
+import { Mail, Megaphone, BarChart2, FlaskConical, FileText, Users } from 'lucide-react';
+
+// Lazy-load EmailDesignEditor to prevent react-email-editor from polluting React singleton
+const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { useAccountFeature } from '../hooks/useAccountFeature';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
-type EditorMode = 'email' | 'automation' | null;
+type EditorMode = 'email' | null;
+
 
 interface EditingItem {
     id: string;
@@ -20,16 +32,40 @@ interface EditingItem {
 export function MarketingPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'automations' | 'ads'>('campaigns');
+    const isAdTrackingEnabled = useAccountFeature('AD_TRACKING');
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Initialize activeTab from URL query param or default to 'campaigns'
+    type TabId = 'campaigns' | 'performance' | 'ads' | 'experiments' | 'reports' | 'audiences';
+    const validTabs: TabId[] = ['campaigns', 'performance', 'ads', 'experiments', 'reports', 'audiences'];
+    const tabFromUrl = searchParams.get('tab') as TabId | null;
+    const [activeTab, setActiveTab] = useState<TabId>(
+        tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'campaigns'
+    );
 
     // Editor State
     const [editorMode, setEditorMode] = useState<EditorMode>(null);
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
 
+    // Sync tab changes to URL
+    useEffect(() => {
+        if (activeTab !== 'campaigns') {
+            setSearchParams({ tab: activeTab }, { replace: true });
+        } else {
+            // Remove tab param when on default tab
+            setSearchParams({}, { replace: true });
+        }
+    }, [activeTab, setSearchParams]);
+
     const tabs = [
         { id: 'campaigns', label: 'Campaigns', icon: Mail },
-        { id: 'automations', label: 'Automations', icon: Zap },
-        { id: 'ads', label: 'Ads Intelligence', icon: Megaphone },
+        ...(isAdTrackingEnabled ? [
+            { id: 'performance', label: 'Ad Performance', icon: BarChart2 },
+            { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
+            { id: 'experiments', label: 'A/B Tests', icon: FlaskConical },
+            { id: 'reports', label: 'Reports', icon: FileText },
+            { id: 'audiences', label: 'Audiences', icon: Users },
+        ] : []),
     ];
 
     const handleEditCampaign = (id: string, name: string) => {
@@ -37,15 +73,11 @@ export function MarketingPage() {
         setEditorMode('email');
     };
 
-    const handleEditAutomation = (id: string, name: string) => {
-        setEditingItem({ id, name });
-        setEditorMode('automation');
-    };
+
 
     const handleCloseEditor = () => {
         setEditorMode(null);
         setEditingItem(null);
-        // Ideally refetch lists? Lists fetch on mount so we are good if we unmount them.
     };
 
     const handleSaveEmail = async (html: string, design: any) => {
@@ -53,94 +85,45 @@ export function MarketingPage() {
         try {
             await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
                 method: 'PUT', // or PATCH
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
                 body: JSON.stringify({ content: html, designJson: design })
             });
             alert('Design saved!');
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
             alert('Failed to save');
         }
     };
 
-    const handleSaveFlow = async (flow: { nodes: any[], edges: any[] }) => {
-        if (!editingItem || !currentAccount) return;
-        try {
-            // Automations endpoint handles upsert/update
-            await fetch(`/api/marketing/automations/${editingItem.id}`, {
-                method: 'PUT', // Assuming PUT logic exists or POST upsert
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                // Use Partial update or full object? The backend `upsertAutomation` is usually POST /api/marketing/automations.
-                // But let's assume we have a PUT or just use the same upsert endpoint.
-                body: JSON.stringify({
-                    id: editingItem.id,
-                    // We need to keep existing fields? The backend upsert requires name/triggerType etc if using upsert logic.
-                    // But if we just update flow, we might need a dedicated PATCH endpoint or ensuring we send everything.
-                    // For now, let's assume the upsert handles partial if ID is present OR we need to fetch info first.
-                    // Let's rely on the fact that existing fields are preserved if not passed? 
-                    // My backend logic `upsertAutomation` replaces everything if passed? No, `prisma.update` only updates provided fields.
-                    // Ah, `upsertAutomation` gets `data`. 
-                    flowDefinition: flow,
-                    isActive: true // Optionally activate on save?
-                })
-            });
-            alert('Automation saved!');
-        } catch (err) {
-            console.error(err);
-            alert('Failed to save');
-        }
-    };
+
 
     // --- Render Editors ---
 
     if (editorMode === 'email') {
         return (
-            <div className="h-[calc(100vh-64px)] -m-6 bg-white z-50 absolute inset-0 top-16">
-                {/* Full screen overlay or replace layout content */}
-                <div className="h-full flex flex-col">
-                    <EmailDesignEditor
-                        // Initial design loading logic would need fetching the design first. 
-                        // For prototype, we skip pre-loading or do it inside Editor with a fetch.
-                        // Ideally Editor fetches by ID or we pass it.
-                        onSave={handleSaveEmail}
-                        onCancel={handleCloseEditor}
-                    />
-                </div>
-            </div>
+            <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-gray-500">Loading email editor...</div></div>}>
+                <EmailDesignEditor
+                    initialDesign={undefined} // Could fetch and pass existing design
+                    onSave={handleSaveEmail}
+                    onCancel={handleCloseEditor}
+                />
+            </Suspense>
         );
     }
 
-    if (editorMode === 'automation') {
-        return (
-            <div className="h-[calc(100vh-64px)] -m-6 bg-white z-50 absolute inset-0 top-16">
-                <div className="h-full flex flex-col">
-                    <div className="border-b p-4 flex justify-between items-center bg-gray-50">
-                        <div className="flex items-center gap-2">
-                            <button onClick={handleCloseEditor} className="p-2 hover:bg-gray-200 rounded-full">
-                                <ArrowLeft size={20} />
-                            </button>
-                            <h2 className="font-bold text-lg">{editingItem?.name}</h2>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                        <FlowBuilder
-                            // Load flow logic?
-                            onSave={handleSaveFlow}
-                            onCancel={handleCloseEditor}
-                        />
-                    </div>
-                </div>
-            </div>
-        );
-    }
+
 
     // --- Render Lists ---
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
-                <h1 className="text-2xl font-bold text-gray-900">Marketing & Growth</h1>
-                <p className="text-gray-500">Manage your email marketing, automations, and ad campaigns.</p>
+                <h1 className="text-2xl font-bold text-gray-900">Marketing</h1>
+                <p className="text-gray-500">Manage your email campaigns and ad accounts.</p>
             </div>
 
             {/* Tabs */}
@@ -166,8 +149,27 @@ export function MarketingPage() {
 
             <div className="py-4">
                 {activeTab === 'campaigns' && <CampaignsList onEdit={handleEditCampaign} />}
-                {activeTab === 'automations' && <AutomationsList onEdit={handleEditAutomation} />}
+                {activeTab === 'performance' && (
+                    <ErrorBoundary>
+                        <AdPerformanceView />
+                    </ErrorBoundary>
+                )}
                 {activeTab === 'ads' && <AdsView />}
+                {activeTab === 'experiments' && (
+                    <ErrorBoundary>
+                        <ExperimentsPanel />
+                    </ErrorBoundary>
+                )}
+                {activeTab === 'reports' && (
+                    <ErrorBoundary>
+                        <ExecutiveReportsPanel />
+                    </ErrorBoundary>
+                )}
+                {activeTab === 'audiences' && (
+                    <ErrorBoundary>
+                        <AudienceSyncPanel />
+                    </ErrorBoundary>
+                )}
             </div>
         </div>
     );

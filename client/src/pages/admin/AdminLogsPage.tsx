@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { CheckCircle, XCircle, Clock, RotateCw } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -26,7 +27,7 @@ export function AdminLogsPage() {
 
     const fetchLogs = (currentPage: number, currentLimit: number) => {
         setLoading(true);
-        fetch(`http://localhost:3000/api/admin/logs?page=${currentPage}&limit=${currentLimit}`, {
+        fetch(`/api/admin/logs?page=${currentPage}&limit=${currentLimit}`, {
             headers: { Authorization: `Bearer ${token}` }
         })
             .then(res => res.json())
@@ -37,7 +38,7 @@ export function AdminLogsPage() {
                 setLoading(false);
             })
             .catch(err => {
-                console.error(err);
+                Logger.error('An error occurred', { error: err });
                 setLoading(false);
             });
     };
@@ -58,7 +59,7 @@ export function AdminLogsPage() {
                 </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-100 uppercase text-xs text-slate-500 font-medium">

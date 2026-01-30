@@ -1,21 +1,49 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Logger } from '../utils/logger';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { formatDate } from '../utils/format';
-import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw } from 'lucide-react';
+import { usePermissions } from '../hooks/usePermissions';
+import { formatDate, fixMojibake, formatCurrency } from '../utils/format';
+import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings } from 'lucide-react';
+import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
+import { HistoryTimeline } from '../components/shared/HistoryTimeline';
+import { Clock } from 'lucide-react';
+import { FraudBadge } from '../components/orders/FraudBadge';
+import { OrderTagPanel } from '../components/orders/OrderTagPanel';
+import { OrderMetaSection } from '../components/orders/OrderMetaSection';
+
+interface Attribution {
+    firstTouchSource: string;
+    lastTouchSource: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    referrer?: string;
+    country?: string;
+    city?: string;
+    deviceType?: string;
+    browser?: string;
+    os?: string;
+}
 
 export function OrderDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
 
     const [order, setOrder] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [showRaw, setShowRaw] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [attribution, setAttribution] = useState<Attribution | null>(null);
+
+
 
     useEffect(() => {
         if (id && currentAccount && token) {
@@ -36,6 +64,9 @@ export function OrderDetailPage() {
             if (!res.ok) throw new Error('Failed to fetch order');
             const data = await res.json();
             setOrder(data);
+
+            // Fetch attribution data
+            fetchAttribution();
         } catch (err) {
             setError('Could not load order details.');
         } finally {
@@ -43,9 +74,71 @@ export function OrderDetailPage() {
         }
     }
 
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    async function fetchAttribution() {
+        try {
+            const res = await fetch(`/api/orders/${id}/attribution`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount?.id || ''
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAttribution(data.attribution);
+            }
+        } catch (err) {
+            // Attribution is optional, don't fail the page
+            console.warn('Could not load attribution data');
+        }
+    }
+
+
+
+    const handleGenerateInvoice = async () => {
+        setIsGenerating(true);
+        try {
+            // 1. Fetch Templates
+            const res = await fetch(`/api/invoices/templates`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount?.id || ''
+                }
+            });
+            if (!res.ok) throw new Error("Failed to fetch templates");
+
+            const templates = await res.json();
+
+            // Use the most recent template or default
+            const template = templates.length > 0 ? templates[0] : null;
+
+            if (!template) {
+                alert("No invoice template found. Please design one first.");
+                return;
+            }
+
+            // 2. Generate PDF
+            await generateInvoicePDF(order, template.layout?.grid || [], template.layout?.items || [], template.name);
+
+        } catch (e) {
+            Logger.error('An error occurred', { error: e });
+            alert("Failed to generate invoice");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    /** Callback when tags are updated via the OrderTagPanel */
+    function handleTagsChange(newTags: string[]) {
+        setOrder((prev: any) => ({ ...prev, tags: newTags }));
+    }
+
+
 
     // ... existing useEffect ...
+
+    if (!hasPermission('view_orders') && !isLoading) {
+        return <div className="p-10 text-center text-red-500">Access Denied</div>;
+    }
 
     if (isLoading) return <div className="p-10 flex justify-center"><div className="animate-spin text-blue-600"><RefreshCw /></div></div>;
     if (error || !order) return <div className="p-10 text-center text-red-500">{error || 'Order not found'}</div>;
@@ -60,7 +153,7 @@ export function OrderDetailPage() {
                 <button onClick={() => navigate('/orders')} className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
                     <ArrowLeft size={20} />
                 </button>
-                <div>
+                <div className="flex-1">
                     <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-gray-900">Order #{order.id}</h1>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
@@ -69,8 +162,19 @@ export function OrderDetailPage() {
                                     order.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                             {order.status}
                         </span>
+                        <FraudBadge orderId={id || ''} />
                     </div>
                     <div className="text-sm text-gray-500 mt-1">Placed on {formatDate(order.date_created)} via {order.payment_method_title}</div>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleGenerateInvoice}
+                        disabled={isGenerating}
+                        className="btn-white flex items-center gap-2"
+                    >
+                        {isGenerating ? <div className="animate-spin text-gray-500"><RefreshCw size={16} /></div> : <Printer size={16} />}
+                        Generate Invoice
+                    </button>
                 </div>
             </div>
 
@@ -78,7 +182,7 @@ export function OrderDetailPage() {
 
                 {/* Main Content - Items */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 font-semibold text-gray-800 flex items-center gap-2">
                             <Package size={18} className="text-gray-400" />
                             Order Items
@@ -100,21 +204,17 @@ export function OrderDetailPage() {
                                                 <div className="font-medium text-gray-900">{item.name}</div>
                                                 <div className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</div>
                                                 {item.meta_data && item.meta_data.length > 0 && (
-                                                    <div className="mt-1 space-y-0.5">
-                                                        {item.meta_data.map((meta: any, idx: number) => (
-                                                            <OrderMetaItem key={idx} meta={meta} onImageClick={setSelectedImage} />
-                                                        ))}
-                                                    </div>
+                                                    <OrderMetaSection metaData={item.meta_data} onImageClick={setSelectedImage} />
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-right text-gray-600">
-                                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.price)}
+                                                {formatCurrency(item.price, order.currency)}
                                             </td>
                                             <td className="px-6 py-4 text-center text-gray-600 bg-gray-50/30">
                                                 {item.quantity}
                                             </td>
                                             <td className="px-6 py-4 text-right font-medium text-gray-900">
-                                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.total)}
+                                                {formatCurrency(item.total, order.currency)}
                                             </td>
                                         </tr>
                                     ))}
@@ -123,25 +223,32 @@ export function OrderDetailPage() {
                                     <tr>
                                         <td colSpan={3} className="px-6 py-3 text-right text-sm text-gray-500">Subtotal</td>
                                         <td className="px-6 py-3 text-right font-medium text-gray-800">
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(Number(order.total) - Number(order.total_tax) - Number(order.shipping_total))}
+                                            {formatCurrency(Number(order.total) - Number(order.total_tax) - Number(order.shipping_total), order.currency)}
                                         </td>
                                     </tr>
                                     <tr>
-                                        <td colSpan={3} className="px-6 py-2 text-right text-sm text-gray-500">Shipping</td>
+                                        <td colSpan={3} className="px-6 py-2 text-right text-sm text-gray-500">
+                                            Shipping
+                                            {order.shipping_lines?.[0]?.method_title && (
+                                                <span className="ml-1 text-xs text-gray-400">
+                                                    ({order.shipping_lines[0].method_title})
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-2 text-right font-medium text-gray-800">
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.shipping_total)}
+                                            {formatCurrency(order.shipping_total, order.currency)}
                                         </td>
                                     </tr>
                                     <tr>
                                         <td colSpan={3} className="px-6 py-2 text-right text-sm text-gray-500">Tax</td>
                                         <td className="px-6 py-2 text-right font-medium text-gray-800">
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total_tax)}
+                                            {formatCurrency(order.total_tax, order.currency)}
                                         </td>
                                     </tr>
                                     <tr className="border-t border-gray-200 bg-gray-100">
                                         <td colSpan={3} className="px-6 py-4 text-right font-bold text-gray-900 text-lg">Total</td>
                                         <td className="px-6 py-4 text-right font-bold text-blue-600 text-lg">
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total)}
+                                            {formatCurrency(order.total, order.currency)}
                                         </td>
                                     </tr>
                                 </tfoot>
@@ -168,8 +275,15 @@ export function OrderDetailPage() {
 
                 {/* Sidebar - Customer Details */}
                 <div className="space-y-6">
+                    {/* Tags Panel - First for visibility */}
+                    <OrderTagPanel
+                        orderId={order.id || order.wooId?.toString() || id || ''}
+                        currentTags={order.tags || []}
+                        onTagsChange={handleTagsChange}
+                    />
+
                     {/* Customer Card */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                         <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
                             <User size={18} className="text-blue-500" />
                             Customer Details
@@ -179,8 +293,21 @@ export function OrderDetailPage() {
                             <div className="flex items-start gap-3">
                                 <div className="p-2 bg-gray-100 rounded-full text-gray-500"><User size={14} /></div>
                                 <div>
-                                    <div className="text-sm font-medium text-gray-900">{billing.first_name} {billing.last_name}</div>
-                                    <div className="text-xs text-gray-500">Customer</div>
+                                    {order.customer_id && order.customer_id > 0 ? (
+                                        <Link
+                                            to={`/customers/${order.customer_id}`}
+                                            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                        >
+                                            {billing.first_name} {billing.last_name}
+                                        </Link>
+                                    ) : (
+                                        <div className="text-sm font-medium text-gray-900">{billing.first_name} {billing.last_name}</div>
+                                    )}
+                                    <div className="text-xs text-gray-500">
+                                        {order._customerMeta?.ordersCount !== undefined
+                                            ? `${order._customerMeta.ordersCount} order${order._customerMeta.ordersCount !== 1 ? 's' : ''} previously`
+                                            : 'Guest Customer'}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex items-start gap-3">
@@ -201,7 +328,7 @@ export function OrderDetailPage() {
                     </div>
 
                     {/* Address Card */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                         <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
                             <MapPin size={18} className="text-blue-500" />
                             Addresses
@@ -232,8 +359,93 @@ export function OrderDetailPage() {
                             )}
                         </div>
                     </div>
+
+                    {/* Attribution Card */}
+                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+                        <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                            <TrendingUp size={18} className="text-blue-500" />
+                            Attribution
+                        </div>
+
+                        {attribution ? (
+                            <div className="space-y-3">
+                                {/* Traffic Source */}
+                                <div>
+                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Traffic Source</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                            First: {attribution.firstTouchSource}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                            Last: {attribution.lastTouchSource}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* UTM Parameters */}
+                                {(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign) && (
+                                    <div>
+                                        <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-2 border-t border-dashed border-gray-200">UTM Parameters</div>
+                                        <div className="space-y-1 text-sm">
+                                            {attribution.utmSource && (
+                                                <div className="flex gap-2">
+                                                    <span className="text-gray-500">Source:</span>
+                                                    <span className="text-gray-900">{attribution.utmSource}</span>
+                                                </div>
+                                            )}
+                                            {attribution.utmMedium && (
+                                                <div className="flex gap-2">
+                                                    <span className="text-gray-500">Medium:</span>
+                                                    <span className="text-gray-900">{attribution.utmMedium}</span>
+                                                </div>
+                                            )}
+                                            {attribution.utmCampaign && (
+                                                <div className="flex gap-2">
+                                                    <span className="text-gray-500">Campaign:</span>
+                                                    <span className="text-gray-900">{attribution.utmCampaign}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Device & Location */}
+                                {(attribution.deviceType || attribution.country) && (
+                                    <div>
+                                        <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-2 border-t border-dashed border-gray-200">Device & Location</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {attribution.deviceType && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                                    {attribution.deviceType === 'mobile' ? <Smartphone size={12} /> :
+                                                        attribution.deviceType === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
+                                                    {attribution.deviceType}
+                                                </span>
+                                            )}
+                                            {attribution.country && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                                    <Globe size={12} />
+                                                    {attribution.city ? `${attribution.city}, ` : ''}{attribution.country}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-sm text-gray-500 italic">No attribution data available</div>
+                        )}
+                    </div>
                 </div>
 
+            </div>
+
+            {/* History Section */}
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Clock size={18} className="text-gray-400" />
+                    <h2 className="text-lg font-medium text-gray-900">Order History</h2>
+                </div>
+                <HistoryTimeline resource="ORDER" resourceId={order.id || order.wooId} />
             </div>
 
             {/* Image Preview Modal */}
@@ -246,53 +458,3 @@ export function OrderDetailPage() {
     );
 }
 
-// Helper to check if value is an image url
-const isImage = (value: string) => {
-    if (typeof value !== 'string') return false;
-    return /\.(jpg|jpeg|png|gif|webp)$/i.test(value);
-};
-
-function OrderMetaItem({ meta, onImageClick }: { meta: any, onImageClick: (url: string) => void }) {
-    const [imgError, setImgError] = useState(false);
-
-    // Filter out hidden meta (starts with _)
-    if (meta.key.startsWith('_')) return null;
-
-    const isImg = isImage(meta.value);
-    const showImage = isImg && !imgError;
-
-    return (
-        <div className="text-xs text-gray-500 flex flex-col gap-1 mt-1">
-            <div className="flex gap-1">
-                <span className="font-medium bg-gray-100 px-1 rounded">{meta.key}:</span>
-                {/* Show text if it's not an image, OR if the image failed to load */}
-                {!showImage && (
-                    <span className="break-all">
-                        {/* If it looks like a URL, make it clickable */}
-                        {meta.value.startsWith('http') ? (
-                            <a href={meta.value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                {meta.value}
-                            </a>
-                        ) : (
-                            meta.value
-                        )}
-                    </span>
-                )}
-            </div>
-
-            {showImage && (
-                <div
-                    className="mt-1 cursor-zoom-in border border-gray-200 rounded-md overflow-hidden inline-block w-fit"
-                    onClick={() => onImageClick(meta.value)}
-                >
-                    <img
-                        src={meta.value}
-                        alt={meta.key}
-                        onError={() => setImgError(true)}
-                        className="h-24 w-auto object-cover hover:opacity-90 transition-opacity"
-                    />
-                </div>
-            )}
-        </div>
-    );
-}

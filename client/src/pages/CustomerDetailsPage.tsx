@@ -1,10 +1,12 @@
 
 import { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 // Force reload
-import { ArrowLeft, Mail, ShoppingBag, Calendar, Activity, Zap, ExternalLink, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Mail, ShoppingBag, Calendar, Activity, Zap, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { MergeCustomerModal } from '../components/customers/MergeCustomerModal';
 
 interface CustomerDetails {
     customer: {
@@ -29,6 +31,7 @@ export function CustomerDetailsPage() {
     const [data, setData] = useState<CustomerDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity'>('overview');
+    const [showMergeModal, setShowMergeModal] = useState(false);
 
     useEffect(() => {
         if (id && currentAccount && token) {
@@ -51,7 +54,7 @@ export function CustomerDetailsPage() {
                 setData(json);
             }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
@@ -86,7 +89,13 @@ export function CustomerDetailsPage() {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        {/* Placeholder generic actions */}
+                        <button
+                            onClick={() => setShowMergeModal(true)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
+                        >
+                            <Users size={16} />
+                            Merge Duplicates
+                        </button>
                         <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Edit Profile</button>
                     </div>
                 </div>
@@ -94,26 +103,26 @@ export function CustomerDetailsPage() {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Total Spent</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">${Number(customer.totalSpent).toFixed(2)}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Orders</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">{customer.ordersCount}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Average Order</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">${customer.ordersCount > 0 ? (Number(customer.totalSpent) / customer.ordersCount).toFixed(2) : '0.00'}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Last Active</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">{activity[0] ? new Date(activity[0].lastActiveAt).toLocaleDateString() : 'N/A'}</p>
                 </div>
             </div>
 
             {/* Content Tabs */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px]">
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 min-h-[500px]">
                 <div className="border-b border-gray-200 px-6 flex gap-6">
                     {(['overview', 'orders', 'automations', 'activity'] as const).map(tab => (
                         <button
@@ -273,6 +282,14 @@ export function CustomerDetailsPage() {
                     )}
                 </div>
             </div>
+
+            {/* Merge Modal */}
+            <MergeCustomerModal
+                isOpen={showMergeModal}
+                onClose={() => setShowMergeModal(false)}
+                customerId={id || ''}
+                onMergeComplete={fetchCustomerDetails}
+            />
         </div>
     );
 }
