@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, Clock, Package, ShoppingCart, Users, Star, Layers } from 'lucide-react';
 
 interface SyncLog {
     id: string;
@@ -18,20 +20,43 @@ interface SyncState {
     lastSyncedAt: string;
 }
 
+/** Entity types available for sync */
+const SYNC_ENTITIES = [
+    { key: 'orders', label: 'Orders', icon: ShoppingCart },
+    { key: 'products', label: 'Products', icon: Package },
+    { key: 'customers', label: 'Customers', icon: Users },
+    { key: 'reviews', label: 'Reviews', icon: Star },
+] as const;
+
+/** BOM is handled separately - always full sync via dedicated queue */
+const BOM_ENTITY = { key: 'bom', label: 'BOM Inventory', icon: Layers };
+
+type SyncEntityKey = typeof SYNC_ENTITIES[number]['key'];
+
 export function SyncStatus() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [logs, setLogs] = useState<SyncLog[]>([]);
     const [lastSyncs, setLastSyncs] = useState<Record<string, string>>({});
     const [isSyncing, setIsSyncing] = useState(false);
-    const [forceFullSync, setForceFullSync] = useState(false);
 
-    const fetchStatus = async () => {
+    // Per-entity full sync toggles
+    const [fullSyncTypes, setFullSyncTypes] = useState<Record<SyncEntityKey, boolean>>({
+        orders: false,
+        products: false,
+        customers: false,
+        reviews: false,
+    });
+
+    // BOM sync toggle (always full sync when triggered)
+    const [syncBOM, setSyncBOM] = useState(false);
+
+    const fetchStatus = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         try {
             const res = await fetch(`/api/sync/status?accountId=${currentAccount.id}`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id }
             });
             if (res.ok) {
                 const data = await res.json();
@@ -45,36 +70,87 @@ export function SyncStatus() {
                 setLastSyncs(stateMap);
             }
         } catch (err) {
-            console.error('Failed to fetch sync status', err);
+            Logger.error('Failed to fetch sync status', { error: err });
         }
+    }, [currentAccount, token]);
+
+    // Use visibility-aware polling with tab coordination
+    useVisibilityPolling(fetchStatus, 10000, [fetchStatus], 'sync-status');
+
+    const toggleFullSync = (key: SyncEntityKey) => {
+        setFullSyncTypes(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    useEffect(() => {
-        fetchStatus();
-        const interval = setInterval(fetchStatus, 10000); // Poll every 10s
-        return () => clearInterval(interval);
-    }, [currentAccount, token]);
+    const selectAll = () => {
+        setFullSyncTypes({ orders: true, products: true, customers: true, reviews: true });
+    };
+
+    const deselectAll = () => {
+        setFullSyncTypes({ orders: false, products: false, customers: false, reviews: false });
+    };
+
+    const allSelected = Object.values(fullSyncTypes).every(Boolean);
+    const noneSelected = Object.values(fullSyncTypes).every(v => !v);
 
     const handleSync = async () => {
         if (!currentAccount || !token) return;
         setIsSyncing(true);
+
         try {
-            await fetch('/api/sync/manual', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    accountId: currentAccount.id,
-                    incremental: !forceFullSync
-                })
-            });
-            // Don't wait for completion log, just refresh status immediately to see IN_PROGRESS ??
-            // Actually API returns immediately.
+            // Split: types marked for full sync vs incremental
+            const fullSyncList = SYNC_ENTITIES.filter(e => fullSyncTypes[e.key]).map(e => e.key);
+            const incrementalList = SYNC_ENTITIES.filter(e => !fullSyncTypes[e.key]).map(e => e.key);
+
+            // Dispatch full sync types (if any)
+            if (fullSyncList.length > 0) {
+                await fetch('/api/sync/manual', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    },
+                    body: JSON.stringify({
+                        accountId: currentAccount.id,
+                        types: fullSyncList,
+                        incremental: false
+                    })
+                });
+            }
+
+            // Dispatch incremental sync types (if any)
+            if (incrementalList.length > 0) {
+                await fetch('/api/sync/manual', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    },
+                    body: JSON.stringify({
+                        accountId: currentAccount.id,
+                        types: incrementalList,
+                        incremental: true
+                    })
+                });
+            }
+
+            // Dispatch BOM sync if selected
+            if (syncBOM) {
+                await fetch('/api/inventory/bom/sync-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    },
+                    body: JSON.stringify({})
+                });
+            }
+
             setTimeout(fetchStatus, 1000);
         } catch (err) {
-            console.error('Sync trigger failed', err);
+            Logger.error('Sync trigger failed', { error: err });
         } finally {
             setIsSyncing(false);
         }
@@ -83,38 +159,87 @@ export function SyncStatus() {
     if (!currentAccount) return null;
 
     return (
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-xs">
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Sync Status</h3>
-                <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
+                >
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                    Sync Now
+                </button>
+            </div>
+
+            {/* Per-entity Full Sync Toggles */}
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">Full Sync (unchecked = incremental)</span>
+                    <button
+                        onClick={allSelected ? deselectAll : selectAll}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                        {allSelected ? 'Deselect All' : 'Select All'}
+                    </button>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                    {SYNC_ENTITIES.map(({ key, label, icon: Icon }) => (
+                        <label
+                            key={key}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors border ${fullSyncTypes[key]
+                                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                                }`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={fullSyncTypes[key]}
+                                onChange={() => toggleFullSync(key)}
+                                className="sr-only"
+                            />
+                            <Icon size={16} />
+                            <span className="text-sm font-medium">{label}</span>
+                            {fullSyncTypes[key] && (
+                                <CheckCircle size={14} className="text-blue-600" />
+                            )}
+                        </label>
+                    ))}
+
+                    {/* BOM Sync - separate from WooCommerce entities */}
+                    <div className="w-px bg-gray-200 mx-1" />
+                    <label
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors border ${syncBOM
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                    >
                         <input
                             type="checkbox"
-                            checked={forceFullSync}
-                            onChange={(e) => setForceFullSync(e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={syncBOM}
+                            onChange={() => setSyncBOM(!syncBOM)}
+                            className="sr-only"
                         />
-                        Force Full Sync
+                        <Layers size={16} />
+                        <span className="text-sm font-medium">BOM Inventory</span>
+                        {syncBOM && (
+                            <CheckCircle size={14} className="text-emerald-600" />
+                        )}
                     </label>
-                    <button
-                        onClick={handleSync}
-                        disabled={isSyncing}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium disabled:opacity-50"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        Sync Now
-                    </button>
                 </div>
             </div>
 
             <div className="space-y-4">
                 {/* Last Sync Times */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                    {['orders', 'products'].map(type => (
-                        <div key={type} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-                            <span className="capitalize text-gray-600">{type}</span>
-                            <span className="text-gray-900 font-medium">
-                                {lastSyncs[type] ? new Date(lastSyncs[type]).toLocaleTimeString() : 'Never'}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                    {[...SYNC_ENTITIES, BOM_ENTITY].map(({ key, label, icon: Icon }) => (
+                        <div key={key} className="flex flex-col p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-2 text-gray-500 mb-1">
+                                <Icon size={14} />
+                                <span className="text-xs">{label}</span>
+                            </div>
+                            <span className="text-gray-900 font-medium text-sm">
+                                {lastSyncs[key] ? new Date(lastSyncs[key]).toLocaleTimeString() : 'Never'}
                             </span>
                         </div>
                     ))}

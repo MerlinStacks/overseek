@@ -1,0 +1,143 @@
+.session-manager {
+    padding: 1.5rem;
+    background: var(--card-bg, #1e1e2e);
+    border-radius: 12px;
+    border: 1px solid var(--border-color, #2a2a3a);
+}
+
+.session-manager.loading {
+    text-align: center;
+    color: var(--text-muted, #888);
+    padding: 3rem;
+}
+
+.session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.session-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary, #fff);
+}
+
+.session-description {
+    color: var(--text-muted, #888);
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+}
+
+.session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.session-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg-secondary, #252535);
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #2a2a3a);
+}
+
+.session-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.session-device {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.device-icon {
+    font-size: 1.25rem;
+}
+
+.device-name {
+    font-weight: 500;
+    color: var(--text-primary, #fff);
+}
+
+.session-details {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    color: var(--text-muted, #888);
+}
+
+.btn-revoke {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    transition: all 0.2s ease;
+}
+
+.btn-revoke:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.btn-revoke:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-danger {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    background: #ef4444;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: #dc2626;
+}
+
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.no-sessions {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted, #888);
+}
+
+/* Current session styling */
+.session-current {
+    border-color: var(--accent-color, #3b82f6);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.current-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.675rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+    border-radius: 4px;
+}

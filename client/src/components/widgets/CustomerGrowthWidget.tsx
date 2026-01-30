@@ -1,9 +1,12 @@
 import { WidgetProps } from './WidgetRegistry';
+import { Logger } from '../../utils/logger';
 import { Users, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import ReactEChartsCore from 'echarts-for-react/lib/core';
+import { echarts, graphic, type EChartsOption } from '../../utils/echarts';
+
 
 export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
     const { token } = useAuth();
@@ -19,56 +22,78 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
         })
             .then(res => res.json())
             .then(resData => setData(Array.isArray(resData) ? resData : []))
-            .catch(console.error)
+            .catch(e => Logger.error('Failed to fetch customer growth', { error: e }))
             .finally(() => setLoading(false));
     }, [currentAccount, token, dateRange]);
 
+    const getChartOptions = (): EChartsOption => {
+        const dates = data.map(d => {
+            const date = new Date(String(d.date));
+            return isNaN(date.getTime()) ? String(d.date) : date.toLocaleDateString('en-US', { month: 'short' });
+        });
+        const values = data.map(d => d.newCustomers || 0);
+
+        return {
+            grid: { top: 10, right: 10, left: 10, bottom: 30 },
+            xAxis: {
+                type: 'category',
+                data: dates,
+                axisLine: { show: false },
+                axisTick: { show: false },
+                axisLabel: { fontSize: 12, color: '#6b7280' }
+            },
+            yAxis: {
+                type: 'value',
+                show: false
+            },
+            tooltip: {
+                trigger: 'axis',
+                formatter: (params: any) => {
+                    if (!Array.isArray(params) || params.length === 0) return '';
+                    const date = new Date(String(data[params[0].dataIndex]?.date));
+                    const label = isNaN(date.getTime()) ? params[0].axisValue : date.toLocaleDateString();
+                    return `<div style="font-weight:600;margin-bottom:4px">${label}</div><div>New Customers: ${params[0].value}</div>`;
+                }
+            },
+            series: [{
+                name: 'New Customers',
+                type: 'line',
+                smooth: true,
+                data: values,
+                lineStyle: { color: '#3b82f6', width: 2 },
+                areaStyle: {
+                    color: new graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(59, 130, 246, 0.1)' },
+                        { offset: 1, color: 'rgba(59, 130, 246, 0)' }
+                    ])
+                },
+                itemStyle: { color: '#3b82f6' },
+                symbol: 'none'
+            }]
+        };
+    };
+
     return (
-        <div className={`bg-white h-full w-full p-4 flex flex-col rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
-            <div className="flex justify-between items-center mb-2">
-                <h3 className="font-semibold text-gray-900">Customer Growth</h3>
-                <Users size={18} className="text-gray-400" />
+        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 overflow-hidden min-h-[200px] transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`} style={{ minHeight: '200px' }}>
+            <div className="flex justify-between items-center mb-3">
+                <h3 className="font-semibold text-slate-900 dark:text-white">Customer Growth</h3>
+                <div className="p-2 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg text-white shadow-md shadow-blue-500/20">
+                    <Users size={16} />
+                </div>
             </div>
 
             <div className="flex-1 w-full relative">
                 {loading ? (
-                    <div className="absolute inset-0 flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" /></div>
+                    <div className="absolute inset-0 flex justify-center items-center"><Loader2 className="animate-spin text-slate-400" /></div>
                 ) : data.length === 0 ? (
-                    <div className="absolute inset-0 flex justify-center items-center text-gray-400 text-sm">No data available</div>
+                    <div className="absolute inset-0 flex justify-center items-center text-slate-400 dark:text-slate-500 text-sm">No data available</div>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                        <AreaChart data={data}>
-                            <defs>
-                                <linearGradient id="colorCustomers" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <XAxis
-                                dataKey="date"
-                                tickFormatter={(str) => {
-                                    const d = new Date(str);
-                                    return d.toLocaleDateString('en-US', { month: 'short' });
-                                }}
-                                fontSize={12}
-                                tickLine={false}
-                                axisLine={false}
-                            />
-                            <YAxis hide />
-                            <Tooltip
-                                labelFormatter={(label) => new Date(label).toLocaleDateString()}
-                                formatter={(value: any) => [value, 'New Customers']}
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="newCustomers"
-                                stroke="#3b82f6"
-                                strokeWidth={2}
-                                fillOpacity={1}
-                                fill="url(#colorCustomers)"
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                    <ReactEChartsCore
+                        echarts={echarts}
+                        option={getChartOptions()}
+                        style={{ height: '100%', width: '100%' }}
+                        opts={{ renderer: 'svg' }}
+                    />
                 )}
             </div>
         </div>

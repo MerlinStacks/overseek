@@ -1,4 +1,6 @@
 import { WidgetProps } from './WidgetRegistry';
+import { Logger } from '../../utils/logger';
+import { formatCurrency } from '../../utils/format';
 import { TrendingUp, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -18,12 +20,12 @@ export function AdSpendWidget({ className }: WidgetProps) {
         })
             .then(res => res.json())
             .then(resData => setData(resData))
-            .catch(console.error)
+            .catch(e => Logger.error('Failed to fetch ad spend data', { error: e }))
             .finally(() => setLoading(false));
     }, [currentAccount, token]);
 
     return (
-        <div className={`bg-white h-full w-full p-6 flex flex-col justify-between rounded-xl shadow-sm border border-gray-200 ${className}`}>
+        <div className={`bg-white h-full w-full p-6 flex flex-col justify-between rounded-xl shadow-xs border border-gray-200 ${className}`}>
             <div className="flex justify-between items-start">
                 <div>
                     <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Ad Spend (30d)</h3>
@@ -31,7 +33,7 @@ export function AdSpendWidget({ className }: WidgetProps) {
                         <div className="mt-2"><Loader2 className="animate-spin text-gray-400" size={24} /></div>
                     ) : (
                         <p className="text-3xl font-bold text-gray-900 mt-2">
-                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: data?.currency || 'USD' }).format(data?.spend || 0)}
+                            {formatCurrency(data?.spend || 0, data?.currency || 'USD')}
                         </p>
                     )}
                 </div>

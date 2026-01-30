@@ -1,9 +1,12 @@
 
 import React, { useEffect, useState } from 'react';
+import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import ReactEChartsCore from 'echarts-for-react/lib/core';
+import { echarts, graphic, type EChartsOption } from '../utils/echarts';
 import { Loader2, TrendingUp } from 'lucide-react';
+
 
 interface ForecastData {
     date: string;
@@ -48,29 +51,20 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 const history = await historyRes.json();
                 const forecast = await forecastRes.json();
 
-                // Transform for Recharts: historySales vs forecastSales
-                // Warning: To make the line continuous, the last history point should also be the first forecast point 
-                // (or they should share a date). Our simple backend forecast starts 'tomorrow', so there might be a gap visually.
-                // Let's just render them. 
-
                 const processed: ForecastData[] = history.map((d: any) => ({
                     date: d.date,
                     historySales: d.sales,
                     forecastSales: null
                 }));
 
-                // Logic to stitch the lines: 
-                // The last point of history should also be the start point of forecast.
+                // Stitch the lines: last history point = first forecast point
                 if (processed.length > 0 && forecast.length > 0) {
                     const lastHistory = processed[processed.length - 1];
-                    // Set the start of the forecast line to be the same as the end of history
                     lastHistory.forecastSales = lastHistory.historySales;
                 }
 
-                // Add the rest of the forecast (excluding the first point if it overlaps by date, 
-                // though usually forecast API returns future dates. We just append.)
+                // Add the rest of the forecast
                 forecast.forEach((d: any) => {
-                    // Check if date already exists to avoid duplicates (which would break the x-axis)
                     if (!processed.find(p => p.date === d.date)) {
                         processed.push({
                             date: d.date,
@@ -84,16 +78,80 @@ export function ForecastChart({ dateRange }: ForecastProps) {
             }
 
         } catch (error) {
-            console.error(error);
+            Logger.error('An error occurred', { error: error });
         } finally {
             setIsLoading(false);
         }
     }
 
+    const getChartOptions = (): EChartsOption => {
+        const dates = data.map(d => {
+            const str = String(d.date);
+            return str.length > 5 ? str.slice(5) : str;
+        });
+        const historyValues = data.map(d => d.historySales ?? null);
+        const forecastValues = data.map(d => d.forecastSales ?? null);
+
+        return {
+            grid: { top: 10, right: 30, left: 50, bottom: 30 },
+            xAxis: {
+                type: 'category',
+                data: dates,
+                axisLabel: { fontSize: 12, color: '#6b7280' }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: {
+                    fontSize: 12,
+                    color: '#6b7280',
+                    formatter: (value: number) => `$${value}`
+                },
+                splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } }
+            },
+            tooltip: {
+                trigger: 'axis'
+            },
+            series: [
+                {
+                    name: 'Sales',
+                    type: 'line',
+                    smooth: true,
+                    data: historyValues,
+                    lineStyle: { color: '#3b82f6', width: 2 },
+                    areaStyle: {
+                        color: new graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(59, 130, 246, 0.8)' },
+                            { offset: 1, color: 'rgba(59, 130, 246, 0)' }
+                        ])
+                    },
+                    itemStyle: { color: '#3b82f6' },
+                    symbol: 'none',
+                    connectNulls: false
+                },
+                {
+                    name: 'Forecast',
+                    type: 'line',
+                    smooth: true,
+                    data: forecastValues,
+                    lineStyle: { color: '#a855f7', width: 2, type: 'dashed' },
+                    areaStyle: {
+                        color: new graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(168, 85, 247, 0.8)' },
+                            { offset: 1, color: 'rgba(168, 85, 247, 0)' }
+                        ])
+                    },
+                    itemStyle: { color: '#a855f7' },
+                    symbol: 'none',
+                    connectNulls: false
+                }
+            ]
+        };
+    };
+
     if (isLoading) return <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h3 className="text-lg font-bold text-gray-900">Sales Forecast</h3>
@@ -104,50 +162,15 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 </div>
             </div>
 
-            <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                            <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                            </linearGradient>
-                            <linearGradient id="colorForecast" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#a855f7" stopOpacity={0.8} />
-                                <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
-                            </linearGradient>
-                        </defs>
-                        <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={(val) => val.slice(5)} />
-                        <YAxis tick={{ fontSize: 12 }} tickFormatter={(val) => `$${val}`} />
-                        <Tooltip />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <div className="w-full" style={{ height: '300px' }}>
+                <ReactEChartsCore
+                    echarts={echarts}
+                    option={getChartOptions()}
+                    style={{ height: '100%', width: '100%' }}
+                    opts={{ renderer: 'svg' }}
+                />
 
-                        {/* History Area */}
-                        <Area
-                            type="monotone"
-                            dataKey="historySales"
-                            stroke="#3b82f6"
-                            strokeWidth={2}
-                            fillOpacity={1}
-                            fill="url(#colorSales)"
-                            name="Sales"
-                        />
-
-                        {/* Forecast Area */}
-                        <Area
-                            type="monotone"
-                            dataKey="forecastSales"
-                            stroke="#a855f7"
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            fillOpacity={1}
-                            fill="url(#colorForecast)"
-                            name="Forecast"
-                        />
-                    </AreaChart>
-                </ResponsiveContainer>
-
-                {/* Fallback legend/explanation since single line color change is hard in simple AreaChart without split data */}
+                {/* Legend */}
                 <div className="flex justify-center mt-4 gap-6 text-sm">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
@@ -162,9 +185,3 @@ export function ForecastChart({ dateRange }: ForecastProps) {
         </div>
     );
 }
-
-// Improvement: To properly show different colors, we essentially need two series in the data
-// e.g. { date, historySales: 100, forecastSales: null }
-//      { date, historySales: null, forecastSales: 105 }
-// But for now, a single continuous blue line is okay, or I can quickly refactor to split keys.
-// Let's refactor quickly for better visualization.

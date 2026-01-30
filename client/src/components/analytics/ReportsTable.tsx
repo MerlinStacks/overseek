@@ -1,4 +1,5 @@
-import { Loader2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Loader2, Search } from 'lucide-react';
 
 interface ReportsTableProps {
     data: any[];
@@ -7,13 +8,25 @@ interface ReportsTableProps {
 }
 
 export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) => {
-    if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-blue-500" /></div>;
+    const [pageFilter, setPageFilter] = useState('');
 
     // Dynamic Columns based on View
     const isChannels = activeView === 'channels';
     const isCampaigns = activeView === 'campaigns';
     const isPages = activeView === 'pages' || activeView === 'entry' || activeView === 'exit';
     const isSearch = activeView === 'search';
+
+    // Memoized filtered data for pages view
+    const filteredData = useMemo(() => {
+        if (!isPages || !pageFilter.trim()) return data;
+        const lowerFilter = pageFilter.toLowerCase();
+        return data.filter(row =>
+            row.url?.toLowerCase().includes(lowerFilter) ||
+            row.title?.toLowerCase().includes(lowerFilter)
+        );
+    }, [data, pageFilter, isPages]);
+
+    if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-blue-500" /></div>;
 
     const columnCount = () => {
         if (isChannels || isSearch) return 2;
@@ -23,7 +36,29 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+            {/* Search/Filter for Pages view */}
+            {isPages && (
+                <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                    <div className="relative max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Filter pages by URL or title..."
+                            value={pageFilter}
+                            onChange={e => setPageFilter(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm 
+                                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+                                       placeholder:text-gray-400 bg-white"
+                        />
+                        {pageFilter && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                                {filteredData.length} of {data.length}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
             <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
                     <tr>
@@ -34,7 +69,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                    {data.map((row, i) => (
+                    {filteredData.map((row, i) => (
                         <tr key={i} className="hover:bg-gray-50">
                             {isChannels && <><td className="p-4 font-medium">{row.channel}</td><td className="p-4 text-right">{row.sessions}</td></>}
                             {isCampaigns && <><td className="p-4 font-medium">{row.source} / {row.medium}</td><td className="p-4">{row.campaign}</td><td className="p-4 text-right">{row.sessions}</td></>}
@@ -42,7 +77,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
                             {isSearch && <><td className="p-4 font-medium">"{row.term}"</td><td className="p-4 text-right">{row.searches}</td></>}
                         </tr>
                     ))}
-                    {data.length === 0 && <tr><td colSpan={columnCount()} className="p-8 text-center text-gray-500">No data found for this period.</td></tr>}
+                    {filteredData.length === 0 && <tr><td colSpan={columnCount()} className="p-8 text-center text-gray-500">{pageFilter ? 'No pages match your filter.' : 'No data found for this period.'}</td></tr>}
                 </tbody>
             </table>
         </div>

@@ -1,5 +1,8 @@
 
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
+import { Logger } from '../../utils/logger';
+import { formatCurrency } from '../../utils/format';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { Users, ShoppingCart, Activity, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -20,7 +23,7 @@ export function LiveAnalyticsWidget() {
     const [visitors, setVisitors] = useState<LiveSession[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchLiveStats = async () => {
+    const fetchLiveStats = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         try {
@@ -35,23 +38,20 @@ export function LiveAnalyticsWidget() {
                 setVisitors(data || []);
             }
         } catch (error) {
-            console.error('Failed to fetch live stats', error);
+            Logger.error('Failed to fetch live stats', { error: error });
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        fetchLiveStats();
-        const interval = setInterval(fetchLiveStats, 10000); // Update every 10s
-        return () => clearInterval(interval);
     }, [currentAccount, token]);
+
+    // Use visibility-aware polling with tab coordination
+    useVisibilityPolling(fetchLiveStats, 10000, [fetchLiveStats], 'live-analytics');
 
     const activeCarts = visitors.filter(v => Number(v.cartValue) > 0);
     const totalCartValue = activeCarts.reduce((acc, curr) => acc + Number(curr.cartValue), 0);
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col h-full relative overflow-hidden">
+        <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200 flex flex-col h-full relative overflow-hidden">
             {/* Header */}
             <div className="flex justify-between items-start mb-4 relative z-10">
                 <div>
@@ -83,7 +83,7 @@ export function LiveAnalyticsWidget() {
                         <span className="text-xs font-medium text-gray-600">Potential Revenue</span>
                     </div>
                     <p className="text-lg font-bold text-gray-900">
-                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalCartValue)}
+                        {formatCurrency(totalCartValue)}
                     </p>
                 </div>
             </div>

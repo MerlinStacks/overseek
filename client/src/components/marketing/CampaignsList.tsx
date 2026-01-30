@@ -1,8 +1,9 @@
 
 import { useEffect, useState } from 'react';
+import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Mail, Send, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Loader2, Trash2 } from 'lucide-react';
 
 export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, subject?: string) => void }) {
     const { token } = useAuth();
@@ -25,22 +26,44 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/segments', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
-            if (res.ok) setSegments(await res.json());
-        } catch (e) { console.error(e); }
+            if (res.ok) {
+                setSegments(await res.json());
+            } else {
+                Logger.error('Failed to fetch segments', { status: res.status });
+            }
+        } catch (e) { Logger.error('An error occurred', { error: e }); }
     }
 
     async function fetchData() {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/marketing/campaigns', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
-            const data = await res.json();
-            setCampaigns(data);
+
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    setCampaigns(data);
+                } else {
+                    Logger.error('Campaigns data is not an array:', { error: data });
+                    setCampaigns([]);
+                }
+            } else {
+                Logger.error('Failed to fetch campaigns', { status: res.status });
+                setCampaigns([]);
+            }
         } catch (err) {
-            console.error(err);
+            Logger.error('An error occurred', { error: err });
+            setCampaigns([]);
         } finally {
             setIsLoading(false);
         }
@@ -66,7 +89,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 onEdit(data.id, data.name, data.subject);
             } else {
                 const errorData = await res.json().catch(() => ({}));
-                console.error("Campaign create error:", errorData);
+                Logger.error('Campaign create error:', { error: errorData });
                 alert(`Failed to create campaign: ${errorData.error || 'Unknown error'} \n\nCheck console for details.`);
             }
         } catch (err) { alert('Error creating campaign'); }
@@ -74,10 +97,14 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
 
     async function handleDelete(id: string) {
         if (!confirm('Are you sure?')) return;
+        if (!currentAccount) return;
         try {
             await fetch(`/api/marketing/campaigns/${id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
             fetchData();
         } catch (err) { alert('Failed to delete'); }
@@ -102,7 +129,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                             <div className="flex-1">
                                 <label className="block text-sm font-medium mb-1">Campaign Name</label>
                                 <input
-                                    className="w-full p-2 border rounded"
+                                    className="w-full p-2 border rounded-sm"
                                     value={newItem.name}
                                     onChange={e => setNewItem({ ...newItem, name: e.target.value })}
                                     required
@@ -111,7 +138,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                             <div className="flex-1">
                                 <label className="block text-sm font-medium mb-1">Subject Line</label>
                                 <input
-                                    className="w-full p-2 border rounded"
+                                    className="w-full p-2 border rounded-sm"
                                     value={newItem.subject}
                                     onChange={e => setNewItem({ ...newItem, subject: e.target.value })}
                                     required
@@ -120,7 +147,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                             <div className="w-64">
                                 <label className="block text-sm font-medium mb-1">Recipient Segment</label>
                                 <select
-                                    className="w-full p-2 border rounded"
+                                    className="w-full p-2 border rounded-sm"
                                     value={(newItem as any).segmentId || ''}
                                     onChange={e => setNewItem({ ...newItem, segmentId: e.target.value } as any)}
                                 >
@@ -133,14 +160,14 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                         </div>
                         <div className="flex gap-2 justify-end">
                             <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-gray-500">Cancel</button>
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Create & Edit Design</button>
+                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-sm">Create & Edit Design</button>
                         </div>
                     </form>
                 </div>
             )}
 
             {isLoading ? <Loader2 className="animate-spin" /> : (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 border-b">
                             <tr>

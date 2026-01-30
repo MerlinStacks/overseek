@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Logger } from '../../utils/logger';
 import { X, Save, Box, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -33,7 +34,7 @@ export function ProductEditor({ productId, onClose }: ProductEditorProps) {
                 setLoading(false);
             })
             .catch(err => {
-                console.error(err);
+                Logger.error('An error occurred', { error: err });
                 setLoading(false);
                 alert('Failed to load product');
                 onClose();
@@ -91,7 +92,7 @@ export function ProductEditor({ productId, onClose }: ProductEditorProps) {
                             <div className="flex gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <div className="w-16 h-16 bg-white rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden">
                                     {product?.mainImage ? (
-                                        <img src={product.mainImage} alt="" className="w-full h-full object-cover" />
+                                        <img src={product.mainImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                     ) : (
                                         <Box className="text-gray-300" />
                                     )}
@@ -113,7 +114,7 @@ export function ProductEditor({ productId, onClose }: ProductEditorProps) {
                                         value={binLocation}
                                         onChange={(e) => setBinLocation(e.target.value)}
                                         placeholder="e.g. A-12-3"
-                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
                                     />
                                 </div>
                                 <p className="text-xs text-gray-500">Enter the shelf or bin number where this product is stored.</p>

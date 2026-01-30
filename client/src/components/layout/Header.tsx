@@ -1,17 +1,24 @@
-import { Search, Bell, HelpCircle, User, LogOut, Shield } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Search, Bell, HelpCircle, User, LogOut, Shield, Menu } from 'lucide-react';
+import { Logger } from '../../utils/logger';
+import { useState, useCallback } from 'react';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import _ from 'lodash';
 import { SyncStatusBadge } from './SyncStatusBadge';
+import { useCommandPalette } from '../../hooks/useCommandPalette';
 
-export function Header() {
+interface HeaderProps {
+    /** Callback when hamburger menu is clicked (mobile only) */
+    onMenuClick?: () => void;
+    /** Whether to show the hamburger menu button */
+    showMenuButton?: boolean;
+}
+
+export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     const { token, user, logout } = useAuth();
     const { currentAccount } = useAccount();
-    const [query, setQuery] = useState('');
-    const [results, setResults] = useState<{ products: any[], customers: any[], orders: any[] }>({ products: [], customers: [], orders: [] });
-    const [isLoading, setIsLoading] = useState(false);
-    const [isFocused, setIsFocused] = useState(false);
+    const { open: openSearch } = useCommandPalette();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     // Notifications State
@@ -19,50 +26,24 @@ export function Header() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [showNotifications, setShowNotifications] = useState(false);
 
-    useEffect(() => {
-        const search = _.debounce(async (q: string) => {
-            if (!q || q.length < 2 || !token || !currentAccount) return;
-
-            setIsLoading(true);
-            try {
-                const res = await fetch(`/api/search/global?q=${encodeURIComponent(q)}`, {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                });
-                if (res.ok) setResults(await res.json());
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setIsLoading(false);
-            }
-        }, 300);
-
-        search(query);
-        return () => search.cancel();
-    }, [query, token, currentAccount]);
-
-    // Poll Notifications
-    useEffect(() => {
+    // Poll Notifications with visibility-awareness
+    const fetchNotifications = useCallback(async () => {
         if (!token || !currentAccount) return;
-
-        const fetchNotifications = async () => {
-            try {
-                const res = await fetch('/api/notifications?limit=10', {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setNotifications(data.notifications);
-                    setUnreadCount(data.unreadCount);
-                }
-            } catch (error) {
-                console.error('Notification poll failed', error);
+        try {
+            const res = await fetch('/api/notifications?limit=10', {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setNotifications(data.notifications);
+                setUnreadCount(data.unreadCount);
             }
-        };
-
-        fetchNotifications();
-        const interval = setInterval(fetchNotifications, 30000); // 30s poll
-        return () => clearInterval(interval);
+        } catch (error) {
+            Logger.error('Notification poll failed', { error: error });
+        }
     }, [token, currentAccount]);
+
+    useVisibilityPolling(fetchNotifications, 30000, [fetchNotifications], 'notifications');
 
     const markAllRead = async () => {
         if (!token || !currentAccount) return;
@@ -73,93 +54,37 @@ export function Header() {
             });
             setUnreadCount(0);
             setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        } catch (e) { console.error(e); }
+        } catch (e) { Logger.error('An error occurred', { error: e }); }
     };
 
     return (
-        <header className="h-16 bg-white border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-8 w-1/3">
-                {/* Secondary Navigation (optional based on image) */}
-                <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-500">
-                    <a href="/reports" className="hover:text-gray-900 transition-colors">Reports</a>
-                    <a href="/marketing" className="hover:text-gray-900 transition-colors">Marketing</a>
-                </nav>
+        <header className="h-14 md:h-16 header-frosted px-4 md:px-8 flex items-center justify-between sticky top-0 z-40">
+            <div className="flex items-center gap-4 md:gap-8">
+                {/* Hamburger Menu Button (Mobile) */}
+                {showMenuButton && (
+                    <button
+                        onClick={onMenuClick}
+                        className="p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        aria-label="Open menu"
+                    >
+                        <Menu size={24} />
+                    </button>
+                )}
             </div>
 
-            <div className="flex items-center gap-6">
-                {/* Search Bar */}
-                <div className="relative hidden md:block w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Search (Products, Customers, Orders)..."
-                        className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-transparent focus:bg-white focus:border-blue-200 rounded-full transition-all outline-none"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        onFocus={() => setIsFocused(true)}
-                        onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-                    />
-
-                    {/* Search Dropdown */}
-                    {isFocused && query.length >= 2 && (
-                        <div className="absolute top-12 left-0 w-96 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50">
-                            {isLoading ? (
-                                <div className="p-4 text-center text-gray-500 text-sm">Searching...</div>
-                            ) : (!results.products.length && !results.customers.length && !results.orders.length) ? (
-                                <div className="p-4 text-center text-gray-500 text-sm">No results found</div>
-                            ) : (
-                                <div className="max-h-96 overflow-y-auto py-2">
-                                    {/* Products Section */}
-                                    {results.products.length > 0 && (
-                                        <div className="mb-2">
-                                            <div className="px-4 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider">Products</div>
-                                            {results.products.map(p => (
-                                                <div key={`p-${p.id}`} className="px-4 py-2 hover:bg-gray-50 cursor-pointer flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center text-gray-400">
-                                                        <span className="text-xs">IMG</span>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-sm font-medium text-gray-900 truncate">{p.name}</div>
-                                                        <div className="text-xs text-gray-500">${p.price} • SKU: {p.sku}</div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Customers Section */}
-                                    {results.customers.length > 0 && (
-                                        <div className="mb-2">
-                                            <div className="px-4 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider">Customers</div>
-                                            {results.customers.map(c => (
-                                                <div key={`c-${c.id}`} className="px-4 py-2 hover:bg-gray-50 cursor-pointer">
-                                                    <div className="text-sm font-medium text-gray-900">{c.firstName} {c.lastName}</div>
-                                                    <div className="text-xs text-gray-500">{c.email}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Orders Section */}
-                                    {results.orders.length > 0 && (
-                                        <div className="mb-2">
-                                            <div className="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Orders</div>
-                                            {results.orders.map(o => (
-                                                <div key={`o-${o.id}`} className="px-4 py-2 hover:bg-gray-50 cursor-pointer flex justify-between">
-                                                    <div>
-                                                        <div className="text-sm font-medium text-gray-900">#{o.number || o.id}</div>
-                                                        <div className="text-xs text-gray-500">{new Date(o.date_created).toLocaleDateString()}</div>
-                                                    </div>
-                                                    <div className="text-sm font-medium">${o.total}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+            <div className="flex items-center gap-3 md:gap-6">
+                {/* Search Trigger Button */}
+                <button
+                    onClick={openSearch}
+                    className="hidden md:flex items-center gap-3 w-72 pl-4 pr-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-gray-200 rounded-full transition-all cursor-pointer group"
+                    type="button"
+                >
+                    <Search className="text-gray-400 group-hover:text-gray-500" size={18} />
+                    <span className="text-gray-400 flex-1 text-left">Search...</span>
+                    <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-gray-200 bg-white px-1.5 font-mono text-[10px] font-medium text-gray-400 pointer-events-none">
+                        {navigator.platform.indexOf('Mac') > -1 ? '⌘' : 'Ctrl'}K
+                    </kbd>
+                </button>
 
                 <div className="flex items-center gap-4 border-l border-gray-100 pl-6 relative">
                     {/* Notification Bell */}
@@ -204,9 +129,9 @@ export function Header() {
                         </div>
                     )}
 
-                    <button className="text-gray-400 hover:text-gray-600">
+                    <Link to="/help" className="text-gray-400 hover:text-gray-600">
                         <HelpCircle size={20} />
-                    </button>
+                    </Link>
 
 
                     {/* User Dropdown */}

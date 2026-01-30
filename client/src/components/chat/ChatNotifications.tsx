@@ -1,16 +1,23 @@
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useAccount } from '../../context/AccountContext';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+/** Auto-dismiss timeout for notifications (10 minutes) */
+const NOTIFICATION_AUTO_DISMISS_MS = 10 * 60 * 1000;
 
 /**
- * Headless component to handle global chat notifications via browser API
+ * Headless component to handle global chat notifications via browser API.
+ * Filters notifications to only show for the user's currently active account.
  */
 export function ChatNotifications() {
     const { socket } = useSocket();
     const { user } = useAuth();
+    const { currentAccount } = useAccount();
     const location = useLocation();
+    const navigate = useNavigate();
 
     // Check permission on mount
     useEffect(() => {
@@ -23,29 +30,16 @@ export function ChatNotifications() {
         if (!socket) return;
 
         const handleNewMessage = (msg: any) => {
-            // Don't notify for our own messages
-            // Assuming msg.senderId or similar exists. Inspecting InboxPage types implies `msg` object usage.
-            // If msg.isInternal is true, it might be from an agent (us) or another agent.
-            // Best check: if the message type is AGENT and we are the one sending it, skip.
-            // But usually, we only get notified of *incoming* things or other people's actions.
-            // Let's assume we want to know about CUSTOMER messages primarily, or system alerts.
-
-            // If it's an outbound message from us, ignore
-            // Using a simple logic: If type is 'CUSTOMER', always notify.
-            // If type is 'AGENT' and it's NOT us, notify (collaboration).
-
-            // NOTE: We rely on the message structure from the socket event.
-            // Based on typical schema: { content, type, senderId, conversationId, ... }
-
-            // Simplification: Notify for everything that isn't explicitly flagged as 'from me' 
-            // The socket msg might not have `isMe` flag unless we process it. 
-            // Let's assume we want to notify for Customer messages.
+            // CRITICAL: Account Isolation - only show notifications for current account
+            // Prevents cross-account notification leakage for multi-account users
+            if (msg.accountId && currentAccount?.id && msg.accountId !== currentAccount.id) {
+                return;
+            }
 
             const isCustomerMessage = msg.type === 'CUSTOMER' || msg.senderType === 'CUSTOMER';
-            const isAssignedToMe = true; // TODO: Check if assigned to current user? For now notify all agents.
+            const isAssignedToMe = !msg.assignedTo || msg.assignedTo === user?.id;
 
-            // Logic: Notify if it's a customer message.
-            if (isCustomerMessage) {
+            if (isCustomerMessage && isAssignedToMe) {
                 // If we are currently ON the inbox page AND looking at this specific conversation, maybe don't notify?
                 // Or simply always notify if window is blurred? 
                 // Let's rely on standard browser behavior (sometimes they mute notification if focused).
@@ -60,27 +54,68 @@ export function ChatNotifications() {
                 if (Notification.permission === 'granted') {
                     const n = new Notification('New Message', {
                         body: msg.content || 'You have a new message',
-                        icon: '/favicon.ico', // Fallback or app icon
-                        tag: `conversation-${msg.conversationId}` // Group by notification tag to avoid spam
+                        icon: '/favicon.ico',
+                        tag: `conversation-${msg.conversationId}`
                     });
+
+                    // Auto-dismiss after 10 minutes
+                    setTimeout(() => n.close(), NOTIFICATION_AUTO_DISMISS_MS);
 
                     n.onclick = function () {
                         window.focus();
-                        // Ideally navigate to specific conversation:
-                        // window.location.href = `/inbox?conversationId=${msg.conversationId}`; 
-                        // But SPA navigation is better if we can hook into router, 
-                        // but window.location is safe for focusing.
+                        n.close();
                     };
                 }
             }
         };
 
+        /**
+         * Handle snooze expiry notifications.
+         * When a snoozed conversation reopens, notify the assigned agent.
+         */
+        const handleSnoozeExpired = (data: {
+            conversationId: string;
+            assignedToId?: string;
+            customerName?: string;
+            accountId?: string;
+        }) => {
+            // Account isolation check
+            if (data.accountId && currentAccount?.id && data.accountId !== currentAccount.id) {
+                return;
+            }
+
+            // Only notify if assigned to current user
+            if (data.assignedToId && data.assignedToId !== user?.id) {
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                const customerName = data.customerName || 'Customer';
+                const n = new Notification('⏰ Snooze Ended', {
+                    body: `Conversation with ${customerName} has reopened`,
+                    icon: '/favicon.ico',
+                    tag: `snooze-${data.conversationId}`,
+                });
+
+                // Auto-dismiss after 10 minutes
+                setTimeout(() => n.close(), NOTIFICATION_AUTO_DISMISS_MS);
+
+                n.onclick = function () {
+                    window.focus();
+                    navigate(`/inbox?conversationId=${data.conversationId}`);
+                    n.close();
+                };
+            }
+        };
+
         socket.on('message:new', handleNewMessage);
+        socket.on('snooze:expired', handleSnoozeExpired);
 
         return () => {
             socket.off('message:new', handleNewMessage);
+            socket.off('snooze:expired', handleSnoozeExpired);
         };
-    }, [socket, location.pathname, user]);
+    }, [socket, location.pathname, user, navigate, currentAccount?.id]);
 
     return null; // Headless
 }

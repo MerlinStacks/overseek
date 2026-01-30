@@ -34,7 +34,11 @@ export const VisitorsTable = ({ data }: VisitorsTableProps) => (
                                 {v.deviceType === 'mobile' ? <Smartphone size={16} /> : <Monitor size={16} />}
                             </div>
                             <div>
-                                <div className="font-medium text-gray-900 break-all">{v.visitorId.substring(0, 8)}...</div>
+                                <div className="font-medium text-gray-900 break-all">
+                                    {v.customer?.firstName
+                                        ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
+                                        : `${v.visitorId.substring(0, 8)}...`}
+                                </div>
                                 <div className="text-xs text-gray-500">{v.os} • {v.browser}</div>
                             </div>
                         </div>
@@ -47,7 +51,7 @@ export const VisitorsTable = ({ data }: VisitorsTableProps) => (
                     </td>
                     <td className="p-4 hidden md:table-cell">
                         {v.utmSource ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-50 text-yellow-700 rounded text-xs font-medium border border-yellow-200">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-50 text-yellow-700 rounded-sm text-xs font-medium border border-yellow-200">
                                 {v.utmSource} / {v.utmCampaign}
                             </span>
                         ) : (

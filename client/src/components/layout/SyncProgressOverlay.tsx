@@ -27,7 +27,7 @@ export function SyncProgressOverlay({ collapsed }: SyncProgressOverlayProps) {
                         {Math.round(activeJobs[0].progress || 0)}%
                     </div>
                     {/* Tooltip */}
-                    <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none min-w-[150px]">
+                    <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none min-w-[150px]">
                         {activeJobs.map(job => (
                             <div key={job.id} className="mb-1 last:mb-0">
                                 {job.queue.replace('sync-', '')}: {job.progress}%
@@ -45,7 +45,7 @@ export function SyncProgressOverlay({ collapsed }: SyncProgressOverlayProps) {
 
                     <div className="space-y-2">
                         {activeJobs.map((job) => (
-                            <div key={job.id} className="bg-white p-2 rounded border border-gray-200 shadow-sm relative overflow-hidden group">
+                            <div key={job.id} className="bg-white p-2 rounded-sm border border-gray-200 shadow-xs relative overflow-hidden group">
                                 <div className="flex items-center justify-between mb-1 relative z-10">
                                     <div className="flex items-center gap-2">
                                         <Loader2 size={14} className="animate-spin text-blue-500" />

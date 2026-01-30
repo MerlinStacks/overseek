@@ -84,13 +84,13 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
     };
 
     return (
-        <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-6">
+        <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-xs space-y-6">
             <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium text-gray-900">Segment Rules</h3>
                 <div className="flex items-center gap-2">
                     <span className="text-sm text-gray-500">Match</span>
                     <select
-                        className="bg-gray-50 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="bg-gray-50 border border-gray-300 rounded-sm px-2 py-1 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                         value={criteria.type}
                         onChange={(e) => setCriteria({ ...criteria, type: e.target.value as 'AND' | 'OR' })}
                     >
@@ -105,7 +105,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                 {criteria.rules.map((rule, index) => (
                     <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 group">
                         <select
-                            className="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={rule.field}
                             onChange={(e) => updateRule(index, { field: e.target.value })}
                         >
@@ -115,7 +115,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                         </select>
 
                         <select
-                            className="w-40 bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-40 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={rule.operator}
                             onChange={(e) => updateRule(index, { operator: e.target.value })}
                         >
@@ -126,7 +126,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
                         <input
                             type="text"
-                            className="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="Value"
                             value={rule.value}
                             onChange={(e) => updateRule(index, { value: e.target.value })}
@@ -134,7 +134,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
                         <button
                             onClick={() => removeRule(index)}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-sm transition-colors"
                         >
                             <Trash2 size={16} />
                         </button>
@@ -149,7 +149,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
                 <button
                     onClick={addRule}
-                    className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                    className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium px-2 py-1 rounded-sm hover:bg-blue-50 transition-colors"
                 >
                     <Plus size={16} />
                     Add Condition

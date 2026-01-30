@@ -1,0 +1,387 @@
+/**
+ * Rich Text Editor Styles
+ * Supports three variants: compact, standard, full
+ */
+
+/* ========== Root Container ========== */
+.rich-text-editor {
+    position: relative;
+    font-family: inherit;
+}
+
+.rich-text-editor-root {
+    outline: none;
+}
+
+/* ========== Variant: Compact (Inbox) ========== */
+.rich-text-editor.variant-compact .rich-text-editor-root {
+    min-height: 80px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 0;
+    font-size: 14px;
+}
+
+.rich-text-editor.variant-compact .rte-toolbar {
+    border-top: 1px solid #e5e7eb;
+    padding: 8px 0 0 0;
+    margin-top: 8px;
+}
+
+/* ========== Variant: Standard (Product/Signature) ========== */
+.rich-text-editor.variant-standard .rich-text-editor-root {
+    min-height: 150px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 12px;
+    font-size: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.rich-text-editor.variant-standard .rich-text-editor-root:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.rich-text-editor.variant-standard .rte-toolbar {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px;
+    margin-bottom: 8px;
+    background: #f9fafb;
+    border-radius: 8px 8px 0 0;
+}
+
+/* ========== Variant: Full (Future) ========== */
+.rich-text-editor.variant-full .rich-text-editor-root {
+    min-height: 300px;
+    max-height: 600px;
+    overflow-y: auto;
+    padding: 16px;
+    font-size: 15px;
+    border: 1px solid #e5e7eb;
+    border-radius: 0 0 8px 8px;
+    background: white;
+}
+
+.rich-text-editor.variant-full .rte-toolbar {
+    border: 1px solid #e5e7eb;
+    border-bottom: none;
+    padding: 12px;
+    background: #f9fafb;
+    border-radius: 8px 8px 0 0;
+}
+
+/* ========== Toolbar ========== */
+.rte-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.rte-toolbar-group {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+.rte-toolbar-group+.rte-toolbar-group {
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid #e5e7eb;
+}
+
+.rte-toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 4px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #6b7280;
+    transition: all 0.15s ease;
+}
+
+.rte-toolbar-btn:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.rte-toolbar-btn.active {
+    background: #e0e7ff;
+    color: #4f46e5;
+}
+
+.rte-toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ========== Text Formatting ========== */
+.rte-bold {
+    font-weight: 700;
+}
+
+.rte-italic {
+    font-style: italic;
+}
+
+.rte-underline {
+    text-decoration: underline;
+}
+
+.rte-strikethrough {
+    text-decoration: line-through;
+}
+
+.rte-code {
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+/* ========== Links ========== */
+.rte-link {
+    color: #2563eb;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.rte-link:hover {
+    color: #1d4ed8;
+}
+
+/* ========== Lists ========== */
+.rte-ol,
+.rte-ul {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.rte-ol {
+    list-style-type: decimal;
+}
+
+.rte-ul {
+    list-style-type: disc;
+}
+
+.rte-list-item {
+    margin: 4px 0;
+}
+
+.rte-nested-list-item {
+    list-style-type: none;
+}
+
+/* ========== Headings ========== */
+.rte-h1 {
+    font-size: 2em;
+    font-weight: 700;
+    margin: 16px 0 8px 0;
+    line-height: 1.2;
+}
+
+.rte-h2 {
+    font-size: 1.5em;
+    font-weight: 600;
+    margin: 14px 0 6px 0;
+    line-height: 1.3;
+}
+
+.rte-h3 {
+    font-size: 1.25em;
+    font-weight: 600;
+    margin: 12px 0 4px 0;
+    line-height: 1.4;
+}
+
+.rte-h4,
+.rte-h5,
+.rte-h6 {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 10px 0 4px 0;
+}
+
+/* ========== Paragraphs ========== */
+.rte-paragraph {
+    margin: 0 0 8px 0;
+    line-height: 1.6;
+}
+
+.rte-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+/* ========== Editor Container ========== */
+.rte-editor-container {
+    position: relative;
+}
+
+/* ========== Placeholder ========== */
+.rte-placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    color: #9ca3af;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+}
+
+.variant-compact .rte-placeholder {
+    top: 0;
+    left: 0;
+}
+
+.variant-standard .rte-placeholder,
+.variant-full .rte-placeholder {
+    top: 12px;
+    left: 12px;
+}
+
+/* ========== Images ========== */
+.rte-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+/* ========== Link Modal ========== */
+.rte-link-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.rte-link-modal {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    width: 400px;
+    max-width: 90vw;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.rte-link-modal h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    color: #111827;
+}
+
+.rte-link-modal input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 16px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.rte-link-modal input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.rte-link-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.rte-link-modal-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.rte-link-modal-btn.cancel {
+    background: white;
+    border: 1px solid #d1d5db;
+    color: #374151;
+}
+
+.rte-link-modal-btn.cancel:hover {
+    background: #f9fafb;
+}
+
+.rte-link-modal-btn.confirm {
+    background: #3b82f6;
+    border: 1px solid #3b82f6;
+    color: white;
+}
+
+.rte-link-modal-btn.confirm:hover {
+    background: #2563eb;
+}
+
+/* ========== Internal Mode (for inbox) ========== */
+.rich-text-editor.internal-mode .rich-text-editor-root {
+    background: transparent;
+}
+
+.rich-text-editor.internal-mode .rte-placeholder {
+    color: rgba(202, 138, 4, 0.5);
+}
+
+/* ========== Emoji Picker ========== */
+.rte-emoji-picker {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    z-index: 100;
+    min-width: 280px;
+}
+
+.rte-emoji-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.15s ease;
+}
+
+.rte-emoji-btn:hover {
+    background: #f3f4f6;
+    transform: scale(1.15);
+}
+
+.rte-emoji-btn:active {
+    transform: scale(0.95);
+}

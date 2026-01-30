@@ -40,7 +40,7 @@ export function Pagination({
             title={title}
             className={cn(
                 "p-2 border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
-                "focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                "focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
             )}
         >
             {children}
@@ -48,7 +48,7 @@ export function Pagination({
     );
 
     return (
-        <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-50 border-t border-slate-100", className)}>
+        <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 pr-24 bg-slate-50 border-t border-slate-100", className)}>
             {/* Items Per Page Selector */}
             <div className="flex items-center gap-2 text-sm text-slate-600">
                 {allowItemsPerPage && itemsPerPage && onItemsPerPageChange && (
@@ -57,7 +57,7 @@ export function Pagination({
                         <select
                             value={itemsPerPage}
                             onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-                            className="bg-white border border-slate-200 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-1.5 outline-none"
+                            className="bg-white border border-slate-200 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-1.5 outline-hidden"
                         >
                             {[15, 25, 50, 100].map((pageSize) => (
                                 <option key={pageSize} value={pageSize}>

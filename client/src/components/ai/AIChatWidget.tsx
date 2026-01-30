@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Loader2, Sparkles, ChevronDown, BarChart2, Package, Users, ShoppingCart } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Bot, Send, Loader2, Sparkles, ChevronDown, BarChart2, TrendingUp, ShoppingCart, Target, Users, Search, DollarSign } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import ReactMarkdown from 'react-markdown';
@@ -12,12 +13,14 @@ interface Message {
     sources?: any[];
 }
 
+
 export function AIChatWidget() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
-        { id: 'welcome', role: 'assistant', content: 'Hi! I can help you analyze your store data. Ask me about your **Order Volume**, **Top Customers**, or **Inventory Status**.' }
+        { id: 'welcome', role: 'assistant', content: 'Hi! I\'m your **Store Analyst**. Ask me about **Sales**, **Live Traffic**, **Profitability**, or valid **Forecasts**.' }
     ]);
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
@@ -50,7 +53,10 @@ export function AIChatWidget() {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
                 },
-                body: JSON.stringify({ message: userMsg.content })
+                body: JSON.stringify({
+                    message: userMsg.content,
+                    context: { path: location.pathname } // Inject URL context
+                })
             });
 
             const data = await res.json();
@@ -73,11 +79,26 @@ export function AIChatWidget() {
         }
     };
 
-    const suggestedActions = [
-        { label: "Today's Sales", icon: <BarChart2 size={14} />, query: "How much did we sell today?" },
-        { label: "Recent Orders", icon: <ShoppingCart size={14} />, query: "Show me the last 5 orders" },
-        { label: "Low Stock", icon: <Package size={14} />, query: "Which products are low on stock?" },
-    ];
+    const suggestedActions = useMemo(() => {
+        const path = location.pathname;
+        const actions = [
+            { label: "Live Traffic", icon: <Users size={14} />, query: "Who is on the site right now?" },
+            { label: "Forecast Sales", icon: <TrendingUp size={14} />, query: "Forecast my sales for next week" },
+        ];
+
+        if (path.includes('/orders/') && !path.includes('/orders/new')) {
+            actions.unshift({ label: "Analyze Order", icon: <DollarSign size={14} />, query: "Is this order profitable?" });
+        } else if (path.includes('/inventory/product/')) {
+            actions.unshift({ label: "Product Performance", icon: <BarChart2 size={14} />, query: "How is this product performing?" });
+        } else if (path.includes('/customers/')) {
+            actions.unshift({ label: "Customer Value", icon: <Users size={14} />, query: "Is this a high value customer?" });
+        } else {
+            actions.push({ label: "Profitability", icon: <DollarSign size={14} />, query: "How profitable were we last month?" });
+            actions.push({ label: "Search Terms", icon: <Search size={14} />, query: "What are people searching for?" });
+        }
+
+        return actions.slice(0, 4);
+    }, [location.pathname]);
 
     if (!currentAccount) return null;
 
@@ -93,28 +114,33 @@ export function AIChatWidget() {
                 </button>
             )}
 
-            {/* Chat Window */}
+            {/* Chat Window - Glassmorphism */}
             {isOpen && (
-                <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-200 font-sans">
+                <div className="fixed bottom-6 right-6 w-[400px] h-[650px] flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300 font-sans rounded-3xl shadow-2xl border border-white/20 backdrop-blur-xl bg-white/70">
 
                     {/* Header */}
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 flex justify-between items-center text-white shadow-md">
-                        <div className="flex items-center gap-2">
-                            <Bot size={20} />
-                            <span className="font-semibold tracking-wide">OverSeek AI</span>
+                    <div className="bg-white/40 backdrop-blur-md p-4 flex justify-between items-center border-b border-white/20">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                                <Bot size={18} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-sm leading-tight">OverSeek AI</h3>
+                                <p className="text-[10px] text-slate-500 font-medium">Context-Aware Analyst</p>
+                            </div>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded transition-colors">
-                            <ChevronDown size={20} />
+                        <button onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-slate-500">
+                            <ChevronDown size={18} />
                         </button>
                     </div>
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50/50">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
                         {messages.map(msg => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] rounded-2xl px-5 py-3 shadow-sm ${msg.role === 'user'
-                                    ? 'bg-blue-600 text-white rounded-br-none'
-                                    : 'bg-white border border-gray-100 text-slate-800 rounded-bl-none'
+                                <div className={`max-w-[85%] px-5 py-3 shadow-sm ${msg.role === 'user'
+                                    ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm'
+                                    : 'bg-white/60 backdrop-blur-sm border border-white/40 text-slate-800 rounded-2xl rounded-tl-sm'
                                     }`}>
 
                                     <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'prose-slate'}`}>
@@ -125,12 +151,14 @@ export function AIChatWidget() {
 
                                     {/* Sources / Context Data */}
                                     {msg.sources && msg.sources.length > 0 && (
-                                        <div className="mt-3 pt-3 border-t border-dashed border-gray-200/50">
-                                            <p className="text-[10px] uppercase font-bold opacity-50 mb-2">Analyzed Sources</p>
+                                        <div className="mt-3 pt-3 border-t border-dashed border-white/20">
+                                            <p className="text-[10px] uppercase font-bold opacity-60 mb-2 flex items-center gap-1">
+                                                <Sparkles size={10} /> Analyzed Data
+                                            </p>
                                             <div className="flex flex-wrap gap-2">
                                                 {msg.sources.map((s: any, idx) => (
-                                                    <span key={idx} className="text-[10px] bg-black/5 px-2 py-1 rounded truncate max-w-[150px]" title={JSON.stringify(s)}>
-                                                        {s.name || s.title || `Order #${s.order_count ? 'Aggregated' : s.id}`}
+                                                    <span key={idx} className="text-[10px] bg-black/5 px-2 py-1 rounded-full truncate max-w-[150px] border border-black/5" title={JSON.stringify(s)}>
+                                                        {s.name || s.title || s.term || `Item #${idx + 1}`}
                                                     </span>
                                                 ))}
                                             </div>
@@ -142,7 +170,7 @@ export function AIChatWidget() {
 
                         {isThinking && (
                             <div className="flex justify-start">
-                                <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-2">
+                                <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 shadow-xs flex items-center gap-2">
                                     <Loader2 size={16} className="animate-spin text-blue-600" />
                                     <span className="text-xs text-slate-500 font-medium">Analyzing data...</span>
                                 </div>
@@ -158,7 +186,7 @@ export function AIChatWidget() {
                                 <button
                                     key={idx}
                                     onClick={() => handleSend(undefined, action.query)}
-                                    className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors shadow-sm"
+                                    className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors shadow-xs"
                                 >
                                     {action.icon}
                                     {action.label}
@@ -168,12 +196,12 @@ export function AIChatWidget() {
                     )}
 
                     {/* Input */}
-                    <div className="p-3 border-t border-gray-200 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                    <div className="p-3 bg-white/40 backdrop-blur-md border-t border-white/20">
                         <form onSubmit={(e) => handleSend(e)} className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="Ask about orders, products..."
-                                className="flex-1 px-4 py-2.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:bg-white transition-all text-slate-800 placeholder:text-slate-400"
+                                placeholder="Ask about sales, visitors, forecasts..."
+                                className="flex-1 px-4 py-3 bg-white/60 backdrop-blur-xl rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 focus:bg-white/80 transition-all text-slate-800 placeholder:text-slate-500 shadow-inner border border-white/40"
                                 value={input}
                                 onChange={e => setInput(e.target.value)}
                                 disabled={isThinking}
