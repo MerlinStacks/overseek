@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { useAccount } from './AccountContext';
+import { Logger } from '../utils/logger';
 
 interface SocketContextType {
     socket: Socket | null;
@@ -40,19 +41,21 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         // socket.io client usually needs full URL if not same origin serving.
         // Assuming Vite proxy setting handles /socket.io or we use hardcoded port for now.
         // Let's assume standard behavior:
-        const newSocket = io('http://localhost:3000', {
+        // Connect to relative path so Vite proxy handles it
+        const newSocket = io('/', {
+            path: '/socket.io',
             auth: { token },
             query: { accountId: currentAccount.id }
         });
 
         newSocket.on('connect', () => {
-            console.log('Socket connected');
+            Logger.debug('Socket connected', { accountId: currentAccount.id });
             setIsConnected(true);
             newSocket.emit('join:account', currentAccount.id);
         });
 
         newSocket.on('disconnect', () => {
-            console.log('Socket disconnected');
+            Logger.debug('Socket disconnected');
             setIsConnected(false);
         });
 
