@@ -8,10 +8,11 @@ export class SyncService {
      * Trigger a sync for an account.
      * This now dispatches jobs to the Queue system.
      */
-    async runSync(accountId: string, options: { types?: string[], incremental?: boolean, priority?: number } = {}) {
+    async runSync(accountId: string, options: { types?: string[], incremental?: boolean, priority?: number, triggerSource?: 'SYSTEM' | 'MANUAL' | 'RETRY' } = {}) {
         const types = options.types || ['orders', 'products', 'customers', 'reviews'];
         const incremental = options.incremental !== false; // Default true
         const priority = options.priority || 10;
+        const triggerSource = options.triggerSource || 'SYSTEM';
 
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
@@ -35,8 +36,16 @@ export class SyncService {
                 // If completed/failed/unknown, we try to remove it to allow re-run
                 try {
                     await existingJob.remove();
-                } catch (err) {
-                    Logger.warn(`Failed to remove existing job ${stableJobId}`, { error: err });
+                } catch (err: any) {
+                    // Race condition: job became active between state check and removal
+                    // This is expected behavior - just skip as we would for active jobs
+                    if (err?.message?.includes('locked by another worker')) {
+                        Logger.info(`Skipping ${queueName} for ${accountId} - Job ${stableJobId} became active`);
+                        return;
+                    }
+                    // Any other removal error should also skip to prevent duplicate job creation
+                    Logger.warn(`Failed to remove existing job ${stableJobId}, skipping`, { error: err });
+                    return;
                 }
             }
 
@@ -49,19 +58,19 @@ export class SyncService {
         };
 
         if (types.includes('orders')) {
-            await checkAndAddJob(QUEUES.ORDERS, { accountId, incremental } as SyncJobData, `sync_orders_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.ORDERS, { accountId, incremental, triggerSource } as SyncJobData, `sync_orders_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('products')) {
-            await checkAndAddJob(QUEUES.PRODUCTS, { accountId, incremental } as SyncJobData, `sync_products_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.PRODUCTS, { accountId, incremental, triggerSource } as SyncJobData, `sync_products_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('customers')) {
-            await checkAndAddJob(QUEUES.CUSTOMERS, { accountId, incremental } as SyncJobData, `sync_customers_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.CUSTOMERS, { accountId, incremental, triggerSource } as SyncJobData, `sync_customers_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('reviews')) {
-            await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
+            await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental, triggerSource } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
         }
 
         await Promise.all(jobs);

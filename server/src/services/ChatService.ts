@@ -1,41 +1,72 @@
+/**
+ * Chat Service
+ * 
+ * Core conversation and messaging functionality.
+ * Email ingestion is delegated to EmailIngestion service.
+ */
 
 import { prisma } from '../utils/prisma';
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
+import { Logger } from '../utils/logger';
+import { EmailIngestion, IncomingEmailData } from './EmailIngestion';
+import { BlockedContactService } from './BlockedContactService';
+import { AutomationEngine } from './AutomationEngine';
+import { EventBus, EVENTS } from './events';
+import { TwilioService } from './TwilioService';
 
 export class ChatService {
     private io: Server;
+    private emailIngestion: EmailIngestion;
+    private automationEngine: AutomationEngine;
 
     constructor(io: Server) {
         this.io = io;
+        this.emailIngestion = new EmailIngestion(io, this.addMessage.bind(this));
+        this.automationEngine = new AutomationEngine();
     }
 
     // --- Conversations ---
 
-    async listConversations(accountId: String, status?: string, assignedTo?: string) {
+    async listConversations(accountId: string, status?: string, assignedTo?: string) {
         return prisma.conversation.findMany({
             where: {
                 accountId: String(accountId),
                 status: status || undefined,
                 assignedTo: assignedTo || undefined,
-                mergedIntoId: null // Don't show merged/archived ones by default
+                mergedIntoId: null
             },
             include: {
-                wooCustomer: true,
+                // Only fetch fields needed for display
+                wooCustomer: {
+                    select: {
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        ordersCount: true,
+                        totalSpent: true,
+                        wooId: true
+                    }
+                },
                 assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                // Only need last 2 messages for preview and timing
                 messages: {
                     orderBy: { createdAt: 'desc' },
-                    take: 1
+                    take: 2,
+                    select: { content: true, createdAt: true, senderType: true }
                 },
-                _count: {
-                    select: { messages: true }
+                labels: {
+                    select: {
+                        label: {
+                            select: { id: true, name: true, color: true }
+                        }
+                    }
                 }
             },
             orderBy: { updatedAt: 'desc' }
         });
     }
 
-    async createConversation(accountId: String, wooCustomerId?: string, visitorToken?: string) {
-        // Check for existing open conversation for this visitor/customer
+    async createConversation(accountId: string, wooCustomerId?: string, visitorToken?: string) {
         const existing = await prisma.conversation.findFirst({
             where: {
                 accountId: String(accountId),
@@ -46,7 +77,6 @@ export class ChatService {
                 ]
             }
         });
-
         if (existing) return existing;
 
         return prisma.conversation.create({
@@ -60,14 +90,63 @@ export class ChatService {
     }
 
     async getConversation(id: string) {
-        return prisma.conversation.findUnique({
+        const conversation = await prisma.conversation.findUnique({
             where: { id },
             include: {
                 messages: { orderBy: { createdAt: 'asc' } },
                 wooCustomer: true,
-                assignee: true
+                assignee: true,
+                mergedFrom: {
+                    select: {
+                        id: true,
+                        channel: true,
+                        guestEmail: true,
+                        guestName: true,
+                        wooCustomer: { select: { email: true, firstName: true, lastName: true } },
+                        socialAccount: { select: { name: true, platform: true } }
+                    }
+                }
             }
         });
+
+        if (!conversation) return null;
+
+        // Fetch email tracking data for this conversation
+        const emailLogs = await prisma.emailLog.findMany({
+            where: { sourceId: id, status: 'SUCCESS' },
+            select: {
+                createdAt: true,
+                firstOpenedAt: true,
+                openCount: true,
+                trackingId: true
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        // Match email logs to agent messages by creation time (within 5 seconds)
+        // This allows us to associate tracking info with the correct message
+        const enrichedMessages = conversation.messages.map(msg => {
+            if (msg.senderType !== 'AGENT') return msg;
+
+            // Find the closest email log sent around the same time
+            const matchingLog = emailLogs.find(log => {
+                const msgTime = new Date(msg.createdAt).getTime();
+                const logTime = new Date(log.createdAt).getTime();
+                return Math.abs(msgTime - logTime) < 5000; // 5 second window
+            });
+
+            if (matchingLog) {
+                return {
+                    ...msg,
+                    trackingId: matchingLog.trackingId,
+                    firstOpenedAt: matchingLog.firstOpenedAt,
+                    openCount: matchingLog.openCount
+                };
+            }
+            return msg;
+        });
+
+        return { ...conversation, messages: enrichedMessages };
     }
 
     // --- Messages ---
@@ -80,34 +159,97 @@ export class ChatService {
         isInternal: boolean = false
     ) {
         const message = await prisma.message.create({
-            data: {
-                conversationId,
-                content,
-                senderType,
-                senderId,
-                isInternal
-            }
+            data: { conversationId, content, senderType, senderId, isInternal }
         });
 
-        // Update conversation timestamp
-        const conversation = await prisma.conversation.update({
+        // Get conversation with customer info to check blocked status
+        const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            data: { updatedAt: new Date(), status: 'OPEN' } // Re-open if closed
+            include: { wooCustomer: true }
         });
 
-        // Emit socket event
-        this.io.to(`conversation:${conversationId}`).emit('message:new', message);
+        if (!conversation) {
+            Logger.error('[ChatService] Conversation not found', { conversationId });
+            return message;
+        }
 
-        // Notify account room (for inbox lists)
+        // Handle Outbound SMS (Agent replies)
+        if (senderType === 'AGENT' && !isInternal && conversation.channel === 'SMS') {
+            try {
+                const to = conversation.externalConversationId; // Phone number stored here
+                if (to) {
+                    await TwilioService.sendSms(conversation.accountId, to, content);
+                } else {
+                    Logger.warn('[ChatService] Cannot send SMS, no phone number found', { conversationId });
+                }
+            } catch (error) {
+                Logger.error('[ChatService] Failed to send outbound SMS', { error, conversationId });
+                // We still return the message, but maybe we should mark it as failed?
+                // For now, we'll just log the error.
+            }
+        }
+
+        // Get the email to check for blocked status
+        const contactEmail = conversation.wooCustomer?.email || conversation.guestEmail;
+
+        // Check if sender is blocked (only for customer messages)
+        let isBlocked = false;
+        if (senderType === 'CUSTOMER' && contactEmail) {
+            isBlocked = await BlockedContactService.isBlocked(conversation.accountId, contactEmail);
+        }
+
+        if (isBlocked) {
+            // Auto-close without autoreplies or push notifications
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { status: 'CLOSED', updatedAt: new Date() }
+            });
+            Logger.info('[ChatService] Blocked contact, auto-resolved', { contactEmail, conversationId });
+        } else {
+            // Normal flow: update status to OPEN and mark as unread for customer messages
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: {
+                    updatedAt: new Date(),
+                    status: 'OPEN',
+                    // Mark as unread when customer sends a message
+                    ...(senderType === 'CUSTOMER' ? { isRead: false } : {})
+                }
+            });
+        }
+
+        // Emit socket events (always, so UI stays in sync)
+        // Include accountId for client-side account isolation filtering
+        this.io.to(`conversation:${conversationId}`).emit('message:new', {
+            ...message,
+            accountId: conversation.accountId
+        });
         this.io.to(`account:${conversation.accountId}`).emit('conversation:updated', {
             id: conversationId,
             lastMessage: message,
-            updatedAt: new Date()
+            updatedAt: message.createdAt
         });
 
-        // Handle Auto-Replies if sender is CUSTOMER
-        if (senderType === 'CUSTOMER') {
+        // Only handle autoreplies and push notifications for non-blocked customers
+        if (senderType === 'CUSTOMER' && !isBlocked) {
             await this.handleAutoReply(conversation);
+
+            // Emit event for NotificationEngine to handle push
+            EventBus.emit(EVENTS.CHAT.MESSAGE_RECEIVED, {
+                accountId: conversation.accountId,
+                conversationId,
+                content
+            });
+
+            // Trigger automation for customer messages
+            this.automationEngine.processTrigger(conversation.accountId, 'MESSAGE_RECEIVED', {
+                conversationId,
+                messageId: message.id,
+                content,
+                senderType,
+                customerEmail: conversation.wooCustomer?.email || conversation.guestEmail,
+                customerId: conversation.wooCustomerId
+            });
         }
 
         return message;
@@ -121,35 +263,66 @@ export class ChatService {
             data: { assignedTo: userId }
         });
         this.io.to(`conversation:${id}`).emit('conversation:assigned', { userId });
+
+        // Trigger automation
+        this.automationEngine.processTrigger(conv.accountId, 'CONVERSATION_ASSIGNED', {
+            conversationId: id,
+            assignedTo: userId
+        });
+
         return conv;
     }
 
     async updateStatus(id: string, status: string) {
-        return prisma.conversation.update({
+        const conv = await prisma.conversation.update({ where: { id }, data: { status } });
+
+        // Trigger automation for closed conversations
+        if (status === 'CLOSED') {
+            this.automationEngine.processTrigger(conv.accountId, 'CONVERSATION_CLOSED', {
+                conversationId: id
+            });
+        }
+
+        return conv;
+    }
+
+    /**
+     * Mark a conversation as read by staff
+     */
+    async markAsRead(id: string) {
+        const conv = await prisma.conversation.update({
             where: { id },
-            data: { status }
+            data: { isRead: true }
+        });
+        // Emit socket event so other clients know it's been read
+        this.io.to(`account:${conv.accountId}`).emit('conversation:read', { id });
+        return conv;
+    }
+
+    /**
+     * Get count of unread conversations for an account
+     */
+    async getUnreadCount(accountId: string): Promise<number> {
+        return prisma.conversation.count({
+            where: {
+                accountId,
+                isRead: false,
+                status: 'OPEN',
+                mergedIntoId: null
+            }
         });
     }
 
     async mergeConversations(targetId: string, sourceId: string) {
-        // 1. Move all messages from source to target
         await prisma.message.updateMany({
             where: { conversationId: sourceId },
             data: { conversationId: targetId }
         });
-
-        // 2. Mark source as merged
         await prisma.conversation.update({
             where: { id: sourceId },
-            data: {
-                status: 'CLOSED',
-                mergedIntoId: targetId
-            }
+            data: { status: 'CLOSED', mergedIntoId: targetId }
         });
-
-        // 3. Add system note
         await this.addMessage(targetId, `Merged conversation #${sourceId} into this thread.`, 'SYSTEM');
-
         return { success: true };
     }
 
@@ -160,94 +333,35 @@ export class ChatService {
         });
     }
 
-    // --- Internal Logic ---
+    // --- Email delegation ---
+
+    async handleIncomingEmail(emailData: IncomingEmailData) {
+        return this.emailIngestion.handleIncomingEmail(emailData);
+    }
+
+    // --- Business Hours ---
+
+    private isOutsideBusinessHours(businessHours: any): boolean {
+        const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const now = new Date();
+        const schedule = businessHours.days?.[days[now.getDay()]];
+        if (!schedule?.isOpen) return true;
+        const time = now.toTimeString().slice(0, 5);
+        return time < schedule.open || time > schedule.close;
+    }
 
     private async handleAutoReply(conversation: any) {
-        // Check business hours logic (Generic placeholder for now)
-        // we would check AccountFeature config here
-
-        /* 
         const config = await prisma.accountFeature.findFirst({
             where: { accountId: conversation.accountId, featureKey: 'CHAT_SETTINGS' }
         });
-        if (config?.isEnabled && isOutsideBusinessHours(config.config)) {
-           await this.addMessage(conversation.id, config.config.offlineMessage, 'SYSTEM');
+        if (!config?.isEnabled || !config.config) return;
+
+        const settings = config.config as any;
+        if (!settings.businessHours?.enabled) return;
+
+        if (this.isOutsideBusinessHours(settings.businessHours) && settings.businessHours.offlineMessage) {
+            Logger.info('[AutoReply] Sending offline message', { conversationId: conversation.id });
+            await this.addMessage(conversation.id, settings.businessHours.offlineMessage, 'SYSTEM');
         }
-        */
-    }
-    async handleIncomingEmail(emailData: {
-        emailAccountId: string;
-        fromEmail: string;
-        fromName?: string;
-        subject: string;
-        body: string;
-        messageId: string;
-    }) {
-        const { emailAccountId, fromEmail, fromName, subject, body, messageId } = emailData;
-
-        // 1. Find the Account ID for this Email Account
-        const emailVars = await prisma.emailAccount.findUnique({
-            where: { id: emailAccountId },
-            select: { accountId: true }
-        });
-
-        if (!emailVars) {
-            console.error(`[ChatService] Email Account ${emailAccountId} not found.`);
-            return;
-        }
-
-        const accountId = emailVars.accountId;
-
-        // 2. Try to find an open conversation with this customer email
-        // We need to look up WooCustomer by email first to find conversation linked to them
-        // OR search conversation by some other means (e.g. subject containing Ticket ID in future)
-        let conversation = await prisma.conversation.findFirst({
-            where: {
-                accountId,
-                status: 'OPEN',
-                wooCustomer: { email: fromEmail }
-            }
-        });
-
-        // 3. If no conversation, create one
-        if (!conversation) {
-            // Find or create WooCustomer placeholder? 
-            // For now, let's see if we have a customer with this email
-            const customer = await prisma.wooCustomer.findFirst({
-                where: { accountId, email: fromEmail }
-            });
-
-            conversation = await prisma.conversation.create({
-                data: {
-                    accountId,
-                    status: 'OPEN',
-                    wooCustomerId: customer?.id,
-                    // If no customer, we might need a way to store "Guest Email" on conversation
-                    // For now, we rely on the first message or context.
-                    // Ideally: Add `guestEmail` field to Conversation or use VisitorToken as email hash?
-                    // Let's create a System Message with the email info if no customer profile exists.
-                    priority: 'MEDIUM'
-                }
-            });
-
-            if (!customer) {
-                // Determine if we should create a "Lead" or just leave it.
-                // Let's prepend a header in the message body for now.
-            }
-        }
-
-        // 4. Add the message
-        await this.addMessage(
-            conversation.id,
-            `Subject: ${subject}\n\n${body}`,
-            'CUSTOMER',
-            undefined, // No senderId if we don't have a user/customer ID exactly linked yet. 
-            // Note: addMessage logic might need tweaking if senderId is required? 
-            // schema says senderId is String? (optional).
-            false
-        );
-
-        console.log(`[ChatService] Imported email from ${fromEmail} to Conversation ${conversation.id}`);
     }
 }
-

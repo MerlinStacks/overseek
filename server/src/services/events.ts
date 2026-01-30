@@ -17,6 +17,27 @@ export const EVENTS = {
     },
     EMAIL: {
         RECEIVED: 'email:received'
+    },
+    CHAT: {
+        MESSAGE_RECEIVED: 'chat:message_received',
+    },
+    STOCK: {
+        MISMATCH: 'stock:mismatch',
+    },
+    SOCIAL: {
+        MESSAGE_RECEIVED: 'social:message_received',
+        MESSAGE_SENT: 'social:message_sent',
+        ACCOUNT_CONNECTED: 'social:account_connected',
+        ACCOUNT_DISCONNECTED: 'social:account_disconnected',
+    },
+    AD: {
+        ALERT: 'ad:alert', // AI Marketing Co-Pilot Phase 6
+    },
+    INVENTORY: {
+        STOCKOUT_ALERT: 'inventory:stockout_alert', // Predictive Inventory Forecasting
+    },
+    SYNC: {
+        FAILURE_THRESHOLD: 'sync:failure_threshold'
     }
 };
 

@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/prisma';
+import { Logger } from '../../utils/logger';
 
 export class AcquisitionAnalytics {
 
@@ -31,7 +32,7 @@ export class AcquisitionAnalytics {
                 sessions: g._count.id
             }));
         } catch (error) {
-            console.error('Analytics Channels Error:', error);
+            Logger.error('Analytics Channels Error', { error });
             return [];
         }
     }
@@ -73,7 +74,7 @@ export class AcquisitionAnalytics {
                 sessions: g._count.id
             }));
         } catch (error) {
-            console.error('Analytics Campaigns Error:', error);
+            Logger.error('Analytics Campaigns Error', { error });
             return [];
         }
     }

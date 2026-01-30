@@ -1,0 +1,233 @@
+/**
+ * InboxAIService - Generates AI draft replies for inbox conversations.
+ * 
+ * Gathers conversation history, customer details, and store policies
+ * to provide context for the AI to generate relevant draft replies.
+ */
+
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
+import { cacheAside, CacheTTL } from '../utils/cache';
+
+interface DraftResult {
+    draft: string;
+    error?: string;
+}
+
+interface ConversationContext {
+    messages: { role: 'customer' | 'agent' | 'system'; content: string; timestamp: string }[];
+    customerName: string;
+    customerEmail: string;
+    totalSpent?: string;
+    ordersCount?: number;
+}
+
+export class InboxAIService {
+    /**
+     * Generates an AI draft reply for a conversation.
+     * @param conversationId - The conversation to generate a draft for
+     * @param accountId - The account ID for fetching policies and AI config
+     * @param currentDraft - Optional current draft content to continue/refine
+     */
+    static async generateDraftReply(conversationId: string, accountId: string, currentDraft?: string): Promise<DraftResult> {
+        try {
+            // 1. Fetch account AI configuration
+            const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: { openRouterApiKey: true, aiModel: true }
+            });
+
+            if (!account?.openRouterApiKey) {
+                return {
+                    draft: '',
+                    error: 'AI is not configured. Please set your OpenRouter API key in Settings > Intelligence.'
+                };
+            }
+
+            // 2. Fetch conversation with messages and customer
+            const conversation = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                include: {
+                    messages: {
+                        orderBy: { createdAt: 'asc' },
+                        take: 20  // Last 20 messages for context
+                    },
+                    wooCustomer: true
+                }
+            });
+
+            if (!conversation) {
+                return { draft: '', error: 'Conversation not found' };
+            }
+
+            // 3. Build conversation context
+            const context = this.buildConversationContext(conversation);
+
+            // 4. Fetch published policies for the account
+            const policies = await cacheAside(
+                `policies:${accountId}`,
+                async () => prisma.policy.findMany({
+                    where: { accountId, isPublished: true },
+                    select: { title: true, content: true, type: true },
+                    orderBy: [{ type: 'asc' }, { title: 'asc' }]
+                }),
+                { ttl: CacheTTL.LONG }
+            );
+
+            // 5. Fetch the inbox_draft_reply prompt template
+            const promptTemplate = await prisma.aIPrompt.findUnique({
+                where: { promptId: 'inbox_draft_reply' }
+            });
+
+            // Use default prompt if none configured
+            const basePrompt = promptTemplate?.content || this.getDefaultPrompt();
+
+            // 6. Build the full prompt with context
+            const fullPrompt = this.injectVariables(basePrompt, context, policies);
+
+            // 7. Call OpenRouter API
+            const apiKey = account.openRouterApiKey;
+            const model = account.aiModel || 'openai/gpt-4o';
+
+            // 7. Build user message - include current draft if available
+            let userMessage = 'Generate a draft reply for this customer conversation.';
+            if (currentDraft?.trim()) {
+                userMessage = `The agent has already started drafting a reply. Continue, expand, or refine this draft while maintaining the same tone and intent:
+
+CURRENT DRAFT:
+${this.stripHtmlTags(currentDraft.trim())}
+
+Generate a complete reply that incorporates and improves upon the current draft.`;
+            }
+
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
+                    'X-Title': process.env.APP_NAME || 'Commerce Platform',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [
+                        { role: 'system', content: fullPrompt },
+                        { role: 'user', content: userMessage }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                Logger.error('OpenRouter API error', { error: err });
+                return { draft: '', error: 'Failed to generate draft. Please try again.' };
+            }
+
+            const data = await response.json();
+            const draft = data.choices?.[0]?.message?.content || '';
+
+            return { draft };
+
+        } catch (error) {
+            Logger.error('InboxAIService.generateDraftReply error', { error });
+            return { draft: '', error: 'An unexpected error occurred while generating the draft.' };
+        }
+    }
+
+    /**
+     * Builds structured conversation context from the conversation data.
+     */
+    private static buildConversationContext(conversation: any): ConversationContext {
+        const messages = conversation.messages.map((msg: any) => ({
+            role: msg.senderType === 'CUSTOMER' ? 'customer' as const :
+                msg.senderType === 'AGENT' ? 'agent' as const : 'system' as const,
+            content: this.stripHtmlTags(msg.content),
+            timestamp: new Date(msg.createdAt).toLocaleString()
+        }));
+
+        // Determine customer info from WooCustomer or guest fields
+        const customer = conversation.wooCustomer;
+        const customerName = customer
+            ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Customer'
+            : conversation.guestName || 'Customer';
+        const customerEmail = customer?.email || conversation.guestEmail || 'Unknown';
+
+        return {
+            messages,
+            customerName,
+            customerEmail,
+            totalSpent: customer?.totalSpent ? `$${customer.totalSpent}` : undefined,
+            ordersCount: customer?.ordersCount
+        };
+    }
+
+    /**
+     * Strips HTML tags from content for cleaner AI context.
+     */
+    private static stripHtmlTags(html: string): string {
+        return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    /**
+     * Injects context variables into the prompt template.
+     */
+    private static injectVariables(
+        template: string,
+        context: ConversationContext,
+        policies: { title: string; content: string; type: string }[]
+    ): string {
+        // Format conversation history
+        const conversationHistory = context.messages.map(m =>
+            `[${m.timestamp}] ${m.role.toUpperCase()}: ${m.content}`
+        ).join('\n');
+
+        // Format customer details
+        const customerDetails = [
+            `Name: ${context.customerName}`,
+            `Email: ${context.customerEmail}`,
+            context.totalSpent ? `Total Spent: ${context.totalSpent}` : null,
+            context.ordersCount !== undefined ? `Orders: ${context.ordersCount}` : null
+        ].filter(Boolean).join('\n');
+
+        // Format policies
+        const policiesText = policies.length > 0
+            ? policies.map(p => `### ${p.title}\n${this.stripHtmlTags(p.content)}`).join('\n\n')
+            : 'No store policies configured.';
+
+        // Replace template variables
+        return template
+            .replace(/\{\{conversation_history\}\}/g, conversationHistory)
+            .replace(/\{\{customer_details\}\}/g, customerDetails)
+            .replace(/\{\{policies\}\}/g, policiesText);
+    }
+
+    /**
+     * Returns the default prompt if none is configured in the database.
+     */
+    private static getDefaultPrompt(): string {
+        return `You are a helpful customer service agent. Draft a professional reply to the customer based on the conversation history and customer context.
+
+CONVERSATION HISTORY:
+{{conversation_history}}
+
+CUSTOMER DETAILS:
+{{customer_details}}
+
+STORE POLICIES:
+{{policies}}
+
+Guidelines:
+- Be polite, empathetic, and professional
+- Reference specific order details if mentioned in the conversation
+- Follow store policies when applicable
+- Keep response concise but complete
+- Address all customer concerns raised
+
+IMPORTANT: Return the reply as valid HTML. Use:
+- <p> for paragraphs
+- <strong> for emphasis
+- <ul>/<li> for lists if needed
+
+Do NOT include markdown, code blocks, or any wrapping. Only return the HTML content of the reply.`;
+    }
+}

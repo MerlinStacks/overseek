@@ -1,86 +1,150 @@
-import { PrismaClient } from '@prisma/client';
+/**
+ * Unified Ads Service (Facade)
+ * 
+ * Provides backwards-compatible interface to Meta and Google Ads platforms.
+ * Delegates all platform-specific logic to dedicated service modules.
+ * 
+ * @see MetaAdsService for Facebook/Instagram Graph API integration
+ * @see GoogleAdsService for Google Ads API integration
+ */
 
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
+import { MetaAdsService } from './ads/MetaAdsService';
+import { GoogleAdsService } from './ads/GoogleAdsService';
 
-// Metric Interface
-export interface AdMetric {
-    accountId: string;
-    spend: number;
-    impressions: number;
-    clicks: number;
-    roas: number;
-    currency: string;
-    date_start: string;
-    date_stop: string;
-}
+// Re-export types for backwards compatibility
+export { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight } from './ads/types';
 
+/**
+ * Unified Ads Service facade.
+ * Maintains backwards compatibility while delegating to platform-specific services.
+ */
 export class AdsService {
 
-    // META ADS (Facebook)
-    // Uses Graph API v18.0
-    static async getMetaInsights(adAccountId: string): Promise<AdMetric | null> {
-        const adAccount = await prisma.adAccount.findUnique({
-            where: { id: adAccountId }
-        });
+    // ──────────────────────────────────────────────────────────────
+    // META ADS (Facebook/Instagram) - Delegates to MetaAdsService
+    // ──────────────────────────────────────────────────────────────
 
-        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken || !adAccount.externalId) {
-            throw new Error('Invalid Meta Ad Account');
-        }
+    /** @see MetaAdsService.getInsights */
+    static getMetaInsights = MetaAdsService.getInsights;
 
-        const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
-        const fields = 'spend,impressions,clicks,purchase_roas,action_values';
-        // last_30d
-        const url = `https://graph.facebook.com/v18.0/${actId}/insights?fields=${fields}&date_preset=last_30d&access_token=${adAccount.accessToken}`;
+    /** @see MetaAdsService.exchangeToken */
+    static exchangeMetaToken = MetaAdsService.exchangeToken;
 
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
+    /** @see MetaAdsService.getCampaignInsights */
+    static getMetaCampaignInsights = MetaAdsService.getCampaignInsights;
 
-            if (data.error) {
-                console.error('Meta API Error:', data.error);
-                throw new Error(data.error.message);
-            }
+    /** @see MetaAdsService.getDailyTrends */
+    static getMetaDailyTrends = MetaAdsService.getDailyTrends;
 
-            const insights = data.data?.[0]; // Aggregate for 30d
-            if (!insights) return null;
+    /** @see MetaAdsService.updateCampaignBudget */
+    static updateMetaCampaignBudget = MetaAdsService.updateCampaignBudget;
 
-            // Calculate ROAS manually if purchase_roas is complex structure
-            // Meta returns purchase_roas as list of actions.
-            // Simplified: Spend
+    /** @see MetaAdsService.updateCampaignStatus */
+    static updateMetaCampaignStatus = MetaAdsService.updateCampaignStatus;
 
-            return {
-                accountId: adAccountId,
-                spend: parseFloat(insights.spend || '0'),
-                impressions: parseInt(insights.impressions || '0'),
-                clicks: parseInt(insights.clicks || '0'),
-                roas: 0, // TODO: Parse action_values for 'purchase' value / spend
-                currency: adAccount.currency || 'USD',
-                date_start: insights.date_start,
-                date_stop: insights.date_stop
-            };
+    // ──────────────────────────────────────────────────────────────
+    // GOOGLE ADS - Delegates to GoogleAdsService
+    // ──────────────────────────────────────────────────────────────
 
-        } catch (error) {
-            console.error('Failed to fetch Meta Insights', error);
-            throw error;
-        }
-    }
+    /** @see GoogleAdsService.getInsights */
+    static getGoogleInsights = GoogleAdsService.getInsights;
 
-    // Generic "Get All Connected Accounts" for a User's Store
+    /** @see GoogleAdsService.getCampaignInsights */
+    static getGoogleCampaignInsights = GoogleAdsService.getCampaignInsights;
+
+    /** @see GoogleAdsService.getDailyTrends */
+    static getGoogleDailyTrends = GoogleAdsService.getDailyTrends;
+
+    /** @see GoogleAdsService.updateCampaignBudget */
+    static updateGoogleCampaignBudget = GoogleAdsService.updateCampaignBudget;
+
+    /** @see GoogleAdsService.updateCampaignStatus */
+    static updateGoogleCampaignStatus = GoogleAdsService.updateCampaignStatus;
+
+    /** @see GoogleAdsService.exchangeCode */
+    static exchangeGoogleCode = GoogleAdsService.exchangeCode;
+
+    /** @see GoogleAdsService.getAuthUrl */
+    static getGoogleAuthUrl = GoogleAdsService.getAuthUrl;
+
+    /** @see GoogleAdsService.listCustomers */
+    static listGoogleCustomers = GoogleAdsService.listCustomers;
+
+    /** @see GoogleAdsService.getShoppingProducts */
+    static getGoogleShoppingProducts = GoogleAdsService.getShoppingProducts;
+
+    /** @see GoogleAdsService.addSearchKeyword */
+    static addGoogleSearchKeyword = GoogleAdsService.addSearchKeyword;
+
+    /** @see GoogleAdsService.getCampaignProducts */
+    static getGoogleCampaignProducts = GoogleAdsService.getCampaignProducts;
+
+    /** @see GoogleAdsService.getSearchKeywords */
+    static getGoogleSearchKeywords = GoogleAdsService.getSearchKeywords;
+
+    /** @see GoogleAdsService.getCampaignAdGroups */
+    static getGoogleCampaignAdGroups = GoogleAdsService.getCampaignAdGroups;
+
+    // ──────────────────────────────────────────────────────────────
+    // COMMON ACCOUNT MANAGEMENT
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Get all connected ad accounts for a store account.
+     */
     static async getAdAccounts(accountId: string) {
         return prisma.adAccount.findMany({
             where: { accountId }
         });
     }
 
-    static async connectAccount(accountId: string, data: { platform: string, externalId: string, accessToken: string, name?: string }) {
+    /**
+     * Connect a new ad account (manual token entry).
+     */
+    static async connectAccount(
+        accountId: string,
+        data: {
+            platform: string;
+            externalId: string;
+            accessToken: string;
+            refreshToken?: string;
+            name?: string;
+            currency?: string;
+        }
+    ) {
         return prisma.adAccount.create({
             data: {
                 accountId,
                 platform: data.platform,
                 externalId: data.externalId,
                 accessToken: data.accessToken,
-                name: data.name || `${data.platform} Account`
+                refreshToken: data.refreshToken,
+                name: data.name || `${data.platform} Account`,
+                currency: data.currency
             }
+        });
+    }
+
+    /**
+     * Update an existing ad account (e.g., refresh token rotation).
+     */
+    static async updateAccount(
+        adAccountId: string,
+        data: Partial<{ accessToken: string; refreshToken: string; name: string }>
+    ) {
+        return prisma.adAccount.update({
+            where: { id: adAccountId },
+            data
+        });
+    }
+
+    /**
+     * Delete a connected ad account.
+     */
+    static async disconnectAccount(adAccountId: string) {
+        return prisma.adAccount.delete({
+            where: { id: adAccountId }
         });
     }
 }

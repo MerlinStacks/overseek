@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/prisma';
+import { Logger } from '../../utils/logger';
 
 export class BehaviourAnalytics {
 
@@ -30,7 +31,7 @@ export class BehaviourAnalytics {
             }));
 
         } catch (error) {
-            console.error('Analytics Pages Error:', error);
+            Logger.error('Analytics Pages Error', { error });
             return [];
         }
     }
@@ -44,7 +45,7 @@ export class BehaviourAnalytics {
             const end = endDate ? new Date(endDate) : new Date();
 
             const terms = await prisma.$queryRaw`
-                SELECT (payload->>'query') as term, COUNT(e.id) as searches
+                SELECT COALESCE(payload->>'query', payload->>'term') as term, COUNT(e.id) as searches
                 FROM "AnalyticsEvent" e
                 JOIN "AnalyticsSession" s ON e."sessionId" = s.id
                 WHERE s."accountId" = ${accountId}
@@ -61,7 +62,7 @@ export class BehaviourAnalytics {
                 searches: Number(t.searches)
             }));
         } catch (error) {
-            console.error('Analytics Search Error:', error);
+            Logger.error('Analytics Search Error', { error });
             return [];
         }
     }
@@ -97,7 +98,7 @@ export class BehaviourAnalytics {
             }));
 
         } catch (error) {
-            console.error('Analytics Entry Pages Error:', error);
+            Logger.error('Analytics Entry Pages Error', { error });
             return [];
         }
     }
@@ -133,8 +134,52 @@ export class BehaviourAnalytics {
             }));
 
         } catch (error) {
-            console.error('Analytics Exit Pages Error:', error);
+            Logger.error('Analytics Exit Pages Error', { error });
             return [];
+        }
+    }
+
+    /**
+     * Get page view counts for a specific product URL (7d and 30d)
+     */
+    static async getProductPageViews(accountId: string, productUrl: string) {
+        try {
+            const now = new Date();
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+            // Normalize URL by removing trailing slash for matching
+            const normalizedUrl = productUrl.replace(/\/$/, '');
+
+            const [views7d, views30d] = await Promise.all([
+                prisma.$queryRaw<[{ count: bigint }]>`
+                    SELECT COUNT(e.id) as count
+                    FROM "AnalyticsEvent" e
+                    JOIN "AnalyticsSession" s ON e."sessionId" = s.id
+                    WHERE s."accountId" = ${accountId}
+                    AND e."createdAt" >= ${sevenDaysAgo}
+                    AND e.type IN ('pageview', 'product_view')
+                    AND (e.url = ${normalizedUrl} OR e.url = ${normalizedUrl + '/'})
+                `,
+                prisma.$queryRaw<[{ count: bigint }]>`
+                    SELECT COUNT(e.id) as count
+                    FROM "AnalyticsEvent" e
+                    JOIN "AnalyticsSession" s ON e."sessionId" = s.id
+                    WHERE s."accountId" = ${accountId}
+                    AND e."createdAt" >= ${thirtyDaysAgo}
+                    AND e.type IN ('pageview', 'product_view')
+                    AND (e.url = ${normalizedUrl} OR e.url = ${normalizedUrl + '/'})
+                `
+            ]);
+
+            return {
+                views7d: Number(views7d[0]?.count || 0),
+                views30d: Number(views30d[0]?.count || 0)
+            };
+
+        } catch (error) {
+            Logger.error('Product Page Views Error', { error, productUrl });
+            return { views7d: 0, views30d: 0 };
         }
     }
 }

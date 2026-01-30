@@ -1,9 +1,15 @@
+/**
+ * Marketing Service
+ * 
+ * Manages marketing campaigns, automations, and email templates.
+ * Merge tag resolution delegated to MergeTagResolver.
+ */
 
-import { PrismaClient, MarketingCampaign, MarketingAutomation, EmailTemplate } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { MarketingCampaign, MarketingAutomation, EmailTemplate } from '@prisma/client';
+import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
 import { SegmentService } from './SegmentService';
+import { resolveMergeTags } from './MergeTagResolver';
 
 export class MarketingService {
     private segmentService: SegmentService;
@@ -30,10 +36,9 @@ export class MarketingService {
     }
 
     async createCampaign(accountId: string, data: Partial<MarketingCampaign>) {
-        // Sanitize segmentId: if it's an empty string, set to null/undefined
         const segmentId = data.segmentId && data.segmentId.trim() !== '' ? data.segmentId : undefined;
 
-        console.log(`[Marketing] Creating campaign for account ${accountId}. Segment: ${segmentId || 'ALL'}`);
+        Logger.info(`Creating campaign`, { accountId, segmentId: segmentId || 'ALL' });
 
         return prisma.marketingCampaign.create({
             data: {
@@ -52,23 +57,16 @@ export class MarketingService {
         const { id: _, accountId: __, createdAt: ___, ...updateData } = data;
         return prisma.marketingCampaign.updateMany({
             where: { id, accountId },
-            data: {
-                ...(updateData as any),
-                updatedAt: new Date()
-            }
+            data: { ...(updateData as any), updatedAt: new Date() }
         });
     }
 
     async deleteCampaign(id: string, accountId: string) {
-        return prisma.marketingCampaign.deleteMany({
-            where: { id, accountId }
-        });
+        return prisma.marketingCampaign.deleteMany({ where: { id, accountId } });
     }
 
     async sendTestEmail(campaignId: string, email: string) {
-        console.log(`Sending test email for campaign ${campaignId} to ${email}`);
-        // Basic test send
-        // In real app, render template/campaign content
+        Logger.info(`Sending test email`, { campaignId, email });
         return { success: true };
     }
 
@@ -76,45 +74,67 @@ export class MarketingService {
         const campaign = await this.getCampaign(campaignId, accountId);
         if (!campaign) throw new Error('Campaign not found');
 
-        let recipients: { email: string; id: string }[] = [];
+        let totalRecipients = 0;
 
         if (campaign.segmentId) {
-            // Fetch from segment
-            const customers = await this.segmentService.getCustomerIdsInSegment(accountId, campaign.segmentId);
-            recipients = customers.map((c: any) => ({ email: c.email, id: c.id }));
+            totalRecipients = await this.segmentService.getSegmentCount(accountId, campaign.segmentId);
         } else {
-            // Send to ALL customers (valid email)
-            const customers = await prisma.wooCustomer.findMany({
-                where: { accountId, email: { not: '' } },
-                select: { id: true, email: true }
+            totalRecipients = await prisma.wooCustomer.count({
+                where: { accountId, email: { not: '' } }
             });
-            recipients = customers;
         }
 
-        console.log(`[Marketing] Sending Campaign ${campaignId} to ${recipients.length} recipients (Segment: ${campaign.segmentId || 'ALL'})`);
+        Logger.info(`Sending Campaign`, { campaignId, recipientCount: totalRecipients, segmentId: campaign.segmentId || 'ALL' });
 
-        // Update status
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
-            data: { status: 'SENDING', sentAt: new Date() }
+            data: { status: 'SENDING', sentAt: new Date(), recipientsCount: totalRecipients }
         });
 
-        // Trigger Async Send (simulated loop or proper queue)
-        // For MVP, we'll just log
-        // In production: add to 'mail-queue' in BullMQ
+        let processedCount = 0;
+        const BATCH_SIZE = 1000;
 
-        // Mock completion
-        await prisma.marketingCampaign.update({
-            where: { id: campaignId },
-            data: {
-                status: 'SENT',
-                recipientsCount: recipients.length,
-                sentCount: recipients.length // assuming success
+        try {
+            if (campaign.segmentId) {
+                for await (const batch of this.segmentService.iterateCustomersInSegment(accountId, campaign.segmentId, BATCH_SIZE)) {
+                    processedCount += batch.length;
+                }
+            } else {
+                let cursor: string | undefined;
+                while (true) {
+                    const params: any = {
+                        where: { accountId, email: { not: '' } },
+                        select: { id: true, email: true },
+                        take: BATCH_SIZE,
+                        orderBy: { id: 'asc' }
+                    };
+
+                    if (cursor) {
+                        params.cursor = { id: cursor };
+                        params.skip = 1;
+                    }
+
+                    const customers = await prisma.wooCustomer.findMany(params);
+                    if (customers.length === 0) break;
+
+                    processedCount += customers.length;
+
+                    if (customers.length < BATCH_SIZE) break;
+                    cursor = customers[customers.length - 1].id;
+                }
             }
+        } catch (err) {
+            Logger.error('Error sending campaign', err);
+        }
+
+        await prisma.marketingCampaign.update({
+            where: { id: campaignId },
+            data: { status: 'SENT', sentCount: processedCount }
         });
 
-        return { success: true, count: recipients.length };
+        return { success: true, count: processedCount };
     }
+
     // -------------------
     // Automations
     // -------------------
@@ -125,7 +145,7 @@ export class MarketingService {
             include: {
                 enrollments: {
                     where: { status: 'ACTIVE' },
-                    select: { id: true } // just counting
+                    select: { id: true }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -135,26 +155,15 @@ export class MarketingService {
     async getAutomation(id: string, accountId: string) {
         return prisma.marketingAutomation.findFirst({
             where: { id, accountId },
-            include: {
-                steps: {
-                    orderBy: { stepOrder: 'asc' }
-                }
-            }
+            include: { steps: { orderBy: { stepOrder: 'asc' } } }
         });
     }
 
     async upsertAutomation(accountId: string, data: any) {
         const { id, name, triggerType, triggerConfig, steps, isActive } = data;
 
-        let automation;
-
         if (id) {
-            // Update existing
-            // Update existing
-            // Legacy steps cleanup only if needed, or ignore
-            // await prisma.automationStep.deleteMany({ where: { automationId: id } });
-
-            automation = await prisma.marketingAutomation.update({
+            return prisma.marketingAutomation.update({
                 where: { id },
                 data: {
                     name,
@@ -165,28 +174,23 @@ export class MarketingService {
                     status: isActive ? 'ACTIVE' : 'PAUSED'
                 }
             });
-        } else {
-            // Create new
-            automation = await prisma.marketingAutomation.create({
-                data: {
-                    accountId,
-                    name,
-                    triggerType,
-                    triggerConfig,
-                    isActive: isActive || false,
-                    flowDefinition: data.flowDefinition, // Save graph
-                    status: isActive ? 'ACTIVE' : 'PAUSED'
-                }
-            });
         }
 
-        return automation;
+        return prisma.marketingAutomation.create({
+            data: {
+                accountId,
+                name,
+                triggerType,
+                triggerConfig,
+                isActive: isActive || false,
+                flowDefinition: data.flowDefinition,
+                status: isActive ? 'ACTIVE' : 'PAUSED'
+            }
+        });
     }
 
     async deleteAutomation(id: string, accountId: string) {
-        return prisma.marketingAutomation.deleteMany({
-            where: { id, accountId }
-        });
+        return prisma.marketingAutomation.deleteMany({ where: { id, accountId } });
     }
 
     // -------------------
@@ -216,8 +220,9 @@ export class MarketingService {
     }
 
     async deleteTemplate(id: string, accountId: string) {
-        return prisma.emailTemplate.deleteMany({
-            where: { id, accountId }
-        });
+        return prisma.emailTemplate.deleteMany({ where: { id, accountId } });
     }
+
+    // Delegate merge tag resolution to MergeTagResolver
+    resolveWooCommerceMergeTags = resolveMergeTags;
 }

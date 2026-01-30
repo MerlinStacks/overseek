@@ -1,7 +1,7 @@
 
-import { PrismaClient, CustomerSegment, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { CustomerSegment, Prisma } from '@prisma/client';
+import { prisma } from '../utils/prisma';
+import crypto from 'crypto';
 
 interface SegmentRule {
     field: string;
@@ -12,6 +12,18 @@ interface SegmentRule {
 interface SegmentCriteria {
     type: 'AND' | 'OR';
     rules: SegmentRule[];
+}
+
+/**
+ * Result type for exportable customer data.
+ * Contains both raw and SHA256-hashed identifiers for ad platform uploads.
+ */
+export interface ExportableCustomerData {
+    emails: string[];
+    phones: string[];
+    hashedEmails: string[];
+    hashedPhones: string[];
+    totalCount: number;
 }
 
 export class SegmentService {
@@ -93,6 +105,128 @@ export class SegmentService {
         });
 
         return customers;
+    }
+
+    /**
+     * getSegmentCount - Returns the count of customers in a segment
+     */
+    async getSegmentCount(accountId: string, segmentId: string): Promise<number> {
+        const segment = await this.getSegment(segmentId, accountId);
+        if (!segment) return 0;
+
+        const criteria = segment.criteria as unknown as SegmentCriteria;
+        const whereClause = this.buildWhereClause(accountId, criteria);
+
+        return prisma.wooCustomer.count({ where: whereClause });
+    }
+
+    /**
+     * iterateCustomersInSegment - Yields batches of customers in a segment
+     */
+    async *iterateCustomersInSegment(accountId: string, segmentId: string, batchSize = 1000) {
+        const segment = await this.getSegment(segmentId, accountId);
+        if (!segment) return;
+
+        const criteria = segment.criteria as unknown as SegmentCriteria;
+        const whereClause = this.buildWhereClause(accountId, criteria);
+
+        let cursor: string | undefined;
+
+        while (true) {
+            const params: any = {
+                where: whereClause,
+                take: batchSize,
+                orderBy: { id: 'asc' },
+                select: { id: true, email: true }
+            };
+
+            if (cursor) {
+                params.cursor = { id: cursor };
+                params.skip = 1;
+            }
+
+            const batch = await prisma.wooCustomer.findMany(params);
+
+            if (batch.length === 0) break;
+
+            yield batch;
+
+            if (batch.length < batchSize) break;
+
+            cursor = batch[batch.length - 1].id;
+        }
+    }
+
+    /**
+     * getExportableCustomers - Returns customer identifiers for ad platform sync
+     * 
+     * Retrieves all customers in a segment and returns both raw and SHA256-hashed
+     * emails/phones. Both Meta Custom Audiences and Google Customer Match require
+     * SHA256 hashing for privacy compliance.
+     * 
+     * @param accountId - The account ID
+     * @param segmentId - The segment to export
+     * @returns Object containing raw and hashed emails/phones
+     */
+    async getExportableCustomers(accountId: string, segmentId: string): Promise<ExportableCustomerData> {
+        const segment = await this.getSegment(segmentId, accountId);
+        if (!segment) {
+            throw new Error('Segment not found');
+        }
+
+        const criteria = segment.criteria as unknown as SegmentCriteria;
+        const whereClause = this.buildWhereClause(accountId, criteria);
+
+        // Fetch all customers with email and rawData (phone is in rawData.billing.phone)
+        const customers = await prisma.wooCustomer.findMany({
+            where: whereClause,
+            select: {
+                email: true,
+                rawData: true
+            }
+        });
+
+        const emails: string[] = [];
+        const phones: string[] = [];
+        const hashedEmails: string[] = [];
+        const hashedPhones: string[] = [];
+
+        for (const customer of customers) {
+            // Process email
+            if (customer.email) {
+                const normalizedEmail = customer.email.toLowerCase().trim();
+                emails.push(normalizedEmail);
+                hashedEmails.push(this.sha256Hash(normalizedEmail));
+            }
+
+            // Process phone - extract from rawData.billing.phone
+            const rawData = customer.rawData as Record<string, any> | null;
+            const phone = rawData?.billing?.phone || rawData?.phone;
+            if (phone && typeof phone === 'string') {
+                const normalizedPhone = phone.replace(/\D/g, '');
+                if (normalizedPhone.length >= 10) {
+                    phones.push(normalizedPhone);
+                    hashedPhones.push(this.sha256Hash(normalizedPhone));
+                }
+            }
+        }
+
+        return {
+            emails,
+            phones,
+            hashedEmails,
+            hashedPhones,
+            totalCount: customers.length
+        };
+    }
+
+
+    /**
+     * SHA256 hash for PII before sending to ad platforms.
+     * Both Meta and Google require this for Customer Match / Custom Audiences.
+     */
+    private sha256Hash(value: string): string {
+        return crypto.createHash('sha256').update(value).digest('hex');
     }
 
     private buildWhereClause(accountId: string, criteria: SegmentCriteria): Prisma.WooCustomerWhereInput {

@@ -1,9 +1,10 @@
 import { Queue, Worker } from 'bullmq';
-import { redisClient } from '../../utils/redis';
+import { redisClient, createWorkerConnection } from '../../utils/redis';
 import { Logger } from '../../utils/logger';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { ExpressAdapter } from '@bull-board/express';
+import { FastifyAdapter } from '@bull-board/fastify';
+import { QUEUE_LIMITS } from '../../config/limits';
 
 // Define Queue Names
 export const QUEUES = {
@@ -11,6 +12,8 @@ export const QUEUES = {
     PRODUCTS: 'sync-products',
     REVIEWS: 'sync-reviews',
     CUSTOMERS: 'sync-customers',
+    REPORTS: 'report-generation',
+    BOM_SYNC: 'bom-inventory-sync',
 };
 
 // Global Store for Queues to adapter
@@ -30,16 +33,16 @@ export class QueueFactory {
         }
 
         const queue = new Queue(name, {
-            connection: redisClient,
+            connection: redisClient as any,
             defaultJobOptions: {
-                attempts: 3,
+                attempts: QUEUE_LIMITS.MAX_RETRIES,
                 backoff: {
                     type: 'exponential',
-                    delay: 2000,
+                    delay: QUEUE_LIMITS.RETRY_DELAY_MS,
                 },
-                removeOnComplete: 100, // Keep last 100
-                removeOnFail: 500,     // Keep last 500 for debugging
-            }
+                removeOnComplete: { count: QUEUE_LIMITS.COMPLETED_JOBS_KEEP },
+                removeOnFail: { age: QUEUE_LIMITS.FAILED_JOBS_TTL_SECONDS },
+            },
         });
 
         queues.set(name, queue);
@@ -52,12 +55,22 @@ export class QueueFactory {
     }
 
     static createWorker(name: string, processor: (job: any) => Promise<void>) {
+        // Long-running jobs (BOM_SYNC, report generation) need extended lock durations
+        // to prevent false stall detection when processing many items
+        const isLongRunning = [QUEUES.BOM_SYNC, QUEUES.REPORTS].includes(name);
+
         const worker = new Worker(name, async (job) => {
             Logger.info(`Processing Job ${job.id}`, { jobId: job.id, accountId: job.data.accountId });
             await processor(job);
         }, {
-            connection: redisClient.duplicate(),
-            concurrency: 5, // Can perform 5 syncs in parallel per queue type
+            connection: createWorkerConnection() as any,
+            concurrency: QUEUE_LIMITS.WORKER_CONCURRENCY,
+            lockDuration: isLongRunning
+                ? QUEUE_LIMITS.LONG_RUNNING_LOCK_DURATION_MS
+                : QUEUE_LIMITS.DEFAULT_LOCK_DURATION_MS,
+            stalledInterval: isLongRunning
+                ? QUEUE_LIMITS.LONG_RUNNING_STALL_INTERVAL_MS
+                : QUEUE_LIMITS.DEFAULT_LOCK_DURATION_MS,
         });
 
         worker.on('completed', (job) => {
@@ -73,12 +86,12 @@ export class QueueFactory {
 
     // Bull Board Setup
     static createBoard() {
-        const serverAdapter = new ExpressAdapter();
+        const serverAdapter = new FastifyAdapter();
         serverAdapter.setBasePath('/admin/queues');
 
         createBullBoard({
-            queues: Array.from(queues.values()).map(q => new BullMQAdapter(q) as any),
-            serverAdapter,
+            queues: Array.from(queues.values()).map(q => new BullMQAdapter(q)) as any,
+            serverAdapter: serverAdapter as any,
         });
 
         return serverAdapter;
