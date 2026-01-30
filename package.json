@@ -1,15 +1,25 @@
 {
   "name": "overseek-v2",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "workspaces": [
     "client",
     "server"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\""
+    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
+    "db:migrate": "cd server && npx prisma migrate deploy",
+    "db:generate": "cd server && npx prisma generate"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "overrides": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "pure-rand": "^7.0.1"
   }
 }

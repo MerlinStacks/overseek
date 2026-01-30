@@ -25,6 +25,16 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 api_logs.txt
+api-logs.txt
+
+# Debug & Build Output (development artifacts)
+build_output*.txt
+*_errors.txt
+tsc*.txt
+*_lint.txt
+vite_error.txt
+repro*.txt
+reproduce_*.ts
 
 # Environment
 .env
@@ -35,3 +45,55 @@ api_logs.txt
 .idea/
 .DS_Store
 Thumbs.db
+
+logs.txt
+
+# Agent & Debug (development artifacts)
+.agent/
+.gemini/
+debug_logs.txt
+bugs.md
+task.md
+implementation_plan.md
+walkthrough.md
+
+# Temp & Cache
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+.cache/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# GeoIP Databases
+*.mmdb
+
+# Sensitive files
+*.local
+*.key
+*.pem
+*.crt
+secrets/
+credentials/
+
+# Capacitor / Native Builds
+client/android/.gradle/
+client/android/build/
+client/android/app/build/
+client/android/.idea/
+client/android/*.iml
+client/android/local.properties
+client/ios/Pods/
+client/ios/DerivedData/
+client/ios/*.xcworkspace
+client/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+client/ios/App/App.xcodeproj/xcuserdata/
+
+# Firebase config (add these but track the examples)
+client/android/app/google-services.json
+client/ios/App/App/GoogleService-Info.plist
