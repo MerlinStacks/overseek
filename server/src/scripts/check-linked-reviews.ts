@@ -1,8 +1,8 @@
 
 import dotenv from 'dotenv';
 dotenv.config();
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { createPrismaClient } from '../utils/prisma';
+const prisma = createPrismaClient();
 
 async function main() {
     const linkedToCustomer = await prisma.wooReview.count({

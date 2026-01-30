@@ -1,9 +1,9 @@
 
 import dotenv from 'dotenv';
 dotenv.config();
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 import fs from 'fs';
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     const account = await prisma.account.findFirst({

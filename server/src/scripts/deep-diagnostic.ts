@@ -1,7 +1,7 @@
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../utils/prisma';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     try {
@@ -40,7 +40,7 @@ async function main() {
             console.log(`User Table Sample (${users.length}):`);
             console.dir(users, { depth: null });
         } catch (e) {
-            console.log('Could not select from "User" table (maybe lower case "user"?):', e.message.split('\n')[0]);
+            console.log('Could not select from "User" table (maybe lower case "user"?):', (e as any).message.split('\n')[0]);
             // Try lowercase
             try {
                 const usersLower: any[] = await prisma.$queryRaw`SELECT * FROM "public"."user" LIMIT 5`;
