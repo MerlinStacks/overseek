@@ -1,78 +1,161 @@
 services:
   # Postgres Database
   postgres:
-    image: postgres:16-alpine
-    container_name: overseekv2-postgres-1
+    image: pgvector/pgvector:pg17
+
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Allow override, default to password
       POSTGRES_DB: overseek
-    ports:
-      - "5432:5432"
+    # Ports removed to prevent external access
+    # ports:
+    #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - postgres_backups:/backups # Backup volume for migrations
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d overseek" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Elasticsearch
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
-    container_name: overseekv2-elasticsearch-1
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.4
     environment:
       - discovery.type=single-node
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "ES_JAVA_OPTS=-Xms${ES_HEAP_MIN:-512m} -Xmx${ES_HEAP_MAX:-1g}"
       - xpack.security.enabled=false
-    ports:
-      - "9200:9200"
+      - xpack.security.enrollment.enabled=false
+    # Ports removed to prevent external access
+    # ports:
+    #   - "9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/config/operator/settings.json:/usr/share/elasticsearch/config/operator/settings.json:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Redis (Queue & Cache)
   redis:
     image: redis:alpine
-    container_name: overseekv2-redis-1
-    ports:
-      - "6379:6379"
+    # Ports removed to prevent external access
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # Node API (Express + Prisma)
+  # Node API (Fastify + Prisma)
   api:
     build:
-      context: ./server
-    container_name: overseekv2-api-1
-    command: sh -c "npx prisma generate && npx ts-node src/index.ts"
+      context: .
+      dockerfile: server/Dockerfile
+      args:
+        DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+    pull_policy: build
     ports:
       - "3000:3000"
+    env_file:
+      - stack.env
     environment:
-      DATABASE_URL: postgres://admin:password@postgres:5432/overseek
+      DATABASE_URL: postgres://admin:${POSTGRES_PASSWORD:-password}@postgres:5432/overseek
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      JWT_SECRET: supersecretkey
       PORT: 3000
       REDIS_HOST: redis
+    volumes:
+      - uploads_data:/app/server/uploads
+      - geoip_data:/app/server/data
     depends_on:
-      - postgres
-      - elasticsearch
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:3000/health/live || exit 1" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
     extra_hosts:
       - "host.docker.internal:host-gateway" # Allow container to reach host
-    volumes:
-      - ./server:/app
-      - server_node_modules:/app/node_modules
+    networks:
+      - default
+      - proxy-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     build:
       context: ./client
       dockerfile: Dockerfile
+    pull_policy: build
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:3000
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-overseek.plateit.au}
+      HOST: "true"
+      PORT: "5173"
+      VITE_API_URL: ${VITE_API_URL:-http://api:3000}
+      CHOKIDAR_USEPOLLING: "true" # Better for Docker
     depends_on:
-      - api
-    volumes:
-      - ./client:/app
-      - /app/node_modules
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5173/" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - default
+      - proxy-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
+  postgres_backups: # Separate volume for database backups (survives data volume deletion)
   elasticsearch_data:
   redis_data:
   server_node_modules:
+  uploads_data:
+  geoip_data:
+
+
+networks:
+  proxy-net:
+    # External network for reverse proxy (Nginx Proxy Manager)
+    # Create once on host: docker network create proxy-net
+    external: true
