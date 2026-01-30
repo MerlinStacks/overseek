@@ -2,6 +2,28 @@
   "name": "overseek-v2",
   "private": true,
   "version": "1.0.0",
+  "description": "Self-hosted WooCommerce command center with real-time analytics, unified inbox, AI marketing co-pilot, and inventory management",
+  "keywords": [
+    "woocommerce",
+    "ecommerce",
+    "analytics",
+    "self-hosted",
+    "dashboard",
+    "crm",
+    "marketing-automation",
+    "customer-support",
+    "live-chat",
+    "inventory-management",
+    "business-intelligence",
+    "email-marketing",
+    "docker",
+    "react",
+    "typescript",
+    "fastify",
+    "postgresql",
+    "ai",
+    "wordpress"
+  ],
   "workspaces": [
     "client",
     "server"

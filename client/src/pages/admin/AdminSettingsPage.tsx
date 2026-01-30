@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw } from 'lucide-react';
+import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw, UserPlus, ToggleLeft, ToggleRight } from 'lucide-react';
 
 interface DatabaseInfo {
     source: 'manual' | 'auto';
@@ -14,6 +14,11 @@ interface DatabaseInfo {
 
 interface GeoIPStatus {
     databases: DatabaseInfo[];
+}
+
+interface PlatformSettings {
+    registrationEnabled: boolean;
+    updatedAt: string;
 }
 
 /**
@@ -31,6 +36,10 @@ export function AdminSettingsPage() {
     const [dragOver, setDragOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Platform settings state
+    const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
+    const [togglingRegistration, setTogglingRegistration] = useState(false);
+
     const fetchStatus = async () => {
         try {
             const res = await fetch('/api/admin/geoip-status', {
@@ -47,8 +56,58 @@ export function AdminSettingsPage() {
         }
     };
 
+    const fetchPlatformSettings = async () => {
+        try {
+            const res = await fetch('/api/admin/platform-settings', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPlatformSettings(data);
+            }
+        } catch (e) {
+            Logger.error('Failed to fetch platform settings:', { error: e });
+        }
+    };
+
+    const handleToggleRegistration = async () => {
+        if (!platformSettings) return;
+
+        setTogglingRegistration(true);
+        setMessage(null);
+        try {
+            const res = await fetch('/api/admin/platform-settings', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    registrationEnabled: !platformSettings.registrationEnabled
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setPlatformSettings(data);
+                setMessage({
+                    type: 'success',
+                    text: data.registrationEnabled
+                        ? 'New user registrations enabled'
+                        : 'New user registrations disabled'
+                });
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Failed to update settings' });
+            }
+        } catch (e) {
+            setMessage({ type: 'error', text: 'Network request failed' });
+        } finally {
+            setTogglingRegistration(false);
+        }
+    };
+
     useEffect(() => {
         fetchStatus();
+        fetchPlatformSettings();
     }, [token]);
 
     const handleForceUpdate = async () => {
@@ -158,11 +217,69 @@ export function AdminSettingsPage() {
     const autoDB = status?.databases.find(d => d.source === 'auto');
 
     return (
-        <div>
-            <h1 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3">
+        <div className="space-y-6">
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
                 <Settings size={28} />
                 System Settings
             </h1>
+
+            {/* Platform Settings Section */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+                    <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                        <UserPlus size={20} className="text-purple-600" />
+                        User Registration
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                        Control whether new users can register accounts on the platform.
+                    </p>
+                </div>
+
+                <div className="p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-slate-800">Allow New Registrations</h3>
+                            <p className="text-sm text-slate-500 mt-1">
+                                {platformSettings?.registrationEnabled
+                                    ? 'New users can create accounts'
+                                    : 'Only existing users can access the platform'}
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleToggleRegistration}
+                            disabled={togglingRegistration || !platformSettings}
+                            className={`
+                                relative inline-flex h-8 w-14 items-center rounded-full transition-colors
+                                ${platformSettings?.registrationEnabled
+                                    ? 'bg-emerald-500 hover:bg-emerald-600'
+                                    : 'bg-slate-300 hover:bg-slate-400'}
+                                ${togglingRegistration ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                            `}
+                        >
+                            {togglingRegistration ? (
+                                <Loader2 className="absolute left-1/2 -translate-x-1/2 animate-spin text-white" size={16} />
+                            ) : (
+                                <span
+                                    className={`
+                                        inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform
+                                        ${platformSettings?.registrationEnabled ? 'translate-x-7' : 'translate-x-1'}
+                                    `}
+                                />
+                            )}
+                        </button>
+                    </div>
+
+                    {platformSettings && !platformSettings.registrationEnabled && (
+                        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+                            <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={18} />
+                            <div className="text-sm text-amber-800">
+                                <strong>Registration is disabled.</strong> New users will not be able to create accounts.
+                                Existing users and team members added manually can still log in.
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* GeoIP Database Section */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">

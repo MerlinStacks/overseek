@@ -186,12 +186,26 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const { email, password, fullName } = parsed.data;
 
+            // Check if this is the first user (superadmin bootstrap - always allowed)
+            const userCount = await prisma.user.count();
+            const isSuperAdmin = userCount === 0;
+
+            // If not the first user, check if registrations are enabled
+            if (!isSuperAdmin) {
+                const platformSettings = await prisma.platformSettings.findUnique({
+                    where: { key: 'default' }
+                });
+
+                // Default to enabled if no settings exist, but check if explicitly disabled
+                if (platformSettings && !platformSettings.registrationEnabled) {
+                    return reply.code(403).send({ error: 'New registrations are currently disabled' });
+                }
+            }
+
             const existingUser = await prisma.user.findUnique({ where: { email } });
             if (existingUser) return reply.code(400).send({ error: 'User already exists' });
 
             const passwordHash = await hashPassword(password);
-            const userCount = await prisma.user.count();
-            const isSuperAdmin = userCount === 0;
 
             const user = await prisma.user.create({
                 data: { email, passwordHash, fullName, isSuperAdmin }

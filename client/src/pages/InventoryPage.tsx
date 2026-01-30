@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Logger } from '../utils/logger';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
@@ -54,9 +54,27 @@ import { ProductService } from '../services/ProductService';
 
 export function InventoryPage() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [activeTab, setActiveTab] = useState<'catalog' | 'suppliers' | 'purchasing' | 'components'>('catalog');
+
+    // Read initial tab from URL query param, default to 'catalog'
+    const tabFromUrl = searchParams.get('tab') as 'catalog' | 'suppliers' | 'purchasing' | 'components' | null;
+    const validTabs = ['catalog', 'suppliers', 'purchasing', 'components'];
+    const initialTab = (tabFromUrl && validTabs.includes(tabFromUrl)) ? tabFromUrl : 'catalog';
+    const [activeTab, setActiveTab] = useState<'catalog' | 'suppliers' | 'purchasing' | 'components'>(initialTab);
+
+    // Sync URL when tab changes
+    useEffect(() => {
+        const currentTabParam = searchParams.get('tab');
+        if (activeTab !== 'catalog' && currentTabParam !== activeTab) {
+            setSearchParams({ tab: activeTab }, { replace: true });
+        } else if (activeTab === 'catalog' && currentTabParam) {
+            // Remove tab param when on default catalog tab
+            searchParams.delete('tab');
+            setSearchParams(searchParams, { replace: true });
+        }
+    }, [activeTab]);
 
     // Catalog State
     const [products, setProducts] = useState<Product[]>([]);

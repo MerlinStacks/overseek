@@ -12,6 +12,7 @@ import { Logger } from '../utils/logger';
 // Modular sub-routes (extracted for maintainability)
 import { webhookAdminRoutes } from './admin/webhooks';
 import { platformCredentialsRoutes } from './admin/platformCredentials';
+import { platformSettingsRoutes } from './admin/platformSettings';
 import { geoipRoutes } from './admin/geoip';
 import { diagnosticsRoutes } from './admin/diagnostics';
 import { backupRoutes } from './admin/backup';
@@ -44,6 +45,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     // Register modular sub-routes
     await fastify.register(webhookAdminRoutes);
     await fastify.register(platformCredentialsRoutes);
+    await fastify.register(platformSettingsRoutes);
     await fastify.register(geoipRoutes);
     await fastify.register(diagnosticsRoutes);
     await fastify.register(backupRoutes);

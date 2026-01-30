@@ -2043,6 +2043,25 @@ model PlatformCredentials {
 }
 
 // --------------------------------------
+// Platform Settings (Super Admin)
+// --------------------------------------
+
+/// Global platform settings (singleton pattern).
+/// Only Super Admins can manage these settings.
+model PlatformSettings {
+  id        String @id @default(uuid())
+  
+  /// Unique key - always "default" for singleton pattern
+  key       String @unique @default("default")
+  
+  /// Whether new user registrations are allowed
+  registrationEnabled Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
 // AI Prompts (Super Admin)
 // --------------------------------------
 

@@ -186,7 +186,7 @@ export function PurchaseOrderEditPage() {
         <div className="max-w-7xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate('/inventory')} className="p-2 hover:bg-gray-100 rounded-full">
+                    <button onClick={() => navigate('/inventory?tab=purchasing')} className="p-2 hover:bg-gray-100 rounded-full">
                         <ArrowLeft size={20} />
                     </button>
                     <div>
