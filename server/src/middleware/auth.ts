@@ -1,57 +1,146 @@
+/**
+ * Authentication Middleware - Fastify Native
+ */
 
-import { Request, Response, NextFunction } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { verifyToken } from '../utils/auth';
+import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
-export interface AuthRequest extends Request {
-    user?: {
-        id: string;
-        accountId: string;
-    };
-    accountId?: string; // Legacy support for some routes that used req.accountId
+interface JwtPayload {
+    userId: string;
+    sessionId?: string; // Refresh token ID for current session identification
+    iat: number;
+    exp: number;
 }
 
-export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        return res.status(401).json({ error: 'No token provided' });
+// Fastify request augmentation
+declare module 'fastify' {
+    interface FastifyRequest {
+        user?: {
+            id: string;
+            sessionId?: string;
+            accountId?: string;
+            isSuperAdmin?: boolean;
+        };
+        accountId?: string;
+    }
+}
+
+// Strict account routes that require accountId
+const STRICT_ACCOUNT_ROUTES = [
+    '/customers',
+    '/products',
+    '/marketing',
+    '/orders',
+    '/analytics',
+    '/woo/configure',
+    '/inventory',
+    '/invoices',
+    '/email',
+    '/segments',
+    '/audits'
+];
+
+/**
+ * Fastify authentication preHandler
+ */
+export const requireAuthFastify = async (request: FastifyRequest, reply: FastifyReply) => {
+    const authHeader = request.headers.authorization;
+    const queryToken = (request.query as any)?.token;
+
+    let token: string | undefined;
+
+    if (authHeader) {
+        token = authHeader.split(' ')[1];
+    } else if (queryToken && request.url.startsWith('/admin/queues')) {
+        token = queryToken;
     }
 
-    const token = authHeader.split(' ')[1];
     if (!token) {
-        return res.status(401).json({ error: 'Invalid token format' });
+        return reply.code(401).send({ error: 'No token provided' });
     }
 
     try {
-        const decoded: any = verifyToken(token);
-        const accountId = req.headers['x-account-id'] as string;
+        const decoded = verifyToken(token) as JwtPayload;
+        const accountId = request.headers['x-account-id'] as string | undefined;
+        let isSuperAdmin = false;
 
-        if (!accountId) {
-            // For strict endpoints, we might demand this. 
-            // However, to fix the 400 "No account selected" gracefully, we returning 400 is correct if the route NEEDS it.
-            // But let's attach what we have.
-            // If the route strictly needs it, it will check req.user.accountId
+        if (accountId) {
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId: decoded.userId, accountId } },
+                select: { id: true }
+            });
+
+            if (!membership) {
+                const user = await prisma.user.findUnique({
+                    where: { id: decoded.userId },
+                    select: { isSuperAdmin: true }
+                });
+                isSuperAdmin = user?.isSuperAdmin === true;
+
+                if (!isSuperAdmin) {
+                    return reply.code(403).send({ error: 'Forbidden for this account' });
+                }
+            }
         }
 
-        req.user = {
+        request.user = {
             id: decoded.userId,
-            accountId: accountId
+            sessionId: decoded.sessionId,
+            accountId: accountId,
+            isSuperAdmin
         };
+        request.accountId = accountId;
 
-        // Backwards compatibility for routes expecting req.accountId directly
-        req.accountId = accountId;
+        // Check if route requires strict accountId
+        const path = request.url;
+        const requiresAccount = STRICT_ACCOUNT_ROUTES.some(prefix => path.startsWith(`/api${prefix}`));
 
-        if (!accountId && (req.originalUrl.includes('/customers') || req.originalUrl.includes('/products') || req.originalUrl.includes('/marketing'))) {
-            // Specific enforce for the reported issues
-            return res.status(400).json({ error: 'No account selected' });
+        if (requiresAccount && !accountId) {
+            return reply.code(400).send({ error: 'Account ID required for this resource' });
         }
 
-        next();
-    } catch (error) {
-        return res.status(401).json({ error: 'Invalid token' });
+    } catch (err: any) {
+        if (err.name === 'TokenExpiredError') {
+            return reply.code(401).send({ error: 'Token expired' });
+        }
+        // Log fingerprint for debugging multi-container JWT issues
+        const crypto = await import('crypto');
+        const secret = process.env.JWT_SECRET || '';
+        const fingerprint = crypto.createHash('sha256').update(secret.substring(0, 8)).digest('hex').substring(0, 12);
+        Logger.warn('Auth failed', { error: err.message, url: request.url, jwtFingerprint: fingerprint });
+        return reply.code(401).send({ error: 'Invalid token' });
     }
 };
 
-export const requireSuperAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
-    // TODO: Implement actual super admin check
-    next();
+/**
+ * Fastify super admin authorization preHandler
+ */
+export const requireSuperAdminFastify = async (request: FastifyRequest, reply: FastifyReply) => {
+    // First run normal auth
+    await requireAuthFastify(request, reply);
+
+    // Check if reply was already sent (auth failed)
+    if (reply.sent) return;
+
+    if (!request.user?.id) {
+        return reply.code(401).send({ error: 'Authentication required' });
+    }
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: request.user.id },
+            select: { isSuperAdmin: true }
+        });
+
+        if (!user?.isSuperAdmin) {
+            return reply.code(403).send({ error: 'Super admin access required' });
+        }
+
+        request.user.isSuperAdmin = true;
+    } catch (err) {
+        Logger.error('Super admin check failed', { error: err });
+        return reply.code(500).send({ error: 'Authorization check failed' });
+    }
 };
