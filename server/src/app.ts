@@ -1,176 +1,329 @@
-import dotenv from 'dotenv';
-dotenv.config();
+require('dotenv').config();
+// Force Restart Trigger
 
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import { Client } from '@elastic/elasticsearch';
-import authRoutes from './routes/auth';
-import accountRoutes from './routes/account';
-import wooRoutes from './routes/woo';
-import syncRoutes from './routes/sync';
-import webhookRoutes from './routes/webhook';
-import adsRoutes from './routes/ads';
-import dashboardRoutes from './routes/dashboard';
+import Fastify, { FastifyError } from 'fastify';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
+import fastifyCompress from '@fastify/compress';
+import fastifyMultipart from '@fastify/multipart';
 import path from 'path';
-import analyticsRoutes from './routes/analytics';
-import productsRoutes from './routes/products';
-import customersRoutes from './routes/customers';
-import searchRoutes from './routes/search';
-import aiRoutes from './routes/ai';
-import notificationRoutes from './routes/notifications';
-import inventoryRoutes from './routes/inventory';
-import reviewRoutes from './routes/reviews';
-import helpRoutes from './routes/help';
-import trackingRoutes from './routes/tracking';
-import markersRoutes from './routes/marketing'; // corrected below
-import marketingRoutes from './routes/marketing';
-import emailRoutes from './routes/email';
-import ordersRoutes from './routes/orders'; // Mount Orders API
-import segmentsRoutes from './routes/segments';
-
+import { prisma } from './utils/prisma';
 import { esClient } from './utils/elastic';
 
 import http from 'http';
 import { Server } from 'socket.io';
-import { createChatRouter } from './routes/chat';
 import { ChatService } from './services/ChatService';
-import { QueueFactory, QUEUES } from './services/queue/QueueFactory';
-import { createBullBoard } from '@bull-board/api';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { ExpressAdapter } from '@bull-board/express';
+import { QueueFactory } from './services/queue/QueueFactory';
 import { EventBus, EVENTS } from './services/events';
 import { AutomationEngine } from './services/AutomationEngine';
+import { setIO } from './socket';
+import { RATE_LIMITS, UPLOAD_LIMITS, SCHEDULER_LIMITS } from './config/limits';
+import { verifyToken } from './utils/auth';
+import { registerRoutes } from './config/routes';
+import { setupSocketHandlers } from './config/socketHandlers';
+const { Logger, fastifyLoggerConfig } = require('./utils/logger');
 
 // Init Queues for Bull Board
 QueueFactory.init();
 
-const automationEngine = new AutomationEngine(); // Keep for event listeners
+const automationEngine = new AutomationEngine();
+import { InventoryService } from './services/InventoryService';
+import { NotificationEngine } from './services/NotificationEngine';
 
-const app = express();
+// Initialize Inventory Listeners
+InventoryService.setupListeners();
 
-// Security & Middleware
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-// Global: Disable caching for all API responses to ensure fresh data
-app.use((req, res, next) => {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
-    next();
+// Create Fastify instance
+const fastify = Fastify({
+    logger: fastifyLoggerConfig,
+    disableRequestLogging: true,
+    trustProxy: true,
 });
 
-// Create HTTP server and Socket.IO
-const server = http.createServer(app);
-// Force restart
-const io = new Server(server, {
-    cors: {
-        origin: process.env.CORS_ORIGIN || "*", // Allow all for dev, tighten in prod
-        methods: ["GET", "POST"]
+// Build function to initialize all plugins and routes
+async function build() {
+    // Register CORS
+    await fastify.register(cors, {
+        origin: (origin, cb) => {
+            const envOrigins = process.env.CORS_ORIGINS
+                ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
+                : [];
+            const allowedOrigins = envOrigins.length > 0
+                ? envOrigins
+                : (process.env.CLIENT_URL
+                    ? [process.env.CLIENT_URL, 'http://localhost:5173']
+                    : ['http://localhost:5173']);
+            const enforceAllowlist = envOrigins.length > 0;
+
+            if (!origin || allowedOrigins.includes(origin) || origin === '*') {
+                cb(null, true);
+            } else {
+                cb(null, !enforceAllowlist);
+            }
+        },
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic'],
+    });
+
+    // Rate Limiting
+    await fastify.register(rateLimit, {
+        max: RATE_LIMITS.MAX_REQUESTS,
+        timeWindow: RATE_LIMITS.WINDOW,
+        allowList: (req) => {
+            const url = req.url || '';
+            if (url.startsWith('/api/sync')) return true;
+            if (url.startsWith('/api/webhooks')) return true;
+            if (url.startsWith('/api/webhook/')) return true;
+            if (url.startsWith('/health')) return true;
+            if (url.startsWith('/api/t/')) return true;
+            if (url.startsWith('/api/tracking')) return true;
+            return false;
+        },
+        errorResponseBuilder: () => ({
+            error: 'Too many requests, please try again later.'
+        })
+    });
+
+    // Helmet security headers
+    await fastify.register(helmet, {
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'"],
+                objectSrc: ["'none'"],
+                upgradeInsecureRequests: [],
+            }
+        },
+        dnsPrefetchControl: { allow: false },
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+        hsts: { maxAge: 31536000, includeSubDomains: true },
+    });
+
+    // Static file serving for uploads
+    const uploadDir = path.join(__dirname, '../uploads');
+    if (!require('fs').existsSync(uploadDir)) {
+        require('fs').mkdirSync(uploadDir, { recursive: true });
     }
-});
+    await fastify.register(fastifyStatic, {
+        root: path.join(__dirname, '../uploads'),
+        prefix: '/uploads/',
+        maxAge: '1h',
+    });
 
-// Initialize Chat Service
-const chatService = new ChatService(io);
+    // Response compression
+    await fastify.register(fastifyCompress, {
+        encodings: ['br', 'gzip', 'deflate'],
+        threshold: 1024,
+    });
 
-import adminRoutes from './routes/admin';
+    // Multipart file uploads
+    await fastify.register(fastifyMultipart, {
+        limits: { fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE },
+    });
 
-// Routes
-app.use('/api/admin', adminRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/accounts', accountRoutes);
-app.use('/api/woo', wooRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/webhooks', webhookRoutes);
-app.use('/api/ads', adsRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+    // Request ID hook
+    fastify.addHook('onRequest', async (request, reply) => {
+        const existingId = request.headers['x-request-id'] as string;
+        const requestId = existingId || `req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        (request as any).requestId = requestId;
+        reply.header('x-request-id', requestId);
+    });
 
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/products', productsRoutes);
-app.use('/api/customers', customersRoutes);
-app.use('/api/search', searchRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/reviews', reviewRoutes);
-app.use('/api/help', helpRoutes);
-app.use('/api/tracking', trackingRoutes);
-app.use('/api/marketing', marketingRoutes); // Mount Marketing API
-app.use('/api/email', emailRoutes);
-app.use('/api/segments', segmentsRoutes);
-app.use('/api/orders', ordersRoutes); // Mount Orders API
+    // Request logging hooks
+    fastify.addHook('onRequest', async (request, _reply) => {
+        (request as any).startTime = Date.now();
+    });
 
-// Mount Chat Routes
-app.use('/api/chat', createChatRouter(chatService));
+    fastify.addHook('onResponse', async (request, reply) => {
+        const duration = Date.now() - ((request as any).startTime || Date.now());
+        if (!request.url.includes('/health')) {
+            Logger.http(`${request.method} ${request.url}`, {
+                status: reply.statusCode,
+                duration: `${duration}ms`,
+                requestId: (request as any).requestId,
+            });
+        }
+    });
 
-// Mount Bull Board
-console.log('[BullBoard] Initializing Bull Board...');
-const serverAdapter = QueueFactory.createBoard();
-console.log('[BullBoard] Mounting at /admin/queues');
-app.use('/admin/queues', serverAdapter.getRouter());
+    // Disable caching for API responses
+    fastify.addHook('onSend', async (request, reply, payload) => {
+        reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        reply.header('Pragma', 'no-cache');
+        reply.header('Expires', '0');
+        return payload;
+    });
 
-// Listen for Automation Events
-EventBus.on(EVENTS.ORDER.CREATED, async (data) => {
-    // console.log('Event Received: Order Created', data.accountId);
-    await automationEngine.processTrigger(data.accountId, 'ORDER_CREATED', data.order);
-});
+    // Register all routes (extracted to config/routes.ts)
+    await registerRoutes(fastify);
 
-EventBus.on(EVENTS.REVIEW.LEFT, async (data) => {
-    await automationEngine.processTrigger(data.accountId, 'REVIEW_LEFT', data.review);
-});
+    // Mount Bull Board
+    const bullBoardAdapter = QueueFactory.createBoard();
+    await fastify.register(bullBoardAdapter.registerPlugin(), {
+        prefix: '/admin/queues',
+    });
 
-EventBus.on(EVENTS.EMAIL.RECEIVED, async (data) => {
-    await chatService.handleIncomingEmail(data);
-});
+    // Native Fastify health check
+    fastify.get('/health-fastify', async (_request, _reply) => {
+        let esStatus = 'disconnected';
+        try {
+            const health = await esClient.cluster.health();
+            esStatus = health.status;
+            if (esStatus !== 'red') {
+                const { IndexingService } = await import('./services/search/IndexingService');
+                await IndexingService.initializeIndices();
+            }
+        } catch (error) {
+            esStatus = 'unreachable';
+        }
 
-// Health Check
-app.get('/health', async (req: Request, res: Response) => {
-    let esStatus = 'disconnected';
+        return {
+            status: 'ok',
+            framework: 'fastify',
+            timestamp: new Date().toISOString(),
+            services: { elasticsearch: esStatus, socket: 'active' }
+        };
+    });
+
+    // Global Error Handler
+    fastify.setErrorHandler((error: FastifyError, request, reply) => {
+        const statusCode = error.statusCode || 500;
+        const isClientError = statusCode >= 400 && statusCode < 500;
+
+        if (isClientError) {
+            Logger.warn('Client Error', {
+                error: error.message, path: request.url, method: request.method, statusCode,
+            });
+        } else {
+            Logger.error('Server Error', {
+                error: error.message, stack: error.stack, path: request.url,
+                method: request.method, requestId: (request as any).requestId,
+            });
+        }
+
+        reply.status(statusCode).send({
+            error: isClientError ? error.message : 'Internal Server Error',
+            statusCode, requestId: (request as any).requestId,
+        });
+    });
+
+    // Graceful Shutdown Hook
+    fastify.addHook('onClose', async (_instance) => {
+        Logger.info('Graceful shutdown initiated...');
+        await prisma.$disconnect();
+        Logger.info('Prisma disconnected.');
+    });
+
+    return fastify;
+}
+
+// Create HTTP server from Fastify for Socket.IO compatibility
+let server: http.Server;
+let io: Server;
+let chatService: ChatService;
+
+// Async initialization
+async function initializeApp() {
+    await build();
+
+    server = fastify.server;
+
+    // Setup Socket.IO
+    const socketOrigins = process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
+        : (process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []);
+    const socketOriginSetting = socketOrigins.length > 0 ? socketOrigins : "*";
+
+    io = new Server(server, {
+        cors: { origin: socketOriginSetting, methods: ["GET", "POST"] }
+    });
+
+    // Socket.IO auth middleware
+    io.use(async (socket, next) => {
+        try {
+            const authHeader = socket.handshake.headers?.authorization as string | undefined;
+            const token =
+                socket.handshake.auth?.token ||
+                (authHeader ? authHeader.split(' ')[1] : undefined) ||
+                (socket.handshake.query?.token as string | undefined);
+
+            if (!token) return next(new Error('Unauthorized'));
+
+            const decoded = verifyToken(token) as { userId: string };
+            const user = await prisma.user.findUnique({
+                where: { id: decoded.userId },
+                select: { isSuperAdmin: true }
+            });
+            const memberships = await prisma.accountUser.findMany({
+                where: { userId: decoded.userId },
+                select: { accountId: true }
+            });
+
+            socket.data.userId = decoded.userId;
+            socket.data.isSuperAdmin = user?.isSuperAdmin === true;
+            socket.data.accountIds = memberships.map(m => m.accountId);
+
+            return next();
+        } catch (error) {
+            Logger.warn('[Socket.IO] Auth failed', { error });
+            return next(new Error('Unauthorized'));
+        }
+    });
+
+    // Apply Redis adapter for horizontal scaling
     try {
-        const health = await esClient.cluster.health();
-        esStatus = health.status;
-        if (esStatus !== 'red') { // Basic check, ideally wait for green/yellow
-            // Ensure indices exist
-            const { IndexingService } = require('./services/search/IndexingService');
-            await IndexingService.initializeIndices();
-        }
+        const { createSocketAdapter } = await import('./utils/socketAdapter');
+        io.adapter(createSocketAdapter());
+        Logger.info('[Socket.IO] Redis adapter enabled for horizontal scaling');
     } catch (error) {
-        // console.error('Elasticsearch health check failed');
-        esStatus = 'unreachable';
+        Logger.warn('[Socket.IO] Redis adapter not available, running in single-instance mode', { error });
     }
 
-    res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        services: {
-            elasticsearch: esStatus,
-            socket: 'active'
+    // Register Socket.IO globally
+    setIO(io);
+
+    // Initialize Chat Service
+    chatService = new ChatService(io);
+
+    // Mount Chat Routes (require ChatService)
+    const { createChatRoutes } = await import('./routes/chat');
+    const { createPublicChatRoutes } = await import('./routes/chat-public');
+    const { createSmsRoutes } = await import('./routes/sms');
+    await fastify.register(createChatRoutes(chatService), { prefix: '/api/chat' });
+    await fastify.register(createPublicChatRoutes(chatService), { prefix: '/api/chat/public' });
+    await fastify.register(createSmsRoutes(chatService), { prefix: '/api/sms' });
+
+    // Listen for Automation Events
+    EventBus.on(EVENTS.ORDER.CREATED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ORDER_CREATED', data.order);
+    });
+
+    EventBus.on(EVENTS.REVIEW.LEFT, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'REVIEW_LEFT', data.review);
+    });
+
+    EventBus.on(EVENTS.EMAIL.RECEIVED, async (data) => {
+        await chatService.handleIncomingEmail(data);
+    });
+
+    // Initialize Notification Engine
+    NotificationEngine.init();
+
+    // Setup Socket.IO handlers (extracted to config/socketHandlers.ts)
+    setupSocketHandlers(io);
+
+    // CRON / SCHEDULERS
+    setInterval(async () => {
+        try {
+            await automationEngine.runTicker();
+        } catch (e) {
+            Logger.error('Ticker Error', { error: e as Error });
         }
-    });
-});
+    }, SCHEDULER_LIMITS.TICKER_INTERVAL_MS);
+}
 
-// Socket.io Connection Logic
-io.on('connection', (socket) => {
-    // console.log('New client connected:', socket.id);
+// Initialize on import
+const appPromise = initializeApp();
 
-    socket.on('join:account', (accountId) => {
-        socket.join(`account:${accountId}`);
-    });
-
-    socket.on('join:conversation', (convId) => {
-        socket.join(`conversation:${convId}`);
-    });
-
-    socket.on('leave:conversation', (convId) => {
-        socket.leave(`conversation:${convId}`);
-    });
-
-    socket.on('disconnect', () => {
-        // console.log('Client disconnected:', socket.id);
-    });
-});
-
-export { app, server, io, automationEngine };
+export { fastify as app, server, io, automationEngine, appPromise };

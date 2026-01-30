@@ -1,0 +1,1182 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --------------------------------------
+// Identity & Access Management
+// --------------------------------------
+
+model User {
+  id             String  @id @default(uuid())
+  email          String  @unique
+  passwordHash   String
+  fullName       String?
+  avatarUrl      String?
+  shiftStart     String? // e.g. "09:00"
+  shiftEnd       String? // e.g. "17:00"
+  emailSignature String? @db.Text // Rich HTML email signature for inbox replies
+  isSuperAdmin   Boolean @default(false)
+
+  // Password Reset
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  // Two-Factor Auth
+  twoFactorSecret      String? // Store encrypted ideally, but raw for MVP
+  isTwoFactorEnabled   Boolean @default(false)
+  twoFactorBackupCodes Json?   @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts              AccountUser[]
+  dashboards            DashboardLayout[]
+  assignedConversations Conversation[]
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+  pushSubscriptions     PushSubscription[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+}
+
+model Account {
+  id     String  @id @default(uuid())
+  name   String
+  domain String? // e.g. "mystore.com"
+
+  // WooCommerce Connection (Secrets should be encrypted at app level)
+  wooUrl            String
+  wooConsumerKey    String
+  wooConsumerSecret String
+  webhookSecret     String?
+
+  // Settings
+  currency      String @default("USD")
+  timezone      String @default("UTC")
+  weightUnit    String @default("kg")
+  dimensionUnit String @default("cm")
+
+  // Gold Price Settings
+  goldPrice         Decimal? @default(0) @db.Decimal(10, 2)
+  goldPriceCurrency String?  @default("USD")
+
+  // AI Settings
+  openRouterApiKey String?
+  aiModel          String? @default("mistralai/mistral-7b-instruct")
+  embeddingModel   String? @default("openai/text-embedding-3-small")
+
+  // Whitelabel / Appearance
+  appearance Json? @default("{}")
+
+  // Order Tag Mappings - defines which product tags create order tags
+  // Format: [{ productTag: "engrave", orderTag: "Engraving", enabled: true }]
+  orderTagMappings Json? @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         AccountUser[]
+  adAccounts    AdAccount[]
+  features      AccountFeature[]
+  dashboards    DashboardLayout[]
+  emailAccounts EmailAccount[]
+  SyncState     SyncState[]
+  SyncLog       SyncLog[]
+  WooOrder      WooOrder[]
+  WooProduct    WooProduct[]
+  WooCustomer   WooCustomer[]
+  WooReview     WooReview[]
+  Notification  Notification[]
+  Supplier      Supplier[]
+
+  // Chat & Support
+  conversations   Conversation[]
+  cannedResponses CannedResponse[]
+
+  // Marketing & Automation
+  marketingCampaigns   MarketingCampaign[]
+  marketingAutomations MarketingAutomation[]
+  emailTemplates       EmailTemplate[]
+  AnalyticsSession     AnalyticsSession[]
+  segments             CustomerSegment[]
+
+  reportTemplates  ReportTemplate[]
+  reportSchedules  ReportSchedule[]
+  invoiceTemplates InvoiceTemplate[]
+
+  purchaseOrders PurchaseOrder[]
+
+  // Advanced Operations
+  auditLogs         AuditLog[]
+  inventorySettings InventorySettings?
+
+  // Policies & SOP
+  policies Policy[]
+
+  // Push Notifications
+  pushSubscriptions PushSubscription[]
+
+  // Social Media Messaging
+  socialAccounts SocialAccount[]
+}
+
+model Notification {
+  id        String @id @default(uuid())
+  accountId String
+
+  title   String
+  message String
+  type    String  @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  isRead  Boolean @default(false)
+  link    String? // Optional URL to navigate to
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, isRead])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+  VIEWER
+}
+
+model AccountUser {
+  id        String @id @default(uuid())
+  userId    String
+  accountId String
+  role      Role   @default(STAFF)
+
+  // Granular permissions override (e.g. { "can_manage_ads": true })
+  permissions Json? @default("{}")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, accountId])
+}
+
+// --------------------------------------
+// Feature Flags & Integrations
+// --------------------------------------
+
+model AccountFeature {
+  id         String  @id @default(uuid())
+  accountId  String
+  featureKey String // e.g. "META_ADS", "GOOGLE_ADS", "ADVANCED_REPORTS"
+  isEnabled  Boolean @default(false)
+
+  // Feature specific config (e.g. Ad Account ID, Access Token)
+  config Json? @default("{}")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, featureKey])
+}
+
+// --------------------------------------
+// Dashboard & Widgets
+// --------------------------------------
+
+model WidgetDefinition {
+  id          String  @id @default(uuid())
+  key         String  @unique // e.g. "REVENUE_CHART_V1"
+  name        String
+  description String?
+  category    String // "Analytics", "Marketing", "Operations"
+
+  // Default configuration schema for this widget
+  defaultConfig Json? @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DashboardLayout {
+  id        String  @id @default(uuid())
+  userId    String
+  accountId String
+  name      String  @default("Main Dashboard")
+  isDefault Boolean @default(false)
+
+  // Layout Grid Configuration
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  widgets DashboardWidget[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DashboardWidget {
+  id          String @id @default(uuid())
+  dashboardId String
+  widgetKey   String // References WidgetDefinition.key
+
+  // Grid Position (x, y, w, h)
+  position Json
+
+  // Instance specific settings (e.g. "Show last 7 days")
+  settings Json? @default("{}")
+
+  // Ordering for stable layout persistence
+  sortOrder Int @default(0)
+
+  dashboard DashboardLayout @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// WooCommerce Sync Engine
+// --------------------------------------
+
+model SyncState {
+  id        String @id @default(uuid())
+  accountId String
+
+  // "orders", "products", "customers", "reviews"
+  entityType String
+
+  // The last time we successfully synced this type
+  lastSyncedAt DateTime?
+
+  // Cursor/Page for pagination if needed (optional for now, using dates)
+  cursor String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt // Tracks when this state was last touched
+
+  @@unique([accountId, entityType])
+}
+
+model SyncLog {
+  id        String @id @default(uuid())
+  accountId String
+
+  entityType String // "orders", "products", "customers", "reviews"
+  status     String // "SUCCESS", "FAILED", "IN_PROGRESS"
+
+  itemsProcessed Int     @default(0)
+  errorMessage   String?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, startedAt])
+}
+
+// --------------------------------------
+// WooCommerce Cached Data
+// --------------------------------------
+
+model WooOrder {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId  Int // The ID from WooCommerce
+  number String // Order number (e.g "1001")
+
+  status   String // "completed", "processing", etc.
+  currency String
+  total    Decimal @db.Decimal(10, 2)
+
+  // Store the full raw object for future-proofing
+  rawData Json
+
+  dateCreated  DateTime
+  dateModified DateTime
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviews WooReview[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, dateCreated])
+}
+
+model WooProduct {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId       Int
+  name        String
+  sku         String?
+  price       Decimal? @db.Decimal(10, 2)
+  stockStatus String? // "instock", "outofstock"
+
+  permalink String?
+  mainImage String? // URL
+  images    Json?   @default("[]") // Array of { id, src, alt }
+
+  // Gold Price / Dimensions
+  isGoldPriceApplied Boolean  @default(false)
+  weight             Decimal? @db.Decimal(10, 4) // kg presumably, or unit based on store
+  length             Decimal? @db.Decimal(10, 2)
+  width              Decimal? @db.Decimal(10, 2)
+  height             Decimal? @db.Decimal(10, 2)
+
+  // COGS & Supplier
+  cogs       Decimal?  @db.Decimal(10, 2)
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  // SEO & Scoring
+  seoScore Int?  @default(0) // 0-100
+  seoData  Json? @default("{}") // { focusKeyword: "...", analysis: [...] }
+
+  merchantCenterScore  Int?  @default(0) // 0-100
+  merchantCenterIssues Json? @default("[]") // [{ type: "error", message: "Missing GTIN" }]
+
+  binLocation String? // Warehouse bin location
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  boms BOM[]
+
+  usedInBOMItems     BOMItem[]           @relation("ProductAsBOMComponent")
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@unique([accountId, wooId])
+}
+
+// --------------------------------------
+// Inventory & Manufacturing (Suppliers, BOM)
+// --------------------------------------
+
+model Supplier {
+  id              String  @id @default(uuid())
+  accountId       String
+  name            String
+  contactName     String?
+  email           String?
+  phone           String?
+  currency        String  @default("USD")
+  leadTimeMin     Int? // Min days
+  leadTimeMax     Int? // Max days
+  paymentTerms    String? // e.g. "Net 30", "Prepaid"
+  leadTimeDefault Int? // Default lead time in days (Avg or Max)
+
+  items    SupplierItem[]
+  products WooProduct[]
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([accountId])
+}
+
+model SupplierItem {
+  id         String  @id @default(uuid())
+  supplierId String
+  name       String
+  sku        String?
+
+  cost     Decimal @db.Decimal(10, 2)
+  leadTime Int? // Specific lead time (overrides supplier default)
+  moq      Int     @default(1) // Minimum Order Quantity
+
+  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  bomItems           BOMItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BOM {
+  id          String @id @default(uuid())
+  productId   String
+  variationId Int    @default(0) // 0 = Parent/Main Product, >0 = Variant ID
+
+  items BOMItem[]
+
+  product WooProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, variationId])
+}
+
+model BOMItem {
+  id             String  @id @default(uuid())
+  bomId          String
+  supplierItemId String?
+  childProductId String?
+
+  quantity    Decimal @db.Decimal(10, 4) // e.g. 1.5 meters, 0.05 kg
+  wasteFactor Decimal @default(0) @db.Decimal(5, 4) // e.g. 0.10 for 10% waste
+
+  bom          BOM           @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  supplierItem SupplierItem? @relation(fields: [supplierItemId], references: [id])
+  childProduct WooProduct?   @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
+
+  // @@unique([bomId, supplierItemId]) // Removed as it conflicts with optional fields
+}
+
+model PurchaseOrder {
+  id         String @id @default(uuid())
+  accountId  String
+  supplierId String
+
+  orderNumber String? // Optional human readable ID like PO-1001
+  status      String  @default("DRAFT") // DRAFT, ORDERED, RECEIVED, CANCELLED
+
+  orderDate    DateTime?
+  expectedDate DateTime?
+
+  totalAmount Decimal? @db.Decimal(10, 2)
+  notes       String?  @db.Text
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  items PurchaseOrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+}
+
+model PurchaseOrderItem {
+  id              String @id @default(uuid())
+  purchaseOrderId String
+
+  productId      String? // Link to internal product
+  supplierItemId String? // Link to supplier item catalog
+
+  // Snapshot of data at time of order
+  name String
+  sku  String?
+
+  quantity  Int
+  unitCost  Decimal @db.Decimal(10, 2)
+  totalCost Decimal @db.Decimal(10, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       WooProduct?   @relation(fields: [productId], references: [id])
+  supplierItem  SupplierItem? @relation(fields: [supplierItemId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AdAccount {
+  id           String  @id @default(uuid())
+  accountId    String
+  platform     String // "META", "GOOGLE"
+  externalId   String? // Ad Account ID
+  name         String?
+  accessToken  String // Encrypt in real app!
+  refreshToken String?
+  currency     String?
+
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+model WooCustomer {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId     Int
+  email     String
+  firstName String?
+  lastName  String?
+
+  totalSpent  Decimal @db.Decimal(10, 2)
+  ordersCount Int
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations Conversation[]
+  reviews       WooReview[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, email])
+}
+
+model WooReview {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId       Int
+  productId   Int
+  productName String?
+
+  reviewer String
+  rating   Int
+  content  String @db.Text
+  status   String // "approved", "hold", etc.
+
+  dateCreated DateTime
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviewerEmail String?
+
+  // Relations
+  wooCustomerId String?
+  customer      WooCustomer? @relation(fields: [wooCustomerId], references: [id])
+
+  wooOrderId String?
+  order      WooOrder? @relation(fields: [wooOrderId], references: [id])
+
+  @@unique([accountId, wooId])
+}
+
+// --------------------------------------
+// Customer Support (Chat & Inbox)
+// --------------------------------------
+
+enum ConversationChannel {
+  EMAIL
+  CHAT
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+}
+
+model Conversation {
+  id        String @id @default(uuid())
+  accountId String
+
+  // Channel type for message source
+  channel ConversationChannel @default(CHAT)
+
+  // Link to specific known customer (optional, for visitors it's null)
+  wooCustomerId String?
+
+  status   String @default("OPEN") // OPEN, CLOSED, SNOOZED
+  priority String @default("MEDIUM") // LOW, MEDIUM, HIGH
+
+  assignedTo String? // User ID of agent
+
+  // For "Live Chat", we might track a visitor token if they aren't logged in
+  visitorToken String?
+
+  // For email conversations from unknown senders (no WooCustomer match)
+  guestEmail String?
+  guestName  String?
+
+  // Social messaging platform identifiers
+  externalConversationId String? // Platform-specific thread ID
+  socialAccountId        String? // Links to SocialAccount
+  socialAccount          SocialAccount? @relation(fields: [socialAccountId], references: [id])
+
+  // Merging support
+  mergedIntoId String?
+  mergedInto   Conversation?  @relation("ConversationMerges", fields: [mergedIntoId], references: [id])
+  mergedFrom   Conversation[] @relation("ConversationMerges")
+
+  messages Message[]
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  wooCustomer WooCustomer? @relation(fields: [wooCustomerId], references: [id])
+  assignee    User?        @relation(fields: [assignedTo], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+  @@index([accountId, channel])
+  @@index([visitorToken])
+  @@index([externalConversationId])
+}
+
+model Message {
+  id             String @id @default(uuid())
+  conversationId String
+
+  content     String @db.Text
+  contentType String @default("TEXT") // TEXT, IMAGE, FILE
+
+  senderType String // AGENT, CUSTOMER, SYSTEM
+  senderId   String? // If AGENT -> User.id, If CUSTOMER -> WooCustomer.id (or null if visitor)
+
+  isInternal Boolean   @default(false) // For private notes
+  readAt     DateTime?
+
+  // Email threading: stores RFC 5322 Message-ID for In-Reply-To matching
+  emailMessageId String?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model CannedResponse {
+  id        String @id @default(uuid())
+  accountId String
+
+  shortcut String // e.g. "hi", "refund"
+  content  String @db.Text
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, shortcut])
+}
+
+// Social media messaging accounts (Facebook Pages, Instagram, TikTok)
+model SocialAccount {
+  id        String @id @default(uuid())
+  accountId String
+
+  platform   String // FACEBOOK, INSTAGRAM, TIKTOK
+  externalId String // Page ID or Account ID from platform
+  name       String // Page/Account display name
+
+  // Authentication
+  accessToken  String // Page access token (should be encrypted)
+  refreshToken String? // For platforms that use refresh tokens
+  tokenExpiry  DateTime?
+
+  // Platform-specific metadata
+  // Facebook: { pageId, instagramBusinessAccountId }
+  // Instagram: { igUserId, username }
+  // TikTok: { openId, displayName }
+  metadata Json? @default("{}")
+
+  // Webhook configuration
+  webhookSecret String? // For verifying incoming webhooks
+
+  isActive Boolean @default(true)
+
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, platform, externalId])
+  @@index([accountId])
+  @@index([platform, externalId])
+}
+
+// --------------------------------------
+// Help Center
+// --------------------------------------
+
+model HelpCollection {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  slug        String  @unique
+  icon        String? // e.g. "Box", "Settings" (Lucide icon name)
+  order       Int     @default(0)
+
+  articles HelpArticle[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model HelpArticle {
+  id           String  @id @default(uuid())
+  collectionId String
+  title        String
+  slug         String  @unique
+  content      String  @db.Text // Markdown content
+  excerpt      String?
+  isPublished  Boolean @default(true)
+  viewCount    Int     @default(0)
+  order        Int     @default(0)
+
+  collection HelpCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([collectionId])
+}
+
+// --------------------------------------
+// Marketing & Automation
+// --------------------------------------
+
+model EmailTemplate {
+  id        String  @id @default(uuid())
+  accountId String
+  name      String
+  subject   String?
+
+  // HTML Content or JSON for a block builder
+  content    String @db.Text
+  designJson Json? // For drag-and-drop builder state
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+}
+
+model MarketingCampaign {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+
+  subject    String
+  content    String @db.Text // Rendered HTML
+  designJson Json? // For drag-and-drop builder state
+
+  status String @default("DRAFT") // DRAFT, SCHEDULED, SENDING, SENT, FAILED
+
+  scheduledAt DateTime?
+  sentAt      DateTime?
+
+  segmentId String?
+  segment   CustomerSegment? @relation(fields: [segmentId], references: [id])
+
+  // Stats
+  recipientsCount Int @default(0)
+  sentCount       Int @default(0)
+  openedCount     Int @default(0)
+  clickedCount    Int @default(0)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MarketingAutomation {
+  id        String  @id @default(uuid())
+  accountId String
+  name      String
+  isActive  Boolean @default(false)
+
+  // Trigger Configuration
+  triggerType   String // "ORDER_CREATED", "ORDER_COMPLETED", "REVIEW_LEFT", "ABANDONED_CART"
+  triggerConfig Json?  @default("{}") // Filters like { "minOrderValue": 100 }
+
+  // Flow Definition (React Flow Graph)
+  flowDefinition Json? @default("{}")
+
+  status String @default("PAUSED") // ACTIVE, PAUSED, DRAFT
+
+  // Ordered list of steps
+  steps AutomationStep[]
+
+  enrollments AutomationEnrollment[]
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AutomationStep {
+  id           String @id @default(uuid())
+  automationId String
+
+  stepOrder Int // 1, 2, 3...
+
+  type   String // "DELAY", "SEND_EMAIL", "CONDITION"
+  config Json // e.g. { "durationSeconds": 3600 } or { "templateId": "...", "subject": "..." }
+
+  automation MarketingAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+}
+
+model AutomationEnrollment {
+  id           String @id @default(uuid())
+  automationId String
+
+  // Target entity
+  wooCustomerId Int?
+  email         String
+
+  // Context data (e.g. invalidating if a new order comes in, or storing the Order ID that triggered this)
+  contextData Json?
+
+  status        String  @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  currentNodeId String? // React Flow Node ID tracking progress
+
+  nextRunAt DateTime? // When to process the next step
+
+  automation MarketingAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([automationId, status, nextRunAt])
+}
+
+// --------------------------------------
+// Real-time Analytics (Live View & Carts)
+// --------------------------------------
+
+model AnalyticsSession {
+  id        String @id @default(uuid())
+  accountId String
+
+  visitorId String // UUID from first-party cookie (_os_vid)
+
+  // Demographics
+  ipAddress  String?
+  userAgent  String?
+  country    String?
+  city       String?
+  deviceType String? // mobile, desktop, tablet
+  browser    String?
+  os         String?
+
+  // Marketing & Discovery (Attribution)
+  referrer    String? // e.g. "google.com" or "facebook.com"
+  utmSource   String? // e.g. "newsletter", "google"
+  utmMedium   String? // e.g. "email", "cpc"
+  utmCampaign String? // e.g. "summer_sale"
+
+  // Live State
+  currentPath  String?
+  lastActiveAt DateTime @default(now())
+
+  // Cart State (Live Carts)
+  cartValue Decimal @default(0) @db.Decimal(10, 2)
+  cartItems Json?   @default("[]")
+  currency  String  @default("USD")
+
+  // Associated User
+  wooCustomerId Int?
+  email         String?
+
+  // Attribution Tracking
+  firstTouchSource String?
+  firstTouchAt     DateTime?
+  lastTouchSource  String?
+  lastTouchAt      DateTime?
+  totalVisits      Int       @default(1)
+
+  // Abandoned Cart Recovery
+  abandonedNotificationSentAt DateTime?
+
+  account Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  events  AnalyticsEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, visitorId])
+  @@index([accountId, lastActiveAt])
+  @@index([accountId, cartValue])
+}
+
+model AnalyticsEvent {
+  id        String @id @default(uuid())
+  sessionId String
+
+  type      String // "pageview", "add_to_cart", "search", "purchase"
+  url       String
+  pageTitle String? // Human readable title
+  payload   Json? // e.g. { query: "blue shoes" } for search
+
+  createdAt DateTime @default(now())
+
+  session AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// --------------------------------------
+// Email Integration
+// --------------------------------------
+
+model EmailAccount {
+  id        String @id @default(uuid())
+  accountId String
+  name      String // e.g. "Support IP"
+  email     String // e.g. "support@myapp.com"
+
+  // Connection Settings
+  host     String
+  port     Int
+  username String
+  password String // Encrypt in real app!
+  isSecure Boolean @default(true)
+
+  type      String  @default("SMTP") // SMTP, IMAP
+  isDefault Boolean @default(false)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+model CustomerSegment {
+  id          String  @id @default(uuid())
+  accountId   String
+  name        String
+  description String?
+  criteria    Json // e.g. { type: "AND", rules: [{ field: "totalSpent", operator: "gt", value: 100 }] }
+
+  account   Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  campaigns MarketingCampaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+}
+
+// --------------------------------------
+// Analytics & Reporting
+// --------------------------------------
+
+model ReportTemplate {
+  id        String   @id @default(uuid())
+  accountId String
+  name      String
+  config    Json // Stores metrics, dimension, etc.
+  type      String   @default("CUSTOM") // "CUSTOM" or "SYSTEM"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  schedules ReportSchedule[]
+
+  @@index([accountId])
+}
+
+model ReportSchedule {
+  id               String @id @default(uuid())
+  reportTemplateId String
+  accountId        String
+
+  frequency  String // "WEEKLY", "MONTHLY"
+  dayOfWeek  Int? // 1 (Mon) - 7 (Sun) for WEEKLY
+  dayOfMonth Int? // 1-28 for MONTHLY
+
+  time String @default("09:00") // Time to send
+
+  emailRecipients String[] // Array of emails
+  isActive        Boolean  @default(true)
+
+  lastRunAt DateTime?
+  nextRunAt DateTime?
+
+  template ReportTemplate @relation(fields: [reportTemplateId], references: [id], onDelete: Cascade)
+  account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+// --------------------------------------
+// Advanced Operations
+// --------------------------------------
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  accountId  String
+  userId     String? // Nullable if automated system action
+  action     String // "UPDATE", "CREATE", "DELETE"
+  resource   String // "PRODUCT", "ORDER", "SETTINGS"
+  resourceId String // e.g. Product ID
+  details    Json // { field: "price", from: 10, to: 20 }
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, resource, resourceId])
+  @@index([accountId, createdAt])
+}
+
+model InventorySettings {
+  id        String @id @default(uuid())
+  accountId String @unique
+
+  lowStockThresholdDays Int      @default(14)
+  alertEmails           String[] // Array of emails to notify
+  isEnabled             Boolean  @default(false)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InvoiceTemplate {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+
+  // JSON Layout for the visual designer
+  layout Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+}
+
+// --------------------------------------
+// Platform Credentials (Super Admin)
+// --------------------------------------
+
+/// Stores global platform API credentials for integrations.
+/// Only Super Admins can manage these credentials.
+model PlatformCredentials {
+  id String @id @default(uuid())
+
+  /// Platform identifier: "GOOGLE_ADS", "META_ADS", etc.
+  platform String @unique
+
+  /// Encrypted/stored credentials as JSON
+  /// For Google: { clientId, clientSecret, developerToken }
+  /// For Meta: { appId, appSecret }
+  credentials Json
+
+  /// Optional notes for admin reference
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// AI Prompts (Super Admin)
+// --------------------------------------
+
+/// Stores configurable AI prompt templates.
+/// Only Super Admins can manage these prompts.
+model AIPrompt {
+  id String @id @default(uuid())
+
+  /// Unique prompt identifier: "product_description", "customer_email", etc.
+  promptId String @unique
+
+  /// The prompt template content
+  content String @db.Text
+
+  /// Name for display purposes
+  name String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// Policies & SOP
+// --------------------------------------
+
+/// Stores policies, SOPs, and training materials for staff and AI reference.
+model Policy {
+  id        String @id @default(uuid())
+  accountId String
+
+  title       String
+  content     String  @db.Text // Markdown content
+  type        String  @default("POLICY") // POLICY, SOP, TRAINING
+  category    String? // Optional grouping (e.g. "Safety", "Operations")
+  isPublished Boolean @default(true)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, type])
+}
+
+// --------------------------------------
+// Push Notifications
+// --------------------------------------
+
+/// Stores Web Push subscription data per user/device for sending notifications.
+model PushSubscription {
+  id        String @id @default(uuid())
+  userId    String
+  accountId String
+
+  /// Web Push subscription endpoint URL
+  endpoint String @db.Text
+  /// P-256 public key for payload encryption
+  p256dh   String
+  /// Authentication secret
+  auth     String
+
+  /// User preferences for notification types
+  notifyNewMessages Boolean @default(true)
+  notifyNewOrders   Boolean @default(true)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, endpoint])
+  @@index([accountId])
+}

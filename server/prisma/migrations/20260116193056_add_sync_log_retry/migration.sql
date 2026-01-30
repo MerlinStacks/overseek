@@ -1,0 +1,3 @@
+-- Add triggerSource and retryCount to SyncLog
+ALTER TABLE "SyncLog" ADD COLUMN IF NOT EXISTS "triggerSource" TEXT NOT NULL DEFAULT 'SYSTEM';
+ALTER TABLE "SyncLog" ADD COLUMN IF NOT EXISTS "retryCount" INTEGER NOT NULL DEFAULT 0;
