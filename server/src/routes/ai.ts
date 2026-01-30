@@ -1,50 +1,54 @@
-import { Router, Request, Response } from 'express';
+/**
+ * AI Route - Fastify Plugin
+ */
+
+import { FastifyPluginAsync } from 'fastify';
 import { AIService } from '../services/ai';
-import { requireAuth } from '../middleware/auth';
+import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
-const router = Router();
+const aiRoutes: FastifyPluginAsync = async (fastify) => {
+    fastify.addHook('preHandler', requireAuthFastify);
 
-router.use(requireAuth);
+    fastify.get('/models', async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            let apiKey = '';
 
-router.get('/models', async (req: Request, res: Response) => {
-    try {
-        const accountId = req.headers['x-account-id'] as string;
-        let apiKey = '';
-
-        if (accountId) {
-            const account = await prisma.account.findUnique({
-                where: { id: accountId },
-                select: { openRouterApiKey: true }
-            });
-            if (account && account.openRouterApiKey) {
-                apiKey = account.openRouterApiKey;
+            if (accountId) {
+                const account = await prisma.account.findUnique({
+                    where: { id: accountId },
+                    select: { openRouterApiKey: true }
+                });
+                if (account?.openRouterApiKey) {
+                    apiKey = account.openRouterApiKey;
+                }
             }
+
+            const models = await AIService.getModels(apiKey);
+            return models;
+        } catch (error) {
+            Logger.error('Models Error', { error });
+            return reply.code(500).send({ error: 'Failed to fetch models' });
         }
+    });
 
-        const models = await AIService.getModels(apiKey);
-        res.json(models);
-    } catch (error) {
-        console.error('Models Error:', error);
-        res.status(500).json({ error: 'Failed to fetch models' });
-    }
-});
+    fastify.post<{ Body: { message: string, context?: any } }>('/chat', async (request, reply) => {
+        try {
+            const { message, context } = request.body;
+            const accountId = request.accountId;
 
-router.post('/chat', async (req: Request, res: Response) => {
-    try {
-        const { message } = req.body;
-        const accountId = req.headers['x-account-id'] as string;
+            if (!message) return reply.code(400).send({ error: 'Message required' });
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
-        if (!message) return res.status(400).json({ error: 'Message required' });
-        if (!accountId) return res.status(400).json({ error: 'Account ID required header' });
+            const response = await AIService.generateResponse(message, accountId, context);
+            return response;
+        } catch (error) {
+            Logger.error('AI Error', { error });
+            return reply.code(500).send({ error: 'Failed to generate response' });
+        }
+    });
+};
 
-        const response = await AIService.generateResponse(message, accountId);
-        res.json(response);
-
-    } catch (error) {
-        console.error('AI Error:', error);
-        res.status(500).json({ error: 'Failed to generate response' });
-    }
-});
-
-export default router;
+export default aiRoutes;

@@ -1,62 +1,87 @@
-import { Router, Request, Response } from 'express';
+/**
+ * Customers Route - Fastify Plugin
+ */
+
+import { FastifyPluginAsync } from 'fastify';
 import { CustomersService } from '../services/customers';
-import { requireAuth } from '../middleware/auth';
+import { requireAuthFastify } from '../middleware/auth';
+import { Logger } from '../utils/logger';
+import { handleRouteError } from '../utils/errors';
 
-const router = Router();
+const customersRoutes: FastifyPluginAsync = async (fastify) => {
+    // Apply auth to all routes in this plugin
+    fastify.addHook('preHandler', requireAuthFastify);
 
-router.get('/', requireAuth, async (req: Request, res: Response) => {
-    try {
-        const accountId = (req as any).accountId;
-        // Middleware guarantees accountId or returns 400
+    fastify.get('/', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
 
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 20;
-        const query = (req.query.q as string) || '';
+            const query = request.query as { page?: string; limit?: string; q?: string };
+            const page = parseInt(query.page || '1');
+            const limit = parseInt(query.limit || '20');
+            const q = query.q || '';
 
-        const result = await CustomersService.searchCustomers(accountId, query, page, limit);
-        res.json(result);
-    } catch (error: any) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to fetch customers' });
-    }
-});
-
-router.get('/:id', requireAuth, async (req: Request, res: Response) => {
-    // PROBE: DEBUG server reload status
-    if (req.params.id === '22802' || req.params.id === '5713') {
-        console.log('HIT PROBE FOR 22802/5713');
-        return res.json({
-            id: req.params.id,
-            firstName: 'DEBUG_PROBE_HIT',
-            lastName: 'SERVER_IS_UPDATED',
-            email: 'probe@test.com',
-            totalSpent: 0,
-            ordersCount: 0,
-            dateCreated: new Date(),
-            activity: [],
-            orders: [],
-            automations: []
-        });
-    }
-
-    try {
-        console.log(`[Route] GET /customers/${req.params.id} requested by Account: ${(req as any).accountId}`);
-        const accountId = (req as any).accountId;
-        const customerId = req.params.id;
-
-        const result = await CustomersService.getCustomerDetails(accountId, customerId);
-
-        if (!result) {
-            console.log(`[Route] Customer ${req.params.id} not found by Service.`);
-            res.status(404).json({ error: 'Customer not found' });
-            return;
+            const result = await CustomersService.searchCustomers(accountId, q, page, limit);
+            return result;
+        } catch (error) {
+            Logger.error('Failed to fetch customers', { error });
+            return handleRouteError(error, reply, 'Failed to fetch customers');
         }
+    });
 
-        res.json(result);
-    } catch (error: any) {
-        console.error('Get Customer Details Error:', error);
-        res.status(500).json({ error: 'Failed to fetch customer details' });
-    }
-});
+    fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const customerId = request.params.id;
 
-export default router;
+            Logger.debug(`GET /customers/${customerId}`, { accountId });
+
+            const result = await CustomersService.getCustomerDetails(accountId, customerId);
+
+            if (!result) {
+                Logger.debug(`Customer not found`, { customerId });
+                return reply.code(404).send({ error: 'Customer not found' });
+            }
+
+            return result;
+        } catch (error) {
+            Logger.error('Get Customer Details Error', { error });
+            return handleRouteError(error, reply, 'Failed to fetch customer details');
+        }
+    });
+
+    // Find potential duplicate customers
+    fastify.get<{ Params: { id: string } }>('/:id/duplicates', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const customerId = request.params.id;
+
+            const result = await CustomersService.findDuplicates(accountId, customerId);
+            return result;
+        } catch (error) {
+            Logger.error('Find Duplicates Error', { error });
+            return handleRouteError(error, reply, 'Failed to find duplicates');
+        }
+    });
+
+    // Merge source customer into target
+    fastify.post<{ Params: { id: string } }>('/:id/merge', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const targetId = request.params.id;
+            const { sourceId } = request.body as { sourceId: string };
+
+            if (!sourceId) {
+                return reply.code(400).send({ error: 'sourceId is required' });
+            }
+
+            const result = await CustomersService.mergeCustomers(accountId, targetId, sourceId);
+            return result;
+        } catch (error) {
+            Logger.error('Merge Customers Error', { error });
+            return handleRouteError(error, reply, 'Failed to merge customers');
+        }
+    });
+};
+
+export default customersRoutes;
