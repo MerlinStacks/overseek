@@ -1,9 +1,0 @@
-src/routes/account.ts(196,7): error TS18004: No value exists in scope for the shorthand property 'appearance'. Either declare one or provide an initializer.
-src/services/ai_tools.ts(119,41): error TS2339: Property 'order' does not exist on type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
-src/services/ai_tools.ts(138,51): error TS2339: Property 'product' does not exist on type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
-src/services/ai_tools.ts(155,48): error TS2339: Property 'product' does not exist on type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
-src/services/ai_tools.ts(202,47): error TS2339: Property 'order' does not exist on type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
-src/services/ai_tools.ts(235,43): error TS2339: Property 'product' does not exist on type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
-src/services/ai_tools.ts(263,44): error TS2339: Property 'customer' does not exist on type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
-src/services/SeoScoringService.ts(15,15): error TS7034: Variable 'tests' implicitly has type 'any[]' in some locations where its type cannot be determined.
-src/services/SeoScoringService.ts(63,13): error TS7005: Variable 'tests' implicitly has an 'any[]' type.

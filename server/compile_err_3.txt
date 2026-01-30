@@ -1,4 +1,0 @@
-src/services/ai_tools.ts(141,21): error TS2353: Object literal may only specify known properties, and 'manageStock' does not exist in type 'WooProductWhereInput'.
-src/services/ai_tools.ts(149,21): error TS2353: Object literal may only specify known properties, and 'stockQuantity' does not exist in type 'WooProductSelect<DefaultArgs>'.
-src/services/ai_tools.ts(152,28): error TS2353: Object literal may only specify known properties, and 'stockQuantity' does not exist in type 'WooProductOrderByWithRelationInput | WooProductOrderByWithRelationInput[]'.
-src/services/ai_tools.ts(247,21): error TS2353: Object literal may only specify known properties, and 'stockQuantity' does not exist in type 'WooProductSelect<DefaultArgs>'.

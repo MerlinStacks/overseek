@@ -1,6 +1,0 @@
-Testing connection for: http://localhost/
-WARNING: Could not find axiosInstance on library object.
-Attempting to fetch system_status...
-FAILED!
-Status: Unknown
-Data: "No Data"
