@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.2] - 2026-02-03
+
+### 🔌 Meta Platform Integration
+- **Meta Ads Reconnection Flow**: Added OAuth reconnect button for expired Meta Ads tokens in Ad Account Settings.
+- **Unified MetaTokenService**: Centralized token management for Meta Ads and Meta Messaging with automatic long-lived token exchange.
+- **Token Lifecycle Fixes**: Resolved 24-hour token expiration issues by implementing proper token refresh and unification.
+
+### ⚡ Performance
+- **Redis Analytics Caching**: Replaced in-memory cache with Redis `cacheAside` pattern for product views endpoint.
+
+### 🏗️ Code Quality & Refactoring
+- **BOM Panel Decomposition**: Split monolithic `BOMPanel.tsx` into modular components (`BOMCostSummary`, `BOMItemsTable`, `BOMSearchDropdown`).
+- **Marketing Node Configs**: Extracted flow node configurations into dedicated components (`ActionConfig`, `ConditionConfig`, `DelayConfig`, `TriggerConfig`).
+- **Chat Attachments**: New `AttachmentDisplay` component and `emailParser` utility for improved message rendering.
+- **ChatService Tests**: Added unit test coverage for chat service functionality.
+
+---
+
 ## [2.3.1] - 2026-02-01
 
 ### 🔒 Security & Code Quality
