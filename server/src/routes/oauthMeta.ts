@@ -80,16 +80,16 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (error) {
                 Logger.warn('[MetaAdsOAuth] OAuth denied by user', { error, error_description });
-                return reply.redirect(`${frontendRedirect}?error=oauth_denied&message=${encodeURIComponent(error_description || error)}`);
+                return reply.redirect(`${frontendRedirect}&error=oauth_denied&message=${encodeURIComponent(error_description || error)}`);
             }
-            if (!code || !state) return reply.redirect(`${frontendRedirect}?error=missing_params`);
+            if (!code || !state) return reply.redirect(`${frontendRedirect}&error=missing_params`);
 
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
                 stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
                 frontendRedirect = stateData.frontendRedirect || frontendRedirect;
             } catch {
-                return reply.redirect(`${frontendRedirect}?error=invalid_state`);
+                return reply.redirect(`${frontendRedirect}&error=invalid_state`);
             }
 
             const { appId, appSecret } = await MetaTokenService.getCredentials('META_ADS');
@@ -121,7 +121,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
                     accessToken: tokenResult.accessToken
                 });
                 Logger.info('[MetaAdsOAuth] Reconnected existing account', { accountId: stateData.reconnectId });
-                return reply.redirect(`${frontendRedirect}?success=meta_ads_reconnected`);
+                return reply.redirect(`${frontendRedirect}&success=meta_ads_reconnected`);
             }
 
             // Step 3: Get ad accounts for user selection
@@ -131,7 +131,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const adAccountsData = await adAccountsResponse.json() as any;
 
             if (!adAccountsData.data || adAccountsData.data.length === 0) {
-                return reply.redirect(`${frontendRedirect}?error=no_ad_accounts&message=${encodeURIComponent('No ad accounts found. Make sure you have access to Meta Ads.')}`);
+                return reply.redirect(`${frontendRedirect}&error=no_ad_accounts&message=${encodeURIComponent('No ad accounts found. Make sure you have access to Meta Ads.')}`);
             }
 
             // For now, connect the first active ad account (status 1 = active)
@@ -149,11 +149,11 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
                 accountId: stateData.accountId,
                 adAccountId: activeAccount.id
             });
-            return reply.redirect(`${frontendRedirect}?success=meta_ads_connected`);
+            return reply.redirect(`${frontendRedirect}&success=meta_ads_connected`);
 
         } catch (error: any) {
             Logger.error('[MetaAdsOAuth] Callback failed', { error: error.message });
-            return reply.redirect(`${frontendRedirect}?error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+            return reply.redirect(`${frontendRedirect}&error=oauth_failed&message=${encodeURIComponent(error.message)}`);
         }
     });
 

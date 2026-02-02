@@ -48,11 +48,11 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (error) {
                 Logger.warn('Google OAuth denied', { error });
-                return reply.redirect(`${frontendRedirect}?error=oauth_denied`);
+                return reply.redirect(`${frontendRedirect}&error=oauth_denied`);
             }
 
             if (!code || !state) {
-                return reply.redirect(`${frontendRedirect}?error=missing_params`);
+                return reply.redirect(`${frontendRedirect}&error=missing_params`);
             }
 
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
@@ -60,7 +60,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                 stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
                 frontendRedirect = stateData.frontendRedirect || frontendRedirect;
             } catch {
-                return reply.redirect(`${frontendRedirect}?error=invalid_state`);
+                return reply.redirect(`${frontendRedirect}&error=invalid_state`);
             }
 
             const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
@@ -76,7 +76,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                     accessToken: tokens.accessToken,
                     refreshToken: tokens.refreshToken || ''
                 });
-                return reply.redirect(`${frontendRedirect}?success=google_reconnected`);
+                return reply.redirect(`${frontendRedirect}&success=google_reconnected`);
             }
 
             // Otherwise create new pending account
@@ -88,11 +88,11 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                 name: 'Google Ads (Pending Setup)'
             });
 
-            return reply.redirect(`${frontendRedirect}?success=google_pending&pendingId=${pendingAccount.id}`);
+            return reply.redirect(`${frontendRedirect}&success=google_pending&pendingId=${pendingAccount.id}`);
 
         } catch (error: any) {
             Logger.error('Google OAuth callback failed', { error: error.message });
-            return reply.redirect(`${frontendRedirect}?error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+            return reply.redirect(`${frontendRedirect}&error=oauth_failed&message=${encodeURIComponent(error.message)}`);
         }
     });
 };
