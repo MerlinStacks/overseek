@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { SyncStatus } from '../components/sync/SyncStatus';
@@ -26,6 +27,8 @@ import {
 
 type TabId = 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses';
 
+const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses'];
+
 interface TabDef {
     id: TabId;
     label: string;
@@ -39,6 +42,24 @@ interface Category {
 }
 
 /**
+ * Why: URL-based tab persistence ensures the active tab survives component
+ * remounts (e.g., after saving settings that trigger context refreshes).
+ * This follows the 'Tab Persistence' pattern from Navigation Standards.
+ */
+function useTabFromUrl(): [TabId, (tab: TabId) => void] {
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    const tabFromUrl = searchParams.get('tab') as TabId | null;
+    const activeTab: TabId = tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : 'general';
+
+    const setActiveTab = useCallback((tab: TabId) => {
+        setSearchParams({ tab }, { replace: true });
+    }, [setSearchParams]);
+
+    return [activeTab, setActiveTab];
+}
+
+/**
  * Modern sidebar-based settings layout with grouped categories.
  * Responsive: sidebar on lg+, horizontal tabs on mobile.
  */
@@ -47,21 +68,7 @@ export function SettingsPage() {
     const isGoldPriceEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
     const isAdTrackingEnabled = useAccountFeature('AD_TRACKING');
     const isAIEnabled = useAccountFeature('AI_WRITER');
-    const [activeTab, setActiveTab] = useState<TabId>('general');
-
-    // Handle URL-based tab selection (for OAuth callbacks)
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab') as TabId | null;
-        const validTabs: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses'];
-        if (tab && validTabs.includes(tab)) {
-            // Defer state update to avoid cascading renders
-            const timeoutId = setTimeout(() => {
-                setActiveTab(tab);
-            }, 0);
-            return () => clearTimeout(timeoutId);
-        }
-    }, []);
+    const [activeTab, setActiveTab] = useTabFromUrl();
 
     if (!currentAccount) return <div>Loading...</div>;
 
