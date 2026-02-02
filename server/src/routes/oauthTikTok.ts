@@ -45,7 +45,8 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /tiktok/callback - Handle TikTok OAuth callback
      */
     fastify.get('/tiktok/callback', async (request, reply) => {
-        let frontendRedirect = '/settings?tab=channels';
+        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+        let frontendRedirect = `${appUrl}/settings?tab=channels`;
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
@@ -59,7 +60,10 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
             if (!code || !state) return reply.redirect(`${frontendRedirect}&error=missing_params`);
 
             const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-            frontendRedirect = stateData.frontendRedirect || frontendRedirect;
+            // State contains relative path, prepend appUrl
+            frontendRedirect = stateData.frontendRedirect
+                ? `${appUrl}${stateData.frontendRedirect}`
+                : frontendRedirect;
             const accountId = stateData.accountId;
 
             const credentials = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });

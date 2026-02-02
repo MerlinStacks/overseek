@@ -40,7 +40,8 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /google/callback - Handle Google OAuth callback
      */
     fastify.get('/google/callback', async (request, reply) => {
-        let frontendRedirect = '/marketing?tab=ads';
+        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+        let frontendRedirect = `${appUrl}/marketing?tab=ads`;
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string };
@@ -58,7 +59,10 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
                 stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-                frontendRedirect = stateData.frontendRedirect || frontendRedirect;
+                // State contains relative path, prepend appUrl
+                frontendRedirect = stateData.frontendRedirect
+                    ? `${appUrl}${stateData.frontendRedirect}`
+                    : frontendRedirect;
             } catch {
                 return reply.redirect(`${frontendRedirect}&error=invalid_state`);
             }

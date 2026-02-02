@@ -72,7 +72,8 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /meta/ads/callback - Handle Meta Ads OAuth callback
      */
     fastify.get('/meta/ads/callback', async (request, reply) => {
-        let frontendRedirect = '/settings?tab=ads';
+        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+        let frontendRedirect = `${appUrl}/settings?tab=ads`;
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
@@ -87,7 +88,10 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
                 stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-                frontendRedirect = stateData.frontendRedirect || frontendRedirect;
+                // State contains relative path, prepend appUrl
+                frontendRedirect = stateData.frontendRedirect
+                    ? `${appUrl}${stateData.frontendRedirect}`
+                    : frontendRedirect;
             } catch {
                 return reply.redirect(`${frontendRedirect}&error=invalid_state`);
             }
@@ -190,7 +194,8 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /meta/messaging/callback - Handle Meta Messaging OAuth callback
      */
     fastify.get('/meta/messaging/callback', async (request, reply) => {
-        let frontendRedirect = '/settings?tab=channels';
+        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+        let frontendRedirect = `${appUrl}/settings?tab=channels`;
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
@@ -203,7 +208,10 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             if (!code || !state) return reply.redirect(`${frontendRedirect}&error=missing_params`);
 
             const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-            frontendRedirect = stateData.frontendRedirect || frontendRedirect;
+            // State contains relative path, prepend appUrl
+            frontendRedirect = stateData.frontendRedirect
+                ? `${appUrl}${stateData.frontendRedirect}`
+                : frontendRedirect;
             const accountId = stateData.accountId;
 
             // Get credentials via unified service
