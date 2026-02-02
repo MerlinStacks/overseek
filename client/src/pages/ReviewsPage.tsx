@@ -7,6 +7,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { TableSkeleton } from '../components/ui/Skeleton';
 
 export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
@@ -201,7 +202,7 @@ export const ReviewsPage = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading ? (
-                            <tr><td colSpan={6} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
+                            <TableSkeleton rows={8} columns={6} />
                         ) : reviews.length === 0 ? (
                             <tr><td colSpan={6} className="p-12 text-center text-gray-500">No reviews found. Try syncing!</td></tr>
                         ) : (

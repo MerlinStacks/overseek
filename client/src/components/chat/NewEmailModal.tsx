@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { Logger } from '../../utils/logger';
-import { X, Send, Loader2, ChevronDown, ChevronUp, Zap, Paperclip } from 'lucide-react';
+import { X, Send, Loader2, ChevronDown, ChevronUp, Zap, Paperclip, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
@@ -41,6 +41,7 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
     const [error, setError] = useState<string | null>(null);
     const [attachments, setAttachments] = useState<File[]>([]);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Canned responses integration
@@ -104,6 +105,49 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
         // Reset input so same file can be selected again
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
+        }
+    };
+
+    /** Handle AI assist for email composition. */
+    const handleAIAssist = async () => {
+        if (!to.trim() || !subject.trim()) {
+            setError('Please enter recipient and subject before using AI assist');
+            return;
+        }
+        if (!token || !currentAccount || isGeneratingAI) return;
+
+        setIsGeneratingAI(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/chat/compose-ai', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    recipient: to.trim(),
+                    subject: subject.trim(),
+                    currentDraft: body || ''
+                })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                setError(errData.error || 'Failed to generate AI draft');
+                return;
+            }
+
+            const data = await res.json();
+            if (data.draft) {
+                setBody(data.draft);
+            }
+        } catch (err) {
+            Logger.error('AI compose assist failed:', { error: err });
+            setError('Failed to generate AI draft. Please try again.');
+        } finally {
+            setIsGeneratingAI(false);
         }
     };
 
@@ -313,8 +357,20 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
                                 cannedPickerOpen={showCanned}
                             />
                         </div>
-                        {/* Toolbar with Canned Response button */}
+                        {/* Toolbar with AI Assist and Canned Response buttons */}
                         <div className="flex items-center gap-1 px-3 py-2 border-t border-gray-100 bg-gray-50">
+                            {/* AI Assist Button */}
+                            <button
+                                type="button"
+                                onClick={handleAIAssist}
+                                disabled={isGeneratingAI}
+                                className="p-2 rounded-sm hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
+                                title="Generate AI Draft"
+                                aria-label="Generate AI draft email"
+                            >
+                                {isGeneratingAI ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                            </button>
+                            {/* Canned Responses Button */}
                             <button
                                 type="button"
                                 onClick={() => setBody('/')}

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Search, Users, Loader2, Mail, ShoppingBag, Calendar } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
+import { TableSkeleton } from '../components/ui/Skeleton';
 
 interface Customer {
     id: string;
@@ -115,7 +116,7 @@ export function CustomersPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
-                                <tr><td colSpan={5} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
+                                <TableSkeleton rows={8} columns={5} showAvatar />
                             ) : customers.length === 0 ? (
                                 <tr><td colSpan={5} className="p-12 text-center text-gray-500 flex flex-col items-center gap-2">
                                     <Users size={48} className="text-gray-300" />

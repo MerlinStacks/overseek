@@ -135,6 +135,120 @@ Generate a complete reply that incorporates and improves upon the current draft.
     }
 
     /**
+     * Generates AI-assisted email content for new message composition.
+     * Unlike generateDraftReply, this does not require an existing conversation.
+     * @param accountId - The account ID for fetching AI config
+     * @param recipient - The email recipient address
+     * @param subject - The email subject
+     * @param currentDraft - Optional current draft content to improve
+     */
+    static async generateComposeAssist(
+        accountId: string,
+        recipient: string,
+        subject: string,
+        currentDraft?: string
+    ): Promise<DraftResult> {
+        try {
+            // Fetch account AI configuration
+            const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: { openRouterApiKey: true, aiModel: true }
+            });
+
+            if (!account?.openRouterApiKey) {
+                return {
+                    draft: '',
+                    error: 'AI is not configured. Please set your OpenRouter API key in Settings > Intelligence.'
+                };
+            }
+
+            // Fetch published policies for context
+            const policies = await cacheAside(
+                `policies:${accountId}`,
+                async () => prisma.policy.findMany({
+                    where: { accountId, isPublished: true },
+                    select: { title: true, content: true, type: true },
+                    orderBy: [{ type: 'asc' }, { title: 'asc' }]
+                }),
+                { ttl: CacheTTL.LONG }
+            );
+
+            const policiesText = policies.length > 0
+                ? policies.map(p => `### ${p.title}\n${this.stripHtmlTags(p.content)}`).join('\n\n')
+                : 'No store policies configured.';
+
+            // Build system prompt for compose assistance
+            const systemPrompt = `You are a helpful email composition assistant. Help draft a professional email.
+
+RECIPIENT: ${recipient}
+SUBJECT: ${subject}
+
+STORE POLICIES:
+${policiesText}
+
+Guidelines:
+- Be polite, professional, and clear
+- Match the tone to the subject matter
+- Keep the email concise but complete
+- Follow store policies when applicable
+
+IMPORTANT: Return the email body as valid HTML. Use:
+- <p> for paragraphs
+- <strong> for emphasis
+- <ul>/<li> for lists if needed
+
+Do NOT include markdown, code blocks, greetings like "Subject:", or any wrapping. Only return the HTML content of the email body.`;
+
+            // Build user message
+            let userMessage = `Draft a professional email with subject "${subject}" to ${recipient}.`;
+            if (currentDraft?.trim()) {
+                userMessage = `I have started drafting an email. Please improve, expand, or refine it while maintaining my intent:
+
+CURRENT DRAFT:
+${this.stripHtmlTags(currentDraft.trim())}
+
+Generate a complete, improved version of this email.`;
+            }
+
+            // Call OpenRouter API
+            const apiKey = account.openRouterApiKey;
+            const model = account.aiModel || 'openai/gpt-4o';
+
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
+                    'X-Title': process.env.APP_NAME || 'Commerce Platform',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userMessage }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                Logger.error('OpenRouter API error (compose)', { error: err });
+                return { draft: '', error: 'Failed to generate draft. Please try again.' };
+            }
+
+            const data = await response.json();
+            const draft = data.choices?.[0]?.message?.content || '';
+
+            return { draft };
+
+        } catch (error) {
+            Logger.error('InboxAIService.generateComposeAssist error', { error });
+            return { draft: '', error: 'An unexpected error occurred while generating the draft.' };
+        }
+    }
+
+    /**
      * Builds structured conversation context from the conversation data.
      */
     private static buildConversationContext(conversation: any): ConversationContext {

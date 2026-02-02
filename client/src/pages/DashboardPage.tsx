@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { renderWidget, WidgetRegistry } from '../components/widgets/WidgetRegistry';
 import { usePermissions } from '../hooks/usePermissions';
+import { DashboardPageSkeleton } from '../components/ui/PageSkeletons';
 import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
 import { debounce, isEqual } from '../utils/debounce';
 import { useRef, useLayoutEffect, useState, useEffect, useMemo } from 'react';
@@ -221,7 +222,7 @@ export function DashboardPage() {
     const dateRange = getDateRange(dateOption);
     const comparisonRange = getComparisonRange(dateRange, comparisonOption);
 
-    if (isLoading) return <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
+    if (isLoading) return <DashboardPageSkeleton />;
 
     return (
         <div className="space-y-6">

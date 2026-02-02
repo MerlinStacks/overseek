@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Trash2, UserPlus, Shield, User, Edit2, Check, X, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { TeamPageSkeleton } from '../components/ui/PageSkeletons';
 
 interface CustomRole {
     id: string;
@@ -168,7 +169,7 @@ export function TeamPage() {
         }
     };
 
-    if (isLoading) return <div className="p-8">Loading members...</div>;
+    if (isLoading) return <TeamPageSkeleton />;
 
     return (
         <div className="p-8 max-w-5xl mx-auto">

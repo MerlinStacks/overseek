@@ -24,6 +24,7 @@ import {
     LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw,
     Mail, Package, Tags, Coins, Bell, Share2, Users, ChevronRight, Webhook, Megaphone, Zap, Shield
 } from 'lucide-react';
+import { SettingsPageSkeleton } from '../components/ui/PageSkeletons';
 
 type TabId = 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses';
 
@@ -70,7 +71,7 @@ export function SettingsPage() {
     const isAIEnabled = useAccountFeature('AI_WRITER');
     const [activeTab, setActiveTab] = useTabFromUrl();
 
-    if (!currentAccount) return <div>Loading...</div>;
+    if (!currentAccount) return <SettingsPageSkeleton />;
 
     // Grouped categories for sidebar navigation
     const categories: Category[] = [

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, FileText, BookOpen, GraduationCap, Trash2, Edit2, EyeOff, Save, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { PoliciesPageSkeleton } from '../components/ui/PageSkeletons';
 
 interface Policy {
     id: string;
@@ -151,7 +152,7 @@ export function PoliciesPage() {
         TRAINING: policies.filter(p => p.type === 'TRAINING')
     };
 
-    if (isLoading) return <div className="p-8">Loading policies...</div>;
+    if (isLoading) return <PoliciesPageSkeleton />;
 
     return (
         <div className="flex h-[calc(100vh-4rem)]">

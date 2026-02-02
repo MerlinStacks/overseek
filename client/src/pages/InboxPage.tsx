@@ -1,18 +1,21 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Logger } from '../utils/logger';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { ConversationList } from '../components/chat/ConversationList';
 import { ChatWindow } from '../components/chat/ChatWindow';
-import { ContactPanel } from '../components/chat/ContactPanel';
+import { InboxSkeleton, ContactPanelSkeleton } from '../components/chat/InboxSkeleton';
 import { NewEmailModal } from '../components/chat/NewEmailModal';
 import { KeyboardShortcutsHelp } from '../components/chat/KeyboardShortcutsHelp';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 import { MessageSquare } from 'lucide-react';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
+
+// Lazy load ContactPanel - only needed when a conversation is selected
+const ContactPanel = lazy(() => import('../components/chat/ContactPanel').then(m => ({ default: m.ContactPanel })));
 
 export function InboxPage() {
     const { socket, isConnected } = useSocket();
@@ -319,11 +322,7 @@ export function InboxPage() {
     });
 
     if (isLoading) {
-        return (
-            <div className="h-full flex items-center justify-center">
-                <div className="text-gray-400">Loading inbox...</div>
-            </div>
-        );
+        return <InboxSkeleton />;
     }
 
     return (
@@ -463,12 +462,14 @@ export function InboxPage() {
                 )}
             </div>
 
-            {/* Contact Panel - Right Sidebar */}
+            {/* Contact Panel - Right Sidebar (Lazy Loaded) */}
             {selectedId && (
-                <ContactPanel
-                    conversation={activeConversation}
-                    onSelectConversation={(id) => setSelectedId(id)}
-                />
+                <Suspense fallback={<ContactPanelSkeleton />}>
+                    <ContactPanel
+                        conversation={activeConversation}
+                        onSelectConversation={(id) => setSelectedId(id)}
+                    />
+                </Suspense>
             )}
 
             {/* Compose New Email Modal */}

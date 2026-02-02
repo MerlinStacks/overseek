@@ -13,7 +13,7 @@ import { Logger } from '../../utils/logger';
 export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    // POST /block - Block a contact
+    // POST /block - Block a contact by email
     fastify.post('/block', async (request, reply) => {
         try {
             const accountId = request.accountId;
@@ -27,6 +27,58 @@ export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true };
         } catch (error) {
             Logger.error('Failed to block contact', { error });
+            return reply.code(500).send({ error: 'Failed to block contact' });
+        }
+    });
+
+    // POST /:id/block - Block contact by conversation ID (for mobile/PWA)
+    fastify.post<{ Params: { id: string } }>('/:id/block', async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+            const { reason } = request.body as any;
+            const conversationId = request.params.id;
+
+            // Import prisma to look up conversation
+            const { prisma } = await import('../../utils/prisma');
+
+            const conversation = await prisma.conversation.findFirst({
+                where: { id: conversationId, accountId },
+                include: { wooCustomer: true }
+            });
+
+            if (!conversation) {
+                return reply.code(404).send({ error: 'Conversation not found' });
+            }
+
+            // Resolve contact identifier - prefer email, fall back to external ID
+            const contactIdentifier = conversation.wooCustomer?.email
+                || conversation.guestEmail
+                || conversation.externalConversationId;
+
+            if (!contactIdentifier) {
+                return reply.code(400).send({ error: 'No contact identifier found for this conversation' });
+            }
+
+            const result = await BlockedContactService.blockContact(
+                accountId,
+                contactIdentifier,
+                request.user?.id,
+                reason || `Blocked from conversation ${conversationId}`
+            );
+
+            if (!result.success) return reply.code(500).send({ error: result.error });
+
+            // Also close the conversation
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { status: 'CLOSED' }
+            });
+
+            return { success: true, blockedIdentifier: contactIdentifier };
+        } catch (error) {
+            Logger.error('Failed to block contact by conversation', { error });
             return reply.code(500).send({ error: 'Failed to block contact' });
         }
     });

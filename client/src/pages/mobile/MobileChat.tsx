@@ -198,19 +198,20 @@ export function MobileChat() {
         }
     };
 
-    /** Block the contact */
+    /** Block the contact by conversation ID */
     const handleBlock = async () => {
         setShowMenu(false);
-        if (!currentAccount || !token || !conversation?.customerEmail) return;
+        if (!currentAccount || !token || !id) return;
         try {
-            await fetch('/api/chat/block', {
+            // Block by conversation ID - server will resolve the contact
+            await fetch(`/api/chat/${id}/block`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ email: conversation.customerEmail, reason: 'Blocked from mobile' })
+                body: JSON.stringify({ reason: 'Blocked from mobile' })
             });
             navigate('/m/inbox');
         } catch (error) {
@@ -388,13 +389,13 @@ export function MobileChat() {
                     {/* Dropdown Menu */}
                     {showMenu && (
                         <>
-                            {/* Backdrop */}
+                            {/* Backdrop - z-[65] to be above parent z-[60] */}
                             <div
-                                className="fixed inset-0 z-40"
+                                className="fixed inset-0 z-[65]"
                                 onClick={() => setShowMenu(false)}
                             />
-                            {/* Menu */}
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-slate-800 rounded-xl shadow-xl border border-white/10 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                            {/* Menu - z-[70] to be above backdrop */}
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-slate-800 rounded-xl shadow-xl border border-white/10 py-1 z-[70] animate-in fade-in slide-in-from-top-2 duration-150">
                                 <button
                                     onClick={handleResolve}
                                     className="w-full flex items-center gap-3 px-4 py-3 text-left text-slate-200 hover:bg-slate-700 active:bg-slate-600"
@@ -402,15 +403,13 @@ export function MobileChat() {
                                     <CheckCircle2 size={18} className="text-emerald-400" />
                                     <span>Mark Resolved</span>
                                 </button>
-                                {conversation?.customerEmail && (
-                                    <button
-                                        onClick={handleBlock}
-                                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-400 hover:bg-red-500/20 active:bg-red-500/30"
-                                    >
-                                        <Ban size={18} />
-                                        <span>Block Contact</span>
-                                    </button>
-                                )}
+                                <button
+                                    onClick={handleBlock}
+                                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-400 hover:bg-red-500/20 active:bg-red-500/30"
+                                >
+                                    <Ban size={18} />
+                                    <span>Block Contact</span>
+                                </button>
                             </div>
                         </>
                     )}
@@ -554,12 +553,17 @@ export function MobileChat() {
                         <textarea
                             ref={inputRef}
                             value={newMessage}
-                            onChange={(e) => handleInputChange(e.target.value)}
+                            onChange={(e) => {
+                                handleInputChange(e.target.value);
+                                // Auto-expand textarea based on content
+                                e.target.style.height = 'auto';
+                                e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`;
+                            }}
                             onKeyDown={handleKeyPress}
                             placeholder="Type a message... (/ for templates)"
                             rows={1}
-                            className="w-full bg-transparent resize-none focus:outline-none text-base max-h-32 text-white placeholder-slate-400"
-                            style={{ minHeight: '24px' }}
+                            className="w-full bg-transparent resize-none focus:outline-none text-base max-h-32 text-white placeholder-slate-400 overflow-y-auto"
+                            style={{ minHeight: '24px', height: 'auto' }}
                         />
                     </div>
                     <button

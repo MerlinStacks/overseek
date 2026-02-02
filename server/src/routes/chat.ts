@@ -234,6 +234,30 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             }
         });
 
+        // POST /compose-ai - Generate AI-assisted email draft for new composition
+        fastify.post('/compose-ai', async (request, reply) => {
+            try {
+                const accountId = request.accountId;
+                const { recipient, subject, currentDraft } = request.body as {
+                    recipient?: string;
+                    subject?: string;
+                    currentDraft?: string;
+                };
+
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!recipient || !subject) {
+                    return reply.code(400).send({ error: 'Recipient and subject are required for AI assistance' });
+                }
+
+                const result = await InboxAIService.generateComposeAssist(accountId, recipient, subject, currentDraft);
+                if (result.error) return reply.code(400).send({ error: result.error });
+                return { draft: result.draft };
+            } catch (error) {
+                Logger.error('Failed to generate compose AI draft', { error });
+                return reply.code(500).send({ error: 'Failed to generate AI draft' });
+            }
+        });
+
         // GET /unread-count
         fastify.get('/unread-count', async (request, reply) => {
             try {
