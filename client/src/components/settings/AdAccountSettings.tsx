@@ -145,12 +145,16 @@ export function AdAccountSettings() {
         }
     }
 
-    async function handleGoogleOAuth() {
+    async function handleGoogleOAuth(existingAccountId?: string) {
         if (!currentAccount) return;
 
         try {
-            // Use settings page as redirect target
-            const res = await fetch(`/api/oauth/google/authorize?redirect=${encodeURIComponent('/settings?tab=ads')}`, {
+            // Use settings page as redirect target, pass existing account ID for reconnection
+            const params = new URLSearchParams({
+                redirect: '/settings?tab=ads',
+                ...(existingAccountId && { reconnectId: existingAccountId })
+            });
+            const res = await fetch(`/api/oauth/google/authorize?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             const data = await res.json();
@@ -162,6 +166,29 @@ export function AdAccountSettings() {
             }
         } catch (err) {
             alert('Error initiating Google OAuth');
+        }
+    }
+
+    async function handleMetaOAuth(existingAccountId?: string) {
+        if (!currentAccount) return;
+
+        try {
+            const params = new URLSearchParams({
+                redirect: '/settings?tab=ads',
+                ...(existingAccountId && { reconnectId: existingAccountId })
+            });
+            const res = await fetch(`/api/oauth/meta/ads/authorize?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            });
+            const data = await res.json();
+
+            if (data.authUrl) {
+                window.location.href = data.authUrl;
+            } else {
+                alert('Failed to initiate Meta OAuth');
+            }
+        } catch (err) {
+            alert('Error initiating Meta OAuth');
         }
     }
 
@@ -271,6 +298,18 @@ export function AdAccountSettings() {
             alert('Google Ads account connected successfully!');
             window.history.replaceState({}, '', '/settings?tab=ads');
             fetchAccounts();
+        } else if (params.get('success') === 'google_reconnected') {
+            alert('Google Ads account reconnected successfully!');
+            window.history.replaceState({}, '', '/settings?tab=ads');
+            fetchAccounts();
+        } else if (params.get('success') === 'meta_ads_connected') {
+            alert('Meta Ads account connected successfully!');
+            window.history.replaceState({}, '', '/settings?tab=ads');
+            fetchAccounts();
+        } else if (params.get('success') === 'meta_ads_reconnected') {
+            alert('Meta Ads account reconnected successfully!');
+            window.history.replaceState({}, '', '/settings?tab=ads');
+            fetchAccounts();
         } else if (params.get('success') === 'google_pending') {
             const pendingId = params.get('pendingId') || '';
             setPendingSetup({ show: true, pendingId, customerId: '', isSubmitting: false });
@@ -331,6 +370,11 @@ export function AdAccountSettings() {
                                     value={editForm.accessToken}
                                     onChange={e => setEditForm({ ...editForm, accessToken: e.target.value })}
                                 />
+                                {editingAccount.platform === 'GOOGLE' && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        To refresh expired tokens, disconnect and reconnect your account using the OAuth flow.
+                                    </p>
+                                )}
                             </div>
                             {editingAccount.platform === 'GOOGLE' && (
                                 <div>
@@ -467,7 +511,7 @@ export function AdAccountSettings() {
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={handleGoogleOAuth}
+                                    onClick={() => handleGoogleOAuth()}
                                     className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 px-4 py-3 rounded-lg hover:bg-gray-50 font-medium"
                                 >
                                     <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -485,62 +529,26 @@ export function AdAccountSettings() {
                                 )}
                             </div>
                         ) : (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Account Name (Optional)</label>
-                                    <input
-                                        type="text"
-                                        className="w-full p-2 border rounded-lg"
-                                        placeholder="e.g. Summer Campaign Account"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Ad Account ID</label>
-                                    <input
-                                        type="text"
-                                        className="w-full p-2 border rounded-lg"
-                                        placeholder="act_123456789"
-                                        value={formData.externalId}
-                                        onChange={e => setFormData({ ...formData, externalId: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Access Token</label>
-                                    <input
-                                        type="password"
-                                        className="w-full p-2 border rounded-lg"
-                                        placeholder="EAA..."
-                                        value={formData.accessToken}
-                                        onChange={e => setFormData({ ...formData, accessToken: e.target.value })}
-                                        required
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                        Get a token from{' '}
-                                        <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline inline-flex items-center gap-0.5">
-                                            Graph API Explorer <ExternalLink size={12} />
-                                        </a>
+                            <div className="space-y-4">
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <p className="text-sm text-blue-800">
+                                        Meta Ads requires OAuth authentication. Click below to connect securely.
                                     </p>
                                 </div>
-                                <div className="flex justify-end gap-2 mt-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowConnect(false)}
-                                        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isConnecting || (formData.platform === 'META' && !isMetaEnabled)}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                    >
-                                        {isConnecting ? <Loader2 className="animate-spin" size={18} /> : 'Save'}
-                                    </button>
-                                </div>
-                            </>
+                                <button
+                                    type="button"
+                                    onClick={() => handleMetaOAuth()}
+                                    className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 px-4 py-3 rounded-lg hover:bg-gray-50 font-medium"
+                                >
+                                    <Facebook className="w-5 h-5 text-blue-600" />
+                                    Connect with Meta
+                                </button>
+                                {!isMetaEnabled && (
+                                    <div className="absolute inset-0 bg-white/50 cursor-not-allowed flex items-center justify-center rounded-lg">
+                                        <span className="bg-white px-3 py-1 rounded-full text-xs font-bold text-gray-500 shadow-sm border">Disabled</span>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </form>
                 </div>
@@ -652,15 +660,31 @@ export function AdAccountSettings() {
                                 {/* Error Display */}
                                 {hasError && (
                                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                        <div className="flex items-start gap-2">
-                                            <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                                            <div className="text-sm text-red-700">
-                                                <p className="font-medium">Failed to load data</p>
-                                                <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
-                                                <p className="text-xs mt-2 text-red-600">
-                                                    Click the edit button to update your credentials.
-                                                </p>
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex items-start gap-2">
+                                                <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                                                <div className="text-sm text-red-700">
+                                                    <p className="font-medium">Failed to load data</p>
+                                                    <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
+                                                </div>
                                             </div>
+                                            {acc.platform === 'GOOGLE' ? (
+                                                <button
+                                                    onClick={() => handleGoogleOAuth(acc.id)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 shrink-0"
+                                                >
+                                                    <RefreshCw size={14} />
+                                                    Reconnect
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleMetaOAuth(acc.id)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 shrink-0"
+                                                >
+                                                    <RefreshCw size={14} />
+                                                    Reconnect
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 )}

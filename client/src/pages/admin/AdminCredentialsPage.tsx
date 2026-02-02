@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe, Facebook, Bell } from 'lucide-react';
+import { Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe, Facebook, Bell, Copy, Link } from 'lucide-react';
 
 interface PlatformCredential {
     id: string;
@@ -18,6 +18,10 @@ interface PlatformConfig {
     icon: React.ElementType;
     fields: { key: string; label: string; placeholder: string }[];
     testable?: boolean;
+    /** OAuth callback path for platforms that need it */
+    callbackPath?: string;
+    /** Webhook URL path for platforms that need it */
+    webhookPath?: string;
 }
 
 const PLATFORMS: PlatformConfig[] = [
@@ -40,24 +44,26 @@ const PLATFORMS: PlatformConfig[] = [
     {
         id: 'GOOGLE_ADS',
         name: 'Google Ads',
-        description: 'API credentials for Google Ads integration and reporting',
+        description: 'OAuth app credentials for Google Ads. Users connect via "Sign in with Google" using these credentials.',
         icon: Globe,
         fields: [
             { key: 'clientId', label: 'Client ID', placeholder: 'xxx.apps.googleusercontent.com' },
             { key: 'clientSecret', label: 'Client Secret', placeholder: 'GOCSPX-xxx' },
-            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character token' },
+            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character token from Ads API Center' },
             { key: 'loginCustomerId', label: 'Manager Account ID (MCC)', placeholder: '123-456-7890 (optional, for MCC access)' }
-        ]
+        ],
+        callbackPath: '/api/oauth/google/callback'
     },
     {
         id: 'META_ADS',
         name: 'Meta Ads',
-        description: 'API credentials for Facebook/Instagram Ads integration',
+        description: 'OAuth app credentials for Facebook/Instagram Ads. Users connect via "Connect with Meta" using these credentials.',
         icon: Facebook,
         fields: [
             { key: 'appId', label: 'App ID', placeholder: '123456789' },
             { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...' }
-        ]
+        ],
+        callbackPath: '/api/oauth/meta/ads/callback'
     },
     {
         id: 'META_MESSAGING',
@@ -68,7 +74,9 @@ const PLATFORMS: PlatformConfig[] = [
             { key: 'appId', label: 'App ID', placeholder: '123456789' },
             { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...' },
             { key: 'webhookVerifyToken', label: 'Webhook Verify Token', placeholder: 'your_secret_token (same as in Facebook Dev Console)' }
-        ]
+        ],
+        callbackPath: '/api/oauth/meta/messaging/callback',
+        webhookPath: '/api/meta-webhook'
     },
     {
         id: 'WEB_PUSH_VAPID',
@@ -397,6 +405,59 @@ export function AdminCredentialsPage() {
                         )}
                     </div>
                 </div>
+
+                {/* Callback/Webhook URLs (for OAuth platforms) */}
+                {(currentPlatform.callbackPath || currentPlatform.webhookPath) && (
+                    <div className="px-6 py-4 bg-amber-50 border-b border-amber-100">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Link size={16} className="text-amber-700" />
+                            <span className="text-sm font-medium text-amber-800">URL Configuration</span>
+                        </div>
+                        <p className="text-xs text-amber-700 mb-3">
+                            Add these URLs to your {currentPlatform.name === 'Google Ads' ? 'Google Cloud Console' : 'Meta Developer Console'}:
+                        </p>
+                        <div className="space-y-2">
+                            {currentPlatform.callbackPath && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-amber-700 font-medium w-28 shrink-0">
+                                        {currentPlatform.id === 'META_MESSAGING' ? 'OAuth Redirect:' : 'Callback URL:'}
+                                    </span>
+                                    <code className="flex-1 text-xs bg-white px-2 py-1.5 rounded border border-amber-200 font-mono text-amber-900 overflow-x-auto">
+                                        {window.location.origin}{currentPlatform.callbackPath}
+                                    </code>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`${window.location.origin}${currentPlatform.callbackPath}`);
+                                            setMessage({ type: 'success', text: 'URL copied to clipboard!' });
+                                        }}
+                                        className="p-1.5 hover:bg-amber-100 rounded transition-colors"
+                                        title="Copy to clipboard"
+                                    >
+                                        <Copy size={14} className="text-amber-700" />
+                                    </button>
+                                </div>
+                            )}
+                            {currentPlatform.webhookPath && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-amber-700 font-medium w-28 shrink-0">Webhook URL:</span>
+                                    <code className="flex-1 text-xs bg-white px-2 py-1.5 rounded border border-amber-200 font-mono text-amber-900 overflow-x-auto">
+                                        {window.location.origin}{currentPlatform.webhookPath}
+                                    </code>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`${window.location.origin}${currentPlatform.webhookPath}`);
+                                            setMessage({ type: 'success', text: 'URL copied to clipboard!' });
+                                        }}
+                                        className="p-1.5 hover:bg-amber-100 rounded transition-colors"
+                                        title="Copy to clipboard"
+                                    >
+                                        <Copy size={14} className="text-amber-700" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Credential Fields */}
                 <div className="p-6 space-y-4">

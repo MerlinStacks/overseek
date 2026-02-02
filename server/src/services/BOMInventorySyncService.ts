@@ -496,9 +496,7 @@ export class BOMInventorySyncService {
         productId: string,
         variationId: number = 0
     ): Promise<SyncResult> {
-        console.log(`[DEBUG] syncProductToWoo: calculating effective stock for ${productId}`);
         const calculation = await this.calculateEffectiveStock(accountId, productId, variationId);
-        console.log(`[DEBUG] syncProductToWoo: calculation done, needsSync=${calculation?.needsSync}`);
 
         if (!calculation) {
             return {
@@ -641,7 +639,6 @@ export class BOMInventorySyncService {
     }> {
         // Find all BOMs with child product items OR internal product items for this account
         // Wrapped in retry for transient DB errors
-        console.log(`[DEBUG] syncAllBOMProducts called with accountId: ${accountId}`);
         const bomsWithChildProducts = await withDbRetry(
             () => prisma.bOM.findMany({
                 where: {
@@ -663,7 +660,6 @@ export class BOMInventorySyncService {
             { context: 'Find BOMs for bulk sync' }
         );
 
-        console.log(`[DEBUG] Query returned ${bomsWithChildProducts.length} BOMs for account ${accountId}`);
         Logger.info(`[BOMInventorySync] Starting bulk sync for ${bomsWithChildProducts.length} products`, { accountId });
 
         const results: SyncResult[] = [];
@@ -671,12 +667,7 @@ export class BOMInventorySyncService {
         let skipped = 0;
         let failed = 0;
 
-        for (let i = 0; i < bomsWithChildProducts.length; i++) {
-            const bom = bomsWithChildProducts[i];
-            // Log every 100 products to track progress without flooding logs
-            if (i === 0 || i % 100 === 0) {
-                console.log(`[DEBUG] Processing BOM ${i + 1}/${bomsWithChildProducts.length}: productId=${bom.productId}, variationId=${bom.variationId}`);
-            }
+        for (const bom of bomsWithChildProducts) {
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
             try {
                 const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId);

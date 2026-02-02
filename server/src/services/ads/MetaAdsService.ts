@@ -1,15 +1,21 @@
 /**
  * Meta Ads Service (Facebook/Instagram)
- * Handles Meta Graph API v18.0 interactions for ad insights.
+ * Handles Meta Graph API v24.0 interactions for ad insights.
+ * 
+ * UPDATED 2026-02: Updated from v18.0 to v24.0 for current API compatibility.
  */
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, getCredentials, formatDateISO } from './types';
 
+/** Current Meta Graph API version */
+const API_VERSION = 'v24.0';
+const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
+
 /**
  * Service for Meta (Facebook/Instagram) Ads integration.
- * Uses Facebook Graph API v18.0.
+ * Uses Facebook Graph API v24.0.
  */
 export class MetaAdsService {
 
@@ -28,7 +34,7 @@ export class MetaAdsService {
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
         const fields = 'spend,impressions,clicks,purchase_roas,action_values';
-        const url = `https://graph.facebook.com/v18.0/${actId}/insights?fields=${fields}&date_preset=last_30d&access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${actId}/insights?fields=${fields}&date_preset=last_30d&access_token=${adAccount.accessToken}`;
 
         try {
             Logger.info('[MetaAds] Fetching insights', { actId, hasToken: !!adAccount.accessToken });
@@ -92,7 +98,7 @@ export class MetaAdsService {
             throw new Error('Meta Ads credentials not configured. Please configure via Super Admin.');
         }
 
-        const url = `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${creds.appId}&client_secret=${creds.appSecret}&fb_exchange_token=${shortLivedToken}`;
+        const url = `${GRAPH_API_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${creds.appId}&client_secret=${creds.appSecret}&fb_exchange_token=${shortLivedToken}`;
 
         try {
             const response = await fetch(url);
@@ -136,7 +142,7 @@ export class MetaAdsService {
             until: formatDateISO(endDate)
         });
         const filtering = JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN', value: ['ACTIVE'] }]);
-        const url = `https://graph.facebook.com/v18.0/${actId}/insights?fields=${fields}&level=campaign&time_range=${encodeURIComponent(timeRange)}&filtering=${encodeURIComponent(filtering)}&access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${actId}/insights?fields=${fields}&level=campaign&time_range=${encodeURIComponent(timeRange)}&filtering=${encodeURIComponent(filtering)}&access_token=${adAccount.accessToken}`;
 
         try {
             const response = await fetch(url);
@@ -230,7 +236,7 @@ export class MetaAdsService {
             since: formatDateISO(startDate),
             until: formatDateISO(endDate)
         });
-        const url = `https://graph.facebook.com/v18.0/${actId}/insights?fields=${fields}&time_increment=1&time_range=${encodeURIComponent(timeRange)}&access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${actId}/insights?fields=${fields}&time_increment=1&time_range=${encodeURIComponent(timeRange)}&access_token=${adAccount.accessToken}`;
 
         try {
             const response = await fetch(url);
@@ -297,7 +303,7 @@ export class MetaAdsService {
         // So we multiply by 100.
         const budgetInCents = Math.round(dailyBudget * 100);
 
-        const url = `https://graph.facebook.com/v18.0/${campaignId}?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${campaignId}?access_token=${adAccount.accessToken}`;
 
         try {
             Logger.info('[MetaAds] Updating budget', { campaignId, dailyBudget, budgetInCents });
@@ -336,7 +342,7 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `https://graph.facebook.com/v18.0/${campaignId}?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${campaignId}?access_token=${adAccount.accessToken}`;
 
         try {
             Logger.info('[MetaAds] Updating status', { campaignId, status });
@@ -385,7 +391,7 @@ export class MetaAdsService {
         }
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
-        const url = `https://graph.facebook.com/v18.0/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
 
         try {
             Logger.info('[MetaAds] Creating Custom Audience', { actId, name });
@@ -434,7 +440,7 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `https://graph.facebook.com/v18.0/${audienceId}/users?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${audienceId}/users?access_token=${adAccount.accessToken}`;
 
         // Format data for Meta API
         const payload = {
@@ -490,7 +496,7 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `https://graph.facebook.com/v18.0/${audienceId}/usersreplace?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${audienceId}/usersreplace?access_token=${adAccount.accessToken}`;
 
         const payload = {
             payload: {
@@ -554,7 +560,7 @@ export class MetaAdsService {
         }
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
-        const url = `https://graph.facebook.com/v18.0/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
 
         // Meta uses ratio format: 0.01 = 1%, 0.03 = 3%, etc.
         const ratio = percent / 100;
@@ -609,7 +615,7 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `https://graph.facebook.com/v18.0/${audienceId}?access_token=${adAccount.accessToken}`;
+        const url = `${GRAPH_API_BASE}/${audienceId}?access_token=${adAccount.accessToken}`;
 
         try {
             Logger.info('[MetaAds] Deleting Custom Audience', { audienceId });

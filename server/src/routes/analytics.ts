@@ -21,10 +21,7 @@ import analyticsInventoryRoutes from './analyticsInventory';
 import cohortRoutes from './cohorts';
 import { AnomalyDetection } from '../services/analytics/AnomalyDetection';
 import { PermissionService } from '../services/PermissionService';
-
-// Simple in-memory cache for product view counts (5 minute TTL)
-const productViewsCache = new Map<string, { data: { views7d: number; views30d: number }; expiresAt: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+import { cacheAside, CacheNamespace, CacheTTL } from '../utils/cache';
 
 const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -80,6 +77,14 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/sales', async (request, reply) => {
         try {
             const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_finance permission for sales data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_finance');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view sales data' });
+            }
+
             const query = request.query as { startDate?: string; endDate?: string };
             const { total, count } = await SalesAnalytics.getTotalSales(accountId, query.startDate, query.endDate);
             const account = await prisma.account.findUnique({ where: { id: accountId } });
@@ -127,18 +132,36 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/forecast', async (request, reply) => {
         try {
+            const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_finance permission for forecast data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_finance');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view forecast data' });
+            }
+
             const query = request.query as { days?: string };
             const days = parseInt(query.days || '30');
-            return await SalesAnalytics.getSalesForecast(request.accountId!, days);
+            return await SalesAnalytics.getSalesForecast(accountId, days);
         } catch (e) { Logger.error('Forecast Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
     fastify.get('/profitability', async (request, reply) => {
         try {
+            const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_finance permission for profitability data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_finance');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view profitability data' });
+            }
+
             const query = request.query as { startDate?: string; endDate?: string };
             const startDate = query.startDate ? new Date(query.startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
             const endDate = query.endDate ? new Date(query.endDate) : new Date();
-            return await AnalyticsService.getProfitabilityReport(request.accountId!, startDate, endDate);
+            return await AnalyticsService.getProfitabilityReport(accountId, startDate, endDate);
         } catch (e) { Logger.error('Profitability Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
@@ -180,23 +203,67 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // --- Acquisition & Behaviour ---
     fastify.get('/acquisition/channels', async (request, reply) => {
-        try { const query = request.query as any; return await AcquisitionAnalytics.getAcquisitionChannels(request.accountId!, query.startDate, query.endDate); }
-        catch (e) { Logger.error('Acquisition Channels Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+        try {
+            const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_analytics permission for acquisition data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view acquisition analytics' });
+            }
+
+            const query = request.query as any;
+            return await AcquisitionAnalytics.getAcquisitionChannels(accountId, query.startDate, query.endDate);
+        } catch (e) { Logger.error('Acquisition Channels Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
     fastify.get('/acquisition/campaigns', async (request, reply) => {
-        try { const query = request.query as any; return await AcquisitionAnalytics.getAcquisitionCampaigns(request.accountId!, query.startDate, query.endDate); }
-        catch (e) { Logger.error('Acquisition Campaigns Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+        try {
+            const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_analytics permission for campaign data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view campaign analytics' });
+            }
+
+            const query = request.query as any;
+            return await AcquisitionAnalytics.getAcquisitionCampaigns(accountId, query.startDate, query.endDate);
+        } catch (e) { Logger.error('Acquisition Campaigns Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
     fastify.get('/behaviour/pages', async (request, reply) => {
-        try { const query = request.query as any; return await BehaviourAnalytics.getBehaviourPages(request.accountId!, query.startDate, query.endDate); }
-        catch (e) { Logger.error('Behaviour Pages Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+        try {
+            const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_analytics permission for behaviour data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view behaviour analytics' });
+            }
+
+            const query = request.query as any;
+            return await BehaviourAnalytics.getBehaviourPages(accountId, query.startDate, query.endDate);
+        } catch (e) { Logger.error('Behaviour Pages Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
     fastify.get('/behaviour/search', async (request, reply) => {
-        try { const query = request.query as any; return await BehaviourAnalytics.getSiteSearch(request.accountId!, query.startDate, query.endDate); }
-        catch (e) { Logger.error('Site Search Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
+        try {
+            const accountId = request.accountId!;
+            const userId = request.user!.id;
+
+            // RBAC: Require view_analytics permission for search data
+            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            if (!canView) {
+                return reply.code(403).send({ error: 'You do not have permission to view search analytics' });
+            }
+
+            const query = request.query as any;
+            return await BehaviourAnalytics.getSiteSearch(accountId, query.startDate, query.endDate);
+        } catch (e) { Logger.error('Site Search Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
 
     fastify.get('/behaviour/entry', async (request, reply) => {
@@ -242,30 +309,25 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(403).send({ error: 'You do not have permission to view product analytics' });
             }
 
-            // Check cache first
-            const cacheKey = `${accountId}:${productId}`;
-            const cached = productViewsCache.get(cacheKey);
-            if (cached && cached.expiresAt > Date.now()) {
-                return cached.data;
-            }
+            // Use Redis cache-aside pattern for product views
+            const cacheKey = `product-views:${accountId}:${productId}`;
+            const viewData = await cacheAside<{ views7d: number; views30d: number }>(
+                cacheKey,
+                async () => {
+                    // Get the product to find its permalink
+                    const product = await prisma.wooProduct.findFirst({
+                        where: { id: productId, accountId },
+                        select: { permalink: true }
+                    });
 
-            // Get the product to find its permalink
-            const product = await prisma.wooProduct.findFirst({
-                where: { id: productId, accountId },
-                select: { permalink: true }
-            });
+                    if (!product?.permalink) {
+                        return { views7d: 0, views30d: 0 };
+                    }
 
-            if (!product?.permalink) {
-                return { views7d: 0, views30d: 0 };
-            }
-
-            const viewData = await BehaviourAnalytics.getProductPageViews(accountId, product.permalink);
-
-            // Cache the result
-            productViewsCache.set(cacheKey, {
-                data: viewData,
-                expiresAt: Date.now() + CACHE_TTL_MS
-            });
+                    return await BehaviourAnalytics.getProductPageViews(accountId, product.permalink);
+                },
+                { namespace: CacheNamespace.ANALYTICS, ttl: CacheTTL.MEDIUM }
+            );
 
             return viewData;
         } catch (e: any) {

@@ -15,12 +15,13 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/google/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
             const accountId = request.accountId;
-            const query = request.query as { redirect?: string };
+            const query = request.query as { redirect?: string; reconnectId?: string };
             const frontendRedirect = query.redirect || '/settings/integrations';
+            const reconnectId = query.reconnectId;
 
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64');
+            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64');
 
             const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
             const callbackUrl = apiUrl
@@ -54,7 +55,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.redirect(`${frontendRedirect}?error=missing_params`);
             }
 
-            let stateData: { accountId: string; frontendRedirect: string };
+            let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
                 stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
                 frontendRedirect = stateData.frontendRedirect || frontendRedirect;
@@ -69,6 +70,16 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
             const tokens = await AdsService.exchangeGoogleCode(code, redirectUri);
 
+            // If reconnecting an existing account, update its tokens
+            if (stateData.reconnectId) {
+                await AdsService.updateAccountTokens(stateData.reconnectId, {
+                    accessToken: tokens.accessToken,
+                    refreshToken: tokens.refreshToken || ''
+                });
+                return reply.redirect(`${frontendRedirect}?success=google_reconnected`);
+            }
+
+            // Otherwise create new pending account
             const pendingAccount = await AdsService.connectAccount(stateData.accountId, {
                 platform: 'GOOGLE',
                 externalId: 'PENDING_SETUP',

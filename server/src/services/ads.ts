@@ -140,6 +140,12 @@ export class AdsService {
     }
 
     /**
+     * Update tokens for an existing ad account (alias for updateAccount).
+     * Used by OAuth reconnection flow.
+     */
+    static updateAccountTokens = AdsService.updateAccount;
+
+    /**
      * Delete a connected ad account.
      */
     static async disconnectAccount(adAccountId: string) {

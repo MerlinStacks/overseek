@@ -137,11 +137,14 @@ export interface KeywordIdea {
 const credentialsCache: Map<string, { data: any; expiry: number }> = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+/** Valid platform identifiers for credentials */
+export type AdsPlatform = 'GOOGLE_ADS' | 'META_ADS' | 'META' | 'META_MESSAGING';
+
 /**
  * Clear the credentials cache for a specific platform or all platforms.
  * Call this when platform credentials are updated in Super Admin.
  */
-export function clearCredentialsCache(platform?: 'GOOGLE_ADS' | 'META_ADS'): void {
+export function clearCredentialsCache(platform?: AdsPlatform): void {
     if (platform) {
         credentialsCache.delete(platform);
         Logger.info(`Cleared credentials cache for ${platform}`);
@@ -153,28 +156,42 @@ export function clearCredentialsCache(platform?: 'GOOGLE_ADS' | 'META_ADS'): voi
 
 /**
  * Fetch platform credentials from database with caching.
+ * For META platforms, tries unified 'META' first, then falls back to platform-specific.
  * Falls back to environment variables for backwards compatibility.
  */
-export async function getCredentials(platform: 'GOOGLE_ADS' | 'META_ADS'): Promise<Record<string, string> | null> {
-    const cacheKey = platform;
-    const cached = credentialsCache.get(cacheKey);
-
-    if (cached && cached.expiry > Date.now()) {
-        return cached.data;
+export async function getCredentials(platform: AdsPlatform): Promise<Record<string, string> | null> {
+    // Build list of platforms to try (unified META first for Meta platforms)
+    const platformsToTry: string[] = [];
+    if (platform === 'META_ADS' || platform === 'META_MESSAGING') {
+        platformsToTry.push('META', platform); // Try unified META first
+    } else if (platform === 'META') {
+        platformsToTry.push('META', 'META_ADS', 'META_MESSAGING'); // Try all Meta variants
+    } else {
+        platformsToTry.push(platform);
     }
 
-    try {
-        const record = await prisma.platformCredentials.findUnique({
-            where: { platform }
-        });
+    for (const platformKey of platformsToTry) {
+        const cacheKey = platformKey;
+        const cached = credentialsCache.get(cacheKey);
 
-        if (record?.credentials) {
-            const creds = record.credentials as Record<string, string>;
-            credentialsCache.set(cacheKey, { data: creds, expiry: Date.now() + CACHE_TTL_MS });
-            return creds;
+        if (cached && cached.expiry > Date.now()) {
+            return cached.data;
         }
-    } catch (error) {
-        Logger.warn(`Failed to fetch ${platform} credentials from database`, { error });
+
+        try {
+            const record = await prisma.platformCredentials.findUnique({
+                where: { platform: platformKey }
+            });
+
+            if (record?.credentials) {
+                const creds = record.credentials as Record<string, string>;
+                credentialsCache.set(cacheKey, { data: creds, expiry: Date.now() + CACHE_TTL_MS });
+                Logger.debug(`Using credentials from ${platformKey} for ${platform}`);
+                return creds;
+            }
+        } catch (error) {
+            Logger.warn(`Failed to fetch ${platformKey} credentials from database`, { error });
+        }
     }
 
     // Fallback to environment variables for backwards compatibility
@@ -185,7 +202,7 @@ export async function getCredentials(platform: 'GOOGLE_ADS' | 'META_ADS'): Promi
         if (clientId && clientSecret && developerToken) {
             return { clientId, clientSecret, developerToken };
         }
-    } else if (platform === 'META_ADS') {
+    } else if (platform === 'META_ADS' || platform === 'META' || platform === 'META_MESSAGING') {
         const appId = process.env.META_APP_ID;
         const appSecret = process.env.META_APP_SECRET;
         if (appId && appSecret) {

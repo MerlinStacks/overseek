@@ -1,6 +1,6 @@
 /**
  * Meta Messaging Service (Facebook Messenger & Instagram DMs)
- * Handles Meta Graph API v18.0 messaging operations.
+ * Handles Meta Graph API v24.0 messaging operations.
  * 
  * Why: Enables unified inbox to receive and send messages through
  * Facebook Pages and Instagram Business accounts.
@@ -10,7 +10,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { EventBus, EVENTS } from '../events';
 
-const GRAPH_API_VERSION = 'v18.0';
+const GRAPH_API_VERSION = 'v24.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
 interface MetaMessagePayload {

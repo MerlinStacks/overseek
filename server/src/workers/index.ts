@@ -41,34 +41,20 @@ export async function startWorkers() {
     });
 
     // BOM Inventory Sync Worker
-    console.log('[DEBUG] About to register BOM Inventory Sync worker...');
     try {
-        console.log('[DEBUG] Importing BOMInventorySyncService...');
         const { BOMInventorySyncService } = await import('../services/BOMInventorySyncService');
-        console.log('[DEBUG] BOMInventorySyncService imported successfully, creating worker...');
         QueueFactory.createWorker(QUEUES.BOM_SYNC, async (job) => {
-            try {
-                const { accountId } = job.data;
-                console.log(`[DEBUG] BOM Worker processing job for account ${accountId}`);
-                console.log('[DEBUG] About to call syncAllBOMProducts...');
-                const result = await BOMInventorySyncService.syncAllBOMProducts(accountId);
-                console.log('[DEBUG] syncAllBOMProducts completed:', JSON.stringify(result));
-                Logger.info(`[BOM Worker] Completed BOM sync`, {
-                    accountId,
-                    synced: result.synced,
-                    skipped: result.skipped,
-                    failed: result.failed
-                });
-            } catch (err: any) {
-                console.error('[DEBUG] BOM sync job CRASHED:', err.message);
-                console.error('[DEBUG] Stack:', err.stack);
-                throw err; // Re-throw so BullMQ knows job failed
-            }
+            const { accountId } = job.data;
+            const result = await BOMInventorySyncService.syncAllBOMProducts(accountId);
+            Logger.info(`[BOM Worker] Completed BOM sync`, {
+                accountId,
+                synced: result.synced,
+                skipped: result.skipped,
+                failed: result.failed
+            });
         });
-        console.log('[DEBUG] BOM Inventory Sync worker registered successfully!');
         Logger.info('[Workers] BOM Inventory Sync worker registered');
     } catch (err: any) {
-        console.error('[DEBUG] FAILED to register BOM worker:', err.message);
         Logger.error('[Workers] FAILED to register BOM Inventory Sync worker', { error: err.message, stack: err.stack });
     }
 

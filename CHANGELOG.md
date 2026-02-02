@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2026-02-01
+
+### 🔒 Security & Code Quality
+- **XSS Audit Verified**: Confirmed all 9 `dangerouslySetInnerHTML` usages properly sanitized with DOMPurify.
+- **Debug Logging Cleanup**: Removed 14 debug `console.log` statements from production server code (`workers/index.ts`, `BOMInventorySyncService.ts`).
+
+---
+
 ## [2.3.0] - 2026-01-25
 
 ### 🏷️ White-Label & Self-Hosting Support
