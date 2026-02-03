@@ -9,16 +9,29 @@ vi.mock('../../utils/prisma', () => ({
             findUnique: vi.fn(),
             update: vi.fn(),
         },
+        productVariation: {
+            upsert: vi.fn(),
+        }
     }
 }));
 
-// Mock WooService
-const mockUpdateProduct = vi.fn();
+// Mock WooService - updateProductVariation is called for variations, not updateProduct
+const mockUpdateProductVariation = vi.fn();
 vi.mock('../woo', () => ({
     WooService: {
         forAccount: vi.fn(() => ({
-            updateProduct: mockUpdateProduct
+            updateProductVariation: mockUpdateProductVariation
         }))
+    }
+}));
+
+// Mock Logger to suppress output
+vi.mock('../../utils/logger', () => ({
+    Logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn()
     }
 }));
 
@@ -50,9 +63,10 @@ describe('ProductsService.updateProduct Performance', () => {
         (prisma.wooProduct.update as any).mockResolvedValue({
             id: 'local_123'
         });
+        (prisma.productVariation.upsert as any).mockResolvedValue({});
 
         // Simulate 100ms latency per variation update
-        mockUpdateProduct.mockImplementation(async () => {
+        mockUpdateProductVariation.mockImplementation(async () => {
             await new Promise(resolve => setTimeout(resolve, 100));
             return {};
         });
@@ -64,8 +78,9 @@ describe('ProductsService.updateProduct Performance', () => {
 
         console.log(`Duration (Parallel): ${duration}ms`);
 
-        // Should be close to 100ms (e.g. < 300ms overhead)
+        // Should be close to 100ms (e.g. < 300ms overhead) because variations are processed in parallel
         expect(duration).toBeLessThan(300);
-        expect(mockUpdateProduct).toHaveBeenCalledTimes(10);
+        expect(mockUpdateProductVariation).toHaveBeenCalledTimes(10);
     });
 });
+

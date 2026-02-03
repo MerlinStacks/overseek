@@ -44,13 +44,15 @@ describe('Encryption Utilities', () => {
         });
     });
 
-    describe('decrypt error handling', () => {
-        it('should throw on invalid format (no colons)', () => {
-            expect(() => decrypt('invalidciphertext')).toThrow('Invalid encrypted text format');
+    describe('decrypt legacy handling', () => {
+        it('should return original text on invalid format (no colons)', () => {
+            // decrypt gracefully handles legacy unencrypted values
+            expect(decrypt('invalidciphertext')).toBe('invalidciphertext');
         });
 
-        it('should throw on invalid format (wrong number of parts)', () => {
-            expect(() => decrypt('part1:part2')).toThrow('Invalid encrypted text format');
+        it('should return original text on invalid format (wrong number of parts)', () => {
+            // decrypt gracefully handles legacy values with colons
+            expect(decrypt('part1:part2')).toBe('part1:part2');
         });
     });
 });

@@ -121,22 +121,47 @@ export class WooService {
 
     async getOrders(params: { after?: string; page?: number; per_page?: number } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_ORDERS, total: MOCK_ORDERS.length, totalPages: 1 });
-        return this.requestWithRetry('get', 'orders', { ...params, per_page: params.per_page || 20 });
+        const { after, ...rest } = params;
+        const apiParams = {
+            ...rest,
+            per_page: params.per_page || 20,
+            // Use modified_after for incremental syncs to catch status changes
+            ...(after && { modified_after: after })
+        };
+        return this.requestWithRetry('get', 'orders', apiParams);
     }
 
     async getProducts(params: { after?: string; page?: number; per_page?: number } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_PRODUCTS, total: MOCK_PRODUCTS.length, totalPages: 1 });
-        return this.requestWithRetry('get', 'products', { ...params, per_page: params.per_page || 20 });
+        const { after, ...rest } = params;
+        const apiParams = {
+            ...rest,
+            per_page: params.per_page || 20,
+            ...(after && { modified_after: after })
+        };
+        return this.requestWithRetry('get', 'products', apiParams);
     }
 
     async getCustomers(params: { after?: string; page?: number; per_page?: number } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_CUSTOMERS, total: MOCK_CUSTOMERS.length, totalPages: 1 });
-        return this.requestWithRetry('get', 'customers', { ...params, per_page: params.per_page || 20 });
+        const { after, ...rest } = params;
+        const apiParams = {
+            ...rest,
+            per_page: params.per_page || 20,
+            ...(after && { modified_after: after })
+        };
+        return this.requestWithRetry('get', 'customers', apiParams);
     }
 
     async getReviews(params: { after?: string; page?: number; per_page?: number } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_REVIEWS, total: MOCK_REVIEWS.length, totalPages: 1 });
-        return this.requestWithRetry('get', 'products/reviews', { ...params, per_page: params.per_page || 20 });
+        const { after, ...rest } = params;
+        const apiParams = {
+            ...rest,
+            per_page: params.per_page || 20,
+            ...(after && { modified_after: after })
+        };
+        return this.requestWithRetry('get', 'products/reviews', apiParams);
     }
 
     /**

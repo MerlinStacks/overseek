@@ -110,15 +110,24 @@ describe('retryWithBackoff', () => {
     });
 
     it('throws after max retries exhausted', async () => {
-        const error = { response: { status: 500 }, message: 'Server Error' };
+        const error = new Error('Server Error');
+        (error as any).response = { status: 500 };
         const fn = vi.fn().mockRejectedValue(error);
 
-        const promise = retryWithBackoff(fn, { maxRetries: 2, baseDelayMs: 100 });
+        // Start the promise and immediately attach a catch handler to prevent unhandled rejection
+        let caughtError: Error | null = null;
+        const resultPromise = retryWithBackoff(fn, { maxRetries: 2, baseDelayMs: 100 })
+            .catch((e) => { caughtError = e; });
 
-        // Fast-forward through all delays
-        await vi.advanceTimersByTimeAsync(1000);
+        // Advance timers to trigger all retries
+        await vi.runAllTimersAsync();
 
-        await expect(promise).rejects.toEqual(error);
+        // Wait for the promise to settle
+        await resultPromise;
+
+        // Now verify the error was caught
+        expect(caughtError).not.toBeNull();
+        expect(caughtError!.message).toBe('Server Error');
         expect(fn).toHaveBeenCalledTimes(3); // Initial + 2 retries
     });
 
