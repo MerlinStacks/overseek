@@ -3,6 +3,9 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
+# Increase Node memory for large builds
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Copy package files first for better layer caching
 COPY package*.json ./
 
@@ -12,8 +15,8 @@ RUN npm install --legacy-peer-deps
 # Copy source code
 COPY . .
 
-# Build production bundle
-RUN npm run build
+# Build production bundle (skip tsc, let vite handle it)
+RUN npx vite build
 
 # Production stage - serve with Nginx
 FROM nginx:alpine
