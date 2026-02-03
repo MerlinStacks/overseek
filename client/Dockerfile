@@ -1,12 +1,9 @@
-# Base stage
-FROM node:22-slim
+# Build stage - compile React/Vite to optimized static files
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# Copy package files
+# Copy package files first for better layer caching
 COPY package*.json ./
 
 # Install dependencies (legacy-peer-deps for React 19 compatibility)
@@ -15,8 +12,24 @@ RUN npm install --legacy-peer-deps
 # Copy source code
 COPY . .
 
-# Expose port
-EXPOSE 5173
+# Build production bundle
+RUN npm run build
 
-# Start command (overridden by docker-compose for dev)
-CMD ["npm", "run", "dev", "--", "--host"]
+# Production stage - serve with Nginx
+FROM nginx:alpine
+
+# Copy built assets from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx config for SPA routing and API proxying
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 80
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

@@ -119,18 +119,12 @@ services:
       dockerfile: Dockerfile
     pull_policy: build
     ports:
-      - "5173:5173"
-    environment:
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-overseek.plateit.au}
-      HOST: "true"
-      PORT: "5173"
-      VITE_API_URL: ${VITE_API_URL:-http://api:3000}
-      CHOKIDAR_USEPOLLING: "true" # Better for Docker
+      - "5173:80" # External 5173 -> Internal Nginx 80
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:5173/" ]
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health" ]
       interval: 15s
       timeout: 5s
       retries: 3
