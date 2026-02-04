@@ -303,9 +303,8 @@ async function initializeApp() {
         await automationEngine.processTrigger(data.accountId, 'REVIEW_LEFT', data.review);
     });
 
-    EventBus.on(EVENTS.EMAIL.RECEIVED, async (data) => {
-        await chatService.handleIncomingEmail(data);
-    });
+    // NOTE: EMAIL.RECEIVED events are handled by NotificationEngine (see NotificationEngine.ts)
+    // The event is emitted AFTER email ingestion completes, to trigger push notifications.
 
     // Initialize Notification Engine
     NotificationEngine.init();

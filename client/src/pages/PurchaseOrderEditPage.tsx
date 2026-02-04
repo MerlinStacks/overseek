@@ -163,11 +163,20 @@ export function PurchaseOrderEditPage() {
             if (res.ok) {
                 navigate('/inventory?tab=purchasing');
             } else {
-                alert('Failed to save');
+                // Parse error response to show actual server error
+                let errorMessage = 'Failed to save';
+                try {
+                    const errorData = await res.json();
+                    errorMessage = errorData.error || errorData.message || `Failed to save (${res.status})`;
+                } catch {
+                    errorMessage = `Failed to save (HTTP ${res.status})`;
+                }
+                Logger.error('PO save failed', { status: res.status, errorMessage });
+                alert(errorMessage);
             }
         } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            alert('Error saving');
+            Logger.error('PO save error', { error: err });
+            alert(`Error saving: ${err instanceof Error ? err.message : 'Network error'}`);
         } finally {
             setIsLoading(false);
         }

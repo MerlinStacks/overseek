@@ -227,44 +227,68 @@ export class OrderSync extends BaseSync {
      * Recalculate customer order counts from local orders.
      * Uses PostgreSQL advisory lock to prevent deadlocks when multiple workers
      * attempt to run this concurrently (fixes 40P01 deadlock errors).
+     * Includes retry logic with exponential backoff for transient failures.
      * 
      * PERFORMANCE: Uses indexed wooCustomerId column instead of JSON parsing.
      */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
         Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
-        try {
-            // Use advisory lock to prevent concurrent execution across workers
-            // This prevents deadlocks (40P01) when multiple sync jobs try to update the same rows
-            await prisma.$transaction(async (tx) => {
-                // Acquire transaction-scoped advisory lock (released automatically on commit/rollback)
-                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('recalculate_customer_counts_' || ${accountId}))`;
 
-                // Now safe to run the update without risk of deadlock
-                // Uses indexed wooCustomerId column for better performance (avoids JSON parsing)
-                await tx.$executeRaw`
-                    UPDATE "WooCustomer" wc
-                    SET "ordersCount" = c.count
-                    FROM (
-                        SELECT
-                            "wooCustomerId" as woo_id,
-                            COUNT(*)::int as count
-                        FROM "WooOrder"
-                        WHERE "accountId" = ${accountId}
-                          AND "wooCustomerId" IS NOT NULL
-                        GROUP BY "wooCustomerId"
-                    ) c
-                    WHERE wc."accountId" = ${accountId}
-                      AND wc."wooId" = c.woo_id;
-                `;
-            });
-            Logger.info(`Updated customer order counts`, { accountId, syncId });
-        } catch (error: any) {
-            // Check if this is a deadlock we failed to prevent (shouldn't happen with advisory lock)
-            const isDeadlock = error.code === '40P01';
-            if (isDeadlock) {
-                Logger.warn('Deadlock detected during customer count recalculation (will retry on next sync)', { accountId, syncId });
-            } else {
-                Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
+        const MAX_RETRIES = 3;
+        let attempt = 0;
+
+        while (attempt < MAX_RETRIES) {
+            try {
+                // Use advisory lock to prevent concurrent execution across workers
+                // This prevents deadlocks (40P01) when multiple sync jobs try to update the same rows
+                await prisma.$transaction(async (tx) => {
+                    // Acquire transaction-scoped advisory lock (released automatically on commit/rollback)
+                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('recalculate_customer_counts_' || ${accountId}))`;
+
+                    // Now safe to run the update without risk of deadlock
+                    // Uses indexed wooCustomerId column for better performance (avoids JSON parsing)
+                    await tx.$executeRaw`
+                        UPDATE "WooCustomer" wc
+                        SET "ordersCount" = c.count
+                        FROM (
+                            SELECT
+                                "wooCustomerId" as woo_id,
+                                COUNT(*)::int as count
+                            FROM "WooOrder"
+                            WHERE "accountId" = ${accountId}
+                              AND "wooCustomerId" IS NOT NULL
+                            GROUP BY "wooCustomerId"
+                        ) c
+                        WHERE wc."accountId" = ${accountId}
+                          AND wc."wooId" = c.woo_id;
+                    `;
+                }, {
+                    timeout: 15000, // 15 seconds - sufficient for the update
+                    maxWait: 5000   // Max 5s to acquire a connection
+                });
+
+                Logger.info(`Updated customer order counts`, { accountId, syncId });
+                return; // Success - exit retry loop
+
+            } catch (error: any) {
+                attempt++;
+                const isDeadlock = error.code === '40P01';
+                const isTimeout = error.code === 'P2024' || error.message?.includes('timeout');
+
+                if ((isDeadlock || isTimeout) && attempt < MAX_RETRIES) {
+                    // Exponential backoff: 500ms, 1000ms, 2000ms
+                    const backoffMs = 500 * Math.pow(2, attempt - 1);
+                    Logger.warn(`Customer count recalculation ${isDeadlock ? 'deadlock' : 'timeout'}, retrying in ${backoffMs}ms...`, {
+                        accountId, syncId, attempt, maxRetries: MAX_RETRIES
+                    });
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                } else {
+                    // Final failure or non-retryable error
+                    Logger.warn('Failed to recalculate customer order counts', {
+                        accountId, syncId, error: error.message, attempts: attempt
+                    });
+                    return; // Don't throw - this shouldn't break the sync
+                }
             }
         }
     }

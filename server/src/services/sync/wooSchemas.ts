@@ -158,7 +158,7 @@ export const WooReviewSchema = z.object({
     reviewer: z.string(),
     reviewer_email: z.string().email().optional().or(z.literal('')),
     review: z.string(),
-    rating: z.number().min(1).max(5),
+    rating: z.number().min(0).max(5),
     status: z.string(),
     date_created: z.string(),
     date_created_gmt: z.string().optional(),
