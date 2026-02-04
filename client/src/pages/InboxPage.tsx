@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { Logger } from '../utils/logger';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -78,13 +78,24 @@ export function InboxPage() {
             });
     }, [token, currentAccount]);
 
-    const activeConversation = conversations.find(c => c.id === selectedId);
+    // Memoize active conversation to prevent unnecessary re-renders when
+    // conversations array reference changes but selected data is the same
+    const activeConversation = useMemo(
+        () => conversations.find(c => c.id === selectedId),
+        [conversations, selectedId]
+    );
 
-    // Get recipient info for ChatWindow
-    const recipientEmail = activeConversation?.wooCustomer?.email || activeConversation?.guestEmail;
-    const recipientName = activeConversation?.wooCustomer
-        ? `${activeConversation.wooCustomer.firstName || ''} ${activeConversation.wooCustomer.lastName || ''}`.trim()
-        : activeConversation?.guestName;
+    // Memoize recipient info for ChatWindow
+    const recipientEmail = useMemo(
+        () => activeConversation?.wooCustomer?.email || activeConversation?.guestEmail,
+        [activeConversation?.wooCustomer?.email, activeConversation?.guestEmail]
+    );
+    const recipientName = useMemo(
+        () => activeConversation?.wooCustomer
+            ? `${activeConversation.wooCustomer.firstName || ''} ${activeConversation.wooCustomer.lastName || ''}`.trim()
+            : activeConversation?.guestName,
+        [activeConversation?.wooCustomer, activeConversation?.guestName]
+    );
 
     /**
      * Fetch conversations list from API.
