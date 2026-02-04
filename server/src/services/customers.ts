@@ -255,23 +255,24 @@ export class CustomersService {
             throw new Error('Customer not found');
         }
 
-        // 1. Transfer Orders - find orders by iterating (simpler than JSON path query)
-        const allOrders = await prisma.wooOrder.findMany({
-            where: { accountId },
+        // 1. Transfer Orders - use JSON path filter instead of loading all orders
+        const sourceOrders = await prisma.wooOrder.findMany({
+            where: {
+                accountId,
+                rawData: { path: ['customer_id'], equals: source.wooId }
+            },
             select: { id: true, rawData: true }
         });
 
         let ordersTransferred = 0;
-        for (const order of allOrders) {
+        for (const order of sourceOrders) {
             const rawData = order.rawData as any;
-            if (rawData?.customer_id === source.wooId) {
-                rawData.customer_id = target.wooId;
-                await prisma.wooOrder.update({
-                    where: { id: order.id },
-                    data: { rawData }
-                });
-                ordersTransferred++;
-            }
+            rawData.customer_id = target.wooId;
+            await prisma.wooOrder.update({
+                where: { id: order.id },
+                data: { rawData }
+            });
+            ordersTransferred++;
         }
 
         // 2. Transfer Conversations

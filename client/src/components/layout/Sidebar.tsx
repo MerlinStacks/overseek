@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { usePrefetch } from '../../hooks/usePrefetch';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
     LayoutDashboard,
@@ -102,6 +103,7 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     const { user, token } = useAuth();
     const { socket } = useSocket();
     const { hasPermission } = usePermissions(); // Permission hook
+    const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
 
     // Filter Navigation Items based on permissions
@@ -287,6 +289,8 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                             <NavLink
                                 key={item.path}
                                 to={item.path!}
+                                onMouseEnter={() => prefetch(item.path!)}
+                                onFocus={() => prefetch(item.path!)}
                                 className={({ isActive }) => cn(
                                     "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActive

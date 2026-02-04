@@ -59,6 +59,13 @@ export class MaintenanceScheduler {
             () => JanitorService.runCleanup().catch(e => Logger.error('Janitor Error', { error: e })),
             24 * 60 * 60 * 1000
         );
+
+        // Run order denormalization backfill once on startup (idempotent)
+        import('../../scripts/backfillOrderFields').then(({ backfillOrderDenormalizedFields }) => {
+            backfillOrderDenormalizedFields().catch(e => Logger.error('Order Backfill Error', { error: e }));
+        }).catch(() => {
+            // Script may not exist in older deployments - safe to ignore
+        });
     }
 
     /**

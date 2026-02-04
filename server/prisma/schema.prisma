@@ -476,6 +476,11 @@ model WooOrder {
   currency String
   total    Decimal @db.Decimal(10, 2)
 
+  // Denormalized fields for performance (extracted from rawData)
+  billingEmail    String?  // Extracted from rawData.billing.email
+  billingCountry  String?  // Extracted from rawData.billing.country
+  wooCustomerId   Int?     // Extracted from rawData.customer_id
+
   // Store the full raw object for future-proofing
   rawData Json
 
@@ -492,6 +497,8 @@ model WooOrder {
   @@unique([accountId, wooId])
   @@index([accountId, dateCreated])
   @@index([accountId, status, dateCreated(sort: Desc)])  // Order list with status filter
+  @@index([accountId, billingEmail])                      // Customer email lookup
+  @@index([accountId, wooCustomerId])                     // Customer ID lookup
 }
 
 model WooProduct {
@@ -1159,6 +1166,9 @@ model WooReview {
   order      WooOrder? @relation(fields: [wooOrderId], references: [id])
 
   @@unique([accountId, wooId])
+  @@index([accountId, status])                 // Review moderation queries
+  @@index([accountId, rating])                 // Star rating filters
+  @@index([accountId, dateCreated(sort: Desc)]) // Recent reviews list
 }
 
 // --------------------------------------
@@ -1232,6 +1242,7 @@ model Conversation {
   @@index([accountId, assignedTo])                      // For assignment filter
   @@index([visitorToken])
   @@index([externalConversationId])
+  @@index([accountId, mergedIntoId])                     // For merged conversation filter
 }
 
 // Conversation Notes - sticky notes visible to all agents
@@ -1524,6 +1535,9 @@ model MarketingCampaign {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])           // Campaign list by status
+  @@index([accountId, scheduledAt])      // Scheduled sends lookup
 }
 
 model MarketingAutomation {

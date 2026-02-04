@@ -22,20 +22,27 @@ const withWidth = (WrappedComponent: any) => {
         // Initialize with 0 to prevent rendering at wrong breakpoint
         const [width, setWidth] = useState(0);
 
+        // Debounce width updates to reduce re-renders during resize
+        const debouncedSetWidth = useMemo(
+            () => debounce((w: number) => setWidth(w), 100),
+            []
+        );
+
         useLayoutEffect(() => {
             if (!ref.current) return;
 
-            // Set initial width immediately
+            // Set initial width immediately (no debounce for first render)
             setWidth(ref.current.offsetWidth || ref.current.clientWidth);
 
             const observer = new ResizeObserver((entries) => {
                 for (const entry of entries) {
-                    setWidth(entry.contentRect.width);
+                    // Only debounce subsequent updates
+                    debouncedSetWidth(entry.contentRect.width);
                 }
             });
             observer.observe(ref.current);
             return () => observer.disconnect();
-        }, []);
+        }, [debouncedSetWidth]);
 
         return (
             <div ref={ref} className={props.className} style={{ width: '100%', height: '100%' }}>

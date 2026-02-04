@@ -49,11 +49,15 @@ interface ConversationListProps {
     onCompose?: () => void;
     onRefresh?: () => void;
     users?: { id: string; fullName: string }[];
+    // Pagination props
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
+    onLoadMore?: () => void;
 }
 
 type FilterType = 'all' | 'mine' | 'unassigned';
 
-export function ConversationList({ conversations, selectedId, onSelect, onPreload, currentUserId, onCompose, onRefresh, users = [] }: ConversationListProps) {
+export function ConversationList({ conversations, selectedId, onSelect, onPreload, currentUserId, onCompose, onRefresh, users = [], hasMore = false, isLoadingMore = false, onLoadMore }: ConversationListProps) {
     const [filter, setFilter] = useState<FilterType>('all');
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [showResolved, setShowResolved] = useState(false);
@@ -390,6 +394,21 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                         style={{ height: '100%' }}
                         data={filteredConversations}
                         overscan={5}
+                        components={{
+                            Footer: () => (!isSearchMode && hasMore && onLoadMore) ? (
+                                <button
+                                    onClick={onLoadMore}
+                                    disabled={isLoadingMore}
+                                    className="w-full py-3 text-sm text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isLoadingMore ? (
+                                        <><Loader2 size={14} className="animate-spin" />Loading...</>
+                                    ) : (
+                                        'Load more conversations'
+                                    )}
+                                </button>
+                            ) : null
+                        }}
                         itemContent={(index: number, conv: Conversation) => {
                             const name = getDisplayName(conv);
                             const { subject, preview } = getPreview(conv);

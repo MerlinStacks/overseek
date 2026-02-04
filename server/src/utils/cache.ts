@@ -174,6 +174,8 @@ export async function invalidateCache(namespace: string, entityId?: string): Pro
 export const CacheTTL = {
     /** 30 seconds - for frequently changing data */
     SHORT: 30,
+    /** 2 minutes - for dashboard widgets on large accounts */
+    DASHBOARD: 120,
     /** 5 minutes - default for most queries */
     MEDIUM: 300,
     /** 30 minutes - for stable data */
@@ -193,4 +195,5 @@ export const CacheNamespace = {
     ORDERS: 'orders',
     DASHBOARD: 'dashboard',
     SESSIONS: 'sessions',
+    INBOX: 'inbox',
 } as const;

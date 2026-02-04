@@ -11,44 +11,14 @@ import { useAccount } from '../../context/AccountContext';
 import { Logger } from '../../utils/logger';
 import {
     Sparkles,
-    Clipboard,
-    Check,
     X,
     Loader2,
     Wand2,
-    Copy,
-    CheckCircle2,
     AlertCircle
 } from 'lucide-react';
-
-// =============================================================================
-// TYPES
-// =============================================================================
-
-interface TonePreset {
-    id: string;
-    name: string;
-    description: string;
-}
-
-interface Platform {
-    id: string;
-    name: string;
-    limits?: {
-        headline?: number;
-        description?: number;
-        primaryText?: number;
-    };
-}
-
-interface GeneratedCopy {
-    headlines: string[];
-    descriptions: string[];
-    primaryTexts?: string[];
-    source: 'ai' | 'template';
-    platform?: string;
-    notes?: string[];
-}
+import { TonePreset, Platform, GeneratedCopy } from './adCopyTypes';
+import { ToneSelection, PlatformSelection } from './AdCopySelections';
+import { GeneratedCopyDisplay } from './GeneratedCopyDisplay';
 
 interface AdCopyModalProps {
     isOpen: boolean;
@@ -57,10 +27,6 @@ interface AdCopyModalProps {
     productName?: string;
     onCopyGenerated?: (copy: GeneratedCopy) => void;
 }
-
-// =============================================================================
-// COMPONENT
-// =============================================================================
 
 export function AdCopyModal({
     isOpen,
@@ -219,56 +185,16 @@ export function AdCopyModal({
                 <div className="flex-1 overflow-y-auto p-6">
                     {/* Options */}
                     <div className="grid grid-cols-2 gap-6 mb-6">
-                        {/* Tone Selection */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Tone & Style
-                            </label>
-                            <div className="space-y-2">
-                                {tonePresets.map((tone: TonePreset) => (
-                                    <button
-                                        key={tone.id}
-                                        onClick={() => setSelectedTone(tone.id)}
-                                        className={`w-full p-3 rounded-lg border text-left transition-all ${selectedTone === tone.id
-                                            ? 'border-violet-500 bg-violet-500/10 text-white'
-                                            : 'border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-600'
-                                            }`}
-                                    >
-                                        <div className="font-medium">{tone.name}</div>
-                                        <div className="text-xs text-gray-500 mt-0.5">
-                                            {tone.description}
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Platform Selection */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Target Platform
-                            </label>
-                            <div className="space-y-2">
-                                {platforms.map((platform: Platform) => (
-                                    <button
-                                        key={platform.id}
-                                        onClick={() => setSelectedPlatform(platform.id)}
-                                        className={`w-full p-3 rounded-lg border text-left transition-all ${selectedPlatform === platform.id
-                                            ? 'border-emerald-500 bg-emerald-500/10 text-white'
-                                            : 'border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-600'
-                                            }`}
-                                    >
-                                        <div className="font-medium">{platform.name}</div>
-                                        {platform.limits && (
-                                            <div className="text-xs text-gray-500 mt-0.5">
-                                                {platform.limits.headline && `Headlines: ${platform.limits.headline} chars`}
-                                                {platform.limits.description && ` • Descriptions: ${platform.limits.description} chars`}
-                                            </div>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                        <ToneSelection
+                            tonePresets={tonePresets}
+                            selectedTone={selectedTone}
+                            onSelect={setSelectedTone}
+                        />
+                        <PlatformSelection
+                            platforms={platforms}
+                            selectedPlatform={selectedPlatform}
+                            onSelect={setSelectedPlatform}
+                        />
                     </div>
 
                     {/* Generate Button */}
@@ -300,133 +226,12 @@ export function AdCopyModal({
 
                     {/* Generated Copy Display */}
                     {generatedCopy && (
-                        <div className="mt-6 space-y-4">
-                            {/* Source Badge */}
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${generatedCopy.source === 'ai'
-                                        ? 'bg-violet-500/20 text-violet-400'
-                                        : 'bg-gray-600/20 text-gray-400'
-                                        }`}>
-                                        {generatedCopy.source === 'ai' ? 'AI Generated' : 'Template'}
-                                    </span>
-                                    {generatedCopy.notes?.map((note, i) => (
-                                        <span key={i} className="text-xs text-gray-500">{note}</span>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={handleCopyAll}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                                >
-                                    {copiedItems.has('all') ? (
-                                        <CheckCircle2 className="w-4 h-4 text-green-400" />
-                                    ) : (
-                                        <Clipboard className="w-4 h-4" />
-                                    )}
-                                    Copy All
-                                </button>
-                            </div>
-
-                            {/* Headlines */}
-                            <div>
-                                <h3 className="text-sm font-medium text-gray-300 mb-2">
-                                    Headlines ({generatedCopy.headlines.length})
-                                </h3>
-                                <div className="space-y-2">
-                                    {generatedCopy.headlines.map((headline, i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700 group"
-                                        >
-                                            <span className="text-white">{headline}</span>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs text-gray-500">
-                                                    {headline.length} chars
-                                                </span>
-                                                <button
-                                                    onClick={() => handleCopyToClipboard(headline, `h-${i}`)}
-                                                    className="p-1.5 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
-                                                >
-                                                    {copiedItems.has(`h-${i}`) ? (
-                                                        <Check className="w-4 h-4 text-green-400" />
-                                                    ) : (
-                                                        <Copy className="w-4 h-4" />
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Descriptions */}
-                            {generatedCopy.descriptions.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-medium text-gray-300 mb-2">
-                                        Descriptions ({generatedCopy.descriptions.length})
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {generatedCopy.descriptions.map((desc, i) => (
-                                            <div
-                                                key={i}
-                                                className="flex items-start justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700 group"
-                                            >
-                                                <span className="text-white text-sm leading-relaxed">{desc}</span>
-                                                <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-                                                    <span className="text-xs text-gray-500">
-                                                        {desc.length} chars
-                                                    </span>
-                                                    <button
-                                                        onClick={() => handleCopyToClipboard(desc, `d-${i}`)}
-                                                        className="p-1.5 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
-                                                    >
-                                                        {copiedItems.has(`d-${i}`) ? (
-                                                            <Check className="w-4 h-4 text-green-400" />
-                                                        ) : (
-                                                            <Copy className="w-4 h-4" />
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Primary Texts (Meta) */}
-                            {generatedCopy.primaryTexts && generatedCopy.primaryTexts.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-medium text-gray-300 mb-2">
-                                        Primary Texts - Meta ({generatedCopy.primaryTexts.length})
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {generatedCopy.primaryTexts.map((text, i) => (
-                                            <div
-                                                key={i}
-                                                className="flex items-start justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700 group"
-                                            >
-                                                <span className="text-white text-sm leading-relaxed">{text}</span>
-                                                <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-                                                    <span className="text-xs text-gray-500">
-                                                        {text.length} chars
-                                                    </span>
-                                                    <button
-                                                        onClick={() => handleCopyToClipboard(text, `p-${i}`)}
-                                                        className="p-1.5 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
-                                                    >
-                                                        {copiedItems.has(`p-${i}`) ? (
-                                                            <Check className="w-4 h-4 text-green-400" />
-                                                        ) : (
-                                                            <Copy className="w-4 h-4" />
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <GeneratedCopyDisplay
+                            generatedCopy={generatedCopy}
+                            copiedItems={copiedItems}
+                            onCopy={handleCopyToClipboard}
+                            onCopyAll={handleCopyAll}
+                        />
                     )}
                 </div>
 

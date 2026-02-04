@@ -30,6 +30,10 @@ export function InboxPage() {
     const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
     const [availableChannels, setAvailableChannels] = useState<Array<{ channel: ConversationChannel; identifier: string; available: boolean }>>([]);
 
+    // Pagination state
+    const [hasMore, setHasMore] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);;
+
     // Cache for previously fetched messages - enables instant switching between conversations
     const messagesCache = useRef<Map<string, any[]>>(new Map());
     // Track pending preload requests to avoid duplicate fetches
@@ -82,34 +86,69 @@ export function InboxPage() {
 
     /**
      * Fetch conversations list from API.
-     * Used for initial load and visibility-based polling fallback.
+     * Supports cursor-based pagination for "Load More" functionality.
      */
-    const fetchConversations = useCallback(async () => {
+    const fetchConversations = useCallback(async (cursor?: string) => {
         if (!currentAccount || !token) return;
+
+        const isLoadMore = !!cursor;
+        if (isLoadMore) {
+            setIsLoadingMore(true);
+        } else {
+            setIsLoading(true);
+        }
+
         try {
-            const res = await fetch('/api/chat/conversations', {
+            const params = new URLSearchParams();
+            params.set('limit', '50');
+            if (cursor) params.set('cursor', cursor);
+
+            const res = await fetch(`/api/chat/conversations?${params}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 }
             });
             const data = await res.json();
-            setConversations(data);
-            setIsLoading(false);
+
+            // Handle structured response with pagination metadata
+            const newConversations = data.conversations || data;
+            setHasMore(data.hasMore ?? false);
+
+            if (isLoadMore) {
+                setConversations(prev => [...prev, ...newConversations]);
+            } else {
+                setConversations(newConversations);
+            }
         } catch (error) {
             Logger.error('Failed to load chats', { error: error });
+        } finally {
             setIsLoading(false);
+            setIsLoadingMore(false);
         }
     }, [currentAccount, token]);
 
-    // Initial Load
+    /**
+     * Load more conversations using cursor-based pagination.
+     */
+    const loadMoreConversations = useCallback(() => {
+        if (isLoadingMore || !hasMore || conversations.length === 0) return;
+        const lastConv = conversations[conversations.length - 1];
+        if (lastConv?.id) {
+            fetchConversations(lastConv.id);
+        }
+    }, [isLoadingMore, hasMore, conversations, fetchConversations]);
+
+    // Initial Load (without cursor for fresh start)
     useEffect(() => {
         fetchConversations();
-    }, [fetchConversations]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     // Visibility-based polling fallback for when socket may have missed events
     // Refreshes conversation list when tab regains focus (every 30s while visible)
-    useVisibilityPolling(fetchConversations, 30000, [fetchConversations], 'inbox-conversations');
+    // Only refresh the first page to avoid pagination issues
+    useVisibilityPolling(() => fetchConversations(), 30000, [fetchConversations], 'inbox-conversations');
 
     // Socket Listeners
     useEffect(() => {
@@ -335,6 +374,9 @@ export function InboxPage() {
                 onPreload={handlePreloadConversation}
                 currentUserId={user?.id}
                 onCompose={() => setIsComposeOpen(true)}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={loadMoreConversations}
             />
 
             {/* Main Chat Area */}

@@ -73,12 +73,22 @@ export class OrderSync extends BaseSync {
                 await prisma.$transaction(
                     async (tx) => {
                         for (const order of chunk) {
+                            // Extract denormalized fields for performance (avoids JSON parsing in queries)
+                            // Normalize email to lowercase for consistent indexed lookups
+                            const rawEmail = (order as any).billing?.email;
+                            const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
+                            const billingCountry = (order as any).billing?.country || null;
+                            const wooCustomerId = (order as any).customer_id > 0 ? (order as any).customer_id : null;
+
                             await tx.wooOrder.upsert({
                                 where: { accountId_wooId: { accountId, wooId: order.id } },
                                 update: {
                                     status: order.status.toLowerCase(),
                                     total: order.total === '' ? '0' : order.total,
                                     currency: order.currency,
+                                    billingEmail,
+                                    billingCountry,
+                                    wooCustomerId,
                                     dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
                                     rawData: order as any
                                 },
@@ -89,6 +99,9 @@ export class OrderSync extends BaseSync {
                                     status: order.status.toLowerCase(),
                                     total: order.total === '' ? '0' : order.total,
                                     currency: order.currency,
+                                    billingEmail,
+                                    billingCountry,
+                                    wooCustomerId,
                                     dateCreated: new Date(order.date_created_gmt || order.date_created || new Date()),
                                     dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
                                     rawData: order as any
@@ -214,6 +227,8 @@ export class OrderSync extends BaseSync {
      * Recalculate customer order counts from local orders.
      * Uses PostgreSQL advisory lock to prevent deadlocks when multiple workers
      * attempt to run this concurrently (fixes 40P01 deadlock errors).
+     * 
+     * PERFORMANCE: Uses indexed wooCustomerId column instead of JSON parsing.
      */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
         Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
@@ -225,18 +240,18 @@ export class OrderSync extends BaseSync {
                 await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('recalculate_customer_counts_' || ${accountId}))`;
 
                 // Now safe to run the update without risk of deadlock
+                // Uses indexed wooCustomerId column for better performance (avoids JSON parsing)
                 await tx.$executeRaw`
                     UPDATE "WooCustomer" wc
                     SET "ordersCount" = c.count
                     FROM (
                         SELECT
-                            ("rawData"->>'customer_id')::int as woo_id,
+                            "wooCustomerId" as woo_id,
                             COUNT(*)::int as count
                         FROM "WooOrder"
                         WHERE "accountId" = ${accountId}
-                          AND "rawData"->>'customer_id' IS NOT NULL
-                          AND "rawData"->>'customer_id' != '0'
-                        GROUP BY "rawData"->>'customer_id'
+                          AND "wooCustomerId" IS NOT NULL
+                        GROUP BY "wooCustomerId"
                     ) c
                     WHERE wc."accountId" = ${accountId}
                       AND wc."wooId" = c.woo_id;

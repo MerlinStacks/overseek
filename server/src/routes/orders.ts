@@ -7,6 +7,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { requireAuthFastify } from '../middleware/auth';
 import { z } from 'zod';
+import { cacheAside, CacheTTL } from '../utils/cache';
 
 const orderIdParamSchema = z.object({
     id: z.union([
@@ -37,39 +38,44 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         const limit = Math.min(parseInt(query.limit || '20', 10), 100);
 
         try {
-            let whereClause: any = { accountId };
+            // Build cache key from filter params
+            const cacheKey = `orders:list:${accountId}:${limit}:${query.customerId || 'none'}:${query.billingEmail || 'none'}`;
 
-            if (query.customerId) {
-                // Filter by WooCommerce customer_id in rawData
-                whereClause.rawData = {
-                    path: ['customer_id'],
-                    equals: parseInt(query.customerId, 10)
-                };
-            } else if (query.billingEmail) {
-                // Filter by billing email in rawData for guest checkouts
-                // WooCommerce stores email at rawData.billing.email
-                whereClause.rawData = {
-                    path: ['billing', 'email'],
-                    string_contains: query.billingEmail.toLowerCase()
-                };
-            }
+            const result = await cacheAside(
+                cacheKey,
+                async () => {
+                    let whereClause: any = { accountId };
 
-            const orders = await prisma.wooOrder.findMany({
-                where: whereClause,
-                orderBy: { dateCreated: 'desc' },
-                take: limit,
-                select: {
-                    id: true,
-                    wooId: true,
-                    number: true,
-                    status: true,
-                    total: true,
-                    currency: true,
-                    dateCreated: true
-                }
-            });
+                    if (query.customerId) {
+                        // Use denormalized column for faster lookups (avoids JSON parsing)
+                        whereClause.wooCustomerId = parseInt(query.customerId, 10);
+                    } else if (query.billingEmail) {
+                        // Use denormalized column for faster lookups
+                        // Emails are normalized to lowercase on sync, so match with lowercase input
+                        whereClause.billingEmail = query.billingEmail.toLowerCase().trim();
+                    }
 
-            return { orders };
+                    const orders = await prisma.wooOrder.findMany({
+                        where: whereClause,
+                        orderBy: { dateCreated: 'desc' },
+                        take: limit,
+                        select: {
+                            id: true,
+                            wooId: true,
+                            number: true,
+                            status: true,
+                            total: true,
+                            currency: true,
+                            dateCreated: true
+                        }
+                    });
+
+                    return { orders };
+                },
+                { ttl: CacheTTL.SHORT, namespace: 'orders' } // 30s cache
+            );
+
+            return result;
         } catch (error) {
             Logger.error('Failed to list orders', { error });
             return reply.code(500).send({ error: 'Failed to list orders' });

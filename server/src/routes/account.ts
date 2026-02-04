@@ -176,8 +176,13 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { accountId: string }; Body: { email: string; role?: string } }>('/:accountId/users', async (request, reply) => {
         try {
             const { accountId } = request.params;
-            const { email, role } = request.body;
+            const body = request.body || {};
+            const { email, role } = body as { email?: string; role?: string };
             const userId = request.user!.id;
+
+            if (!email || typeof email !== 'string' || !email.trim()) {
+                return reply.code(400).send({ error: 'Email address is required' });
+            }
 
             const membership = await prisma.accountUser.findUnique({ where: { userId_accountId: { userId, accountId } } });
             if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {

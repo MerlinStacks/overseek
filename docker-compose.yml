@@ -29,7 +29,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.2.4
     environment:
       - discovery.type=single-node
-      - "ES_JAVA_OPTS=-Xms${ES_HEAP_MIN:-512m} -Xmx${ES_HEAP_MAX:-1g}"
+      - "ES_JAVA_OPTS=-Xms${ES_HEAP_MIN:-256m} -Xmx${ES_HEAP_MAX:-512m}"
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
     # Ports removed to prevent external access

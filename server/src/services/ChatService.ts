@@ -13,6 +13,7 @@ import { BlockedContactService } from './BlockedContactService';
 import { AutomationEngine } from './AutomationEngine';
 import { EventBus, EVENTS } from './events';
 import { TwilioService } from './TwilioService';
+import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 
 export class ChatService {
     private io: Server;
@@ -27,43 +28,70 @@ export class ChatService {
 
     // --- Conversations ---
 
-    async listConversations(accountId: string, status?: string, assignedTo?: string) {
-        return prisma.conversation.findMany({
-            where: {
-                accountId: String(accountId),
-                status: status || undefined,
-                assignedTo: assignedTo || undefined,
-                mergedIntoId: null
-            },
-            include: {
-                // Only fetch fields needed for display
-                wooCustomer: {
-                    select: {
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                        ordersCount: true,
-                        totalSpent: true,
-                        wooId: true
-                    }
+    /**
+     * List conversations with caching and pagination for performance.
+     * Cached for 30 seconds to reduce database load.
+     */
+    async listConversations(
+        accountId: string,
+        status?: string,
+        assignedTo?: string,
+        limit: number = 50,
+        cursor?: string
+    ) {
+        const cacheKey = `conversations:${accountId}:${status || 'all'}:${assignedTo || 'all'}:${limit}:${cursor || 'start'}`;
+
+        return cacheAside(
+            cacheKey,
+            async () => prisma.conversation.findMany({
+                take: limit,
+                skip: cursor ? 1 : 0,
+                cursor: cursor ? { id: cursor } : undefined,
+                where: {
+                    accountId: String(accountId),
+                    status: status || undefined,
+                    assignedTo: assignedTo || undefined,
+                    mergedIntoId: null
                 },
-                assignee: { select: { id: true, fullName: true, avatarUrl: true } },
-                // Only need last 2 messages for preview and timing
-                messages: {
-                    orderBy: { createdAt: 'desc' },
-                    take: 2,
-                    select: { content: true, createdAt: true, senderType: true }
-                },
-                labels: {
-                    select: {
-                        label: {
-                            select: { id: true, name: true, color: true }
+                include: {
+                    // Only fetch fields needed for display
+                    wooCustomer: {
+                        select: {
+                            firstName: true,
+                            lastName: true,
+                            email: true,
+                            ordersCount: true,
+                            totalSpent: true,
+                            wooId: true
+                        }
+                    },
+                    assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                    // Only need last 2 messages for preview and timing
+                    messages: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 2,
+                        select: { content: true, createdAt: true, senderType: true }
+                    },
+                    labels: {
+                        select: {
+                            label: {
+                                select: { id: true, name: true, color: true }
+                            }
                         }
                     }
-                }
-            },
-            orderBy: { updatedAt: 'desc' }
-        });
+                },
+                orderBy: { updatedAt: 'desc' }
+            }),
+            { ttl: CacheTTL.SHORT, namespace: 'inbox' }
+        );
+    }
+
+    /**
+     * Invalidate conversation list cache for an account.
+     * Call after any conversation mutation (message, status change, etc.)
+     */
+    private async invalidateConversationCache(accountId: string) {
+        await invalidateCache('inbox', `conversations:${accountId}`);
     }
 
     async createConversation(accountId: string, wooCustomerId?: string, visitorToken?: string) {
@@ -216,6 +244,9 @@ export class ChatService {
                     ...(senderType === 'CUSTOMER' ? { isRead: false } : {})
                 }
             });
+
+            // Invalidate conversation cache when messages are added
+            await this.invalidateConversationCache(conversation.accountId);
         }
 
         // Emit socket events (always, so UI stays in sync)
@@ -275,6 +306,9 @@ export class ChatService {
 
     async updateStatus(id: string, status: string) {
         const conv = await prisma.conversation.update({ where: { id }, data: { status } });
+
+        // Invalidate cache when status changes
+        await this.invalidateConversationCache(conv.accountId);
 
         // Trigger automation for closed conversations
         if (status === 'CLOSED') {

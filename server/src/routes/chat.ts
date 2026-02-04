@@ -54,12 +54,28 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // GET /conversations
         fastify.get('/conversations', async (request, reply) => {
             try {
-                const query = request.query as { status?: string; assignedTo?: string };
+                const query = request.query as { status?: string; assignedTo?: string; limit?: string; cursor?: string };
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
-                const conversations = await chatService.listConversations(accountId, query.status, query.assignedTo);
-                return conversations;
+                const limit = Math.min(parseInt(query.limit || '50'), 100);
+                // Fetch one extra to determine if there are more results
+                const conversations = await chatService.listConversations(
+                    accountId,
+                    query.status,
+                    query.assignedTo,
+                    limit + 1,
+                    query.cursor
+                );
+
+                const hasMore = conversations.length > limit;
+                const result = hasMore ? conversations.slice(0, limit) : conversations;
+
+                return {
+                    conversations: result,
+                    hasMore,
+                    nextCursor: hasMore ? result[result.length - 1]?.id : null
+                };
             } catch (error) {
                 Logger.error('Failed to fetch conversations', { error });
                 return reply.code(500).send({ error: 'Failed to fetch conversations' });

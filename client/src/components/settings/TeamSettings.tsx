@@ -97,8 +97,15 @@ export function TeamSettings() {
             });
 
             if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to add user');
+                let errorMessage = 'Failed to add user';
+                try {
+                    const data = await res.json();
+                    errorMessage = data.error || errorMessage;
+                } catch {
+                    // Response body is not valid JSON, use status text
+                    errorMessage = res.statusText || `Error ${res.status}`;
+                }
+                throw new Error(errorMessage);
             }
 
             setEmail('');
@@ -144,8 +151,15 @@ export function TeamSettings() {
             });
 
             if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to update user');
+                let errorMessage = 'Failed to update user';
+                try {
+                    const data = await res.json();
+                    errorMessage = data.error || errorMessage;
+                } catch {
+                    // Response body is not valid JSON, use status text
+                    errorMessage = res.statusText || `Error ${res.status}`;
+                }
+                throw new Error(errorMessage);
             }
 
             setEditingUserId(null);

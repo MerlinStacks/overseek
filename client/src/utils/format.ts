@@ -68,6 +68,21 @@ export function formatCurrency(
 }
 
 /**
+ * Format a value as money (convenience wrapper for formatCurrency).
+ * Handles string-to-number conversion for values from APIs.
+ * @param amount - Numeric amount or string to format
+ * @param currency - Currency code (default: 'AUD')
+ * @returns Formatted currency string
+ */
+export function formatMoney(
+    amount: number | string,
+    currency: string = 'AUD'
+): string {
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) || 0 : amount;
+    return formatCurrency(numAmount, currency);
+}
+
+/**
  * Format a number in compact notation (e.g., 1.2K, 3.4M).
  * @param value - Number to format
  * @returns Compact formatted string

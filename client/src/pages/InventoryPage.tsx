@@ -422,6 +422,7 @@ export function InventoryPage() {
                 viewingSeo && (
                     <ProductSeoModal
                         product={viewingSeo}
+                        isOpen={!!viewingSeo}
                         onClose={() => setViewingSeo(null)}
                     />
                 )

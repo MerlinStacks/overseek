@@ -16,6 +16,7 @@ import { marked } from 'marked';
 import { z } from 'zod';
 import { REVENUE_STATUSES } from '../constants/orderStatus';
 import { AuditService } from '../services/AuditService';
+import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 
 const searchQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -67,13 +68,21 @@ const stockUpdateBodySchema = z.object({
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    // GET / - Search products
+    // GET / - Search products (cached for 60s)
     fastify.get('/', async (request, reply) => {
         try {
             const accountId = request.accountId!;
             const { page, limit, q } = searchQuerySchema.parse(request.query);
 
-            const result = await ProductsService.searchProducts(accountId, q, page, limit);
+            // Cache product search results for 60 seconds
+            // Key includes query params to avoid returning wrong results
+            const cacheKey = `products:list:${accountId}:${page}:${limit}:${q || 'all'}`;
+            const result = await cacheAside(
+                cacheKey,
+                () => ProductsService.searchProducts(accountId, q, page, limit),
+                { ttl: CacheTTL.SHORT * 2, namespace: 'products' } // 60s cache
+            );
+
             return result;
         } catch (error: any) {
             Logger.error('Error', { error });
@@ -281,6 +290,9 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     Logger.warn("Failed to re-index product after update", { error: err });
                 }
             }
+
+            // Invalidate product list cache after update
+            await invalidateCache('products', accountId);
 
             return product;
         } catch (error: any) {
