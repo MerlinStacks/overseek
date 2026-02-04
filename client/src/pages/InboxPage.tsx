@@ -32,12 +32,14 @@ export function InboxPage() {
 
     // Pagination state
     const [hasMore, setHasMore] = useState(false);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);;
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
 
     // Cache for previously fetched messages - enables instant switching between conversations
     const messagesCache = useRef<Map<string, any[]>>(new Map());
     // Track pending preload requests to avoid duplicate fetches
     const preloadingRef = useRef<Set<string>>(new Set());
+    // Track if initial load has completed - prevents skeleton from showing on refreshes
+    const initialLoadCompleteRef = useRef(false);
 
     /**
      * Preload messages when user hovers over a conversation.
@@ -92,11 +94,15 @@ export function InboxPage() {
         if (!currentAccount || !token) return;
 
         const isLoadMore = !!cursor;
+        // Only show skeleton on initial load, not on subsequent refreshes
+        const isInitialLoad = !initialLoadCompleteRef.current && !cursor;
+
         if (isLoadMore) {
             setIsLoadingMore(true);
-        } else {
+        } else if (isInitialLoad) {
             setIsLoading(true);
         }
+        // For refreshes after initial load, we load silently in background
 
         try {
             const params = new URLSearchParams();
@@ -120,10 +126,17 @@ export function InboxPage() {
             } else {
                 setConversations(newConversations);
             }
+
+            // Mark initial load as complete after first successful fetch
+            if (isInitialLoad) {
+                initialLoadCompleteRef.current = true;
+            }
         } catch (error) {
             Logger.error('Failed to load chats', { error: error });
         } finally {
-            setIsLoading(false);
+            if (isInitialLoad) {
+                setIsLoading(false);
+            }
             setIsLoadingMore(false);
         }
     }, [currentAccount, token]);
@@ -141,6 +154,8 @@ export function InboxPage() {
 
     // Initial Load (without cursor for fresh start)
     useEffect(() => {
+        // Reset initial load flag when account changes - new account should show skeleton
+        initialLoadCompleteRef.current = false;
         fetchConversations();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount?.id, token]);
@@ -452,17 +467,8 @@ export function InboxPage() {
                                 body: JSON.stringify({ sourceId: targetConversationId })
                             });
                             if (res.ok) {
-                                // Refresh conversations list
-                                const convRes = await fetch('/api/chat/conversations', {
-                                    headers: {
-                                        'Authorization': `Bearer ${token}`,
-                                        'x-account-id': currentAccount?.id || ''
-                                    }
-                                });
-                                if (convRes.ok) {
-                                    const data = await convRes.json();
-                                    setConversations(data);
-                                }
+                                // Refresh conversations list silently (no skeleton)
+                                await fetchConversations();
                             }
                         }}
                         onBlock={recipientEmail ? async () => {
@@ -521,17 +527,8 @@ export function InboxPage() {
                     onSent={async (conversationId) => {
                         setIsComposeOpen(false);
                         setSelectedId(conversationId);
-                        // Refresh conversations list
-                        const res = await fetch('/api/chat/conversations', {
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'x-account-id': currentAccount?.id || ''
-                            }
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            setConversations(data);
-                        }
+                        // Refresh conversations list silently (no skeleton)
+                        await fetchConversations();
                     }}
                 />
             )}
