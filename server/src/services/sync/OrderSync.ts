@@ -210,28 +210,47 @@ export class OrderSync extends BaseSync {
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 
+    /**
+     * Recalculate customer order counts from local orders.
+     * Uses PostgreSQL advisory lock to prevent deadlocks when multiple workers
+     * attempt to run this concurrently (fixes 40P01 deadlock errors).
+     */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
         Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
         try {
-            await prisma.$executeRaw`
-                UPDATE "WooCustomer" wc
-                SET "ordersCount" = c.count
-                FROM (
-                    SELECT
-                        ("rawData"->>'customer_id')::int as woo_id,
-                        COUNT(*)::int as count
-                    FROM "WooOrder"
-                    WHERE "accountId" = ${accountId}
-                      AND "rawData"->>'customer_id' IS NOT NULL
-                      AND "rawData"->>'customer_id' != '0'
-                    GROUP BY "rawData"->>'customer_id'
-                ) c
-                WHERE wc."accountId" = ${accountId}
-                  AND wc."wooId" = c.woo_id;
-            `;
+            // Use advisory lock to prevent concurrent execution across workers
+            // This prevents deadlocks (40P01) when multiple sync jobs try to update the same rows
+            await prisma.$transaction(async (tx) => {
+                // Acquire transaction-scoped advisory lock (released automatically on commit/rollback)
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('recalculate_customer_counts_' || ${accountId}))`;
+
+                // Now safe to run the update without risk of deadlock
+                await tx.$executeRaw`
+                    UPDATE "WooCustomer" wc
+                    SET "ordersCount" = c.count
+                    FROM (
+                        SELECT
+                            ("rawData"->>'customer_id')::int as woo_id,
+                            COUNT(*)::int as count
+                        FROM "WooOrder"
+                        WHERE "accountId" = ${accountId}
+                          AND "rawData"->>'customer_id' IS NOT NULL
+                          AND "rawData"->>'customer_id' != '0'
+                        GROUP BY "rawData"->>'customer_id'
+                    ) c
+                    WHERE wc."accountId" = ${accountId}
+                      AND wc."wooId" = c.woo_id;
+                `;
+            });
             Logger.info(`Updated customer order counts`, { accountId, syncId });
         } catch (error: any) {
-            Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
+            // Check if this is a deadlock we failed to prevent (shouldn't happen with advisory lock)
+            const isDeadlock = error.code === '40P01';
+            if (isDeadlock) {
+                Logger.warn('Deadlock detected during customer count recalculation (will retry on next sync)', { accountId, syncId });
+            } else {
+                Logger.warn('Failed to recalculate customer order counts', { accountId, syncId, error: error.message });
+            }
         }
     }
 }

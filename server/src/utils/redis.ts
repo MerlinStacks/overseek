@@ -15,7 +15,10 @@ const baseOptions: RedisOptions = {
     retryStrategy: (times) => {
         // Exponential backoff: 50ms, 100ms, 200ms... max 30s
         const delay = Math.min(times * 50, 30000);
-        Logger.warn(`Redis retry attempt ${times}, next retry in ${delay}ms`);
+        // Only log first 3 retries and then every 10th to reduce log spam
+        if (times <= 3 || times % 10 === 0) {
+            Logger.warn(`Redis retry attempt ${times}, next retry in ${delay}ms`);
+        }
         return delay;
     },
     reconnectOnError: (err) => {

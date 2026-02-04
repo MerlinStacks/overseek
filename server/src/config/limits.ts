@@ -66,8 +66,8 @@ export const SCHEDULER_LIMITS = {
 // ============================================================================
 
 export const QUEUE_LIMITS = {
-    /** Worker concurrency per queue */
-    WORKER_CONCURRENCY: 5,
+    /** Worker concurrency per queue (reduced from 5 to prevent OOM and deadlocks) */
+    WORKER_CONCURRENCY: 2,
     /** Maximum retry attempts for failed jobs */
     MAX_RETRIES: 3,
     /** Retry backoff delay in milliseconds */

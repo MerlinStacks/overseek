@@ -27,7 +27,12 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  Logger.error('[CRITICAL] Unhandled Rejection', { reason, promise: String(promise) });
+  // Serialize the reason properly - PrismaClientValidationError and other errors
+  // have non-enumerable properties that need explicit extraction
+  const serializedReason = reason instanceof Error
+    ? { name: reason.name, message: reason.message, stack: reason.stack }
+    : reason;
+  Logger.error('[CRITICAL] Unhandled Rejection', { reason: serializedReason });
 });
 
 // Main startup function
