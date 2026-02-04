@@ -3,7 +3,7 @@ import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Loader2, FileText, Package, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Loader2, FileText, Package, Clock, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface PurchaseOrder {
     id: string;
@@ -16,6 +16,7 @@ interface PurchaseOrder {
     orderDate: string | null;
     expectedDate: string | null;
     createdAt: string;
+    trackingLink: string | null;
     items?: any[];
 }
 
@@ -149,8 +150,8 @@ export function PurchaseOrderList() {
                             key={tab.key}
                             onClick={() => setStatusFilter(tab.key)}
                             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${statusFilter === tab.key
-                                    ? 'bg-white text-gray-900 shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-900'
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
                                 }`}
                         >
                             {tab.icon}
@@ -215,12 +216,26 @@ export function PurchaseOrderList() {
                                         {po.totalAmount ? `$${Number(po.totalAmount).toFixed(2)}` : '-'}
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                        <button
-                                            onClick={() => navigate(`/inventory/purchase-orders/${po.id}`)}
-                                            className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                                        >
-                                            View
-                                        </button>
+                                        <div className="flex items-center justify-center gap-2">
+                                            {po.trackingLink && (
+                                                <a
+                                                    href={po.trackingLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                    title="Track Shipment"
+                                                >
+                                                    <ExternalLink size={16} />
+                                                </a>
+                                            )}
+                                            <button
+                                                onClick={() => navigate(`/inventory/purchase-orders/${po.id}`)}
+                                                className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                                            >
+                                                View
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))
