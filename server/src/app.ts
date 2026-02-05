@@ -320,6 +320,11 @@ async function initializeApp() {
                 return;
             }
             try {
+                Logger.warn('[App] Processing incoming email', {
+                    fromEmail: data.fromEmail,
+                    subject: data.subject,
+                    emailAccountId: data.emailAccountId
+                });
                 await chatService.handleIncomingEmail({
                     emailAccountId: data.emailAccountId,
                     fromEmail: data.fromEmail,
@@ -331,6 +336,10 @@ async function initializeApp() {
                     inReplyTo: data.inReplyTo,
                     references: data.references,
                     attachments: data.attachments
+                });
+                Logger.warn('[App] Successfully ingested email', {
+                    fromEmail: data.fromEmail,
+                    subject: data.subject
                 });
             } catch (error) {
                 Logger.error('[App] Failed to handle incoming email', { error, fromEmail: data.fromEmail });

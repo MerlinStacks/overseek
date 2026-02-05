@@ -11,6 +11,7 @@ import { Server } from 'socket.io';
 import { BlockedContactService } from './BlockedContactService';
 import { EventBus, EVENTS } from './events';
 import { EmailService } from './EmailService';
+import { invalidateCache } from '../utils/cache';
 
 export interface IncomingEmailData {
     emailAccountId: string;
@@ -115,6 +116,9 @@ export class EmailIngestion {
                 lastMessage: message,
                 updatedAt: new Date()
             });
+
+            // Invalidate cache even for blocked emails so conversation list updates
+            await invalidateCache('inbox', `conversations:${accountId}`);
             return;
         }
 
@@ -139,6 +143,9 @@ export class EmailIngestion {
             lastMessage: message,
             updatedAt: new Date()
         });
+
+        // Invalidate conversation list cache so inbox shows new email immediately
+        await invalidateCache('inbox', `conversations:${accountId}`);
 
         // Auto-reply and push (only for non-blocked contacts)
         await this.handleAutoReply(conversation, fromEmail, subject, messageId, emailAccountId);
