@@ -120,10 +120,10 @@
   - Issue: `!isReady` → silent API failures
   - Fix: Added `notReadyReason` field returning 'no_token' or 'no_account'
 
-- [ ] **Handle skeleton infinite loading in offline mode**
-  - Files: `client/src/components/ui/Skeleton.tsx`, various pages
+- [x] **Handle skeleton infinite loading in offline mode** ✅ *Fixed 2026-02-06*
+  - Files: `client/src/hooks/useLoadingTimeout.ts`, `client/src/components/ui/LoadingTimeoutWrapper.tsx`
   - Issue: Offline PWA shows skeletons indefinitely
-  - Fix: Add timeout → show "You appear to be offline" message
+  - Fix: Added `useLoadingTimeout` hook and `LoadingTimeoutWrapper` component with 10s timeout
 
 ### Concurrency
 - [ ] **Add conflict resolution for concurrent order edits**
@@ -257,12 +257,12 @@
 | 🔴 Critical | 6 | 4 | 67% |
 | 🟠 High | 8 | 6 | 75% |
 | 🟡 Medium (API) | 4 | 4 | 100% |
-| 🟡 Medium (UI) | 4 | 2 | 50% |
+| 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🔵 Low (Platform) | 4 | 0 | 0% |
 | 🔵 Low (Infra) | 5 | 1 | 20% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **23** | **57.5%** |
+| **TOTAL** | **40** | **24** | **60%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 08:50*
+*Last Updated: 2026-02-06 09:00*
