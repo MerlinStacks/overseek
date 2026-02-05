@@ -89,6 +89,43 @@ export function validateEnvironment(): void {
         });
     }
 
+    // ENCRYPTION_KEY validation
+    // This key is used to encrypt SMTP credentials and API keys in the database
+    const encryptionKey = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+    if (encryptionKey) {
+        const encFingerprint = crypto.createHash('sha256')
+            .update(encryptionKey.substring(0, 8))
+            .digest('hex')
+            .substring(0, 12);
+
+        // Check if using fallback
+        if (!process.env.ENCRYPTION_KEY && process.env.JWT_SECRET) {
+            Logger.warn('[ENV] ENCRYPTION_KEY not set, falling back to JWT_SECRET for encryption', {
+                fingerprint: encFingerprint,
+                tip: 'Set ENCRYPTION_KEY for independent credential encryption'
+            });
+        } else {
+            Logger.info('[ENV] ENCRYPTION_KEY fingerprint for credential encryption', {
+                fingerprint: encFingerprint,
+                tip: 'Changing this key will make existing encrypted credentials unreadable'
+            });
+        }
+
+        // Production: Warn if using dev fallback key
+        if (process.env.NODE_ENV === 'production') {
+            const devKeyHash = crypto.createHash('sha256')
+                .update('temporary')
+                .digest('hex')
+                .substring(0, 12);
+
+            if (encFingerprint.startsWith(devKeyHash.substring(0, 6))) {
+                Logger.error('[ENV] CRITICAL: Using development encryption key in production!', {
+                    tip: 'Set ENCRYPTION_KEY to a secure random value'
+                });
+            }
+        }
+    }
+
     // DEVELOPMENT OVERRIDES
     // If running in development (outside Docker) but env vars point to Docker containers,
     // force them to localhost to prevent ENOTFOUND errors.

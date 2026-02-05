@@ -123,6 +123,30 @@ export async function triggerAbandonedCartAutomations() {
             for (const cart of abandonedCarts) {
                 if (!cart.email) continue; // Safety check
 
+                // EDGE CASE: Check if customer completed a recent order to prevent embarrassing recovery emails
+                const completedOrderCutoff = new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+                const recentOrder = await prisma.wooOrder.findFirst({
+                    where: {
+                        accountId,
+                        billingEmail: cart.email,
+                        status: { in: ['processing', 'completed', 'on-hold'] },
+                        dateCreated: { gte: completedOrderCutoff }
+                    },
+                    select: { id: true, wooId: true, dateCreated: true }
+                });
+
+                if (recentOrder) {
+                    Logger.debug('[AbandonedCart] Skipping - customer completed an order', {
+                        accountId,
+                        sessionId: cart.id,
+                        email: cart.email,
+                        orderId: recentOrder.wooId
+                    });
+                    // Still mark as notified to prevent repeated checks
+                    await markAbandonedNotificationSent(cart.id);
+                    continue;
+                }
+
                 // Create enrollment for the first active automation
                 const automation = accountAutomations[0];
 

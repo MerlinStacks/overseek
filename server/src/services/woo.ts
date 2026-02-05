@@ -2,7 +2,7 @@ import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
 import https from 'https';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
-import { retryWithBackoff, isRetryableError } from '../utils/retryWithBackoff';
+import { retryWithBackoff, isRetryableError, isCredentialError } from '../utils/retryWithBackoff';
 
 // Mock data removed - demo mode is currently disabled (see isDemo flag)
 type MockProduct = { id: number; name: string; price: string };
@@ -98,25 +98,59 @@ export class WooService {
     }
 
     /**
+     * Mark account as needing WooCommerce reconnection.
+     * Called when credential revocation is detected (401/403).
+     */
+    private async markNeedsReconnection(): Promise<void> {
+        if (!this.accountId) return;
+
+        try {
+            await prisma.account.update({
+                where: { id: this.accountId },
+                data: { wooNeedsReconnect: true }
+            });
+            Logger.error('[WooService] Credentials revoked - account marked for reconnection', {
+                accountId: this.accountId,
+                url: this.url
+            });
+        } catch (err) {
+            Logger.error('[WooService] Failed to mark account for reconnection', {
+                accountId: this.accountId,
+                error: err instanceof Error ? err.message : 'Unknown'
+            });
+        }
+    }
+
+    /**
      * Execute a WooCommerce API request with automatic retry on transient failures.
      * Uses exponential backoff with jitter for rate limits and network errors.
+     * Detects credential revocation (401/403) and marks account for reconnection.
      */
     private async requestWithRetry(method: string, endpoint: string, params: any = {}): Promise<any> {
-        return retryWithBackoff(
-            async () => {
-                const response = await this.api.get(endpoint, params);
-                return {
-                    data: response.data,
-                    total: parseInt(response.headers['x-wp-total'] || '0', 10),
-                    totalPages: parseInt(response.headers['x-wp-totalpages'] || '0', 10)
-                };
-            },
-            {
-                maxRetries: this.maxRetries,
-                baseDelayMs: 1000,
-                context: `WooCommerce:${endpoint}`
+        try {
+            return await retryWithBackoff(
+                async () => {
+                    const response = await this.api.get(endpoint, params);
+                    return {
+                        data: response.data,
+                        total: parseInt(response.headers['x-wp-total'] || '0', 10),
+                        totalPages: parseInt(response.headers['x-wp-totalpages'] || '0', 10)
+                    };
+                },
+                {
+                    maxRetries: this.maxRetries,
+                    baseDelayMs: 1000,
+                    context: `WooCommerce:${endpoint}`
+                }
+            );
+        } catch (error: any) {
+            // Detect credential revocation and mark account
+            if (isCredentialError(error)) {
+                await this.markNeedsReconnection();
+                throw new Error(`WooCommerce credentials revoked or invalid. Please reconnect your store.`);
             }
-        );
+            throw error;
+        }
     }
 
     async getOrders(params: { after?: string; page?: number; per_page?: number } = {}) {

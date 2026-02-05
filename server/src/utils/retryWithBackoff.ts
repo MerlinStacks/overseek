@@ -26,6 +26,11 @@ export function isRetryableError(error: any): boolean {
     // HTTP status code checks
     const status = error?.response?.status || error?.status;
     if (status) {
+        // Never retry auth failures - credentials are revoked
+        if (status === 401 || status === 403) {
+            return false;
+        }
+
         const retryableStatuses = [429, 500, 502, 503, 504];
         if (retryableStatuses.includes(status)) {
             return true;
@@ -60,6 +65,15 @@ export function isRetryableError(error: any): boolean {
     }
 
     return false;
+}
+
+/**
+ * Check if an error indicates credential revocation/expiry.
+ * Useful for triggering "reconnect required" flows.
+ */
+export function isCredentialError(error: any): boolean {
+    const status = error?.response?.status || error?.status;
+    return status === 401 || status === 403;
 }
 
 /**

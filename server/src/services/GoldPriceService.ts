@@ -122,7 +122,7 @@ export class GoldPriceService {
         // Fetch live price and calculate
         const account = await prisma.account.findUnique({
             where: { id: accountId },
-            select: { currency: true, goldPriceMargin: true }
+            select: { currency: true, goldPriceMargin: true, goldPrice: true, updatedAt: true }
         });
 
         if (!account) return;
@@ -148,6 +148,47 @@ export class GoldPriceService {
                     goldPrice9ctWhite: price9ct
                 }
             });
+        } else {
+            // EDGE CASE: API failed - check if cached price is stale and notify user
+            const priceAgeMs = Date.now() - new Date(account.updatedAt).getTime();
+            const priceAgeHours = priceAgeMs / (1000 * 60 * 60);
+            const STALE_THRESHOLD_HOURS = 1;
+
+            if (priceAgeHours > STALE_THRESHOLD_HOURS && Number(account.goldPrice) > 0) {
+                Logger.warn('[GoldPriceService] API unavailable, using stale cached price', {
+                    accountId,
+                    priceAgeHours: priceAgeHours.toFixed(1),
+                    cachedPrice: Number(account.goldPrice)
+                });
+
+                // Create notification for user awareness
+                await prisma.notification.create({
+                    data: {
+                        accountId,
+                        title: '⚠️ Gold Price Update Failed',
+                        message: `Unable to fetch live gold prices. Using cached price from ${priceAgeHours.toFixed(0)} hours ago. Product prices may be inaccurate.`,
+                        type: 'WARNING',
+                        link: '/settings/gold-prices'
+                    }
+                }).catch(err => {
+                    Logger.error('[GoldPriceService] Failed to create notification', { error: err.message });
+                });
+            } else if (Number(account.goldPrice) === 0 || account.goldPrice === null) {
+                // No cached price at all - critical warning
+                Logger.error('[GoldPriceService] API unavailable and no cached price', { accountId });
+
+                await prisma.notification.create({
+                    data: {
+                        accountId,
+                        title: '🚨 Gold Price Not Available',
+                        message: 'Unable to fetch gold prices and no cached price exists. Products with gold pricing will display incorrect values.',
+                        type: 'ERROR',
+                        link: '/settings/gold-prices'
+                    }
+                }).catch(err => {
+                    Logger.error('[GoldPriceService] Failed to create notification', { error: err.message });
+                });
+            }
         }
     }
 }

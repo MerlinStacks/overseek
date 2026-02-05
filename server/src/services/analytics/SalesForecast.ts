@@ -27,6 +27,8 @@ export class SalesForecastService {
      * Uses year-over-year comparison with growth adjustment for seasonality.
      * Falls back to weighted moving average if insufficient YoY data.
      * Falls back to linear regression if insufficient recent data.
+     * 
+     * @returns Forecast array with confidence metadata
      */
     static async getSalesForecast(accountId: string, daysToForecast: number = 30) {
         try {
@@ -87,6 +89,31 @@ export class SalesForecastService {
             }
 
             const hasEnoughYoYData = forecastDaysWithData >= Math.min(14, daysToForecast);
+
+            // === EDGE CASE: Calculate confidence score based on data quality ===
+            // - High: 90+ days of historical data AND YoY data available
+            // - Medium: 30-90 days OR no YoY data but recent data available
+            // - Low: <30 days of data - warn user predictions may be inaccurate
+            const totalHistoricalDays = recentData.length + lastYearData.length;
+            let confidenceLevel: 'high' | 'medium' | 'low';
+            let dataQualityWarning: string | undefined;
+
+            if (hasEnoughYoYData && recentData.length >= 28) {
+                confidenceLevel = 'high';
+            } else if (recentData.length >= 14) {
+                confidenceLevel = 'medium';
+                if (!hasEnoughYoYData) {
+                    dataQualityWarning = 'Limited year-over-year data. Forecast is based on recent trends only.';
+                }
+            } else {
+                confidenceLevel = 'low';
+                dataQualityWarning = `Insufficient historical data (${recentData.length} days). Predictions may be inaccurate. We recommend at least 30 days of sales data for reliable forecasts.`;
+                Logger.warn('[SalesForecast] Low confidence forecast due to insufficient data', {
+                    accountId,
+                    recentDataDays: recentData.length,
+                    yoyDataDays: forecastDaysWithData
+                });
+            }
 
             // === Calculate Growth Factor ===
             // Compare last 30 days this year vs same 30 days last year
@@ -153,7 +180,17 @@ export class SalesForecastService {
                 return this.getLinearForecast(accountId, daysToForecast);
             }
 
-            return forecast;
+            // Return forecast with confidence metadata
+            return {
+                forecast,
+                confidence: confidenceLevel,
+                warning: dataQualityWarning,
+                metadata: {
+                    recentDataDays: recentData.length,
+                    yoyDataDays: forecastDaysWithData,
+                    growthFactor: Math.round(growthFactor * 100) / 100
+                }
+            };
 
         } catch (error) {
             Logger.error('Analytics Forecast Error', { error });

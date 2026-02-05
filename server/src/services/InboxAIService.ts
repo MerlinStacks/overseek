@@ -12,6 +12,7 @@ import { cacheAside, CacheTTL } from '../utils/cache';
 interface DraftResult {
     draft: string;
     error?: string;
+    warning?: string;  // Informational warning (e.g., no policies configured)
 }
 
 interface ConversationContext {
@@ -74,6 +75,12 @@ export class InboxAIService {
                 { ttl: CacheTTL.LONG }
             );
 
+            // EDGE CASE: Warn when no policies are configured - AI will give generic responses
+            const noPoliciesWarning = policies.length === 0;
+            if (noPoliciesWarning) {
+                Logger.debug('[InboxAI] No store policies configured - AI responses may be generic', { accountId });
+            }
+
             // 5. Fetch the inbox_draft_reply prompt template
             const promptTemplate = await prisma.aIPrompt.findUnique({
                 where: { promptId: 'inbox_draft_reply' }
@@ -126,7 +133,13 @@ Generate a complete reply that incorporates and improves upon the current draft.
             const data = await response.json();
             const draft = data.choices?.[0]?.message?.content || '';
 
-            return { draft };
+            // Include warning if no policies were configured
+            return {
+                draft,
+                warning: noPoliciesWarning
+                    ? 'No store policies configured. Add policies in Settings > Policies for more contextual AI responses.'
+                    : undefined
+            };
 
         } catch (error) {
             Logger.error('InboxAIService.generateDraftReply error', { error });

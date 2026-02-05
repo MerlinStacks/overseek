@@ -19,9 +19,11 @@ interface UserInfo {
 
 const PRESENCE_KEY_PREFIX = 'presence:';
 /** TTL for presence entries - if no heartbeat received, entry expires */
-const PRESENCE_TTL_SECONDS = 120; // 2 minutes
+const PRESENCE_TTL_SECONDS = 60; // 60 seconds (aggressive to prevent ghost entries)
 /** Timeout for Redis operations to prevent blocking */
 const REDIS_OPERATION_TIMEOUT_MS = 5000;
+/** Max age for stale entries to be pruned on join (30 seconds) */
+const STALE_PRUNE_ON_JOIN_MS = 30000;
 
 /**
  * Wraps a promise with a timeout to prevent indefinite blocking.
@@ -38,10 +40,15 @@ export class CollaborationService {
     /**
      * Join a document/resource.
      * Stores user info in a Redis Hash: presence:{docId} -> {socketId: UserInfo}
+     * 
+     * EDGE CASE FIX: Prunes stale entries on join to prevent ghost presence after reconnects.
      */
     static async joinDocument(docId: string, socketId: string, userInfo: UserInfo): Promise<void> {
         const key = `${PRESENCE_KEY_PREFIX}${docId}`;
         try {
+            // Prune stale entries first to prevent ghost presence after reconnects
+            await this.pruneStale(docId, STALE_PRUNE_ON_JOIN_MS);
+
             const infoWithHeartbeat = {
                 ...userInfo,
                 lastHeartbeat: Date.now()

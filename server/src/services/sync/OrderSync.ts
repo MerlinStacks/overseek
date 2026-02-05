@@ -229,6 +229,8 @@ export class OrderSync extends BaseSync {
      * attempt to run this concurrently (fixes 40P01 deadlock errors).
      * Includes retry logic with exponential backoff for transient failures.
      * 
+     * EDGE CASE: On exhausted retries, adds account to maintenance queue for later retry.
+     * 
      * PERFORMANCE: Uses indexed wooCustomerId column instead of JSON parsing.
      */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
@@ -283,10 +285,24 @@ export class OrderSync extends BaseSync {
                     });
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
                 } else {
-                    // Final failure or non-retryable error
-                    Logger.warn('Failed to recalculate customer order counts', {
+                    // EDGE CASE FIX: On final failure, add to maintenance queue for later retry
+                    // This prevents permanent data inconsistency from exhausted retries
+                    Logger.warn('Failed to recalculate customer order counts, adding to maintenance queue', {
                         accountId, syncId, error: error.message, attempts: attempt
                     });
+
+                    // Add to Redis set for maintenance job to pick up later
+                    try {
+                        const { redisClient } = await import('../../utils/redis');
+                        await redisClient.sadd('maintenance:customer_count_recalc', accountId);
+                        Logger.info('Account added to maintenance queue for customer count recalculation', { accountId });
+                    } catch (redisError) {
+                        // If Redis fails too, we've done our best - log for manual intervention
+                        Logger.error('Failed to add account to maintenance queue', {
+                            accountId, syncId, redisError: redisError instanceof Error ? redisError.message : 'Unknown'
+                        });
+                    }
+
                     return; // Don't throw - this shouldn't break the sync
                 }
             }

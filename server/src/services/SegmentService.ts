@@ -167,6 +167,7 @@ export class SegmentService {
      * @param accountId - The account ID
      * @param segmentId - The segment to export
      * @returns Object containing raw and hashed emails/phones
+     * @throws Error if segment not found or segment is empty
      */
     async getExportableCustomers(accountId: string, segmentId: string): Promise<ExportableCustomerData> {
         const segment = await this.getSegment(segmentId, accountId);
@@ -185,6 +186,11 @@ export class SegmentService {
                 rawData: true
             }
         });
+
+        // EDGE CASE: Handle empty segments gracefully with clear error message
+        if (customers.length === 0) {
+            throw new Error(`No customers match this segment. The segment "${segment.name}" has 0 customers matching the current criteria. Please adjust the segment rules or wait for more customer data.`);
+        }
 
         const emails: string[] = [];
         const phones: string[] = [];

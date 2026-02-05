@@ -105,6 +105,7 @@ export class WebhookDeliveryService {
         topic: string;
         source: string;
         payload: unknown;
+        receivedAt: Date;
     } | null> {
         const delivery = await prisma.webhookDelivery.findUnique({
             where: { id: deliveryId },
@@ -138,6 +139,7 @@ export class WebhookDeliveryService {
             topic: delivery.topic,
             source: delivery.source,
             payload: delivery.payload,
+            receivedAt: delivery.receivedAt,
         };
     }
 

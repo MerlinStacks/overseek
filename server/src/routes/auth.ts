@@ -51,6 +51,36 @@ const changePasswordSchema = z.object({
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const MAX_FAILED_ATTEMPTS = 10; // Increased limit - only counts FAILED attempts now
+const MAX_MAP_SIZE = 10_000; // Cap to prevent unbounded memory growth
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // Cleanup every 10 minutes
+
+/**
+ * Periodically clean up expired entries from the in-memory rate limit map.
+ * Prevents memory leak when Redis is unavailable for extended periods.
+ */
+function cleanupExpiredEntries(): void {
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const [ip, record] of loginAttempts) {
+        if (now - record.firstAttempt > WINDOW_MS) {
+            loginAttempts.delete(ip);
+            cleaned++;
+        }
+    }
+
+    if (cleaned > 0) {
+        Logger.debug('Rate limit cleanup completed', { entriesRemoved: cleaned, remaining: loginAttempts.size });
+    }
+}
+
+// Start cleanup interval (runs in background)
+const cleanupInterval = setInterval(cleanupExpiredEntries, CLEANUP_INTERVAL_MS);
+
+// Ensure cleanup interval is cleared on process exit (prevents test hangs)
+if (typeof process !== 'undefined') {
+    process.on('beforeExit', () => clearInterval(cleanupInterval));
+}
 
 /**
  * Check if IP is currently rate limited (without incrementing).
@@ -74,12 +104,28 @@ function isRateLimitedFallback(ip: string): boolean {
 
 /**
  * Increment failed login counter for IP.
+ * Enforces MAX_MAP_SIZE cap to prevent unbounded memory growth.
  */
 function incrementFailedLoginFallback(ip: string): void {
     const now = Date.now();
     const record = loginAttempts.get(ip);
 
     if (!record) {
+        // Enforce size cap before adding new entry
+        if (loginAttempts.size >= MAX_MAP_SIZE) {
+            // Remove oldest entries (first 10% or at least 100)
+            const toRemove = Math.max(100, Math.floor(MAX_MAP_SIZE * 0.1));
+            let removed = 0;
+            for (const key of loginAttempts.keys()) {
+                if (removed >= toRemove) break;
+                loginAttempts.delete(key);
+                removed++;
+            }
+            Logger.warn('Rate limit map size cap reached, evicted oldest entries', {
+                evicted: removed,
+                remaining: loginAttempts.size
+            });
+        }
         loginAttempts.set(ip, { count: 1, firstAttempt: now });
         return;
     }

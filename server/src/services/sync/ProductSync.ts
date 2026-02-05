@@ -60,12 +60,29 @@ export class ProductSync extends BaseSync {
             // Batch prepare upsert operations
             const upsertOperations = products.map((p) => {
                 wooProductIds.add(p.id);
+
+                // EDGE CASE: Log empty price strings for visibility
+                // Empty string from WooCommerce typically means "price not set" (e.g., variable product with variant-level pricing)
+                if (p.price === '') {
+                    Logger.debug('[ProductSync] Product has empty price string', {
+                        accountId, syncId, productId: p.id, productName: p.name, type: p.type
+                    });
+                }
+
+                // Determine price: empty string → null (not "Free"), otherwise parse
+                const parsedPrice = p.price === '' || p.price === null ? null : p.price;
+
+                // Stock handling: distinguish null (unlimited/not managed) vs 0 (out of stock)
+                // WooCommerce stock_status gives us: 'instock', 'outofstock', 'onbackorder'
+                // stock_quantity null means "stock management disabled" (unlimited)
+                // stock_quantity 0 means "stock managed and depleted"
+
                 return prisma.wooProduct.upsert({
                     where: { accountId_wooId: { accountId, wooId: p.id } },
                     update: {
                         name: p.name,
-                        price: p.price === '' ? null : p.price,
-                        stockStatus: p.stock_status,
+                        price: parsedPrice,
+                        stockStatus: p.stock_status, // Sync from WooCommerce to distinguish states
                         stockQuantity: p.stock_quantity ?? null,
                         rawData: p as any,
                         mainImage: p.images?.[0]?.src,
@@ -80,7 +97,7 @@ export class ProductSync extends BaseSync {
                         wooId: p.id,
                         name: p.name,
                         sku: p.sku,
-                        price: p.price === '' ? null : p.price,
+                        price: parsedPrice,
                         stockStatus: p.stock_status,
                         stockQuantity: p.stock_quantity ?? null,
                         permalink: p.permalink,

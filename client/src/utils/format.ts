@@ -62,6 +62,7 @@ export function formatCurrency(
     return new Intl.NumberFormat('en-AU', {
         style: 'currency',
         currency,
+        currencyDisplay: 'narrowSymbol',
         minimumFractionDigits: options?.minimumFractionDigits ?? 2,
         maximumFractionDigits: options?.maximumFractionDigits ?? 2
     }).format(amount);

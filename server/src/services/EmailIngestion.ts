@@ -274,9 +274,30 @@ export class EmailIngestion {
         if (!config?.isEnabled || !config.config) return;
 
         const settings = config.config as any;
-        if (!settings.businessHours?.enabled) return;
 
-        if (this.isOutsideBusinessHours(settings.businessHours, settings.businessTimezone) && settings.businessHours.offlineMessage) {
+        // Default business hours: Mon-Fri 9am-5pm if not configured
+        const defaultBusinessHours = {
+            enabled: true,
+            days: {
+                mon: { isOpen: true, open: '09:00', close: '17:00' },
+                tue: { isOpen: true, open: '09:00', close: '17:00' },
+                wed: { isOpen: true, open: '09:00', close: '17:00' },
+                thu: { isOpen: true, open: '09:00', close: '17:00' },
+                fri: { isOpen: true, open: '09:00', close: '17:00' },
+                sat: { isOpen: false },
+                sun: { isOpen: false }
+            },
+            offlineMessage: null // No auto-reply unless explicitly configured
+        };
+
+        const businessHours = settings.businessHours?.enabled
+            ? settings.businessHours
+            : (settings.businessHours === undefined ? defaultBusinessHours : null);
+
+        // Early exit if business hours feature is explicitly disabled
+        if (!businessHours) return;
+
+        if (this.isOutsideBusinessHours(businessHours, settings.businessTimezone) && businessHours.offlineMessage) {
             // LOOP PREVENTION: Check if we already sent an auto-reply for this conversation recently (within 5 minutes)
             const recentAutoReply = await prisma.emailLog.findFirst({
                 where: {
@@ -300,13 +321,13 @@ export class EmailIngestion {
                 emailAccountId,
                 fromEmail,
                 originalSubject,
-                settings.businessHours.offlineMessage,
+                businessHours.offlineMessage,
                 inReplyToMessageId,
                 conversation.id
             );
 
             // Add system message for visibility in inbox (strip HTML for clean display)
-            const plainTextMessage = settings.businessHours.offlineMessage
+            const plainTextMessage = businessHours.offlineMessage
                 .replace(/<[^>]*>/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();

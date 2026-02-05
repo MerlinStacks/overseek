@@ -71,6 +71,28 @@ export const webhookAdminRoutes: FastifyPluginAsync = async (fastify) => {
             const delivery = await WebhookDeliveryService.replay(deliveryId);
             if (!delivery) return reply.code(404).send({ error: 'Delivery not found' });
 
+            // EDGE CASE: Check webhook staleness to prevent replaying severely outdated data
+            const ageMs = Date.now() - new Date(delivery.receivedAt).getTime();
+            const ageHours = ageMs / (1000 * 60 * 60);
+            const MAX_REPLAY_AGE_HOURS = 24;
+            const WARN_REPLAY_AGE_HOURS = 1;
+
+            if (ageHours > MAX_REPLAY_AGE_HOURS) {
+                Logger.warn('[WebhookReplay] Rejected stale webhook replay', {
+                    deliveryId, ageHours: ageHours.toFixed(1), topic: delivery.topic
+                });
+                return reply.code(400).send({
+                    error: 'Webhook too old to replay',
+                    details: `Webhook is ${ageHours.toFixed(1)} hours old. Max replay age is ${MAX_REPLAY_AGE_HOURS} hours.`
+                });
+            }
+
+            if (ageHours > WARN_REPLAY_AGE_HOURS) {
+                Logger.warn('[WebhookReplay] Replaying stale webhook', {
+                    deliveryId, ageHours: ageHours.toFixed(1), topic: delivery.topic
+                });
+            }
+
             try {
                 await processWebhookPayload(
                     delivery.accountId,
@@ -79,7 +101,13 @@ export const webhookAdminRoutes: FastifyPluginAsync = async (fastify) => {
                 );
                 await WebhookDeliveryService.markProcessed(delivery.id);
 
-                return { success: true, message: 'Webhook replayed successfully' };
+                return {
+                    success: true,
+                    message: 'Webhook replayed successfully',
+                    warning: ageHours > WARN_REPLAY_AGE_HOURS
+                        ? `Webhook was ${ageHours.toFixed(1)} hours old - data may be stale`
+                        : undefined
+                };
             } catch (processError: any) {
                 await WebhookDeliveryService.markFailed(delivery.id, processError.message || 'Replay failed');
                 return reply.code(500).send({ error: 'Replay failed', details: processError.message });

@@ -70,6 +70,7 @@ model Account {
   wooConsumerKey    String
   wooConsumerSecret String
   webhookSecret     String?
+  wooNeedsReconnect Boolean  @default(false) // Set to true when credentials are revoked
 
   // Settings
   currency      String @default("USD")

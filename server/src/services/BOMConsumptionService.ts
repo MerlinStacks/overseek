@@ -6,9 +6,13 @@
  * 1. Deducts stock from each BOM component
  * 2. Updates component stock in WooCommerce
  * 3. Triggers cascade recalculation for any other BOM products using those components
+ * 
+ * Locking Strategy:
+ * - Primary: Redis SETNX with TTL (fast distributed lock)
+ * - Fallback: PostgreSQL advisory lock (when Redis unavailable)
  */
 
-import { prisma } from '../utils/prisma';
+import { prisma, Prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { WooService } from './woo';
 import { EventBus, EVENTS } from './events';
@@ -108,8 +112,9 @@ export class BOMConsumptionService {
 
         // Acquire lock to prevent concurrent processing of same order
         const lockKey = `${this.ORDER_LOCK_PREFIX}${accountId}:${order.id}`;
-        const lockAcquired = await this.acquireLock(lockKey);
-        if (!lockAcquired) {
+        const orderId = typeof order.id === 'number' ? order.id : parseInt(order.id, 10);
+        const lockInfo = await this.acquireLock(lockKey, accountId, orderId);
+        if (!lockInfo.acquired) {
             Logger.warn(`[BOMConsumption] Order ${order.id} is being processed by another worker, skipping`, { accountId });
             return { consumed, errors, skipped: true };
         }
@@ -117,6 +122,7 @@ export class BOMConsumptionService {
         const lineItems: OrderLineItem[] = order.line_items || [];
         if (lineItems.length === 0) {
             Logger.debug(`[BOMConsumption] Order ${order.id} has no line items`, { accountId });
+            await this.releaseLock(lockKey, lockInfo.usedPostgres, accountId, orderId);
             return { consumed, errors };
         }
 
@@ -152,7 +158,7 @@ export class BOMConsumptionService {
         }
 
         // Release the lock
-        await this.releaseLock(lockKey);
+        await this.releaseLock(lockKey, lockInfo.usedPostgres, accountId, orderId);
 
         Logger.info(`[BOMConsumption] Order ${order.id} complete: ${consumed.length} components consumed, ${errors.length} errors`, { accountId });
 
@@ -160,25 +166,102 @@ export class BOMConsumptionService {
     }
 
     /**
-     * Acquire a Redis lock using SETNX pattern.
-     * Returns true if lock acquired, false if already held.
+     * Acquire a lock for order processing.
+     * Uses Redis SETNX as primary, falls back to PostgreSQL advisory lock.
+     * Returns lock info for proper release.
      */
-    private static async acquireLock(lockKey: string): Promise<boolean> {
-        // SETNX returns 1 if key was set (lock acquired), 0 if already exists
-        const result = await redisClient.setnx(lockKey, new Date().toISOString());
-        if (result === 1) {
-            // Set expiry to prevent deadlocks if process crashes
-            await redisClient.expire(lockKey, this.ORDER_LOCK_TTL_SECONDS);
-            return true;
+    private static async acquireLock(
+        lockKey: string,
+        accountId: string,
+        orderId: number
+    ): Promise<{ acquired: boolean; usedPostgres: boolean }> {
+        // Try Redis first (faster, distributed)
+        try {
+            const result = await redisClient.setnx(lockKey, new Date().toISOString());
+            if (result === 1) {
+                await redisClient.expire(lockKey, this.ORDER_LOCK_TTL_SECONDS);
+                return { acquired: true, usedPostgres: false };
+            }
+            // Lock held by another process
+            return { acquired: false, usedPostgres: false };
+        } catch (redisError) {
+            Logger.warn('[BOMConsumption] Redis unavailable, falling back to PostgreSQL advisory lock', {
+                lockKey,
+                error: redisError instanceof Error ? redisError.message : 'Unknown'
+            });
         }
-        return false;
+
+        // Fallback: PostgreSQL advisory lock
+        // Create a consistent numeric hash from accountId + orderId
+        const lockId = this.hashToInt32(`${accountId}:${orderId}`);
+
+        try {
+            const result = await prisma.$queryRaw<{ pg_try_advisory_lock: boolean }[]>`
+                SELECT pg_try_advisory_lock(${lockId}) as pg_try_advisory_lock
+            `;
+            const acquired = result[0]?.pg_try_advisory_lock === true;
+
+            if (acquired) {
+                Logger.debug('[BOMConsumption] PostgreSQL advisory lock acquired', { lockId, accountId, orderId });
+            }
+
+            return { acquired, usedPostgres: true };
+        } catch (pgError) {
+            Logger.error('[BOMConsumption] Both Redis and PostgreSQL locking failed', {
+                lockKey,
+                error: pgError instanceof Error ? pgError.message : 'Unknown'
+            });
+            // If both fail, return not acquired (safe: skip processing rather than double-process)
+            return { acquired: false, usedPostgres: false };
+        }
     }
 
     /**
-     * Release a Redis lock.
+     * Release a lock (Redis or PostgreSQL based on how it was acquired).
      */
-    private static async releaseLock(lockKey: string): Promise<void> {
-        await redisClient.del(lockKey);
+    private static async releaseLock(
+        lockKey: string,
+        usedPostgres: boolean,
+        accountId: string,
+        orderId: number
+    ): Promise<void> {
+        if (usedPostgres) {
+            // Release PostgreSQL advisory lock
+            const lockId = this.hashToInt32(`${accountId}:${orderId}`);
+            try {
+                await prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})`;
+                Logger.debug('[BOMConsumption] PostgreSQL advisory lock released', { lockId });
+            } catch (error) {
+                Logger.error('[BOMConsumption] Failed to release PostgreSQL advisory lock', {
+                    lockId,
+                    error: error instanceof Error ? error.message : 'Unknown'
+                });
+            }
+        } else {
+            // Release Redis lock
+            try {
+                await redisClient.del(lockKey);
+            } catch (error) {
+                Logger.warn('[BOMConsumption] Failed to release Redis lock (may have expired)', {
+                    lockKey,
+                    error: error instanceof Error ? error.message : 'Unknown'
+                });
+            }
+        }
+    }
+
+    /**
+     * Create a 32-bit signed integer hash from a string.
+     * Used for PostgreSQL advisory locks which require bigint.
+     */
+    private static hashToInt32(str: string): number {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return hash;
     }
 
     /**
