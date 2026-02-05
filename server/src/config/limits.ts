@@ -82,6 +82,9 @@ export const QUEUE_LIMITS = {
     LONG_RUNNING_LOCK_DURATION_MS: 300_000,
     /** Stall check interval for long-running jobs (2 minutes) */
     LONG_RUNNING_STALL_INTERVAL_MS: 120_000,
+    /** EDGE CASE FIX: Maximum waiting jobs per queue before dropping oldest
+     * Prevents OOM when Redis reconnects with large backlog */
+    MAX_QUEUE_DEPTH: 500,
 } as const;
 
 // ============================================================================

@@ -54,6 +54,44 @@ export class QueueFactory {
         return this.getQueue(name);
     }
 
+    /**
+     * EDGE CASE FIX: Enforce max queue depth to prevent OOM on Redis reconnect.
+     * When the queue has more waiting jobs than MAX_QUEUE_DEPTH, removes oldest jobs.
+     * Should be called periodically or before adding new jobs.
+     */
+    static async enforceMaxQueueDepth(name: string): Promise<number> {
+        const queue = this.getQueue(name);
+        const waitingCount = await queue.getWaitingCount();
+
+        if (waitingCount <= QUEUE_LIMITS.MAX_QUEUE_DEPTH) {
+            return 0;
+        }
+
+        const excessCount = waitingCount - QUEUE_LIMITS.MAX_QUEUE_DEPTH;
+        const waitingJobs = await queue.getWaiting(0, excessCount);
+
+        let removed = 0;
+        for (const job of waitingJobs) {
+            try {
+                await job.remove();
+                removed++;
+            } catch {
+                // Job may have started processing, skip
+            }
+        }
+
+        if (removed > 0) {
+            Logger.warn(`[QueueFactory] Trimmed ${removed} oldest jobs from ${name} queue (was ${waitingCount}, max ${QUEUE_LIMITS.MAX_QUEUE_DEPTH})`, {
+                queueName: name,
+                removed,
+                previousCount: waitingCount,
+                maxDepth: QUEUE_LIMITS.MAX_QUEUE_DEPTH
+            });
+        }
+
+        return removed;
+    }
+
     static createWorker(name: string, processor: (job: any) => Promise<void>) {
         // Long-running jobs (BOM_SYNC, report generation) need extended lock durations
         // to prevent false stall detection when processing many items

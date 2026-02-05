@@ -209,10 +209,10 @@
   - Issue: False "unhealthy" on initial deploy
   - Fix: Already has `start_period: 60s` configured on healthcheck
 
-- [ ] **Add Redis reconnection handling for BullMQ**
-  - File: `server/src/services/queue/QueueService.ts`
+- [x] **Add Redis reconnection handling for BullMQ** ✅ *Fixed 2026-02-06*
+  - Files: `server/src/services/queue/QueueFactory.ts`, `server/src/config/limits.ts`
   - Issue: Queue jobs pile up; OOM on reconnect
-  - Fix: Add max queue depth; drop oldest on overflow
+  - Fix: Added MAX_QUEUE_DEPTH (500) with `enforceMaxQueueDepth()` to trim oldest jobs
 
 ### Database
 - [ ] **Add connection pool monitoring**
@@ -260,9 +260,9 @@
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🔵 Low (Platform) | 4 | 0 | 0% |
-| 🔵 Low (Infra) | 5 | 2 | 40% |
+| 🔵 Low (Infra) | 5 | 3 | 60% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **26** | **65%** |
+| **TOTAL** | **40** | **28** | **70%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 09:15*
+*Last Updated: 2026-02-06 09:25*
