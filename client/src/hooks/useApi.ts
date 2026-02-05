@@ -10,10 +10,21 @@ import { useAccount } from '../context/AccountContext';
 import { api } from '../services/api';
 
 /**
+ * Reason why the API hook is not ready to make requests.
+ * Used to provide user-friendly feedback instead of silent failures.
+ */
+export type ApiNotReadyReason = 'no_token' | 'no_account' | null;
+
+/**
  * Hook providing API methods with automatic auth and account context.
  * 
  * @example
- * const { get, post } = useApi();
+ * const { get, post, isReady, notReadyReason } = useApi();
+ * 
+ * if (!isReady) {
+ *   return <Alert>{notReadyReason === 'no_account' ? 'Please select an account' : 'Please log in'}</Alert>;
+ * }
+ * 
  * const data = await get<Order[]>('/api/orders');
  * await post('/api/orders/123/note', { content: 'Note text' });
  */
@@ -22,6 +33,14 @@ export function useApi() {
     const { currentAccount } = useAccount();
 
     const accountId = currentAccount?.id;
+
+    // EDGE CASE: Provide clear reason when API calls would fail
+    // This prevents silent failures and enables actionable user feedback
+    const notReadyReason: ApiNotReadyReason = !token
+        ? 'no_token'
+        : !accountId
+            ? 'no_account'
+            : null;
 
     return {
         /**
@@ -60,6 +79,14 @@ export function useApi() {
         isReady: Boolean(token && accountId),
 
         /**
+         * Reason why the hook is not ready.
+         * - 'no_token': User is not authenticated
+         * - 'no_account': User hasn't selected an account
+         * - null: Ready to make requests
+         */
+        notReadyReason,
+
+        /**
          * Current account ID (for components that need it explicitly)
          */
         accountId,
@@ -70,3 +97,4 @@ export function useApi() {
         token,
     };
 }
+

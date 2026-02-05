@@ -209,6 +209,37 @@ export class EmailIngestion {
             }
         }
 
+        // TIER 1.5: Subject-based matching when headers are missing
+        // EDGE CASE FIX: Prevents duplicate conversations when email clients strip threading headers
+        // Only matches if: same sender, same clean subject, conversation updated within 7 days
+        if (cleanTitle && fromEmail) {
+            const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+            // Look for recent conversations with matching subject from same sender
+            const subjectMatchConv = await prisma.conversation.findFirst({
+                where: {
+                    accountId,
+                    mergedIntoId: null,
+                    title: cleanTitle,
+                    updatedAt: { gte: SEVEN_DAYS_AGO },
+                    OR: [
+                        { guestEmail: fromEmail },
+                        { wooCustomer: { email: fromEmail } }
+                    ]
+                },
+                orderBy: { updatedAt: 'desc' }
+            });
+
+            if (subjectMatchConv) {
+                Logger.info('[EmailIngestion] Matched by subject (fallback for missing headers)', {
+                    conversationId: subjectMatchConv.id,
+                    subject: cleanTitle,
+                    fromEmail
+                });
+                return subjectMatchConv;
+            }
+        }
+
         // TIER 2: Match by email address
         const customer = await prisma.wooCustomer.findFirst({ where: { accountId, email: fromEmail } });
         if (customer) {

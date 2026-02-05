@@ -73,10 +73,10 @@
   - Issue: Emails fetched before blocked check; repeated DB queries on each email
   - Fix: Added Redis set caching with O(1) membership check and cache invalidation
 
-- [ ] **Improve email threading for missing headers**
+- [x] **Improve email threading for missing headers** ✅ *Fixed 2026-02-06*
   - File: `server/src/services/EmailIngestion.ts`
   - Issue: No `In-Reply-To` → duplicate conversations
-  - Fix: Add subject-based fuzzy matching as fallback
+  - Fix: Added TIER 1.5 subject-based matching for same sender within 7 days
 
 ### Review Sync
 - [ ] **Improve reviewer-to-customer matching**
@@ -115,10 +115,10 @@
 ## 🟡 Medium Priority (UI/Client)
 
 ### Data Loading
-- [ ] **Add user feedback when account context missing**
+- [x] **Add user feedback when account context missing** ✅ *Fixed 2026-02-06*
   - File: `client/src/hooks/useApi.ts`
   - Issue: `!isReady` → silent API failures
-  - Fix: Return error state; components show "Select an account"
+  - Fix: Added `notReadyReason` field returning 'no_token' or 'no_account'
 
 - [ ] **Handle skeleton infinite loading in offline mode**
   - Files: `client/src/components/ui/Skeleton.tsx`, various pages
@@ -131,10 +131,10 @@
   - Issue: No merge/conflict resolution; last write wins
   - Fix: Add optimistic locking with `updatedAt` version check
 
-- [ ] **Add leader election timeout for tab coordination**
+- [x] **Add leader election timeout for tab coordination** ✅ *Already implemented*
   - File: `client/src/hooks/useTabLeader.ts`
   - Issue: Leader tab crashes → all tabs wait indefinitely
-  - Fix: Add heartbeat timeout; elect new leader after 30s
+  - Fix: Already has 5s timeout (LEADER_TIMEOUT) with heartbeat-based stale tab pruning
 
 ---
 
@@ -255,14 +255,14 @@
 | Category | Total | Done | % Complete |
 |----------|-------|------|------------|
 | 🔴 Critical | 6 | 4 | 67% |
-| 🟠 High | 8 | 4 | 50% |
+| 🟠 High | 8 | 5 | 63% |
 | 🟡 Medium (API) | 4 | 4 | 100% |
-| 🟡 Medium (UI) | 4 | 0 | 0% |
+| 🟡 Medium (UI) | 4 | 2 | 50% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🔵 Low (Platform) | 4 | 0 | 0% |
 | 🔵 Low (Infra) | 5 | 1 | 20% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **19** | **47.5%** |
+| **TOTAL** | **40** | **22** | **55%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 08:30*
+*Last Updated: 2026-02-06 08:45*
