@@ -310,6 +310,15 @@ async function initializeApp() {
         // Only process if this came from EmailService.checkEmails (has emailAccountId but no conversationId)
         // EmailIngestion also emits this event AFTER processing (has conversationId) for push notifications
         if (data.emailAccountId && !data.conversationId) {
+            // Validate required fields before processing
+            if (!data.fromEmail || !data.messageId) {
+                Logger.warn('[App] Skipping malformed email event - missing required fields', {
+                    hasFromEmail: !!data.fromEmail,
+                    hasMessageId: !!data.messageId,
+                    emailAccountId: data.emailAccountId
+                });
+                return;
+            }
             try {
                 await chatService.handleIncomingEmail({
                     emailAccountId: data.emailAccountId,
