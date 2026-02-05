@@ -5,6 +5,23 @@
  * 100% server-side tracking via WooCommerce/WordPress hooks.
  * Unblockable by ad blockers since it runs entirely on the server.
  *
+ * CACHING PLUGIN COMPATIBILITY (EDGE CASE FIX):
+ * Some caching plugins may serve cached pages before the visitor ID cookie is set,
+ * causing missed or fragmented visitor sessions. To prevent this:
+ *
+ * 1. Exclude "_os_vid" cookie from page cache key
+ * 2. Exclude cart/checkout pages from full-page cache
+ * 3. For LiteSpeed Cache, add to "Do Not Cache Cookies": _os_vid
+ * 4. For WP Rocket, add to "Never Cache Cookies": _os_vid
+ * 5. For W3 Total Cache, add to "Rejected cookies": _os_vid
+ * 6. For WP Super Cache, enable "Don't cache pages with GET parameters"
+ *
+ * Alternatively, use the 'overseek_skip_tracking' filter to disable tracking
+ * on specific cached pages:
+ * add_filter('overseek_skip_tracking', function($skip) {
+ *     return defined('DOING_CRON') || defined('LSCACHE_NO_CACHE');
+ * });
+ *
  * @package OverSeek
  * @since   1.0.0
  */
@@ -467,6 +484,9 @@ class OverSeek_Server_Tracking
     /**
      * Check if the current request is from a known bot/crawler.
      * Skips tracking for bots to improve data quality.
+     * 
+     * EDGE CASE FIX: Bot patterns are extensible via the 'overseek_bot_patterns' filter.
+     * This allows site admins to add new bots without waiting for plugin updates.
      *
      * @return bool True if request is from a bot
      */
@@ -478,8 +498,9 @@ class OverSeek_Server_Tracking
             return true; // No user agent = likely a bot
         }
 
-        // Common bot patterns
+        // Common bot patterns (updated 2026-02)
         $bot_patterns = array(
+            // Search Engine Crawlers
             'googlebot',
             'bingbot',
             'slurp',
@@ -488,7 +509,17 @@ class OverSeek_Server_Tracking
             'yandexbot',
             'sogou',
             'exabot',
+            
+            // Social Media Crawlers
             'facebot',
+            'linkedinbot',
+            'twitterbot',
+            'pinterestbot',
+            'discordbot',
+            'telegrambot',
+            'whatsapp',
+            
+            // SEO/Analytics Tools
             'ia_archiver',
             'mj12bot',
             'ahrefsbot',
@@ -496,21 +527,59 @@ class OverSeek_Server_Tracking
             'dotbot',
             'rogerbot',
             'screaming frog',
+            'seodatabox',
+            'sistrix',
+            'dataforseo',
+            'serpstatbot',
+            'bytespider',     // TikTok/ByteDance crawler
+            
+            // Monitoring/Testing Tools
             'gtmetrix',
             'pingdom',
             'uptimerobot',
+            'statuscake',
+            'newrelicpinger',
+            'site24x7',
+            'pagespeedonline',
+            
+            // AI/ML Crawlers (2026 additions)
+            'gptbot',         // OpenAI GPT crawler
+            'claudebot',      // Anthropic Claude crawler
+            'ccbot',          // Common Crawl
+            'amazonbot',      // Amazon
+            'applebot',       // Apple
+            'meta-externalagent',  // Meta AI crawler
+            
+            // Generic Bot Identifiers
             'crawler',
             'spider',
             'bot/',
             '/bot',
             'headless',
             'phantomjs',
+            'playwright',
+            'puppeteer',
+            
+            // HTTP Clients (Non-Browser)
             'wget',
             'curl',
             'python-requests',
             'go-http-client',
-            'apache-httpclient'
+            'apache-httpclient',
+            'httpx',
+            'node-fetch',
+            'axios',
         );
+
+        /**
+         * Filter bot detection patterns.
+         * EDGE CASE FIX: Allows site admins to add custom bot patterns
+         * without waiting for plugin updates.
+         *
+         * @param array $bot_patterns Array of lowercase bot UA patterns.
+         * @return array Modified patterns array.
+         */
+        $bot_patterns = apply_filters('overseek_bot_patterns', $bot_patterns);
 
         foreach ($bot_patterns as $pattern) {
             if (strpos($user_agent, $pattern) !== false) {

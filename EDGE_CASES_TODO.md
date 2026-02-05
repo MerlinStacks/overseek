@@ -189,15 +189,15 @@
   - Fix: Add explicit algorithm documentation; add test coverage
 
 ### WooCommerce Plugin
-- [ ] **Improve bot detection patterns**
+- [x] **Improve bot detection patterns** ✅ *Fixed 2026-02-06*
   - File: `overseek-wc-plugin/includes/class-overseek-server-tracking.php`
   - Issue: New bots slip through; inflate analytics
-  - Fix: Add monthly bot pattern update from community list
+  - Fix: Added 25+ new patterns (AI/social/monitoring bots) with `overseek_bot_patterns` filter for extensibility
 
-- [ ] **Handle caching plugin conflicts**
+- [x] **Handle caching plugin conflicts** ✅ *Fixed 2026-02-06*
   - File: `overseek-wc-plugin/includes/class-overseek-server-tracking.php`
   - Issue: Cached pages may miss visitor ID cookie
-  - Fix: Add documentation; recommend cache exclusion rules
+  - Fix: Added detailed documentation for LiteSpeed, WP Rocket, W3TC, WP Super Cache cookie exclusion rules
 
 ---
 
@@ -259,10 +259,10 @@
 | 🟡 Medium (API) | 4 | 4 | 100% |
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
-| 🔵 Low (Platform) | 4 | 0 | 0% |
+| 🔵 Low (Platform) | 4 | 2 | 50% |
 | 🔵 Low (Infra) | 5 | 4 | 80% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **30** | **75%** |
+| **TOTAL** | **40** | **32** | **80%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 09:30*
+*Last Updated: 2026-02-06 09:40*
