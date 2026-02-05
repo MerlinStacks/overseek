@@ -62,10 +62,10 @@
   - Issue: 40P01 still possible after retry exhaustion
   - Fix: On exhausted retries, adds account to Redis maintenance queue for later retry
 
-- [ ] **Link guest orders to registered accounts**
-  - File: `server/src/services/sync/CustomerSync.ts`
+- [x] **Link guest orders to registered accounts** ✅ *Fixed 2026-02-06*
+  - File: `server/src/services/sync/OrderSync.ts`
   - Issue: Guest checkout orders don't link when customer registers later
-  - Fix: Add email-based identity resolution job
+  - Fix: Added `linkGuestOrdersToCustomers()` method using email-based identity resolution
 
 ### Email Ingestion
 - [x] **Add Redis caching for blocked contact checks** ✅ *Fixed 2026-02-06*
@@ -255,14 +255,14 @@
 | Category | Total | Done | % Complete |
 |----------|-------|------|------------|
 | 🔴 Critical | 6 | 4 | 67% |
-| 🟠 High | 8 | 6 | 75% |
+| 🟠 High | 8 | 7 | 88% |
 | 🟡 Medium (API) | 4 | 4 | 100% |
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🟢 Low (Platform) | 4 | 4 | 100% |
 | 🔵 Low (Infra) | 5 | 4 | 80% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **35** | **88%** |
+| **TOTAL** | **40** | **36** | **90%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 09:55*
+*Last Updated: 2026-02-06 10:10*

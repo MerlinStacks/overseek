@@ -217,6 +217,13 @@ export class OrderSync extends BaseSync {
             }
         }
 
+        // --- Auto-Link: Link guest orders to registered customers by email ---
+        // EDGE CASE FIX: Guest checkout orders (customer_id=0) don't link when customer registers later
+        const linkedOrderCount = await this.linkGuestOrdersToCustomers(accountId, syncId);
+        if (linkedOrderCount > 0) {
+            Logger.info(`Auto-linked ${linkedOrderCount} guest orders to customers`, { accountId, syncId });
+        }
+
         // After all orders are synced, recalculate customer order counts from local data
         await this.recalculateCustomerCounts(accountId, syncId);
 
@@ -307,5 +314,67 @@ export class OrderSync extends BaseSync {
                 }
             }
         }
+    }
+
+    /**
+     * EDGE CASE FIX: Link guest orders to registered customers by email.
+     * 
+     * When a customer places a guest order and later registers, the order should
+     * be associated with their account for accurate order history and analytics.
+     * 
+     * @returns Number of orders linked
+     */
+    private async linkGuestOrdersToCustomers(accountId: string, syncId?: string): Promise<number> {
+        // Find guest orders (wooCustomerId is null but billingEmail exists)
+        const guestOrders = await prisma.wooOrder.findMany({
+            where: {
+                accountId,
+                wooCustomerId: null,
+                billingEmail: { not: null }
+            },
+            select: { id: true, billingEmail: true }
+        });
+
+        if (guestOrders.length === 0) return 0;
+
+        // Build a map of email -> order IDs
+        const emailToOrderIds = new Map<string, string[]>();
+        for (const order of guestOrders) {
+            if (!order.billingEmail) continue;
+            const email = order.billingEmail.toLowerCase();
+            if (!emailToOrderIds.has(email)) {
+                emailToOrderIds.set(email, []);
+            }
+            emailToOrderIds.get(email)!.push(order.id);
+        }
+
+        // Find matching customers by email
+        const emails = Array.from(emailToOrderIds.keys());
+        const matchingCustomers = await prisma.wooCustomer.findMany({
+            where: {
+                accountId,
+                email: { in: emails, mode: 'insensitive' }
+            },
+            select: { wooId: true, email: true }
+        });
+
+        let linkedCount = 0;
+        for (const customer of matchingCustomers) {
+            const orderIds = emailToOrderIds.get(customer.email.toLowerCase());
+            if (!orderIds || orderIds.length === 0) continue;
+
+            // Update all matching orders to link to this customer's wooId
+            const result = await prisma.wooOrder.updateMany({
+                where: { id: { in: orderIds } },
+                data: { wooCustomerId: customer.wooId }
+            });
+
+            linkedCount += result.count;
+            Logger.debug(`Linked ${result.count} guest orders to customer`, {
+                accountId, syncId, customerEmail: customer.email, wooCustomerId: customer.wooId
+            });
+        }
+
+        return linkedCount;
     }
 }
