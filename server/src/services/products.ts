@@ -153,16 +153,48 @@ export class ProductsService {
             }
         });
 
-        // Sync manage_stock and backorders to WooCommerce
-        if (productData.manageStock !== undefined || productData.backorders !== undefined) {
+        // Sync ALL relevant product fields to WooCommerce
+        const wooUpdateData: Record<string, any> = {};
+
+        // Map OverSeek fields to WooCommerce API fields
+        if (productData.name !== undefined) wooUpdateData.name = productData.name;
+        if (productData.sku !== undefined) wooUpdateData.sku = productData.sku;
+        if (productData.description !== undefined) wooUpdateData.description = productData.description;
+        if (productData.short_description !== undefined) wooUpdateData.short_description = productData.short_description;
+        if (productData.price !== undefined) wooUpdateData.regular_price = String(productData.price);
+        if (productData.salePrice !== undefined) wooUpdateData.sale_price = String(productData.salePrice);
+        if (productData.stockStatus !== undefined) wooUpdateData.stock_status = productData.stockStatus;
+        if (productData.manageStock !== undefined) wooUpdateData.manage_stock = productData.manageStock;
+        if (productData.backorders !== undefined) wooUpdateData.backorders = productData.backorders;
+        if (productData.weight !== undefined) wooUpdateData.weight = String(productData.weight);
+
+        // Handle dimensions - only include if at least one dimension is provided
+        if (productData.length !== undefined || productData.width !== undefined || productData.height !== undefined) {
+            wooUpdateData.dimensions = {
+                length: productData.length ? String(productData.length) : '',
+                width: productData.width ? String(productData.width) : '',
+                height: productData.height ? String(productData.height) : ''
+            };
+        }
+
+        // Handle images - map to WooCommerce format
+        if (productData.images !== undefined && Array.isArray(productData.images)) {
+            wooUpdateData.images = productData.images.map((img: any) => ({
+                id: img.id,
+                src: img.src || img,
+                name: img.name,
+                alt: img.alt
+            })).filter((img: any) => img.src || img.id);
+        }
+
+        // Only call WooCommerce API if there are fields to update
+        if (Object.keys(wooUpdateData).length > 0) {
             try {
                 const wooService = await WooService.forAccount(accountId);
-                const wooUpdateData: any = {};
-                if (productData.manageStock !== undefined) wooUpdateData.manage_stock = productData.manageStock;
-                if (productData.backorders !== undefined) wooUpdateData.backorders = productData.backorders;
                 await wooService.updateProduct(wooId, wooUpdateData);
+                Logger.info('Synced product to WooCommerce', { wooId, fields: Object.keys(wooUpdateData) });
             } catch (err: any) {
-                Logger.error('Failed to sync manage_stock/backorders to WooCommerce', { error: err.message, wooId });
+                Logger.error('Failed to sync product to WooCommerce', { error: err.message, wooId, fields: Object.keys(wooUpdateData) });
             }
         }
 
