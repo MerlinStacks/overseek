@@ -201,7 +201,9 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
                             resolve({ success: false, error: data.error || 'Failed to send email' });
                         }
                     } catch {
-                        resolve({ success: false, error: 'Failed to parse response' });
+                        // Provide more debug info when parsing fails
+                        const preview = xhr.responseText?.substring(0, 100) || '(empty response)';
+                        resolve({ success: false, error: `Failed to parse response (status ${xhr.status}): ${preview}` });
                     }
                 };
 
