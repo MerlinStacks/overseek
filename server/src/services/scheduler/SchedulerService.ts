@@ -70,6 +70,9 @@ export class SchedulerService {
                 case 'account-backups':
                     await MaintenanceScheduler.dispatchScheduledBackups();
                     break;
+                case 'meta-token-refresh':
+                    await MaintenanceScheduler.dispatchMetaTokenRefresh();
+                    break;
 
                 // Marketing jobs
                 case 'outcome-assessment':

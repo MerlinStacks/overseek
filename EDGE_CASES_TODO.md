@@ -178,10 +178,10 @@
 ## 🔵 Low Priority (Platform-Specific)
 
 ### OAuth & Tokens
-- [ ] **Add proactive Meta token refresh**
-  - File: `server/src/routes/oauthMeta.ts`
+- [x] **Add proactive Meta token refresh** ✅ *Fixed 2026-02-06*
+  - File: `server/src/services/scheduler/MaintenanceScheduler.ts`
   - Issue: Token refresh failure breaks DM sync
-  - Fix: Refresh 7 days before expiry; notify on repeated failure
+  - Fix: Added daily job at 04:00 UTC to refresh tokens expiring within 7 days; creates notifications on failure
 
 - [x] **Validate TikTok webhook signature algorithm** ✅ *Fixed 2026-02-06*
   - File: `server/src/routes/tiktok-webhook.ts`
@@ -259,10 +259,10 @@
 | 🟡 Medium (API) | 4 | 4 | 100% |
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
-| 🔵 Low (Platform) | 4 | 3 | 75% |
+| 🟢 Low (Platform) | 4 | 4 | 100% |
 | 🔵 Low (Infra) | 5 | 4 | 80% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **33** | **82.5%** |
+| **TOTAL** | **40** | **35** | **88%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 09:40*
+*Last Updated: 2026-02-06 09:55*

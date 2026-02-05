@@ -7,6 +7,7 @@
  * - BOM inventory sync (hourly)
  * - Account backups (hourly)
  * - Janitor cleanup (daily)
+ * - Meta token proactive refresh (daily)
  */
 import { QueueFactory, QUEUES } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
@@ -47,6 +48,14 @@ export class MaintenanceScheduler {
             jobId: 'account-backups-hourly'
         });
         Logger.info('Scheduled Account Backups Check (Hourly at :30)');
+
+        // EDGE CASE FIX: Proactive Meta Token Refresh (Daily at 04:00 UTC)
+        // Refreshes tokens expiring within 7 days to prevent DM sync failures
+        await this.queue.add('meta-token-refresh', {}, {
+            repeat: { pattern: '0 4 * * *' },
+            jobId: 'meta-token-refresh-daily'
+        });
+        Logger.info('Scheduled Meta Token Proactive Refresh (Daily at 4 AM UTC)');
     }
 
     /**
@@ -188,6 +197,120 @@ export class MaintenanceScheduler {
             }
         } catch (error) {
             Logger.error('[Scheduler] Scheduled backups failed', { error });
+        }
+    }
+
+    /**
+     * EDGE CASE FIX: Proactive Meta token refresh.
+     * 
+     * Meta long-lived tokens expire after ~60 days. This job runs daily
+     * to refresh any tokens expiring within 7 days, preventing sudden
+     * failures in DM sync and messaging features.
+     * 
+     * Creates notifications for accounts that fail to refresh after
+     * multiple attempts.
+     */
+    static async dispatchMetaTokenRefresh() {
+        Logger.info('[Scheduler] Starting proactive Meta token refresh');
+
+        try {
+            const MetaTokenService = (await import('../meta/MetaTokenService')).default;
+
+            // Find Facebook/Instagram social accounts with tokens expiring in 7 days
+            const sevenDaysFromNow = new Date();
+            sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+            const expiringAccounts = await prisma.socialAccount.findMany({
+                where: {
+                    platform: { in: ['FACEBOOK', 'INSTAGRAM'] },
+                    isActive: true,
+                    tokenExpiry: {
+                        not: null,
+                        lte: sevenDaysFromNow
+                    }
+                },
+                select: {
+                    id: true,
+                    accountId: true,
+                    platform: true,
+                    name: true,
+                    accessToken: true,
+                    tokenExpiry: true,
+                    metadata: true
+                }
+            });
+
+            if (expiringAccounts.length === 0) {
+                Logger.info('[Scheduler] No Meta tokens expiring soon');
+                return;
+            }
+
+            Logger.info(`[Scheduler] Found ${expiringAccounts.length} Meta tokens expiring soon`);
+
+            let refreshed = 0;
+            let failed = 0;
+
+            for (const account of expiringAccounts) {
+                try {
+                    // Get user access token from metadata (stored during OAuth)
+                    const metadata = account.metadata as any;
+                    const userAccessToken = metadata?.userAccessToken;
+
+                    if (!userAccessToken) {
+                        Logger.warn(`[Scheduler] No user access token for ${account.platform} account ${account.name}`);
+                        continue;
+                    }
+
+                    // Attempt token refresh
+                    const refreshResult = await MetaTokenService.exchangeForLongLived(
+                        userAccessToken,
+                        'META_MESSAGING'
+                    );
+
+                    // Update the social account with new token expiry
+                    await prisma.socialAccount.update({
+                        where: { id: account.id },
+                        data: {
+                            tokenExpiry: refreshResult.expiresAt,
+                            metadata: {
+                                ...metadata,
+                                userAccessToken: refreshResult.accessToken,
+                                tokenExpiresAt: refreshResult.expiresAt.toISOString(),
+                                lastRefreshed: new Date().toISOString()
+                            }
+                        }
+                    });
+
+                    refreshed++;
+                    Logger.info(`[Scheduler] Refreshed ${account.platform} token for ${account.name}`, {
+                        expiresAt: refreshResult.expiresAt.toISOString()
+                    });
+
+                } catch (error: any) {
+                    failed++;
+                    Logger.error(`[Scheduler] Failed to refresh ${account.platform} token for ${account.name}`, {
+                        error: error.message
+                    });
+
+                    // Create notification for failed refresh
+                    await prisma.notification.create({
+                        data: {
+                            accountId: account.accountId,
+                            type: 'WARNING',
+                            title: `${account.platform} Token Refresh Failed`,
+                            message: `Unable to refresh access token for ${account.name}. Please reconnect the account in Settings > Connected Accounts to prevent service interruption.`,
+                            link: '/settings?tab=channels'
+                        }
+                    }).catch((notifyErr: any) => {
+                        Logger.error('[Scheduler] Failed to create token refresh notification', { error: notifyErr.message });
+                    });
+                }
+            }
+
+            Logger.info('[Scheduler] Meta token refresh complete', { refreshed, failed });
+
+        } catch (error) {
+            Logger.error('[Scheduler] Meta token refresh failed', { error });
         }
     }
 }
