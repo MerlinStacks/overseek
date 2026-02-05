@@ -1166,6 +1166,9 @@ model WooReview {
   wooOrderId String?
   order      WooOrder? @relation(fields: [wooOrderId], references: [id])
 
+  // EDGE CASE: Track match status for manual review of orphaned reviews
+  matchStatus String? // "matched" or "unmatched"
+
   @@unique([accountId, wooId])
   @@index([accountId, status])                 // Review moderation queries
   @@index([accountId, rating])                 // Star rating filters

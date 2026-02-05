@@ -216,6 +216,21 @@ export class ReviewSync extends BaseSync {
                     });
                 }
 
+                // EDGE CASE: Track unmatched reviews for manual review
+                // This helps identify reviews that couldn't be linked to customers/orders
+                const matchStatus = wooCustomerId ? 'matched' : 'unmatched';
+                if (!wooCustomerId && reviewerEmail) {
+                    Logger.warn('[ReviewSync] Orphaned review - no customer match', {
+                        accountId,
+                        syncId,
+                        reviewId: r.id,
+                        reviewerEmail,
+                        reviewerName: r.reviewer,
+                        productId: r.product_id,
+                        productName: r.product_name
+                    });
+                }
+
                 const existingReview = await prisma.wooReview.findUnique({
                     where: { accountId_wooId: { accountId, wooId: r.id } }
                 });
@@ -229,7 +244,8 @@ export class ReviewSync extends BaseSync {
                         rawData: r as any,
                         reviewerEmail: reviewerEmail || null,
                         wooCustomerId,
-                        wooOrderId
+                        wooOrderId,
+                        matchStatus // Track match status for filtering
                     },
                     create: {
                         accountId,
@@ -245,7 +261,8 @@ export class ReviewSync extends BaseSync {
                         rawData: r as any,
                         reviewerEmail: reviewerEmail || null,
                         wooCustomerId,
-                        wooOrderId
+                        wooOrderId,
+                        matchStatus // Track match status for filtering
                     }
                 });
 
