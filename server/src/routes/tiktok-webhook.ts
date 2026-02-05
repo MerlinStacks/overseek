@@ -1,6 +1,31 @@
 /**
  * TikTok Webhook Routes - Fastify Plugin
  * Handles incoming webhooks from TikTok Business Messaging.
+ * 
+ * EDGE CASE FIX: TikTok Webhook Signature Verification
+ * =====================================================
+ * TikTok uses a DIFFERENT signature algorithm than WooCommerce:
+ * 
+ * TikTok Algorithm (HMAC-SHA256):
+ *   1. Concatenate: timestamp + raw_body
+ *   2. Sign with HMAC-SHA256 using client_secret as key
+ *   3. Compare signature header via timing-safe comparison
+ * 
+ * Headers:
+ *   - x-tiktok-signature: HMAC-SHA256 hex digest
+ *   - x-tiktok-timestamp: Unix timestamp string
+ * 
+ * WooCommerce Algorithm (HMAC-SHA256):
+ *   1. Use raw_body only (no timestamp concat)
+ *   2. Sign with HMAC-SHA256 using webhook_secret as key
+ *   3. Compare Base64-encoded signature
+ * 
+ * KEY DIFFERENCES:
+ *   - TikTok prepends timestamp to payload before hashing
+ *   - TikTok uses hex encoding vs WooCommerce base64
+ *   - TikTok gets secret from OAuth client; WooCommerce from webhook config
+ * 
+ * @see TikTokMessagingService.verifyWebhookSignature for implementation
  */
 
 import { FastifyPluginAsync } from 'fastify';

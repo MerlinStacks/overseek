@@ -183,10 +183,10 @@
   - Issue: Token refresh failure breaks DM sync
   - Fix: Refresh 7 days before expiry; notify on repeated failure
 
-- [ ] **Validate TikTok webhook signature algorithm**
+- [x] **Validate TikTok webhook signature algorithm** ✅ *Fixed 2026-02-06*
   - File: `server/src/routes/tiktok-webhook.ts`
   - Issue: Different signature algo than WooCommerce
-  - Fix: Add explicit algorithm documentation; add test coverage
+  - Fix: Added detailed algorithm documentation comparing TikTok vs WooCommerce (hex vs base64, timestamp prepend)
 
 ### WooCommerce Plugin
 - [x] **Improve bot detection patterns** ✅ *Fixed 2026-02-06*
@@ -259,10 +259,10 @@
 | 🟡 Medium (API) | 4 | 4 | 100% |
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
-| 🔵 Low (Platform) | 4 | 2 | 50% |
+| 🔵 Low (Platform) | 4 | 3 | 75% |
 | 🔵 Low (Infra) | 5 | 4 | 80% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **32** | **80%** |
+| **TOTAL** | **40** | **33** | **82.5%** |
 
 ---
 
