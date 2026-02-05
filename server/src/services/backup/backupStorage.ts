@@ -3,6 +3,9 @@
  * 
  * Handles saving, listing, retrieving, and deleting backup files.
  * Extracted from AccountBackupService.ts for improved modularity.
+ * 
+ * EDGE CASE FIX: Uses atomic writes (temp file + rename) and SHA256 checksums
+ * to prevent corrupted backups from interrupted writes.
  */
 
 import { prisma } from '../../utils/prisma';
@@ -10,30 +13,91 @@ import { Logger } from '../../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import * as crypto from 'crypto';
 import type { AccountBackup, StoredBackupInfo, BackupSettings } from './types';
 import { BACKUP_DIR, FREQUENCY_MS } from './constants';
 
 /**
+ * Result of a backup write operation
+ */
+interface BackupWriteResult {
+    sizeBytes: number;
+    checksum: string; // SHA256 hex digest
+}
+
+/**
  * Stream-serialize JSON to avoid V8 string length limits on large datasets.
  * Writes chunks directly to a gzip stream rather than building one giant string.
+ * 
+ * EDGE CASE FIX: Uses atomic write pattern (temp file + rename) and computes
+ * SHA256 checksum to prevent corrupted backups from interrupted writes.
+ * If the process crashes mid-write, no partial file will exist at the final path.
  */
 export async function streamSerializeToGzip(
     backup: AccountBackup,
     filePath: string
-): Promise<number> {
+): Promise<BackupWriteResult> {
+    // Write to temp file first, then atomically rename
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+
     return new Promise((resolve, reject) => {
         const gzStream = zlib.createGzip();
-        const writeStream = fs.createWriteStream(filePath);
+        const writeStream = fs.createWriteStream(tempPath);
+        const hashStream = crypto.createHash('sha256');
 
-        gzStream.pipe(writeStream);
-
-        writeStream.on('finish', () => {
-            const stats = fs.statSync(filePath);
-            resolve(stats.size);
+        // Pipe gzip output to both file and hash calculator
+        gzStream.on('data', (chunk: Buffer) => {
+            writeStream.write(chunk);
+            hashStream.update(chunk);
         });
 
-        writeStream.on('error', reject);
-        gzStream.on('error', reject);
+        gzStream.on('end', () => {
+            writeStream.end();
+        });
+
+        writeStream.on('finish', () => {
+            try {
+                const stats = fs.statSync(tempPath);
+                const checksum = hashStream.digest('hex');
+
+                // EDGE CASE FIX: Atomic rename from temp to final path
+                // If this fails, no corrupted file will exist at the final path
+                fs.renameSync(tempPath, filePath);
+
+                resolve({
+                    sizeBytes: stats.size,
+                    checksum
+                });
+            } catch (renameError) {
+                // Clean up temp file if rename fails
+                try {
+                    fs.unlinkSync(tempPath);
+                } catch {
+                    // Ignore cleanup errors
+                }
+                reject(renameError);
+            }
+        });
+
+        writeStream.on('error', (err) => {
+            // Clean up temp file on write error
+            try {
+                fs.unlinkSync(tempPath);
+            } catch {
+                // Ignore cleanup errors
+            }
+            reject(err);
+        });
+
+        gzStream.on('error', (err) => {
+            // Clean up temp file on gzip error
+            try {
+                fs.unlinkSync(tempPath);
+            } catch {
+                // Ignore cleanup errors
+            }
+            reject(err);
+        });
 
         // Write opening brace and metadata fields
         gzStream.write('{"exportedAt":' + JSON.stringify(backup.exportedAt) + ',');
@@ -90,7 +154,8 @@ export async function saveBackupToStorage(
     const filePath = path.join(accountBackupDir, filename);
 
     // Stream-serialize to gzip to avoid V8 string length limits
-    const sizeBytes = await streamSerializeToGzip(backup, filePath);
+    // EDGE CASE FIX: Uses atomic write (temp file + rename) with SHA256 checksum
+    const { sizeBytes, checksum } = await streamSerializeToGzip(backup, filePath);
 
     // Count total records
     const recordCount = Object.values(backup.data).flat().length;
@@ -130,6 +195,7 @@ export async function saveBackupToStorage(
         sizeBytes,
         recordCount,
         type,
+        checksum, // EDGE CASE FIX: Log checksum for integrity verification
     });
 
     return {

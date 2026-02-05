@@ -226,10 +226,10 @@
   - Issue: 100MB upload may timeout on slow connections
   - Fix: Add chunked upload; resume capability
 
-- [ ] **Validate backup stream integrity**
-  - File: `server/src/services/backup/BackupService.ts`
+- [x] **Validate backup stream integrity** ✅ *Fixed 2026-02-06*
+  - File: `server/src/services/backup/backupStorage.ts`
   - Issue: Interrupted backup → corrupted file
-  - Fix: Add checksum; atomic rename on completion
+  - Fix: Added atomic write (temp file + rename) with SHA256 checksum logging
 
 ---
 
@@ -260,9 +260,9 @@
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🔵 Low (Platform) | 4 | 0 | 0% |
-| 🔵 Low (Infra) | 5 | 1 | 20% |
+| 🔵 Low (Infra) | 5 | 2 | 40% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **24** | **60%** |
+| **TOTAL** | **40** | **26** | **65%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 09:00*
+*Last Updated: 2026-02-06 09:15*
