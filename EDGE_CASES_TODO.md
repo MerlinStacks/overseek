@@ -215,10 +215,10 @@
   - Fix: Added MAX_QUEUE_DEPTH (500) with `enforceMaxQueueDepth()` to trim oldest jobs
 
 ### Database
-- [ ] **Add connection pool monitoring**
+- [x] **Add connection pool monitoring** ✅ *Fixed 2026-02-06*
   - File: `server/src/utils/prisma.ts`
   - Issue: Pool exhaustion causes sync timeouts
-  - Fix: Add metrics endpoint; alert at 80% usage
+  - Fix: Added `getPoolStats()` function + auto-warn at 80% utilization
 
 ### File Handling
 - [ ] **Add upload progress/timeout handling**
@@ -260,9 +260,9 @@
 | 🟡 Medium (UI) | 4 | 3 | 75% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🔵 Low (Platform) | 4 | 0 | 0% |
-| 🔵 Low (Infra) | 5 | 3 | 60% |
+| 🔵 Low (Infra) | 5 | 4 | 80% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
-| **TOTAL** | **40** | **28** | **70%** |
+| **TOTAL** | **40** | **30** | **75%** |
 
 ---
 
@@ -275,4 +275,4 @@
 
 ---
 
-*Last Updated: 2026-02-06 09:25*
+*Last Updated: 2026-02-06 09:30*
