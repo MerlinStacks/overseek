@@ -303,8 +303,32 @@ async function initializeApp() {
         await automationEngine.processTrigger(data.accountId, 'REVIEW_LEFT', data.review);
     });
 
-    // NOTE: EMAIL.RECEIVED events are handled by NotificationEngine (see NotificationEngine.ts)
-    // The event is emitted AFTER email ingestion completes, to trigger push notifications.
+    // Handle incoming emails from IMAP polling
+    // EmailService.checkEmails() emits EMAIL.RECEIVED with raw email data
+    // We route it to EmailIngestion to create/update conversations and add messages
+    EventBus.on(EVENTS.EMAIL.RECEIVED, async (data: any) => {
+        // Only process if this came from EmailService.checkEmails (has emailAccountId but no conversationId)
+        // EmailIngestion also emits this event AFTER processing (has conversationId) for push notifications
+        if (data.emailAccountId && !data.conversationId) {
+            try {
+                await chatService.handleIncomingEmail({
+                    emailAccountId: data.emailAccountId,
+                    fromEmail: data.fromEmail,
+                    fromName: data.fromName,
+                    subject: data.subject,
+                    body: data.body,
+                    html: data.html,
+                    messageId: data.messageId,
+                    inReplyTo: data.inReplyTo,
+                    references: data.references,
+                    attachments: data.attachments
+                });
+            } catch (error) {
+                Logger.error('[App] Failed to handle incoming email', { error, fromEmail: data.fromEmail });
+            }
+        }
+        // NotificationEngine also listens to this event for push notifications (see NotificationEngine.ts)
+    });
 
     // Initialize Notification Engine
     NotificationEngine.init();
