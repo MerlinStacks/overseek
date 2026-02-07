@@ -3,6 +3,19 @@ set -e
 
 echo "[Startup] Starting deployment script..."
 
+# Auto-construct DATABASE_URL from individual env vars if not explicitly set.
+# This avoids Docker Compose interpolation issues where ${VAR} in environment:
+# blocks don't read from env_file (only from host shell or .env file).
+if [ -z "$DATABASE_URL" ]; then
+  PG_USER="${POSTGRES_USER:-admin}"
+  PG_PASS="${POSTGRES_PASSWORD:-password}"
+  PG_HOST="${POSTGRES_HOST:-postgres}"
+  PG_PORT="${POSTGRES_PORT:-5432}"
+  PG_DB="${POSTGRES_DB:-overseek}"
+  export DATABASE_URL="postgres://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+  echo "[Startup] DATABASE_URL constructed from env vars (host: ${PG_HOST})"
+fi
+
 # Note: prisma generate is done at build time (Dockerfile), no need to repeat here
 
 # Retry loop for database migrations
