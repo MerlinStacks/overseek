@@ -5,9 +5,6 @@
  * periods, and constants. Eliminates magic numbers across analyzers.
  */
 
-// =============================================================================
-// THRESHOLDS
-// =============================================================================
 
 export const THRESHOLDS = {
     // ROAS thresholds
@@ -47,9 +44,6 @@ export const THRESHOLDS = {
     metaLearningEvents: 50,         // Events for Meta learning
 } as const;
 
-// =============================================================================
-// TIME PERIODS
-// =============================================================================
 
 export const PERIODS = {
     short: 7,   // 7 days
@@ -63,9 +57,6 @@ export const PERIODS = {
     recommendationExpiry: 7,
 } as const;
 
-// =============================================================================
-// CONFIDENCE SCORING
-// =============================================================================
 
 export const CONFIDENCE = {
     // Sample size weights
@@ -85,9 +76,6 @@ export const CONFIDENCE = {
     mediumScore: 40,
 } as const;
 
-// =============================================================================
-// FUNNEL STAGES
-// =============================================================================
 
 export const FUNNEL_STAGES = ['awareness', 'consideration', 'conversion', 'retention'] as const;
 export type FunnelStage = typeof FUNNEL_STAGES[number];
@@ -100,9 +88,6 @@ export const FUNNEL_BENCHMARKS: Record<FunnelStage, { ctr: number; roas: number;
     retention: { ctr: 3.0, roas: 5.0, cpc: 0.5 },
 };
 
-// =============================================================================
-// SUGGESTION PRIORITIES
-// =============================================================================
 
 export const PRIORITY = {
     URGENT: 1,

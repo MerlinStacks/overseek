@@ -6,9 +6,6 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 
-// =============================================================================
-// TYPE DEFINITIONS
-// =============================================================================
 
 /**
  * Metric interface for ad platform insights.
@@ -126,9 +123,6 @@ export interface KeywordIdea {
     avgCpc: number;
 }
 
-// =============================================================================
-// CREDENTIAL MANAGEMENT
-// =============================================================================
 
 /**
  * Cached credentials to avoid repeated DB lookups.
@@ -213,9 +207,6 @@ export async function getCredentials(platform: AdsPlatform): Promise<Record<stri
     return null;
 }
 
-// =============================================================================
-// UTILITY HELPERS
-// =============================================================================
 
 /**
  * Format a Date object to YYYY-MM-DD string.
@@ -231,9 +222,6 @@ export function formatDateGAQL(d: Date): string {
     return d.toISOString().split('T')[0].replace(/-/g, '');
 }
 
-// =============================================================================
-// ADVISOR TYPES
-// =============================================================================
 
 /**
  * Inventory analysis summary for ad optimization.

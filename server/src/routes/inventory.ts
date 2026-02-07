@@ -26,9 +26,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(bomSyncRoutes);
 
 
-    // --- Settings & Alerts ---
-
-    // GET /settings
+        // GET /settings
     fastify.get('/settings', async (request, reply) => {
         const accountId = request.accountId;
         try {
@@ -69,9 +67,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // --- BOM ---
-
-    fastify.get<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
+        fastify.get<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
         const { productId } = request.params;
         const query = request.query as { variationId?: string };
         const variationId = parseInt(query.variationId || '0');
@@ -374,9 +370,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // --- Purchase Orders ---
-
-    fastify.get('/purchase-orders', async (request, reply) => {
+        fastify.get('/purchase-orders', async (request, reply) => {
         const accountId = request.accountId!;
         const { status } = request.query as { status?: string };
         try {
@@ -436,9 +430,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // --- Picklist ---
-
-    fastify.get('/picklist', async (request, reply) => {
+        fastify.get('/picklist', async (request, reply) => {
         const accountId = request.accountId!;
         const { status, limit } = request.query as { status?: string; limit?: string };
         try {

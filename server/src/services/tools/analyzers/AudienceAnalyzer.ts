@@ -10,9 +10,6 @@
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface SegmentPerformance {
     segment: string;
@@ -65,9 +62,6 @@ export interface AudienceAnalysis {
     suggestions: string[];
 }
 
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 function normalizeDevice(device: string | null): 'mobile' | 'desktop' | 'tablet' | 'unknown' {
     if (!device) return 'unknown';
@@ -86,9 +80,6 @@ function assessPerformance(aov: number, avgAov: number): 'excellent' | 'good' | 
     return 'poor';
 }
 
-// =============================================================================
-// MAIN ANALYZER
-// =============================================================================
 
 export class AudienceAnalyzer {
 

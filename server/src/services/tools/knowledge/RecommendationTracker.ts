@@ -11,9 +11,6 @@ import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 import { ExplainableRecommendation } from './RecommendationEngine';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export type RecommendationStatus = 'pending' | 'implemented' | 'dismissed' | 'expired';
 
@@ -53,9 +50,6 @@ export interface RecommendationStats {
     }[];
 }
 
-// =============================================================================
-// MAIN SERVICE
-// =============================================================================
 
 export class RecommendationTracker {
 

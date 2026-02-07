@@ -20,9 +20,6 @@ import {
     ArrowUpRight
 } from 'lucide-react';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 interface ROIQuickStats {
     totalValue: number;
@@ -36,9 +33,6 @@ interface ROIStatCardProps {
     className?: string;
 }
 
-// =============================================================================
-// COMPONENT
-// =============================================================================
 
 export function ROIStatCard({ onClick, className = '' }: ROIStatCardProps) {
     const { token } = useAuth();

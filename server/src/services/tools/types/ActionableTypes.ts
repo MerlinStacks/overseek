@@ -7,9 +7,6 @@
 
 import { SuggestionCategory } from '../config/MarketingCopilotConfig';
 
-// =============================================================================
-// ACTION TYPES
-// =============================================================================
 
 /**
  * Budget adjustment action for campaigns.
@@ -65,9 +62,6 @@ export interface ProductAction {
  */
 export type RecommendationAction = BudgetAction | KeywordAction | ProductAction;
 
-// =============================================================================
-// ACTIONABLE RECOMMENDATION
-// =============================================================================
 
 /**
  * Estimated impact of applying a recommendation.
@@ -80,9 +74,6 @@ export interface EstimatedImpact {
     timeframe: '7d' | '30d';
 }
 
-// =============================================================================
-// IMPLEMENTATION DETAILS (For Implementation Guide Modal)
-// =============================================================================
 
 export interface KeywordSpec {
     keyword: string;
@@ -206,9 +197,6 @@ export interface ActionableRecommendation {
     implementationDetails?: ImplementationDetails;
 }
 
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 /**
  * Type guard to check if action is a BudgetAction.

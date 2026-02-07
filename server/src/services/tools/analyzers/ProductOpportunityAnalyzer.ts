@@ -16,9 +16,6 @@ import {
     createProductHeadline
 } from '../types/ActionableTypes';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 interface ProductVelocity {
     productId: string;
@@ -45,9 +42,6 @@ interface ProductOpportunityResult {
     };
 }
 
-// =============================================================================
-// MAIN ANALYZER
-// =============================================================================
 
 export class ProductOpportunityAnalyzer {
 

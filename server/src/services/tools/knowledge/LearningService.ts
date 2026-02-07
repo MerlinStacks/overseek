@@ -10,9 +10,6 @@
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export type LearningPlatform = 'google' | 'meta' | 'both';
 export type LearningCategory = 'bid_strategy' | 'audience' | 'creative' | 'budget' | 'structure' | 'optimization';
@@ -53,9 +50,6 @@ export interface LearningWithStats {
     createdAt: Date;
 }
 
-// =============================================================================
-// MAIN SERVICE
-// =============================================================================
 
 export class LearningService {
     /**

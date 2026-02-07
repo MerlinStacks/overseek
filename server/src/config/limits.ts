@@ -5,9 +5,6 @@
  * for maintainability, documentation, and easy tuning.
  */
 
-// ============================================================================
-// Rate Limiting
-// ============================================================================
 
 export const RATE_LIMITS = {
     /** Maximum requests per window per IP */
@@ -16,18 +13,12 @@ export const RATE_LIMITS = {
     WINDOW: '15 minutes',
 } as const;
 
-// ============================================================================
-// File Uploads
-// ============================================================================
 
 export const UPLOAD_LIMITS = {
     /** Maximum file size in bytes (100MB) */
     MAX_FILE_SIZE: 100 * 1024 * 1024,
 } as const;
 
-// ============================================================================
-// AI Service
-// ============================================================================
 
 export const AI_LIMITS = {
     /** Maximum tool call iterations to prevent infinite loops */
@@ -40,9 +31,6 @@ export const AI_LIMITS = {
     MODELS_ENDPOINT: 'https://openrouter.ai/api/v1/models',
 } as const;
 
-// ============================================================================
-// Background Tasks
-// ============================================================================
 
 export const SCHEDULER_LIMITS = {
     /** Interval for automation ticker in milliseconds (60 seconds) */
@@ -61,9 +49,6 @@ export const SCHEDULER_LIMITS = {
     REPORT_CHECK_INTERVAL_MS: 15 * 60_000,
 } as const;
 
-// ============================================================================
-// Queue Settings
-// ============================================================================
 
 export const QUEUE_LIMITS = {
     /** Worker concurrency per queue (reduced from 5 to prevent OOM and deadlocks) */
@@ -84,9 +69,6 @@ export const QUEUE_LIMITS = {
     LONG_RUNNING_STALL_INTERVAL_MS: 120_000,
 } as const;
 
-// ============================================================================
-// Inventory Forecasting
-// ============================================================================
 
 export const FORECASTING_LIMITS = {
     /** Default number of days to forecast */
@@ -99,9 +81,6 @@ export const FORECASTING_LIMITS = {
     DEFAULT_LEAD_TIME_DAYS: 14,
 } as const;
 
-// ============================================================================
-// Socket.IO
-// ============================================================================
 
 export const SOCKET_LIMITS = {
     /** Ping timeout in milliseconds */
@@ -110,9 +89,6 @@ export const SOCKET_LIMITS = {
     PING_INTERVAL_MS: 25_000,
 } as const;
 
-// ============================================================================
-// HTTP Timeouts
-// ============================================================================
 
 export const HTTP_LIMITS = {
     /** Default API request timeout in milliseconds */
@@ -121,9 +97,6 @@ export const HTTP_LIMITS = {
     LONG_REQUEST_TIMEOUT_MS: 120_000,
 } as const;
 
-// ============================================================================
-// Pagination
-// ============================================================================
 
 export const PAGINATION_LIMITS = {
     /** Default page size for list endpoints */

@@ -12,9 +12,6 @@ import { segmentService } from '../SegmentService';
 import { MetaAdsService } from './MetaAdsService';
 import { GoogleAdsService } from './GoogleAdsService';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface AudienceSyncResult {
     id: string;
@@ -37,9 +34,6 @@ export interface LookalikeOptions {
     countryCode?: string;  // Default: 'US'
 }
 
-// =============================================================================
-// SERVICE
-// =============================================================================
 
 export class AudienceSyncService {
 

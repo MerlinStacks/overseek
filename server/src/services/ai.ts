@@ -5,9 +5,6 @@ import { Logger } from '../utils/logger';
 import { AI_LIMITS } from '../config/limits';
 import { AIServiceError, AIRateLimitError, ExternalAPIError, isOverseekError } from '../utils/errors';
 
-// ============================================================================
-// Type Definitions
-// ============================================================================
 
 /** Result from AI tool execution */
 interface ToolResult {

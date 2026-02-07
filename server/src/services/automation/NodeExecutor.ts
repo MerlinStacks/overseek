@@ -84,9 +84,7 @@ export class NodeExecutor {
         }
     }
 
-    // --- Inbox Action Methods ---
-
-    private async executeAssignConversation(config: any, enrollment: any): Promise<void> {
+        private async executeAssignConversation(config: any, enrollment: any): Promise<void> {
         const conversationId = enrollment.contextData?.conversationId;
         if (!conversationId || !config.userId) return;
 

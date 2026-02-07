@@ -1,24 +1,19 @@
-/**
- * Prisma Replica Client
- * 
- * Provides a read-only Prisma client for analytics queries.
- * Falls back to primary database if REPLICA_DATABASE_URL is not set.
- */
+
 
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { Logger } from './logger';
 
-/** Whether replica is configured */
+
 const REPLICA_URL = process.env.REPLICA_DATABASE_URL;
 
-/** Create replica client if URL is configured, otherwise reuse primary */
+
 function createReplicaClient(): PrismaClient {
     if (REPLICA_URL) {
         Logger.info('[Replica] Read replica configured, creating separate client');
 
-        // Create dedicated pool for replica
+
         const replicaPool = new Pool({
             connectionString: REPLICA_URL,
             max: parseInt(process.env.REPLICA_POOL_SIZE || '25', 10),
@@ -30,22 +25,21 @@ function createReplicaClient(): PrismaClient {
         return new PrismaClient({ adapter });
     }
 
-    // Fall back to primary - import here to avoid circular dependency
+    // no replica configured, use primary (lazy require to avoid circular dep)
     Logger.info('[Replica] No replica URL configured, using primary database');
     const { prisma } = require('./prisma');
     return prisma;
 }
 
-/** Replica client instance (or primary if no replica configured) */
+
 export const prismaReplica = createReplicaClient();
 
-/** Check if we're actually using a replica */
+
 export const isReplicaConfigured = Boolean(REPLICA_URL);
 
 /**
- * Execute a read query on the replica.
- * Logs replica usage for monitoring.
- * 
+ * run a read query on the replica.
+ *
  * @example
  * const orders = await withReplica(async (db) => {
  *     return db.wooOrder.findMany({ where: { accountId } });
@@ -70,10 +64,7 @@ export async function withReplica<T>(
     }
 }
 
-/**
- * Execute a read query with automatic fallback to primary on replica failure.
- * Use this for critical queries that must succeed.
- */
+/** read query with auto-fallback to primary on replica failure */
 export async function withReplicaFallback<T>(
     replicaQuery: (replica: PrismaClient) => Promise<T>,
     primaryQuery: (primary: PrismaClient) => Promise<T>
@@ -92,9 +83,7 @@ export async function withReplicaFallback<T>(
     }
 }
 
-/**
- * Get replica connection status for health checks.
- */
+
 export async function getReplicaStatus(): Promise<{
     configured: boolean;
     connected: boolean;

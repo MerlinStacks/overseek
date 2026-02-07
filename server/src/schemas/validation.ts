@@ -7,8 +7,6 @@
 
 import { z } from 'zod';
 
-// --- Common Schemas ---
-
 /** UUID string validation */
 export const uuidSchema = z.string().uuid();
 
@@ -28,8 +26,6 @@ export const dateRangeSchema = z.object({
         days: z.coerce.number().int().positive().max(365).default(30)
     })
 });
-
-// --- Auth Schemas ---
 
 export const loginSchema = z.object({
     body: z.object({
@@ -53,8 +49,6 @@ export const resetPasswordSchema = z.object({
     })
 });
 
-// --- Account Schemas ---
-
 export const createAccountSchema = z.object({
     body: z.object({
         name: z.string().min(1).max(100),
@@ -72,8 +66,6 @@ export const updateAccountSchema = z.object({
         appearance: z.record(z.string(), z.unknown()).optional()
     })
 });
-
-// --- Product Schemas ---
 
 export const productIdSchema = z.object({
     params: z.object({
@@ -94,15 +86,11 @@ export const updateProductSchema = z.object({
     })
 });
 
-// --- Customer Schemas ---
-
 export const customerIdSchema = z.object({
     params: z.object({
         id: z.coerce.number().int().positive()
     })
 });
-
-// --- Analytics Schemas ---
 
 export const analyticsQuerySchema = z.object({
     query: z.object({
@@ -111,8 +99,6 @@ export const analyticsQuerySchema = z.object({
         limit: z.coerce.number().int().positive().max(100).default(50)
     })
 });
-
-// --- Webhook Schemas ---
 
 export const wooWebhookSchema = z.object({
     body: z.record(z.string(), z.unknown())

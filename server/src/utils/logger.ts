@@ -1,7 +1,7 @@
 import pino from 'pino';
 
 
-// Custom levels matching Winston's original config
+
 const customLevels = {
     error: 50,
     warn: 40,
@@ -12,56 +12,46 @@ const customLevels = {
 
 const level = process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
 
-// Human-readable timestamp function (ISO format for JSON logs)
-// Using pino's built-in stdTimeFunctions.isoTime for proper formatting
+
 const timestampFn = pino.stdTimeFunctions.isoTime;
 
-// Create the raw pino logger for our Logger wrapper
-// Note: In Docker containers, pino.destination() can cause buffer interleaving even with
-// sync: true. Writing directly to file descriptor 1 (stdout) ensures atomic writes.
+// write to fd 1 directly — pino.destination() can interleave in Docker even with sync: true
 const createPinoLogger = () => {
     return pino({
         level,
         customLevels,
         useOnlyCustomLevels: false,
         timestamp: timestampFn,
-        // Omit base bindings to reduce log line size and eliminate redundant metadata
-        base: undefined,
+        base: undefined, // skip hostname/pid noise
     });
 };
 
 const pinoInstance = createPinoLogger();
 
-// Export the pino instance for direct usage (Logger wrapper)
+
 export const pinoLogger = pinoInstance;
 
-// Fastify 5.x requires a config object, not a Pino instance
-// Disable Fastify's internal request logging - we use our own Logger wrapper
-// Setting to false disables Fastify's logger entirely (preventing duplicates)
+// disable fastify's built-in logger — we use our own wrapper
 export const fastifyLoggerConfig = false;
 
-/**
- * Serializes Error objects in meta for proper logging.
- * Error properties are non-enumerable, so Pino logs them as {}.
- * This extracts message and stack for visibility.
- */
+/** Error props are non-enumerable so pino logs them as {}. This extracts message/stack. */
 const serializeMeta = (meta?: Record<string, any>): Record<string, any> | undefined => {
     if (!meta) return undefined;
 
     const result = { ...meta };
 
-    // Handle 'error' property specifically
+
     if (result.error instanceof Error) {
         result.error = {
             message: result.error.message,
             stack: result.error.stack,
             name: result.error.name,
-            // Preserve any additional properties on the error
+
             ...(result.error as any)
         };
     }
 
-    // Handle 'err' property (common alternative)
+
     if (result.err instanceof Error) {
         result.err = {
             message: result.err.message,
@@ -74,14 +64,7 @@ const serializeMeta = (meta?: Record<string, any>): Record<string, any> | undefi
     return result;
 };
 
-/**
- * Winston-compatible Logger wrapper.
- * 
- * Winston API: Logger.info('message', { meta })
- * Pino API:    Logger.info({ meta }, 'message')
- * 
- * This wrapper adapts Winston-style calls to Pino's API.
- */
+/** winston-style Logger.info('msg', { meta }) → pino's .info({ meta }, 'msg') */
 export const Logger = {
     error: (message: string, meta?: Record<string, any>) => {
         const serialized = serializeMeta(meta);

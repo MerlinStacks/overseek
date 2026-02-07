@@ -5,9 +5,6 @@
  * Detects brand campaigns, seasonal periods, and campaign types.
  */
 
-// =============================================================================
-// BRAND CAMPAIGN DETECTION
-// =============================================================================
 
 /**
  * Common patterns indicating a brand campaign.
@@ -54,9 +51,6 @@ function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// =============================================================================
-// SEASONAL CONTEXT
-// =============================================================================
 
 export interface SeasonalContext {
     period: string;
@@ -149,9 +143,6 @@ export function getSeasonalContext(date: Date = new Date()): SeasonalContext | n
     return null;
 }
 
-// =============================================================================
-// CAMPAIGN TYPE DETECTION
-// =============================================================================
 
 export type CampaignType =
     | 'brand'

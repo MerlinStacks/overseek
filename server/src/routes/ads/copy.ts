@@ -17,9 +17,6 @@ import {
 } from '../../services/tools/AdCopyGenerator';
 import { prisma } from '../../utils/prisma';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 interface GenerateCopyBody {
     productId?: string;
@@ -36,9 +33,6 @@ interface BulkGenerateBody {
     maxProducts?: number;
 }
 
-// =============================================================================
-// ROUTES
-// =============================================================================
 
 export const adCopyRoutes: FastifyPluginAsync = async (fastify) => {
 

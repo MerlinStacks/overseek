@@ -74,8 +74,8 @@ export class IndexingService {
                 accountId: { type: 'keyword' },
                 id: { type: 'keyword' },
                 email: { type: 'keyword' },
-                firstName: { type: 'text' },
-                lastName: { type: 'text' },
+                firstName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+                lastName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
                 totalSpent: { type: 'float' },
                 ordersCount: { type: 'integer' },
                 dateCreated: { type: 'date' }
@@ -188,8 +188,8 @@ export class IndexingService {
                 accountId: { type: 'keyword' },
                 id: { type: 'keyword' },
                 email: { type: 'keyword' },
-                firstName: { type: 'text' },
-                lastName: { type: 'text' },
+                firstName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+                lastName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
                 totalSpent: { type: 'float' },
                 ordersCount: { type: 'integer' },
                 dateCreated: { type: 'date' }

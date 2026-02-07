@@ -4,9 +4,6 @@
 
 export type SuggestionCategory = 'stock' | 'performance' | 'budget' | 'creative' | 'seasonal' | 'info' | 'optimization' | 'structure' | 'audience';
 
-// =============================================================================
-// ACTION TYPES
-// =============================================================================
 
 export interface BudgetAction {
     actionType: 'budget_increase' | 'budget_decrease' | 'pause' | 'enable';
@@ -48,9 +45,6 @@ export interface ProductAction {
 
 export type RecommendationAction = BudgetAction | KeywordAction | ProductAction;
 
-// =============================================================================
-// ACTIONABLE RECOMMENDATION
-// =============================================================================
 
 export interface EstimatedImpact {
     revenueChange?: number;
@@ -60,9 +54,6 @@ export interface EstimatedImpact {
     timeframe: '7d' | '30d';
 }
 
-// =============================================================================
-// IMPLEMENTATION DETAILS (For Implementation Guide Modal)
-// =============================================================================
 
 export interface KeywordSpec {
     keyword: string;
@@ -166,9 +157,6 @@ export interface ActionableRecommendation {
     implementationDetails?: ImplementationDetails;
 }
 
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 export function isBudgetAction(action: RecommendationAction): action is BudgetAction {
     return 'currentBudget' in action && 'suggestedBudget' in action;

@@ -6,9 +6,6 @@
 
 import * as path from 'path';
 
-// =========================================
-// TYPES
-// =========================================
 
 export interface BackupOptions {
     includeAuditLogs?: boolean;  // Default: false (can be large)

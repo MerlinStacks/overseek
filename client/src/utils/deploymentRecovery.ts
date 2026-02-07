@@ -4,7 +4,6 @@
  * Handles stale chunk errors that occur when the app is redeployed
  * and users have cached pages that reference old chunk hashes.
  * 
- * @module utils/deploymentRecovery
  */
 
 /** Cooldown tracking to prevent infinite reload loops */

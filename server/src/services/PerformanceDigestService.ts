@@ -10,9 +10,6 @@ import { Logger } from '../utils/logger';
 import { AdsService } from './ads';
 import { EmailService } from './EmailService';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface DigestMetrics {
     periodStart: Date;
@@ -83,9 +80,6 @@ export interface GeneratedDigest {
     htmlContent: string;
 }
 
-// =============================================================================
-// SERVICE
-// =============================================================================
 
 export class PerformanceDigestService {
 

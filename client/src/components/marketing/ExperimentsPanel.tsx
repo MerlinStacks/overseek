@@ -316,9 +316,6 @@ export function ExperimentsPanel() {
     );
 }
 
-// =============================================================================
-// Create Experiment Modal
-// =============================================================================
 
 interface CreateModalProps {
     onClose: () => void;

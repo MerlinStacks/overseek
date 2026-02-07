@@ -6,9 +6,6 @@
 
 import { SuggestionCategory } from '../config/MarketingCopilotConfig';
 
-// =============================================================================
-// SUGGESTION TYPES
-// =============================================================================
 
 import { ActionableRecommendation } from './ActionableTypes';
 
@@ -44,9 +41,6 @@ export function createSuggestion(
     };
 }
 
-// =============================================================================
-// BASE ANALYSIS RESULT
-// =============================================================================
 
 /**
  * Base interface for all analyzer results.
@@ -65,9 +59,6 @@ export interface AnalysisMetadata {
     accountId: string;
 }
 
-// =============================================================================
-// UNIFIED ANALYSIS (Combined result from pipeline)
-// =============================================================================
 
 export interface UnifiedAnalysis {
     hasData: boolean;
@@ -98,9 +89,6 @@ export interface UnifiedAnalysis {
     metadata: AnalysisMetadata;
 }
 
-// =============================================================================
-// CAMPAIGN INSIGHT (standardized across platforms)
-// =============================================================================
 
 export interface CampaignInsight {
     campaignId: string;
@@ -127,9 +115,6 @@ export interface CampaignInsight {
     daysActive?: number;
 }
 
-// =============================================================================
-// TREND TYPES
-// =============================================================================
 
 export type TrendDirection = 'improving' | 'stable' | 'declining';
 
@@ -139,9 +124,6 @@ export interface Trend {
     isSignificant: boolean;
 }
 
-// =============================================================================
-// PERIOD METRICS (for multi-period analysis)
-// =============================================================================
 
 export interface PeriodMetrics {
     spend: number;

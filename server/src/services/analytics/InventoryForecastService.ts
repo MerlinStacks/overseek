@@ -20,9 +20,6 @@ import {
     type TrendDirection
 } from './utils/forecastUtils';
 
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface SkuForecast {
     id: string;
@@ -85,9 +82,6 @@ export interface SkuForecastDetail extends SkuForecast {
     historicalDemand: { date: string; quantity: number }[];
 }
 
-// ============================================================================
-// Service
-// ============================================================================
 
 export class InventoryForecastService {
 

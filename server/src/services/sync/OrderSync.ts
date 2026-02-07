@@ -28,7 +28,7 @@ export class OrderSync extends BaseSync {
                 break;
             }
 
-            // Validate orders with Zod schema
+
             const orders: WooOrder[] = [];
             for (const raw of rawOrders) {
                 const result = WooOrderSchema.safeParse(raw);
@@ -48,7 +48,7 @@ export class OrderSync extends BaseSync {
                 continue;
             }
 
-            // Get existing orders for change detection
+
             const existingOrders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
@@ -58,14 +58,13 @@ export class OrderSync extends BaseSync {
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
 
-            // Use interactive transaction with extended timeout (30s) to handle heavy load.
-            // Batch transactions ($transaction([...ops])) don't support the timeout option.
-            // Under load with Redis issues, even small batches can exceed the default 5s timeout.
+            // batch upserts in a transaction with extended timeout
+            // default 5s isn't enough under heavy load
             const UPSERT_CHUNK_SIZE = 10;
             for (let i = 0; i < orders.length; i += UPSERT_CHUNK_SIZE) {
                 const chunk = orders.slice(i, i + UPSERT_CHUNK_SIZE);
 
-                // Track IDs before transaction for recovery in case of failure
+
                 for (const order of chunk) {
                     wooOrderIds.add(order.id);
                 }
@@ -73,8 +72,7 @@ export class OrderSync extends BaseSync {
                 await prisma.$transaction(
                     async (tx) => {
                         for (const order of chunk) {
-                            // Extract denormalized fields for performance (avoids JSON parsing in queries)
-                            // Normalize email to lowercase for consistent indexed lookups
+                            // denormalize billing fields for indexed lookups
                             const rawEmail = (order as any).billing?.email;
                             const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
                             const billingCountry = (order as any).billing?.country || null;
@@ -110,13 +108,13 @@ export class OrderSync extends BaseSync {
                         }
                     },
                     {
-                        timeout: 30000, // 30 seconds - sufficient for 10 upserts under heavy load
-                        maxWait: 10000  // Max 10s to acquire a connection from the pool
+                        timeout: 30000,
+                        maxWait: 10000
                     }
                 );
             }
 
-            // Fetch tags for all orders in batch
+
             let orderTagsMap: Map<number, string[]> | undefined;
             try {
                 orderTagsMap = await OrderTaggingService.extractTagsForOrders(accountId, orders);
@@ -124,10 +122,10 @@ export class OrderSync extends BaseSync {
                 Logger.warn('Failed to batch extract tags, falling back to individual extraction', { accountId, syncId, error: error.message });
             }
 
-            // Process events and indexing
+
             const indexPromises: Promise<any>[] = [];
 
-            // Optimization: Fetch tag mappings once for the batch
+
             const tagMappings = await OrderTaggingService.getTagMappings(accountId);
 
             for (const order of orders) {
@@ -152,10 +150,8 @@ export class OrderSync extends BaseSync {
                     try {
                         let tags: string[];
                         if (orderTagsMap) {
-                            // Best performance: use pre-extracted batch tags
                             tags = orderTagsMap.get(order.id) || [];
                         } else {
-                            // Fallback with tagMappings optimization
                             tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
                         }
                         await IndexingService.indexOrder(accountId, order, tags);
@@ -170,10 +166,8 @@ export class OrderSync extends BaseSync {
 
             Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
 
-            // Use totalPages from WooCommerce API headers (x-wp-totalpages) instead of batch-size heuristic
-            // The old `orders.length < 25` check was unreliable because:
-            // 1. WooCommerce may return fewer items due to internal filtering
-            // 2. Zod validation may skip invalid orders, reducing the count
+            // use WooCommerce's x-wp-totalpages header instead of checking batch size
+            // (batch size is unreliable due to WC filtering and Zod validation skips)
             if (page >= totalPages) hasMore = false;
 
             if (job) {
@@ -185,8 +179,7 @@ export class OrderSync extends BaseSync {
             page++;
         }
 
-        // --- Reconciliation: Remove deleted orders ---
-        // Only run on full sync (non-incremental) to ensure we have all WooCommerce IDs
+        // reconciliation: remove orders that no longer exist in Woo (full sync only)
         if (!incremental && wooOrderIds.size > 0) {
             const localOrders = await prisma.wooOrder.findMany({
                 where: { accountId },
@@ -198,13 +191,13 @@ export class OrderSync extends BaseSync {
                 .map(local => local.wooId);
 
             if (wooIdsToDelete.length > 0) {
-                // Batch delete from the search index first
+
                 const deleteIndexPromises = wooIdsToDelete.map(wooId =>
                     IndexingService.deleteOrder(accountId, wooId)
                 );
                 await Promise.allSettled(deleteIndexPromises);
 
-                // Then, bulk delete from the database
+
                 const { count } = await prisma.wooOrder.deleteMany({
                     where: {
                         accountId,
@@ -217,19 +210,16 @@ export class OrderSync extends BaseSync {
             }
         }
 
-        // After all orders are synced, recalculate customer order counts from local data
+
         await this.recalculateCustomerCounts(accountId, syncId);
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 
     /**
-     * Recalculate customer order counts from local orders.
-     * Uses PostgreSQL advisory lock to prevent deadlocks when multiple workers
-     * attempt to run this concurrently (fixes 40P01 deadlock errors).
-     * Includes retry logic with exponential backoff for transient failures.
-     * 
-     * PERFORMANCE: Uses indexed wooCustomerId column instead of JSON parsing.
+     * recalculate customer order counts using a pg advisory lock
+     * to avoid deadlocks when multiple workers run concurrently.
+     * uses the indexed wooCustomerId column instead of JSON parsing.
      */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
         Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
@@ -239,14 +229,12 @@ export class OrderSync extends BaseSync {
 
         while (attempt < MAX_RETRIES) {
             try {
-                // Use advisory lock to prevent concurrent execution across workers
-                // This prevents deadlocks (40P01) when multiple sync jobs try to update the same rows
+                // advisory lock prevents deadlocks (40P01) when multiple sync jobs hit the same rows
                 await prisma.$transaction(async (tx) => {
-                    // Acquire transaction-scoped advisory lock (released automatically on commit/rollback)
+
                     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('recalculate_customer_counts_' || ${accountId}))`;
 
-                    // Now safe to run the update without risk of deadlock
-                    // Uses indexed wooCustomerId column for better performance (avoids JSON parsing)
+
                     await tx.$executeRaw`
                         UPDATE "WooCustomer" wc
                         SET "ordersCount" = c.count
@@ -263,12 +251,12 @@ export class OrderSync extends BaseSync {
                           AND wc."wooId" = c.woo_id;
                     `;
                 }, {
-                    timeout: 15000, // 15 seconds - sufficient for the update
-                    maxWait: 5000   // Max 5s to acquire a connection
+                    timeout: 15000,
+                    maxWait: 5000
                 });
 
                 Logger.info(`Updated customer order counts`, { accountId, syncId });
-                return; // Success - exit retry loop
+                return;
 
             } catch (error: any) {
                 attempt++;
@@ -276,18 +264,18 @@ export class OrderSync extends BaseSync {
                 const isTimeout = error.code === 'P2024' || error.message?.includes('timeout');
 
                 if ((isDeadlock || isTimeout) && attempt < MAX_RETRIES) {
-                    // Exponential backoff: 500ms, 1000ms, 2000ms
+                    // backoff: 500ms, 1s, 2s
                     const backoffMs = 500 * Math.pow(2, attempt - 1);
                     Logger.warn(`Customer count recalculation ${isDeadlock ? 'deadlock' : 'timeout'}, retrying in ${backoffMs}ms...`, {
                         accountId, syncId, attempt, maxRetries: MAX_RETRIES
                     });
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
                 } else {
-                    // Final failure or non-retryable error
+
                     Logger.warn('Failed to recalculate customer order counts', {
                         accountId, syncId, error: error.message, attempts: attempt
                     });
-                    return; // Don't throw - this shouldn't break the sync
+                    return; // non-fatal — don't break the sync
                 }
             }
         }

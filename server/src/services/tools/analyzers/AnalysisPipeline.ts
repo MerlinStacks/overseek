@@ -27,9 +27,6 @@ import { MarketingStrategyAdvisor } from '../advisors/MarketingStrategyAdvisor';
 import { SearchCampaignAdvisor } from '../advisors/SearchCampaignAdvisor';
 import { getFeedbackContext, shouldFilterRecommendation } from '../feedback/FeedbackService';
 
-// =============================================================================
-// PIPELINE
-// =============================================================================
 
 export class AnalysisPipeline {
 

@@ -1,21 +1,10 @@
-/**
- * Internal Products Service
- * 
- * CRUD operations for internal-only products that are not synced to WooCommerce.
- * These products can be used as BOM components, included in reports and forecasts,
- * but are never pushed to WooCommerce since they are not sellable.
- * 
- * @module services/InternalProductsService
- */
+
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { StockValidationService } from './StockValidationService';
 import type { Prisma } from '@prisma/client';
 
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface CreateInternalProductData {
     name: string;
@@ -59,15 +48,10 @@ export interface InternalProductWithSupplier {
     bomUsageCount?: number;
 }
 
-// ============================================================================
-// Service
-// ============================================================================
 
 export class InternalProductsService {
 
-    /**
-     * List all internal products for an account
-     */
+
     static async list(
         accountId: string,
         options?: {
@@ -116,9 +100,7 @@ export class InternalProductsService {
         };
     }
 
-    /**
-     * Get a single internal product by ID
-     */
+
     static async getById(id: string): Promise<InternalProductWithSupplier | null> {
         const item = await prisma.internalProduct.findUnique({
             where: { id },
@@ -138,14 +120,12 @@ export class InternalProductsService {
         };
     }
 
-    /**
-     * Create a new internal product
-     */
+
     static async create(
         accountId: string,
         data: CreateInternalProductData
     ): Promise<InternalProductWithSupplier> {
-        // Validate supplier exists if provided
+
         if (data.supplierId) {
             const supplier = await prisma.supplier.findFirst({
                 where: { id: data.supplierId, accountId }
@@ -188,9 +168,7 @@ export class InternalProductsService {
         };
     }
 
-    /**
-     * Update an internal product
-     */
+
     static async update(
         id: string,
         data: UpdateInternalProductData
@@ -204,7 +182,7 @@ export class InternalProductsService {
             throw new Error('Internal product not found');
         }
 
-        // Validate supplier exists if provided
+
         if (data.supplierId) {
             const supplier = await prisma.supplier.findFirst({
                 where: { id: data.supplierId, accountId: existing.accountId }
@@ -246,9 +224,7 @@ export class InternalProductsService {
         };
     }
 
-    /**
-     * Delete an internal product (with BOM usage check)
-     */
+
     static async delete(id: string): Promise<{ success: boolean; bomUsageWarning?: number }> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
@@ -259,7 +235,7 @@ export class InternalProductsService {
             throw new Error('Internal product not found');
         }
 
-        // Warn if product is used in BOMs
+        // can't delete if it's used in BOMs
         if (existing._count.bomItems > 0) {
             return {
                 success: false,
@@ -277,9 +253,7 @@ export class InternalProductsService {
         return { success: true };
     }
 
-    /**
-     * Force delete an internal product (removes from BOMs first)
-     */
+
     static async forceDelete(id: string): Promise<{ success: boolean; bomItemsRemoved: number }> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
@@ -290,7 +264,7 @@ export class InternalProductsService {
             throw new Error('Internal product not found');
         }
 
-        // Remove from all BOMs first
+
         const bomItemsRemoved = existing._count.bomItems;
         if (bomItemsRemoved > 0) {
             await prisma.bOMItem.deleteMany({
@@ -309,9 +283,7 @@ export class InternalProductsService {
         return { success: true, bomItemsRemoved };
     }
 
-    /**
-     * Adjust stock quantity with audit logging
-     */
+
     static async adjustStock(
         id: string,
         adjustment: number,
@@ -339,7 +311,7 @@ export class InternalProductsService {
             }
         });
 
-        // Log the stock change for audit trail
+
         await StockValidationService.logStockChange(
             existing.accountId,
             id,
@@ -371,9 +343,7 @@ export class InternalProductsService {
         };
     }
 
-    /**
-     * Get internal products available as BOM components for a combobox
-     */
+
     static async getForBOMSelection(accountId: string): Promise<Array<{
         id: string;
         name: string;

@@ -13,9 +13,6 @@ import { EventBus, EVENTS } from '../events';
 import { AdsService } from '../ads';
 import { MultiPeriodAnalyzer } from './analyzers';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 
@@ -45,9 +42,6 @@ const DEFAULT_THRESHOLDS: AlertThresholds = {
     ctrDropPercent: 40
 };
 
-// =============================================================================
-// MAIN SERVICE
-// =============================================================================
 
 export class AdAlertService {
 
