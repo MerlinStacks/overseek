@@ -25,12 +25,6 @@ This document tracks planned enhancements, known bugs, and future feature ideas 
 
 ---
 
-### PWA Enhancements
-
-
-
----
-
 
 ### Customer Intelligence
 

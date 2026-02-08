@@ -172,6 +172,15 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
         });
     }, [isSearchMode, searchResults, conversations, showResolved, selectedLabelId, filter, currentUserId]);
 
+    // Precompute which conversations have drafts — avoids per-item localStorage reads
+    const draftIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const c of filteredConversations) {
+            if (hasDraft(c.id)) ids.add(c.id);
+        }
+        return ids;
+    }, [filteredConversations, hasDraft]);
+
     // Memoized counts - only recalculates when conversations or filters change
     const counts = useMemo(() => {
         const getFilteredCount = (filterFn: (c: Conversation) => boolean) => {
@@ -415,7 +424,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                             const initials = getInitials(name);
                             const isSelected = selectedId === conv.id;
                             const isEmail = conv.guestEmail || conv.wooCustomer?.email;
-                            const conversationHasDraft = hasDraft(conv.id);
+                            const conversationHasDraft = draftIds.has(conv.id);
                             const isUnread = conv.isRead === false;
 
                             return (

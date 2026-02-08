@@ -127,35 +127,43 @@ export function useOrders() {
     // Reset page on filter change
     useEffect(() => { setPage(1); }, [debouncedSearch, selectedTags, selectedStatus]);
 
-    // Fetch attributions for visible orders
+    // Fetch attributions for visible orders in a single batch call
     useEffect(() => {
         if (!orders.length || !token || !currentAccount) return;
 
         const fetchAttributions = async () => {
-            const newAttributions: Record<number, OrderAttribution | null> = {};
-            const batchSize = 5;
+            // Only fetch for orders we haven't fetched yet
+            const uncachedIds = orders
+                .filter(o => attributions[o.id] === undefined)
+                .map(o => o.id);
 
-            for (let i = 0; i < orders.length; i += batchSize) {
-                const batch = orders.slice(i, i + batchSize);
-                await Promise.all(batch.map(async (order) => {
-                    if (attributions[order.id] !== undefined) {
-                        newAttributions[order.id] = attributions[order.id];
-                        return;
+            if (uncachedIds.length === 0) return;
+
+            try {
+                const res = await fetch('/api/orders/batch-attributions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'X-Account-ID': currentAccount.id
+                    },
+                    body: JSON.stringify({ orderIds: uncachedIds })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const batchResult: Record<number, OrderAttribution | null> = {};
+                    for (const [id, attr] of Object.entries(data.attributions)) {
+                        batchResult[Number(id)] = attr as OrderAttribution | null;
                     }
-                    try {
-                        const res = await fetch(`/api/orders/${order.id}/attribution`, {
-                            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            newAttributions[order.id] = data.attribution ? { lastTouchSource: data.attribution.lastTouchSource } : null;
-                        } else {
-                            newAttributions[order.id] = null;
-                        }
-                    } catch { newAttributions[order.id] = null; }
-                }));
+                    setAttributions(prev => ({ ...prev, ...batchResult }));
+                }
+            } catch {
+                // Mark all as null on failure so we don't retry
+                const fallback: Record<number, null> = {};
+                uncachedIds.forEach(id => { fallback[id] = null; });
+                setAttributions(prev => ({ ...prev, ...fallback }));
             }
-            setAttributions(prev => ({ ...prev, ...newAttributions }));
         };
 
         fetchAttributions();

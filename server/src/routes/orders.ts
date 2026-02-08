@@ -222,6 +222,73 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // Batch attribution lookup — replaces N individual calls with one
+    fastify.post<{ Body: { orderIds: number[] } }>('/batch-attributions', async (request, reply) => {
+        const accountId = request.user?.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'accountId header is required' });
+
+        const { orderIds } = request.body as { orderIds: number[] };
+        if (!orderIds?.length) return reply.code(400).send({ error: 'orderIds array is required' });
+
+        // Cap at 50 to prevent abuse
+        const ids = orderIds.slice(0, 50);
+
+        try {
+            // 1. Fetch all matching orders in one query
+            const orders = await prisma.wooOrder.findMany({
+                where: { accountId, wooId: { in: ids } },
+                select: { wooId: true }
+            });
+            const wooIds = new Set(orders.map(o => o.wooId));
+
+            // 2. Fetch all purchase events for this account in one query
+            const purchaseEvents = await prisma.analyticsEvent.findMany({
+                where: {
+                    type: 'purchase',
+                    session: { accountId }
+                },
+                include: {
+                    session: {
+                        select: {
+                            firstTouchSource: true,
+                            lastTouchSource: true,
+                            utmSource: true,
+                            utmMedium: true,
+                            utmCampaign: true,
+                            referrer: true
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 200
+            });
+
+            // 3. Match events to orders by wooId in payload
+            const result: Record<number, { lastTouchSource: string } | null> = {};
+
+            for (const wooId of ids) {
+                if (!wooIds.has(wooId)) {
+                    result[wooId] = null;
+                    continue;
+                }
+
+                const matched = purchaseEvents.find(e => {
+                    const payload = e.payload as any;
+                    return payload?.orderId === wooId || payload?.order_id === wooId;
+                });
+
+                result[wooId] = matched
+                    ? { lastTouchSource: matched.session.lastTouchSource || 'direct' }
+                    : null;
+            }
+
+            return { attributions: result };
+        } catch (error) {
+            Logger.error('Failed to fetch batch attributions', { error });
+            return reply.code(500).send({ error: 'Failed to fetch batch attributions' });
+        }
+    });
+
     // Get Attribution data for an Order
     fastify.get<{ Params: { id: string } }>('/:id/attribution', async (request, reply) => {
         const { id } = orderIdParamSchema.parse(request.params);

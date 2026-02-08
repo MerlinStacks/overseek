@@ -1,23 +1,22 @@
 /**
  * ChatWindow - Orchestration component for chat conversations.
  * Delegates compose, typing, and send logic to extracted hooks and components.
+ * Memoized to prevent re-renders from parent state changes (e.g. conversation list updates).
  */
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import DOMPurify from 'dompurify';
 import { Logger } from '../../utils/logger';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
-// Extracted hooks
-import { useCannedResponses } from '../../hooks/useCannedResponses';
+// Extracted hooks (canned + email accounts are passed in as props from InboxPage)
 import { useTypingIndicator } from '../../hooks/useTypingIndicator';
 import { useMessageSend } from '../../hooks/useMessageSend';
 import { useConversationPresence } from '../../hooks/useConversationPresence';
-import { useEmailAccounts } from '../../hooks/useEmailAccounts';
 import { useAttachments } from '../../hooks/useAttachments';
 import { useAIDraft } from '../../hooks/useAIDraft';
-
+import type { CannedResponse, CustomerContext } from '../../hooks/useCannedResponses';
 
 // Sub-components
 import { MessageBubble } from './MessageBubble';
@@ -72,11 +71,23 @@ interface ChatWindowProps {
     availableChannels?: ChannelOption[];
     currentChannel?: ConversationChannel;
     mergedRecipients?: MergedRecipient[];
-    /** Customer data for canned response merge tags */
     customerData?: CustomerData;
+    // Lifted from hooks — passed in from InboxPage to avoid re-fetching per switch
+    cannedResponses: CannedResponse[];
+    filteredCanned: CannedResponse[];
+    showCanned: boolean;
+    setShowCanned: (show: boolean) => void;
+    showCannedManager: boolean;
+    setShowCannedManager: (show: boolean) => void;
+    handleInputForCanned: (input: string) => void;
+    selectCanned: (response: CannedResponse, context?: CustomerContext) => string;
+    refetchCanned: () => Promise<void>;
+    emailAccounts: Array<{ id: string; name: string; email: string; isDefault?: boolean }>;
+    selectedEmailAccountId: string;
+    onEmailAccountChange: (id: string) => void;
 }
 
-export function ChatWindow({
+export const ChatWindow = memo(function ChatWindow({
     conversationId,
     messages,
     onSendMessage,
@@ -91,14 +102,26 @@ export function ChatWindow({
     availableChannels,
     currentChannel,
     mergedRecipients = [],
-    customerData
+    customerData,
+    // Canned responses (lifted from hook)
+    cannedResponses,
+    filteredCanned,
+    showCanned,
+    setShowCanned,
+    showCannedManager,
+    setShowCannedManager,
+    handleInputForCanned,
+    selectCanned,
+    refetchCanned,
+    // Email accounts (lifted from hook)
+    emailAccounts,
+    selectedEmailAccountId,
+    onEmailAccountChange
 }: ChatWindowProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
     const { user } = useAuth();
 
-    // === EXTRACTED HOOKS ===
-    const emailAccounts = useEmailAccounts();
-    const canned = useCannedResponses();
+    // === HOOKS (only per-conversation ones remain here) ===
     const attachments = useAttachments({
         conversationId,
         onSendMessage
@@ -106,10 +129,10 @@ export function ChatWindow({
 
     const messageSend = useMessageSend({
         conversationId,
-        onSendMessage: attachments.sendMessageWithAttachments, // Uses wrapper that handles attachments
+        onSendMessage: attachments.sendMessageWithAttachments,
         recipientEmail,
         isLiveChat: currentChannel === 'CHAT',
-        emailAccountId: emailAccounts.selectedEmailAccountId
+        emailAccountId: selectedEmailAccountId
     });
 
     const { isCustomerTyping } = useTypingIndicator({ conversationId, input: messageSend.input });
@@ -143,15 +166,20 @@ export function ChatWindow({
         setSearchQuery('');
     }, [conversationId]);
 
-    // Scroll to bottom on new messages
+    // Track previous conversationId to distinguish switch vs new message
+    const prevConversationIdRef = useRef(conversationId);
+
+    // Scroll to bottom — instant on switch, smooth for new messages
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        const isSwitching = prevConversationIdRef.current !== conversationId;
+        prevConversationIdRef.current = conversationId;
+        bottomRef.current?.scrollIntoView({ behavior: isSwitching ? 'instant' : 'smooth' });
     }, [messages, conversationId]);
 
     // Detect '/' trigger for canned responses
     useEffect(() => {
-        canned.handleInputForCanned(messageSend.input);
-    }, [messageSend.input, canned]);
+        handleInputForCanned(messageSend.input);
+    }, [messageSend.input, handleInputForCanned]);
 
     // === FILTERED MESSAGES FOR SEARCH ===
     const filteredMessages = useMemo(() => {
@@ -287,9 +315,9 @@ export function ChatWindow({
                 onSignatureChange={messageSend.setSignatureEnabled}
                 quotedMessage={messageSend.quotedMessage}
                 onClearQuote={() => messageSend.setQuotedMessage(null)}
-                showCanned={canned.showCanned}
-                filteredCanned={canned.filteredCanned}
-                cannedResponses={canned.cannedResponses}
+                showCanned={showCanned}
+                filteredCanned={filteredCanned}
+                cannedResponses={cannedResponses}
                 onSelectCanned={(r) => {
                     const context = {
                         firstName: customerData?.firstName,
@@ -301,9 +329,9 @@ export function ChatWindow({
                         agentFirstName: user?.fullName?.split(' ')[0],
                         agentFullName: user?.fullName || undefined
                     };
-                    messageSend.setInput(canned.selectCanned(r, context));
+                    messageSend.setInput(selectCanned(r, context));
                 }}
-                onOpenCannedManager={() => canned.setShowCannedManager(true)}
+                onOpenCannedManager={() => setShowCannedManager(true)}
                 isGeneratingDraft={aiDraft.isGeneratingDraft}
                 onGenerateAIDraft={aiDraft.handleGenerateAIDraft}
                 isUploading={attachments.isUploading}
@@ -315,18 +343,18 @@ export function ChatWindow({
                 onOpenSchedule={() => setShowScheduleModal(true)}
                 availableChannels={availableChannels}
                 currentChannel={currentChannel}
-                emailAccounts={emailAccounts.emailAccounts}
-                selectedEmailAccountId={emailAccounts.selectedEmailAccountId}
-                onEmailAccountChange={emailAccounts.setSelectedEmailAccountId}
+                emailAccounts={emailAccounts}
+                selectedEmailAccountId={selectedEmailAccountId}
+                onEmailAccountChange={onEmailAccountChange}
             />
 
             {/* All Modals */}
             <ChatModals
                 conversationId={conversationId}
                 assigneeId={assigneeId}
-                showCannedManager={canned.showCannedManager}
-                onCloseCannedManager={() => canned.setShowCannedManager(false)}
-                onCannedUpdate={canned.refetchCanned}
+                showCannedManager={showCannedManager}
+                onCloseCannedManager={() => setShowCannedManager(false)}
+                onCannedUpdate={refetchCanned}
                 showSnoozeModal={showSnoozeModal}
                 onCloseSnooze={() => setShowSnoozeModal(false)}
                 onSnooze={async (snoozeUntil) => {
@@ -349,4 +377,4 @@ export function ChatWindow({
             />
         </div>
     );
-}
+});

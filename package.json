@@ -40,8 +40,5 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
-  "dependencies": {
-    "@socket.io/redis-adapter": "^8.3.0",
-    "pure-rand": "^7.0.1"
-  }
+  "dependencies": {}
 }

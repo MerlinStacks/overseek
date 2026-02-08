@@ -39,6 +39,8 @@ reproduce_*.ts
 # Environment
 .env
 .env*.local
+stack.env
+git_*.txt
 
 # IDE & OS
 .vscode/

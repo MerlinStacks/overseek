@@ -119,28 +119,24 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
     const fetchCustomerOrders = async (wooCustomerId: number) => {
         setIsLoadingOrders(true);
         try {
-            // Fetch recent orders for this customer
-            const ordersRes = await fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || '',
-                },
-            });
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount?.id || '',
+            };
+
+            // Fetch orders and conversations in parallel
+            const [ordersRes, convsRes] = await Promise.all([
+                fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers }),
+                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}`, { headers })
+            ]);
+
             if (ordersRes.ok) {
                 const ordersData = await ordersRes.json();
                 setRecentOrders(ordersData.orders || []);
             }
 
-            // Fetch conversation list for this customer
-            const convsRes = await fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || '',
-                },
-            });
             if (convsRes.ok) {
                 const convsData = await convsRes.json();
-                // Filter out the current conversation
                 const otherConvs = Array.isArray(convsData)
                     ? convsData.filter((c: PreviousConversation) => c.id !== conversation?.id)
                     : [];

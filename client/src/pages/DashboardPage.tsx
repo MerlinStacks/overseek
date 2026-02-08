@@ -1,4 +1,4 @@
-// @ts-ignore - Responsive import has type issues with ESM
+// @ts-expect-error - Responsive import has type issues with ESM
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { Logger } from '../utils/logger';
 import 'react-grid-layout/css/styles.css';
@@ -225,9 +225,9 @@ export function DashboardPage() {
         debouncedSave(updated);
     };
 
-    // Calculate dates
-    const dateRange = getDateRange(dateOption);
-    const comparisonRange = getComparisonRange(dateRange, comparisonOption);
+    // Memoize date calculations to prevent all widgets re-rendering on every resize
+    const dateRange = useMemo(() => getDateRange(dateOption), [dateOption]);
+    const comparisonRange = useMemo(() => getComparisonRange(dateRange, comparisonOption), [dateRange, comparisonOption]);
 
     if (isLoading) return <DashboardPageSkeleton />;
 

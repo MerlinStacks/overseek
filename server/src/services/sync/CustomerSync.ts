@@ -82,15 +82,12 @@ export class CustomerSync extends BaseSync {
                 );
             }
 
-            // Index customers in parallel
-            const indexPromises = customers.map((c) =>
-                IndexingService.indexCustomer(accountId, c)
-                    .catch((error: any) => {
-                        Logger.warn(`Failed to index customer ${c.id}`, { accountId, syncId, error: error.message });
-                    })
-            );
-
-            await Promise.allSettled(indexPromises);
+            // Bulk index all customers in one ES call
+            try {
+                await IndexingService.bulkIndexCustomers(accountId, customers);
+            } catch (error: any) {
+                Logger.warn('Bulk index customers failed', { accountId, syncId, error: error.message });
+            }
             totalProcessed += customers.length;
 
             Logger.info(`Synced batch of ${customers.length} customers`, { accountId, syncId, page, totalPages });

@@ -22,7 +22,7 @@ export class OrderSync extends BaseSync {
         const wooOrderIds = new Set<number>();
 
         while (hasMore) {
-            const { data: rawOrders, totalPages } = await woo.getOrders({ page, after, per_page: 25 });
+            const { data: rawOrders, totalPages } = await woo.getOrders({ page, after, per_page: 100 });
             if (!rawOrders.length) {
                 hasMore = false;
                 break;
@@ -58,59 +58,50 @@ export class OrderSync extends BaseSync {
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
 
-            // batch upserts in a transaction with extended timeout
-            // default 5s isn't enough under heavy load
-            const UPSERT_CHUNK_SIZE = 10;
+            // Batch upserts in transaction chunks of 50 (matches CustomerSync pattern)
+            const UPSERT_CHUNK_SIZE = 50;
             for (let i = 0; i < orders.length; i += UPSERT_CHUNK_SIZE) {
                 const chunk = orders.slice(i, i + UPSERT_CHUNK_SIZE);
-
 
                 for (const order of chunk) {
                     wooOrderIds.add(order.id);
                 }
 
                 await prisma.$transaction(
-                    async (tx) => {
-                        for (const order of chunk) {
-                            // denormalize billing fields for indexed lookups
-                            const rawEmail = (order as any).billing?.email;
-                            const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
-                            const billingCountry = (order as any).billing?.country || null;
-                            const wooCustomerId = (order as any).customer_id > 0 ? (order as any).customer_id : null;
+                    chunk.map((order) => {
+                        const rawEmail = (order as any).billing?.email;
+                        const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
+                        const billingCountry = (order as any).billing?.country || null;
+                        const wooCustomerId = (order as any).customer_id > 0 ? (order as any).customer_id : null;
 
-                            await tx.wooOrder.upsert({
-                                where: { accountId_wooId: { accountId, wooId: order.id } },
-                                update: {
-                                    status: order.status.toLowerCase(),
-                                    total: order.total === '' ? '0' : order.total,
-                                    currency: order.currency,
-                                    billingEmail,
-                                    billingCountry,
-                                    wooCustomerId,
-                                    dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
-                                    rawData: order as any
-                                },
-                                create: {
-                                    accountId,
-                                    wooId: order.id,
-                                    number: order.number,
-                                    status: order.status.toLowerCase(),
-                                    total: order.total === '' ? '0' : order.total,
-                                    currency: order.currency,
-                                    billingEmail,
-                                    billingCountry,
-                                    wooCustomerId,
-                                    dateCreated: new Date(order.date_created_gmt || order.date_created || new Date()),
-                                    dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
-                                    rawData: order as any
-                                }
-                            });
-                        }
-                    },
-                    {
-                        timeout: 30000,
-                        maxWait: 10000
-                    }
+                        return prisma.wooOrder.upsert({
+                            where: { accountId_wooId: { accountId, wooId: order.id } },
+                            update: {
+                                status: order.status.toLowerCase(),
+                                total: order.total === '' ? '0' : order.total,
+                                currency: order.currency,
+                                billingEmail,
+                                billingCountry,
+                                wooCustomerId,
+                                dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
+                                rawData: order as any
+                            },
+                            create: {
+                                accountId,
+                                wooId: order.id,
+                                number: order.number,
+                                status: order.status.toLowerCase(),
+                                total: order.total === '' ? '0' : order.total,
+                                currency: order.currency,
+                                billingEmail,
+                                billingCountry,
+                                wooCustomerId,
+                                dateCreated: new Date(order.date_created_gmt || order.date_created || new Date()),
+                                dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
+                                rawData: order as any
+                            }
+                        });
+                    })
                 );
             }
 
@@ -123,10 +114,9 @@ export class OrderSync extends BaseSync {
             }
 
 
-            const indexPromises: Promise<any>[] = [];
-
-
+            // Build tags map (batch or individual fallback)
             const tagMappings = await OrderTaggingService.getTagMappings(accountId);
+            const finalTagsMap = new Map<number, string[]>();
 
             for (const order of orders) {
                 const existingStatus = existingMap.get(order.id);
@@ -146,22 +136,23 @@ export class OrderSync extends BaseSync {
 
                 EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order });
 
-                indexPromises.push((async () => {
+                // Resolve tags
+                if (orderTagsMap) {
+                    finalTagsMap.set(order.id, orderTagsMap.get(order.id) || []);
+                } else {
                     try {
-                        let tags: string[];
-                        if (orderTagsMap) {
-                            tags = orderTagsMap.get(order.id) || [];
-                        } else {
-                            tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
-                        }
-                        await IndexingService.indexOrder(accountId, order, tags);
-                    } catch (error: any) {
-                        Logger.warn(`Failed to index order ${order.id}`, { accountId, syncId, error: error.message });
-                    }
-                })());
+                        const tags = await OrderTaggingService.extractTagsFromOrder(accountId, order, tagMappings);
+                        finalTagsMap.set(order.id, tags);
+                    } catch { finalTagsMap.set(order.id, []); }
+                }
             }
 
-            await Promise.allSettled(indexPromises);
+            // Bulk index entire page in one ES call
+            try {
+                await IndexingService.bulkIndexOrders(accountId, orders, finalTagsMap);
+            } catch (error: any) {
+                Logger.warn('Bulk index orders failed, skipping ES indexing for this page', { accountId, syncId, error: error.message });
+            }
             totalProcessed += orders.length;
 
             Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped });

@@ -2,7 +2,7 @@
  * ChatComposer - Message composition area with toolbar and canned responses.
  * Handles the reply/private note toggle, channel selector, and send controls.
  */
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { Send, Loader2, Zap, Paperclip, FileSignature, Sparkles, X, ChevronDown } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
@@ -76,7 +76,7 @@ interface ChatComposerProps {
 /**
  * Renders the message composition area including toolbar and controls.
  */
-export function ChatComposer({
+export const ChatComposer = memo(function ChatComposer({
     recipientEmail,
     input,
     onInputChange,
@@ -442,4 +442,4 @@ export function ChatComposer({
             </div>
         </div >
     );
-}
+});
