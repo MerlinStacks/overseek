@@ -1,8 +1,22 @@
 # Zero-Downtime Deployment Guide
 
+## Initial Setup
+
+For first-time installations, run the setup script to generate `stack.env`:
+
+```bash
+bash setup.sh           # interactive, or:
+bash setup.sh --domain=myapp.example.com  # non-interactive
+docker compose up -d
+```
+
+See the [README](./README.md) for full Quick Start instructions.
+
+---
+
 ## Overview
 
-OverSeek now supports zero-downtime updates via Portainer with health checks.
+OverSeek supports zero-downtime updates via Portainer with health checks.
 
 ---
 
@@ -56,7 +70,7 @@ docker compose up -d --no-deps web
 
 Your Nginx Proxy Manager should route to the container names:
 - **API**: `http://overseekv2-api-1:3000`
-- **Web**: `http://overseekv2-web-1:5173`
+- **Web**: `http://overseekv2-web-1:80`
 
 No changes needed - NPM continues routing to the same hostnames.
 

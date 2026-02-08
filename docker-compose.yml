@@ -154,7 +154,6 @@ volumes:
   postgres_backups: # Separate volume for database backups (survives data volume deletion)
   elasticsearch_data:
   redis_data:
-  server_node_modules:
   uploads_data:
   geoip_data:
 
