@@ -197,10 +197,18 @@ export class InvoiceService {
                         }
                         if (itemConfig.logo) {
                             try {
-                                // Logo handling would require fetching the image
-                                // For now, skip logo in PDF
+                                // Resolve relative URL to local file path
+                                const logoUrl: string = itemConfig.logo;
+                                if (logoUrl.startsWith('/uploads/')) {
+                                    const localPath = path.join(__dirname, '../../', logoUrl);
+                                    if (fs.existsSync(localPath)) {
+                                        doc.image(localPath, x, startY, { width: 120, height: 60, fit: [120, 60] });
+                                    } else {
+                                        Logger.warn('Logo file not found on disk', { logoUrl, localPath });
+                                    }
+                                }
                             } catch (e) {
-                                // Ignore logo errors
+                                Logger.warn('Failed to render logo in PDF', { error: e });
                             }
                         }
                         blockHeight = Math.max(blockHeight, 60);
@@ -396,6 +404,31 @@ export class InvoiceService {
 
                         doc.text(textContent, x, startY, { width, align: style.textAlign || 'left' });
                         blockHeight = doc.heightOfString(textContent, { width }) + 10;
+                        break;
+                    }
+
+                    case 'image': {
+                        // Standalone image block
+                        if (itemConfig.content) {
+                            try {
+                                const imgUrl: string = itemConfig.content;
+                                if (imgUrl.startsWith('/uploads/')) {
+                                    const localPath = path.join(__dirname, '../../', imgUrl);
+                                    if (fs.existsSync(localPath)) {
+                                        doc.image(localPath, x, startY, { width, fit: [width, 150] });
+                                        blockHeight = 150;
+                                    } else {
+                                        Logger.warn('Image file not found on disk', { imgUrl, localPath });
+                                        blockHeight = 20;
+                                    }
+                                }
+                            } catch (e) {
+                                Logger.warn('Failed to render image in PDF', { error: e });
+                                blockHeight = 20;
+                            }
+                        } else {
+                            blockHeight = 20;
+                        }
                         break;
                     }
 

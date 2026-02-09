@@ -28,7 +28,7 @@ export class PushNotificationService {
             });
 
             if (!credential?.credentials) {
-                Logger.warn('[PushNotificationService] No VAPID keys configured in platform credentials');
+                Logger.info('[PushNotificationService] No VAPID keys configured in platform credentials');
                 return null;
             }
 
@@ -104,7 +104,7 @@ export class PushNotificationService {
                 }
             });
 
-            Logger.warn('[PushNotificationService] Subscription saved', {
+            Logger.info('[PushNotificationService] Subscription saved', {
                 userId,
                 accountId,
                 subscriptionId: result.id,
@@ -232,7 +232,7 @@ export class PushNotificationService {
     ): Promise<{ sent: number; failed: number }> {
         const keys = await this.getVapidKeys();
         if (!keys) {
-            Logger.warn('[PushNotificationService] Skipping notification - No VAPID keys configured. Run generate-vapid-keys script.', { accountId, type });
+            Logger.info('[PushNotificationService] Skipping notification - No VAPID keys configured. Run generate-vapid-keys script.', { accountId, type });
             return { sent: 0, failed: 0 };
         }
 
@@ -252,7 +252,7 @@ export class PushNotificationService {
         }
 
         // DIAGNOSTIC: Log the exact query being made
-        Logger.warn('[PushNotificationService] sendToAccount query', {
+        Logger.debug('[PushNotificationService] sendToAccount query', {
             targetAccountId: accountId,
             type,
             whereClause: JSON.stringify(whereClause),
@@ -265,7 +265,7 @@ export class PushNotificationService {
 
         // DIAGNOSTIC: Log what subscriptions were found and their accountIds
         if (subscriptions.length > 0) {
-            Logger.warn('[PushNotificationService] Subscriptions matched', {
+            Logger.debug('[PushNotificationService] Subscriptions matched', {
                 targetAccountId: accountId,
                 foundCount: subscriptions.length,
                 subscriptionDetails: subscriptions.map(s => ({
@@ -284,7 +284,7 @@ export class PushNotificationService {
                 select: { accountId: true, userId: true, notifyNewOrders: true, notifyNewMessages: true }
             });
 
-            Logger.warn('[PushNotificationService] No subscriptions found for account', {
+            Logger.info('[PushNotificationService] No subscriptions found for account', {
                 accountId,
                 type,
                 whereClause,
@@ -298,7 +298,7 @@ export class PushNotificationService {
             return { sent: 0, failed: 0 };
         }
 
-        Logger.warn('[PushNotificationService] Sending push notifications', {
+        Logger.debug('[PushNotificationService] Sending push notifications', {
             accountId,
             type,
             subscriptionCount: subscriptions.length
@@ -433,11 +433,11 @@ export class PushNotificationService {
         userId: string,
         accountId: string
     ): Promise<{ success: boolean; sent: number; failed: number; error?: string }> {
-        Logger.warn('[PushNotificationService] sendTestNotification called', { userId, accountId });
+        Logger.debug('[PushNotificationService] sendTestNotification called', { userId, accountId });
 
         const keys = await this.getVapidKeys();
         if (!keys) {
-            Logger.warn('[PushNotificationService] Test failed - no VAPID keys');
+            Logger.info('[PushNotificationService] Test failed - no VAPID keys');
             return { success: false, sent: 0, failed: 0, error: 'VAPID keys not configured' };
         }
 
@@ -451,7 +451,7 @@ export class PushNotificationService {
             where: { userId, accountId }
         });
 
-        Logger.warn('[PushNotificationService] Test subscription lookup', {
+        Logger.debug('[PushNotificationService] Test subscription lookup', {
             userId,
             accountId,
             foundCount: subscriptions.length,
@@ -560,7 +560,7 @@ export class PushNotificationService {
     ): Promise<{ sent: number; failed: number }> {
         const keys = await this.getVapidKeys();
         if (!keys) {
-            Logger.warn('[PushNotificationService] Broadcast skipped - No VAPID keys configured');
+            Logger.info('[PushNotificationService] Broadcast skipped - No VAPID keys configured');
             return { sent: 0, failed: 0 };
         }
 
@@ -574,7 +574,7 @@ export class PushNotificationService {
         const subscriptions = await prisma.pushSubscription.findMany();
 
         if (subscriptions.length === 0) {
-            Logger.warn('[PushNotificationService] Broadcast: No subscriptions found');
+            Logger.info('[PushNotificationService] Broadcast: No subscriptions found');
             return { sent: 0, failed: 0 };
         }
 

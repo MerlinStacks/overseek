@@ -8,6 +8,7 @@
  * - Account backups (hourly)
  * - Janitor cleanup (daily)
  * - Meta token proactive refresh (daily)
+ * - Queue depth enforcement (every 5 minutes)
  */
 import { QueueFactory, QUEUES } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
@@ -17,6 +18,7 @@ import { JanitorService } from '../JanitorService';
 export class MaintenanceScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
     private static janitorInterval: NodeJS.Timeout | null = null;
+    private static queueDepthInterval: NodeJS.Timeout | null = null;
 
     /**
      * Register all maintenance-related repeatable jobs
@@ -64,6 +66,14 @@ export class MaintenanceScheduler {
             jobId: 'bom-deduction-recovery-10min'
         });
         Logger.info('Scheduled BOM Deduction Recovery (Every 10 minutes)');
+
+        // Queue Depth Enforcement (Every 5 minutes)
+        // Prevents orphaned jobs from piling up after Redis reconnects
+        await this.queue.add('queue-depth-check', {}, {
+            repeat: { pattern: '*/5 * * * *' },
+            jobId: 'queue-depth-check-5min'
+        });
+        Logger.info('Scheduled Queue Depth Check (Every 5 minutes)');
     }
 
     /**
@@ -75,6 +85,13 @@ export class MaintenanceScheduler {
         this.janitorInterval = setInterval(
             () => JanitorService.runCleanup().catch(e => Logger.error('Janitor Error', { error: e })),
             24 * 60 * 60 * 1000
+        );
+
+        // Run queue depth check on startup then every 5 minutes
+        this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e }));
+        this.queueDepthInterval = setInterval(
+            () => this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e })),
+            5 * 60 * 1000
         );
 
         // Run order denormalization backfill once on startup (idempotent)
@@ -332,6 +349,31 @@ export class MaintenanceScheduler {
             await BOMConsumptionService.recoverStalledDeductions();
         } catch (error) {
             Logger.error('[Scheduler] BOM deduction recovery failed', { error });
+        }
+    }
+
+    /**
+     * Enforce max queue depth on all sync queues.
+     * Prevents orphaned jobs from piling up after Redis disconnects or crashes.
+     */
+    static async dispatchQueueDepthCheck() {
+        const syncQueues = [
+            QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS,
+            QUEUES.REVIEWS, QUEUES.BOM_SYNC, QUEUES.REPORTS
+        ];
+
+        let totalRemoved = 0;
+        for (const queueName of syncQueues) {
+            try {
+                const removed = await QueueFactory.enforceMaxQueueDepth(queueName);
+                totalRemoved += removed;
+            } catch (error) {
+                Logger.error(`[Scheduler] Queue depth check failed for ${queueName}`, { error });
+            }
+        }
+
+        if (totalRemoved > 0) {
+            Logger.info(`[Scheduler] Queue depth check complete: removed ${totalRemoved} orphaned jobs`);
         }
     }
 }

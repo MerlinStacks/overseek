@@ -84,7 +84,7 @@ export class ReviewSync extends BaseSync {
                     reviews.push(result.data);
                 } else {
                     totalSkipped++;
-                    Logger.warn(`Skipping invalid review`, {
+                    Logger.debug(`Skipping invalid review`, {
                         accountId, syncId, reviewId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
                     });
@@ -220,7 +220,7 @@ export class ReviewSync extends BaseSync {
                 // This helps identify reviews that couldn't be linked to customers/orders
                 const matchStatus = wooCustomerId ? 'matched' : 'unmatched';
                 if (!wooCustomerId && reviewerEmail) {
-                    Logger.warn('[ReviewSync] Orphaned review - no customer match', {
+                    Logger.debug('[ReviewSync] Orphaned review - no customer match', {
                         accountId,
                         syncId,
                         reviewId: r.id,

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from './AccountContext';
 import { useAuth } from './AuthContext';
@@ -46,12 +46,21 @@ export interface SyncHealthSummary {
     activeJobs: number;
 }
 
+export interface SyncToast {
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
+    timestamp: number;
+}
+
 interface SyncStatusContextType {
     isSyncing: boolean;
     activeJobs: SyncJob[];
     syncState: SyncState[];
     logs: SyncLog[];
     healthSummary: SyncHealthSummary | null;
+    syncToasts: SyncToast[];
+    dismissSyncToast: (id: string) => void;
     controlSync: (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => Promise<void>;
     runSync: (types?: string[], incremental?: boolean) => Promise<void>;
     retrySync: (entityType: string, logId?: string) => Promise<void>;
@@ -75,6 +84,19 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     const [logs, setLogs] = useState<SyncLog[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
     const [healthSummary, setHealthSummary] = useState<SyncHealthSummary | null>(null);
+    const [syncToasts, setSyncToasts] = useState<SyncToast[]>([]);
+    const toastIdRef = useRef(0);
+
+    /** Push a toast notification (auto-dismisses after 5s, max 3 visible) */
+    const pushToast = useCallback((message: string, type: SyncToast['type']) => {
+        const id = `sync-toast-${++toastIdRef.current}`;
+        setSyncToasts(prev => [...prev.slice(-2), { id, message, type, timestamp: Date.now() }]);
+        setTimeout(() => setSyncToasts(prev => prev.filter(t => t.id !== id)), 5000);
+    }, []);
+
+    const dismissSyncToast = useCallback((id: string) => {
+        setSyncToasts(prev => prev.filter(t => t.id !== id));
+    }, []);
 
     /** Helper to build auth headers */
     const headers = useCallback(() => {
@@ -126,12 +148,18 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!socket) return;
 
-        const handleSyncStarted = (_data: { accountId: string; type: string }) => {
+        const handleSyncStarted = (data: { accountId: string; type: string }) => {
             setIsSyncing(true);
+            pushToast(`Syncing ${data.type}…`, 'info');
             fetchStatus();
         };
 
-        const handleSyncCompleted = (_data: { accountId: string; type: string; status: string }) => {
+        const handleSyncCompleted = (data: { accountId: string; type: string; status: string; error?: string }) => {
+            if (data.status === 'FAILED') {
+                pushToast(`${data.type} sync failed${data.error ? `: ${data.error}` : ''}`, 'error');
+            } else {
+                pushToast(`${data.type} sync complete`, 'success');
+            }
             fetchStatus();
         };
 
@@ -214,7 +242,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     /** Rebuild ES search index from Postgres source of truth */
     const reindexOrders = async (): Promise<{ totalIndexed: number }> => {
         const h = headers();
-        if (!h || !currentAccount?.id) throw new Error('Not authenticated');
+        if (!h || !currentAccount?.id) throw new Error('Please select an account before reindexing');
 
         const res = await fetch('/api/sync/orders/reindex', {
             method: 'POST',
@@ -234,6 +262,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     return (
         <SyncStatusContext.Provider value={{
             isSyncing, activeJobs, syncState, logs, healthSummary,
+            syncToasts, dismissSyncToast,
             controlSync, runSync, retrySync, reindexOrders, refreshStatus: fetchStatus
         }}>
             {children}

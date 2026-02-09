@@ -35,7 +35,7 @@ export class CustomerSync extends BaseSync {
                     customers.push(result.data);
                 } else {
                     totalSkipped++;
-                    Logger.warn(`Skipping invalid customer`, {
+                    Logger.debug(`Skipping invalid customer`, {
                         accountId, syncId, customerId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
                     });

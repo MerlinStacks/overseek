@@ -45,7 +45,7 @@ export class ProductSync extends BaseSync {
                     products.push(result.data);
                 } else {
                     totalSkipped++;
-                    Logger.warn(`Skipping invalid product`, {
+                    Logger.debug(`Skipping invalid product`, {
                         accountId, syncId, productId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
                     });

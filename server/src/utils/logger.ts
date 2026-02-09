@@ -10,7 +10,8 @@ const customLevels = {
     debug: 20,
 };
 
-const level = process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
+const level = process.env.LOG_LEVEL
+    || (process.env.NODE_ENV === 'development' ? 'debug' : 'warn');
 
 
 const timestampFn = pino.stdTimeFunctions.isoTime;

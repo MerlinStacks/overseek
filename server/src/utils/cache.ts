@@ -48,7 +48,7 @@ export async function cacheGet<T>(key: string, options?: CacheOptions): Promise<
         }
         return null;
     } catch (error) {
-        Logger.warn('[Cache] Get failed', { key: fullKey, error });
+        Logger.debug('[Cache] Get failed', { key: fullKey, error });
         return null;
     }
 }
@@ -65,7 +65,7 @@ export async function cacheSet<T>(
     try {
         await redisClient.setex(fullKey, ttl, JSON.stringify(value));
     } catch (error) {
-        Logger.warn('[Cache] Set failed', { key: fullKey, error });
+        Logger.debug('[Cache] Set failed', { key: fullKey, error });
     }
 }
 
@@ -76,7 +76,7 @@ export async function cacheDelete(key: string, options?: CacheOptions): Promise<
     try {
         await redisClient.del(fullKey);
     } catch (error) {
-        Logger.warn('[Cache] Delete failed', { key: fullKey, error });
+        Logger.debug('[Cache] Delete failed', { key: fullKey, error });
     }
 }
 
@@ -101,7 +101,7 @@ export async function cacheDeletePattern(pattern: string, namespace?: string): P
         }
         return deleted;
     } catch (error) {
-        Logger.warn('[Cache] Pattern delete failed', { pattern: fullPattern, error });
+        Logger.debug('[Cache] Pattern delete failed', { pattern: fullPattern, error });
         return 0;
     }
 }

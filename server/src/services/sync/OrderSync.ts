@@ -6,6 +6,7 @@ import { OrderTaggingService } from '../OrderTaggingService';
 import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { WooOrderSchema, WooOrder } from './wooSchemas';
+import { esClient } from '../../utils/elastic';
 
 
 export class OrderSync extends BaseSync {
@@ -38,7 +39,7 @@ export class OrderSync extends BaseSync {
                     orders.push(result.data);
                 } else {
                     totalSkipped++;
-                    Logger.warn(`Skipping invalid order`, {
+                    Logger.debug(`Skipping invalid order`, {
                         accountId, syncId, orderId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
                     });
@@ -215,6 +216,16 @@ export class OrderSync extends BaseSync {
         }
 
         await this.recalculateCustomerCounts(accountId, syncId);
+
+        // After a full sync, refresh ES indices to ensure all changes (including deletes) are searchable
+        if (!incremental) {
+            try {
+                await esClient.indices.refresh({ index: 'orders' });
+                Logger.info('Refreshed ES orders index after full sync', { accountId, syncId });
+            } catch (error: any) {
+                Logger.warn('Failed to refresh ES orders index', { accountId, syncId, error: error.message });
+            }
+        }
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }

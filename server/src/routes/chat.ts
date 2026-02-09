@@ -49,7 +49,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         await fastify.register(createBulkActionRoutes(chatService));
         await fastify.register(createMessageRoutes(chatService));
         await fastify.register(schedulingRoutes);
-        await fastify.register(notesRoutes);
+        await fastify.register(notesRoutes, { prefix: '/conversations' });
 
         // GET /conversations
         fastify.get('/conversations', async (request, reply) => {

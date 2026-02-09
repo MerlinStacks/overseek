@@ -29,7 +29,12 @@ interface OrderData {
 const loadImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.crossOrigin = 'Anonymous';
+        // Only set crossOrigin for external URLs - same-origin /uploads/ files
+        // don't need CORS and setting this causes them to fail when the static
+        // file server doesn't send CORS headers
+        if (url.startsWith('http') && !url.startsWith(window.location.origin)) {
+            img.crossOrigin = 'Anonymous';
+        }
         img.src = url;
         img.onload = () => resolve(img);
         img.onerror = reject;

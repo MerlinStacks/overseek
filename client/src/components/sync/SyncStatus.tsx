@@ -48,6 +48,7 @@ const STALENESS_LABELS = {
 export function SyncStatus() {
     const {
         isSyncing, syncState, logs, activeJobs, healthSummary,
+        syncToasts, dismissSyncToast,
         runSync, controlSync, retrySync, reindexOrders, refreshStatus
     } = useSyncStatus();
 

@@ -320,7 +320,7 @@ async function initializeApp() {
                 return;
             }
             try {
-                Logger.warn('[App] Processing incoming email', {
+                Logger.info('[App] Processing incoming email', {
                     fromEmail: data.fromEmail,
                     subject: data.subject,
                     emailAccountId: data.emailAccountId
@@ -337,7 +337,7 @@ async function initializeApp() {
                     references: data.references,
                     attachments: data.attachments
                 });
-                Logger.warn('[App] Successfully ingested email', {
+                Logger.info('[App] Successfully ingested email', {
                     fromEmail: data.fromEmail,
                     subject: data.subject
                 });

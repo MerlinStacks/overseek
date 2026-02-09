@@ -5,13 +5,16 @@ import { prisma } from '../../utils/prisma';
 // Mock dependencies
 vi.mock('../../utils/prisma', () => ({
     prisma: {
-        $executeRaw: vi.fn(),
+        $queryRaw: vi.fn(),
+        $transaction: vi.fn(),
         wooOrder: {
             findMany: vi.fn(),
             upsert: vi.fn(),
             delete: vi.fn()
         },
-        $transaction: vi.fn(),
+        wooCustomer: {
+            updateMany: vi.fn()
+        },
         syncState: {
             findUnique: vi.fn(),
             upsert: vi.fn()
@@ -84,29 +87,55 @@ describe('OrderSync Optimization', () => {
         orderSync = new TestOrderSync();
     });
 
-    it('should use optimized SQL for recalculating customer counts', async () => {
+    it('should use two-step approach for recalculating customer counts', async () => {
         const accountId = 'test-account';
+
+        // Step 1: $queryRaw returns aggregated counts
+        const mockCounts = [
+            { woo_id: 101, count: 3 },
+            { woo_id: 202, count: 5 },
+        ];
+        (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
+
+        // Step 2: $transaction batches the updateMany calls
+        (prisma.$transaction as any).mockResolvedValue([]);
+        (prisma.wooCustomer.updateMany as any).mockResolvedValue({ count: 1 });
+
         await orderSync.testRecalculate(accountId);
 
-        expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+        // Verify Step 1: Read counts via $queryRaw (no locks held)
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
 
-        // Verify SQL structure
-        // prisma.$executeRaw is called as a tagged template: fn(["SQL part 1", "SQL part 2", ...], param1, param2...)
-        const call = (prisma.$executeRaw as any).mock.calls[0];
-        const templateStrings = call[0]; // TemplateStringsArray
+        // Verify Step 2: Batched updates via $transaction
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
 
-        // Join the strings to see the query structure (ignoring parameter placement for simple check)
-        const fullQuery = templateStrings.join('?');
+        // Each customer gets an updateMany call inside the transaction
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(2);
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
+            where: { accountId, wooId: 101 },
+            data: { ordersCount: 3 }
+        });
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
+            where: { accountId, wooId: 202 },
+            data: { ordersCount: 5 }
+        });
+    });
 
-        expect(fullQuery).toContain('UPDATE "WooCustomer" wc');
-        expect(fullQuery).toContain('SET "ordersCount" = c.count');
-        expect(fullQuery).toContain('GROUP BY "rawData"->>\'customer_id\'');
-        expect(fullQuery).toContain('WHERE "accountId" = ?');
+    it('should skip update when no customer orders exist', async () => {
+        const accountId = 'test-account';
+        (prisma.$queryRaw as any).mockResolvedValue([]);
 
-        // Check params
-        // We pass accountId 3 times in the query
-        const params = call.slice(1);
-        expect(params).toContain(accountId);
-        expect(params.filter((p: any) => p === accountId).length).toBe(2);
+        await orderSync.testRecalculate(accountId);
+
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should not break sync if recalculation fails', async () => {
+        const accountId = 'test-account';
+        (prisma.$queryRaw as any).mockRejectedValue(new Error('DB connection lost'));
+
+        // Should not throw
+        await expect(orderSync.testRecalculate(accountId)).resolves.not.toThrow();
     });
 });

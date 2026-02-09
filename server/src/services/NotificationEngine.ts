@@ -44,7 +44,7 @@ export class NotificationEngine {
      */
     static init(): void {
         if (this.initialized) {
-            Logger.warn('[NotificationEngine] Already initialized, skipping');
+            Logger.debug('[NotificationEngine] Already initialized, skipping');
             return;
         }
 
@@ -382,7 +382,7 @@ export class NotificationEngine {
     private static async sendNotification(config: NotificationConfig): Promise<void> {
         // Guard: Skip if accountId is missing
         if (!config.accountId) {
-            Logger.warn('[NotificationEngine] Skipping notification - accountId is undefined', {
+            Logger.info('[NotificationEngine] Skipping notification - accountId is undefined', {
                 eventType: config.eventType
             });
             return;
@@ -478,7 +478,7 @@ export class NotificationEngine {
         try {
             // Guard: Skip logging if accountId is missing (required by schema)
             if (!data.accountId) {
-                Logger.warn('[NotificationEngine] Skipping delivery log - accountId is undefined', {
+                Logger.info('[NotificationEngine] Skipping delivery log - accountId is undefined', {
                     eventType: data.eventType,
                     channels: data.channels
                 });

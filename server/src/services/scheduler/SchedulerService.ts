@@ -76,6 +76,9 @@ export class SchedulerService {
                 case 'bom-deduction-recovery':
                     await MaintenanceScheduler.dispatchBOMDeductionRecovery();
                     break;
+                case 'queue-depth-check':
+                    await MaintenanceScheduler.dispatchQueueDepthCheck();
+                    break;
 
                 // Marketing jobs
                 case 'outcome-assessment':
