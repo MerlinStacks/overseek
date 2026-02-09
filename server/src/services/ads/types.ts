@@ -16,6 +16,8 @@ export interface AdMetric {
     spend: number;
     impressions: number;
     clicks: number;
+    conversions?: number;
+    revenue?: number;
     roas: number;
     currency: string;
     date_start: string;

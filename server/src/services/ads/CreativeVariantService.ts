@@ -9,6 +9,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { MetaAdsService, GoogleAdsService } from './index';
 
 /** Parameters for creating a new experiment */
 export interface CreateExperimentParams {
@@ -211,7 +212,7 @@ export class CreativeVariantService {
      */
     private static async fetchVariantMetrics(
         platform: string,
-        _adAccountId: string,
+        adAccountId: string,
         adId: string
     ): Promise<{
         impressions: number;
@@ -220,15 +221,17 @@ export class CreativeVariantService {
         spend: number;
         revenue: number;
     } | null> {
-        // TODO: Implement individual ad-level metrics fetching
-        // Current getInsights methods fetch account-level data, not individual ads
-        // For now, log and return null - metrics should be updated via platform webhooks
-        // or by extending MetaAdsService/GoogleAdsService with getAdMetrics methods
-        Logger.debug('[CreativeVariant] Ad-level metrics fetch not yet implemented', {
-            platform,
-            adId
-        });
-
+        const normalizedPlatform = platform.toLowerCase();
+        try {
+            if (normalizedPlatform === 'meta') {
+                return await MetaAdsService.getAdMetrics(adAccountId, adId);
+            } else if (normalizedPlatform === 'google') {
+                return await GoogleAdsService.getAdMetrics(adAccountId, adId);
+            }
+            Logger.warn('[CreativeVariant] Unknown platform for metrics', { platform });
+        } catch (error) {
+            Logger.warn('[CreativeVariant] Failed to fetch ad metrics', { platform, adId, error });
+        }
         return null;
     }
 
@@ -436,8 +439,11 @@ export class CreativeVariantService {
                             data: { status: 'LOSER' }
                         });
 
-                        // TODO: Pause the actual ad in the platform
-                        // await this.pauseAdInPlatform(experiment.platform, variant.externalAdId);
+                        // Get the external ad ID from the database variant
+                        const dbVariant = experiment.variants.find(v => v.id === variant.id);
+                        if (experiment.adAccountId && dbVariant?.externalAdId) {
+                            await this.pauseAdInPlatform(experiment.platform, experiment.adAccountId, dbVariant.externalAdId);
+                        }
 
                         pausedCount++;
 
@@ -554,5 +560,27 @@ export class CreativeVariantService {
         }
 
         return { refreshed };
+    }
+
+    /**
+     * Pause the actual ad in the platform.
+     */
+    private static async pauseAdInPlatform(
+        platform: string,
+        adAccountId: string,
+        adId: string
+    ): Promise<boolean> {
+        const normalizedPlatform = platform.toLowerCase();
+        try {
+            if (normalizedPlatform === 'meta') {
+                return await MetaAdsService.updateAdStatus(adAccountId, adId, 'PAUSED');
+            } else if (normalizedPlatform === 'google') {
+                return await GoogleAdsService.updateAdStatus(adAccountId, adId, 'PAUSED');
+            }
+            Logger.warn('[CreativeVariant] Unknown platform for pausing', { platform });
+        } catch (error) {
+            Logger.error('[CreativeVariant] Failed to pause ad in platform', { platform, adId, error });
+        }
+        return false;
     }
 }

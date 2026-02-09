@@ -91,7 +91,9 @@ export class CustomerSync extends BaseSync {
             totalProcessed += customers.length;
 
             Logger.info(`Synced batch of ${customers.length} customers`, { accountId, syncId, page, totalPages });
-            if (customers.length < 100) hasMore = false;
+            // Use WooCommerce's x-wp-totalpages header instead of batch size
+            // (batch size is unreliable when Zod validation skips records from a full page)
+            if (page >= totalPages) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;

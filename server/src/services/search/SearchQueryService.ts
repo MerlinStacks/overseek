@@ -1,7 +1,37 @@
 import { esClient } from '../../utils/elastic';
 import { Logger } from '../../utils/logger';
+import { prisma } from '../../utils/prisma';
 
 export class SearchQueryService {
+
+    /**
+     * Get order counts grouped by status from PostgreSQL.
+     * Why: Serves as a verification source when ES is suspected to be stale,
+     * since Postgres is updated directly by both sync and webhooks.
+     */
+    static async getOrderStatusCountsFromDB(accountId: string): Promise<{ total: number; counts: Record<string, number> }> {
+        try {
+            const rows = await prisma.$queryRaw<Array<{ status: string; count: bigint }>>`
+                SELECT status, COUNT(*)::bigint as count
+                FROM "WooOrder"
+                WHERE "accountId" = ${accountId}
+                GROUP BY status
+            `;
+
+            const counts: Record<string, number> = {};
+            let total = 0;
+            for (const row of rows) {
+                const count = Number(row.count);
+                counts[row.status] = count;
+                total += count;
+            }
+
+            return { total, counts };
+        } catch (error) {
+            Logger.error('Get Order Status Counts From DB Error', { error });
+            return { total: 0, counts: {} };
+        }
+    }
 
     /**
      * Perform a multi-index search

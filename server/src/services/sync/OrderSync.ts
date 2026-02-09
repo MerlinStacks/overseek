@@ -20,9 +20,11 @@ export class OrderSync extends BaseSync {
         let totalSkipped = 0;
 
         const wooOrderIds = new Set<number>();
+        let expectedTotal = 0;
 
         while (hasMore) {
-            const { data: rawOrders, totalPages } = await woo.getOrders({ page, after, per_page: 100 });
+            const { data: rawOrders, totalPages, total } = await woo.getOrders({ page, after, per_page: 100 });
+            if (page === 1) expectedTotal = total;
             if (!rawOrders.length) {
                 hasMore = false;
                 break;
@@ -201,6 +203,16 @@ export class OrderSync extends BaseSync {
             }
         }
 
+        // Summary log: makes incomplete syncs visible in logs
+        if (expectedTotal > 0 && totalProcessed < expectedTotal) {
+            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped)`, {
+                accountId, syncId, expectedTotal, totalProcessed, totalSkipped, incremental
+            });
+        } else {
+            Logger.info(`Order sync complete: ${totalProcessed}/${expectedTotal} orders processed`, {
+                accountId, syncId, totalDeleted, totalSkipped, incremental
+            });
+        }
 
         await this.recalculateCustomerCounts(accountId, syncId);
 
@@ -208,67 +220,55 @@ export class OrderSync extends BaseSync {
     }
 
     /**
-     * recalculate customer order counts using a pg advisory lock
-     * to avoid deadlocks when multiple workers run concurrently.
-     * uses the indexed wooCustomerId column instead of JSON parsing.
+     * Recalculate customer order counts using a two-step approach to avoid deadlocks.
+     * Why: The previous single-transaction UPDATE...FROM...JOIN held row locks on all
+     * WooCustomer rows simultaneously, causing deadlocks (40P01) when concurrent syncs
+     * ran. This new approach reads counts first, then applies in small batches.
      */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
         Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
 
-        const MAX_RETRIES = 3;
-        let attempt = 0;
+        try {
+            // Step 1: Read counts (no locks held)
+            const counts = await prisma.$queryRaw<Array<{ woo_id: number; count: number }>>`
+                SELECT
+                    "wooCustomerId" as woo_id,
+                    COUNT(*)::int as count
+                FROM "WooOrder"
+                WHERE "accountId" = ${accountId}
+                  AND "wooCustomerId" IS NOT NULL
+                GROUP BY "wooCustomerId"
+            `;
 
-        while (attempt < MAX_RETRIES) {
-            try {
-                // advisory lock prevents deadlocks (40P01) when multiple sync jobs hit the same rows
-                await prisma.$transaction(async (tx) => {
-
-                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('recalculate_customer_counts_' || ${accountId}))`;
-
-
-                    await tx.$executeRaw`
-                        UPDATE "WooCustomer" wc
-                        SET "ordersCount" = c.count
-                        FROM (
-                            SELECT
-                                "wooCustomerId" as woo_id,
-                                COUNT(*)::int as count
-                            FROM "WooOrder"
-                            WHERE "accountId" = ${accountId}
-                              AND "wooCustomerId" IS NOT NULL
-                            GROUP BY "wooCustomerId"
-                        ) c
-                        WHERE wc."accountId" = ${accountId}
-                          AND wc."wooId" = c.woo_id;
-                    `;
-                }, {
-                    timeout: 15000,
-                    maxWait: 5000
-                });
-
-                Logger.info(`Updated customer order counts`, { accountId, syncId });
+            if (counts.length === 0) {
+                Logger.info('No customer order counts to update', { accountId, syncId });
                 return;
-
-            } catch (error: any) {
-                attempt++;
-                const isDeadlock = error.code === '40P01';
-                const isTimeout = error.code === 'P2024' || error.message?.includes('timeout');
-
-                if ((isDeadlock || isTimeout) && attempt < MAX_RETRIES) {
-                    // backoff: 500ms, 1s, 2s
-                    const backoffMs = 500 * Math.pow(2, attempt - 1);
-                    Logger.warn(`Customer count recalculation ${isDeadlock ? 'deadlock' : 'timeout'}, retrying in ${backoffMs}ms...`, {
-                        accountId, syncId, attempt, maxRetries: MAX_RETRIES
-                    });
-                    await new Promise(resolve => setTimeout(resolve, backoffMs));
-                } else {
-
-                    Logger.warn('Failed to recalculate customer order counts', {
-                        accountId, syncId, error: error.message, attempts: attempt
-                    });
-                    return; // non-fatal — don't break the sync
-                }
             }
+
+            // Step 2: Apply in small batches to minimize lock duration
+            const BATCH_SIZE = 50;
+            let updated = 0;
+
+            for (let i = 0; i < counts.length; i += BATCH_SIZE) {
+                const batch = counts.slice(i, i + BATCH_SIZE);
+                const updates = batch.map(c =>
+                    prisma.wooCustomer.updateMany({
+                        where: { accountId, wooId: c.woo_id },
+                        data: { ordersCount: c.count }
+                    })
+                );
+
+                await prisma.$transaction(updates);
+                updated += batch.length;
+            }
+
+            Logger.info(`Updated customer order counts: ${updated} customers`, { accountId, syncId });
+
+        } catch (error: any) {
+            // Non-fatal — don't break the sync for a count mismatch
+            Logger.warn('Failed to recalculate customer order counts', {
+                accountId, syncId, error: error.message
+            });
         }
     }
 }

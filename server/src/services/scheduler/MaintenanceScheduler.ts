@@ -56,6 +56,14 @@ export class MaintenanceScheduler {
             jobId: 'meta-token-refresh-daily'
         });
         Logger.info('Scheduled Meta Token Proactive Refresh (Daily at 4 AM UTC)');
+
+        // EDGE CASE FIX: BOM Deduction Recovery (Every 10 minutes)
+        // Checks for stalled BOM deduction processes and rolls them back
+        await this.queue.add('bom-deduction-recovery', {}, {
+            repeat: { pattern: '*/10 * * * *' },
+            jobId: 'bom-deduction-recovery-10min'
+        });
+        Logger.info('Scheduled BOM Deduction Recovery (Every 10 minutes)');
     }
 
     /**
@@ -311,6 +319,19 @@ export class MaintenanceScheduler {
 
         } catch (error) {
             Logger.error('[Scheduler] Meta token refresh failed', { error });
+        }
+    }
+
+    /**
+     * Dispatch BOM deduction recovery job
+     */
+    static async dispatchBOMDeductionRecovery() {
+        Logger.info('[Scheduler] Starting BOM deduction recovery check');
+        try {
+            const { BOMConsumptionService } = await import('../BOMConsumptionService');
+            await BOMConsumptionService.recoverStalledDeductions();
+        } catch (error) {
+            Logger.error('[Scheduler] BOM deduction recovery failed', { error });
         }
     }
 }

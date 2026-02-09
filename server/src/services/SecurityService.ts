@@ -63,7 +63,8 @@ export class SecurityService {
         // Create Refresh Token first to get the session ID
         const refreshTokenPlain = crypto.randomBytes(40).toString('hex');
         const refreshTokenHash = this.hashToken(refreshTokenPlain);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        // EDGE CASE FIX: Extended refresh token expiry to 30 days (was 7 days)
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
         const refreshTokenRecord = await prisma.refreshToken.create({
             data: {
@@ -106,7 +107,8 @@ export class SecurityService {
         // Rotate Token - generate new plaintext, store new hash
         const newRefreshTokenPlain = crypto.randomBytes(40).toString('hex');
         const newRefreshTokenHash = this.hashToken(newRefreshTokenPlain);
-        const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        // EDGE CASE FIX: 30-day expiry for rotated refresh tokens
+        const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
         // Revoke old, create new
         // Transaction to ensure atomicity - using separate operations to get new ID

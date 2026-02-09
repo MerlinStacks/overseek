@@ -878,5 +878,126 @@ export class GoogleAdsService {
             Logger.error('Failed to close Google User List', { error: error.message });
             throw error;
         }
+
+    }
+
+
+    // =========================================================================
+    // AD-LEVEL MANAGEMENT
+    // =========================================================================
+
+    /**
+     * Fetch metrics for a specific Ad/Creative.
+     * In Google Ads this maps to 'ad_group_ad'.
+     */
+    static async getAdMetrics(adAccountId: string, adId: string): Promise<{
+        spend: number;
+        impressions: number;
+        clicks: number;
+        conversions: number;
+        revenue: number;
+    } | null> {
+        try {
+            const { customer } = await createGoogleAdsClient(adAccountId);
+
+            // adId in Google Ads is usually the ad_group_ad.ad.id
+            // However, we need to query the 'ad_group_ad' resource.
+            // We'll search for it by ad.id.
+
+            // Get date range (all time or strict experiment window? 'maximum' usually means all time relative to ad life)
+            // Let's us last 90 days as a reasonable "active experiment" window to avoid massive queries
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 90);
+
+            const query = `
+                SELECT
+                    metrics.cost_micros,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.conversions,
+                    metrics.conversions_value
+                FROM ad_group_ad
+                WHERE ad_group_ad.ad.id = ${adId}
+                  AND segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
+            `;
+
+            const results = await customer.query(query);
+
+            if (!results || results.length === 0) return null;
+
+            // Aggregating rows (since query is segmented by date implicitly via date range filter if not aggregated)
+            // Actually, if we dont include segments.date in SELECT, it should be aggregated automatically.
+            // But let's sum manually to be safe if GAQL behaves differently.
+            // Wait, standard GAQL behavior: if no segments in SELECT, it returns 1 row aggregated.
+            // UNLESS parallel segment filters exist.
+            // In our query, we used date range in WHERE but didn't Select date.
+            // It should return single row.
+            // Let's handle array just in case.
+
+            let totalSpend = 0;
+            let totalImpressions = 0;
+            let totalClicks = 0;
+            let totalConversions = 0;
+            let totalRevenue = 0;
+
+            results.forEach((row: any) => {
+                totalSpend += (row.metrics?.cost_micros || 0) / 1_000_000;
+                totalImpressions += row.metrics?.impressions || 0;
+                totalClicks += row.metrics?.clicks || 0;
+                totalConversions += row.metrics?.conversions || 0;
+                totalRevenue += row.metrics?.conversions_value || 0;
+            });
+
+            return {
+                spend: totalSpend,
+                impressions: totalImpressions,
+                clicks: totalClicks,
+                conversions: totalConversions,
+                revenue: totalRevenue
+            };
+
+        } catch (error: any) {
+            Logger.error('Failed to fetch Google Ad Metrics', { error: error.message, adId });
+            return null;
+        }
+    }
+
+    /**
+     * Update an Ad's status (ENABLE/PAUSE).
+     */
+    static async updateAdStatus(adAccountId: string, adId: string, status: 'ENABLED' | 'PAUSED'): Promise<boolean> {
+        try {
+            const { customer } = await createGoogleAdsClient(adAccountId);
+
+            // 1. We need the Resource Name of the ad_group_ad
+            // adId is just the number. We need to find the ad_group_ad containing it.
+            const query = `
+                SELECT ad_group_ad.resource_name
+                FROM ad_group_ad
+                WHERE ad_group_ad.ad.id = ${adId}
+            `;
+
+            const [result] = await customer.query(query);
+            if (!result?.ad_group_ad?.resource_name) {
+                Logger.warn('Ad not found for status update', { adId });
+                return false;
+            }
+
+            const resourceName = result.ad_group_ad.resource_name;
+
+            Logger.info('[GoogleAds] Updating Ad status', { adId, status, resourceName });
+
+            await customer.adGroupAds.update({
+                resource_name: resourceName,
+                status: status
+            });
+
+            return true;
+
+        } catch (error: any) {
+            Logger.error('Failed to update Google Ad Status', { error: error.message, adId });
+            throw error;
+        }
     }
 }

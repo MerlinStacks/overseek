@@ -8,6 +8,7 @@ import { PWAUpdateModal, usePWAUpdate, PWAUpdateBanner } from '../mobile/PWAUpda
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { useHaptic } from '../../hooks/useHaptic';
 
 /**
  * MobileLayout - Premium dark glassmorphism layout for the PWA companion app.
@@ -36,6 +37,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     const location = useLocation();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { triggerHaptic } = useHaptic();
 
     // Page transition state
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -156,15 +158,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
         };
     }, []);
-
-    /**
-     * Triggers haptic feedback if supported.
-     */
-    const triggerHaptic = (duration = 10) => {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(duration);
-        }
-    };
 
     // Handle install
     const handleInstall = async () => {

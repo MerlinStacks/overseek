@@ -102,7 +102,8 @@ export function AdminAccountsPage() {
 
             const data = await res.json();
             if (data.token) {
-                login(data.token, data.user);
+                // EDGE CASE FIX: Pass refresh token for silent refresh support
+                login(data.token, data.user, data.refreshToken);
                 navigate('/');
             } else {
                 alert('Impersonation failed: ' + data.error);

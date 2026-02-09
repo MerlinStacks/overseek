@@ -23,6 +23,7 @@ interface PWAState {
     isUpdateAvailable: boolean;
     swVersion: string | null;
     pendingActionsCount: number;
+    isPersistentStorage: boolean;
 }
 
 export function usePWA() {
@@ -30,8 +31,27 @@ export function usePWA() {
         isOnline: navigator.onLine,
         isUpdateAvailable: false,
         swVersion: null,
-        pendingActionsCount: 0
+        pendingActionsCount: 0,
+        isPersistentStorage: false
     });
+
+    // Request persistent storage to prevent cache eviction
+    useEffect(() => {
+        const requestPersistentStorage = async () => {
+            if (navigator.storage?.persist) {
+                try {
+                    const granted = await navigator.storage.persist();
+                    setState(prev => ({ ...prev, isPersistentStorage: granted }));
+                    if (granted) {
+                        console.log('[PWA] Persistent storage granted');
+                    }
+                } catch (err) {
+                    console.warn('[PWA] Failed to request persistent storage:', err);
+                }
+            }
+        };
+        requestPersistentStorage();
+    }, []);
 
     // Track online/offline status
     useEffect(() => {

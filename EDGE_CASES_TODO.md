@@ -14,13 +14,15 @@
   - Issue: If Redis fails, lock not acquired → potential double-deduction
   - Fix: Added dual-lock strategy with pg_try_advisory_lock fallback
   
-- [ ] **Implement BOM deduction rollback on process crash**
-  - File: `server/src/services/BOMConsumptionService.ts`
-  - Issue: Partial deduction leaves inventory inconsistent
-  - Fix: Wrap in transaction, log pending deductions, add recovery job
+- [x] **[CRITICAL] BOM Deduction Rollback on Process Crash**
+  - **Issue:** If the server crashes *during* a BOM deduction (e.g., after deducting Component A but before B), inventory becomes permanently inconsistent.
+  - **Fix:** Implement a "BOM Transaction Log" in Redis/DB before starting deduction.
+    - If the process restarts, a recovery job checks for "Pending Deductions" that are > 5 mins old.
+    - It either completes them or rolls them back.
+  - **Status:** Complete. Implemented `BOMConsumptionService` with Redis-backed pending log, `rollbackDeductions`, `recoverStalledDeductions`, and a 10-minute recovery job in `MaintenanceScheduler`.
 
 ### Authentication & Security
-- [ ] **Implement JWT refresh token mechanism**
+- [x] **Implement JWT refresh token mechanism**
   - Files: `server/src/routes/auth.ts`, `client/src/context/AuthContext.tsx`
   - Issue: 7-day token expiry forces abrupt logout
   - Fix: Add `/api/auth/refresh` endpoint, silent refresh before expiry
@@ -126,7 +128,7 @@
   - Fix: Added `useLoadingTimeout` hook and `LoadingTimeoutWrapper` component with 10s timeout
 
 ### Concurrency
-- [ ] **Add conflict resolution for concurrent order edits**
+- [x] **Add conflict resolution for concurrent order edits**
   - Files: `client/src/pages/OrderDetailPage.tsx`, `server/src/routes/orders.ts`
   - Issue: No merge/conflict resolution; last write wins
   - Fix: Add optimistic locking with `updatedAt` version check
@@ -221,7 +223,7 @@
   - Fix: Added `getPoolStats()` function + auto-warn at 80% utilization
 
 ### File Handling
-- [ ] **Add upload progress/timeout handling**
+- [x] **Add upload progress/timeout handling** ✅ *Fixed 2026-02-06*
   - File: `server/src/routes/uploads.ts`
   - Issue: 100MB upload may timeout on slow connections
   - Fix: Add chunked upload; resume capability
@@ -254,13 +256,13 @@
 
 | Category | Total | Done | % Complete |
 |----------|-------|------|------------|
-| 🔴 Critical | 6 | 4 | 67% |
+| 🔴 Critical | 6 | 6 | 100% |
 | 🟠 High | 8 | 7 | 88% |
 | 🟡 Medium (API) | 4 | 4 | 100% |
-| 🟡 Medium (UI) | 4 | 3 | 75% |
+| 🟡 Medium (UI) | 4 | 4 | 100% |
 | 🟡 Medium (Business) | 6 | 6 | 100% |
 | 🟢 Low (Platform) | 4 | 4 | 100% |
-| 🔵 Low (Infra) | 5 | 4 | 80% |
+| 🔵 Low (Infra) | 5 | 5 | 100% |
 | 🔴 TODOs from Code | 3 | 0 | 0% |
 | **TOTAL** | **40** | **36** | **90%** |
 

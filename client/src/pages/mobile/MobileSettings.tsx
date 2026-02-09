@@ -3,6 +3,7 @@ import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useHaptic } from '../../hooks/useHaptic';
 import {
     ChevronLeft,
     ChevronRight,
@@ -32,17 +33,10 @@ export function MobileSettings() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount, accounts, setCurrentAccount } = useAccount();
+    const { triggerHaptic } = useHaptic();
     const [syncing, setSyncing] = useState(false);
     const [showSwitcher, setShowSwitcher] = useState(false);
 
-    /**
-     * Triggers haptic feedback if supported.
-     */
-    const triggerHaptic = (duration = 10) => {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(duration);
-        }
-    };
 
     const settingSections = [
         {

@@ -280,7 +280,9 @@ export function OrderDetailPage() {
                     <OrderTagPanel
                         orderId={order.id || order.wooId?.toString() || id || ''}
                         currentTags={order.tags || []}
+                        lastUpdate={order.internal_updated_at}
                         onTagsChange={handleTagsChange}
+                        onRefresh={fetchOrder}
                     />
 
                     {/* Customer Card */}

@@ -20,15 +20,13 @@ export interface SyncLog {
     errorMessage?: string;
     startedAt: string;
     completedAt?: string;
-}
-
-interface SyncStatusContextType {
-    isSyncing: boolean;
-    activeJobs: SyncJob[];
-    syncState: SyncState[];
-    logs: SyncLog[];
-    controlSync: (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => Promise<void>;
-    runSync: (types?: string[], incremental?: boolean) => Promise<void>;
+    /** Enriched fields from /health endpoint */
+    retryCount?: number;
+    errorCode?: string;
+    friendlyError?: string;
+    nextRetryAt?: string | null;
+    willRetry?: boolean;
+    maxAttempts?: number;
 }
 
 export interface SyncState {
@@ -40,8 +38,34 @@ export interface SyncState {
     updatedAt: string;
 }
 
+/** Summary returned by the /health endpoint */
+export interface SyncHealthSummary {
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+    failureRate24h: number;
+    activeJobs: number;
+}
+
+interface SyncStatusContextType {
+    isSyncing: boolean;
+    activeJobs: SyncJob[];
+    syncState: SyncState[];
+    logs: SyncLog[];
+    healthSummary: SyncHealthSummary | null;
+    controlSync: (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => Promise<void>;
+    runSync: (types?: string[], incremental?: boolean) => Promise<void>;
+    retrySync: (entityType: string, logId?: string) => Promise<void>;
+    reindexOrders: () => Promise<{ totalIndexed: number }>;
+    refreshStatus: () => void;
+}
+
 const SyncStatusContext = createContext<SyncStatusContextType | undefined>(undefined);
 
+/**
+ * Why: Centralises all sync-related API calls and real-time state so
+ * every component (sidebar, settings panel, overlays) shares one
+ * source of truth without duplicating fetch logic.
+ */
 export function SyncStatusProvider({ children }: { children: ReactNode }) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -50,48 +74,65 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     const [syncState, setSyncState] = useState<SyncState[]>([]);
     const [logs, setLogs] = useState<SyncLog[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [healthSummary, setHealthSummary] = useState<SyncHealthSummary | null>(null);
+
+    /** Helper to build auth headers */
+    const headers = useCallback(() => {
+        if (!currentAccount?.id || !token) return null;
+        return {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'x-account-id': currentAccount.id,
+        };
+    }, [currentAccount?.id, token]);
 
     const fetchStatus = useCallback(async () => {
-        if (!currentAccount?.id || !token) return;
+        const h = headers();
+        if (!h || !currentAccount?.id) return;
+
         try {
+            // Fetch active jobs
             const url = new URL('/api/sync/active', window.location.origin);
             url.searchParams.append('accountId', currentAccount.id);
-
-            const res = await fetch(url.toString(), {
-                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id }
-            });
-
+            const res = await fetch(url.toString(), { headers: h });
             if (res.ok) {
                 const data = await res.json();
                 setActiveJobs(data);
                 setIsSyncing(data.length > 0);
             }
 
-            // Also fetch persistent state
-            const stateRes = await fetch(`/api/sync/status?accountId=${currentAccount.id}`, {
-                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id }
-            });
-            if (stateRes.ok) {
-                const data = await stateRes.json();
+            // Fetch health (includes enriched logs with retry info)
+            const healthRes = await fetch(`/api/sync/health?accountId=${currentAccount.id}`, { headers: h });
+            if (healthRes.ok) {
+                const data = await healthRes.json();
                 setSyncState(data.state || []);
-                setLogs(data.logs || []);
+                setLogs(data.recent || []);
+                setHealthSummary(data.summary || null);
+            } else {
+                // Fallback to basic status if health endpoint isn't available
+                const stateRes = await fetch(`/api/sync/status?accountId=${currentAccount.id}`, { headers: h });
+                if (stateRes.ok) {
+                    const data = await stateRes.json();
+                    setSyncState(data.state || []);
+                    setLogs(data.logs || []);
+                }
             }
         } catch (error) {
-            Logger.error('Failed to fetch sync status', { error: error });
+            Logger.error('Failed to fetch sync status', { error });
         }
-    }, [currentAccount?.id, token]);
+    }, [currentAccount?.id, headers]);
 
     // Listen for Socket.IO sync events (real-time updates)
     useEffect(() => {
         if (!socket) return;
 
-        const handleSyncStarted = (data: { accountId: string; type: string }) => {
+        const handleSyncStarted = (_data: { accountId: string; type: string }) => {
             setIsSyncing(true);
-            fetchStatus(); // Refresh full state
+            fetchStatus();
         };
 
-        const handleSyncCompleted = (data: { accountId: string; type: string; status: string }) => {
-            fetchStatus(); // Refresh full state to get updated logs
+        const handleSyncCompleted = (_data: { accountId: string; type: string; status: string }) => {
+            fetchStatus();
         };
 
         socket.on('sync:started', handleSyncStarted);
@@ -107,21 +148,14 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     useVisibilityPolling(fetchStatus, 30000, [fetchStatus], 'sync-context');
 
     const controlSync = async (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => {
-        if (!currentAccount?.id || !token) return;
+        const h = headers();
+        if (!h || !currentAccount?.id) return;
+
         try {
             const res = await fetch('/api/sync/control', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({
-                    accountId: currentAccount.id,
-                    action,
-                    queueName,
-                    jobId
-                })
+                headers: h,
+                body: JSON.stringify({ accountId: currentAccount.id, action, queueName, jobId })
             });
 
             if (!res.ok) {
@@ -129,7 +163,6 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
                 throw new Error(`Control action failed: ${errorData.message || res.statusText}`);
             }
 
-            // Immediately fetch status update
             fetchStatus();
         } catch (error) {
             Logger.error(`Failed to ${action} sync`, { error });
@@ -138,30 +171,71 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     };
 
     const runSync = async (types?: string[], incremental: boolean = true) => {
-        if (!currentAccount?.id || !token) return;
+        const h = headers();
+        if (!h || !currentAccount?.id) return;
+
         try {
             await fetch('/api/sync/manual', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({
-                    accountId: currentAccount.id,
-                    types,
-                    incremental
-                })
+                headers: h,
+                body: JSON.stringify({ accountId: currentAccount.id, types, incremental })
             });
             fetchStatus();
         } catch (error) {
-            Logger.error('Failed to start sync', { error: error });
+            Logger.error('Failed to start sync', { error });
             throw error;
         }
     };
 
+    /** Retry a specific failed entity type */
+    const retrySync = async (entityType: string, logId?: string) => {
+        const h = headers();
+        if (!h || !currentAccount?.id) return;
+
+        try {
+            const res = await fetch('/api/sync/retry', {
+                method: 'POST',
+                headers: h,
+                body: JSON.stringify({ entityType, logId })
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || res.statusText);
+            }
+
+            fetchStatus();
+        } catch (error) {
+            Logger.error('Failed to retry sync', { error });
+            throw error;
+        }
+    };
+
+    /** Rebuild ES search index from Postgres source of truth */
+    const reindexOrders = async (): Promise<{ totalIndexed: number }> => {
+        const h = headers();
+        if (!h || !currentAccount?.id) throw new Error('Not authenticated');
+
+        const res = await fetch('/api/sync/orders/reindex', {
+            method: 'POST',
+            headers: h
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ error: 'Reindex failed' }));
+            throw new Error(errorData.error || res.statusText);
+        }
+
+        const data = await res.json();
+        fetchStatus();
+        return data;
+    };
+
     return (
-        <SyncStatusContext.Provider value={{ isSyncing, activeJobs, syncState, logs, controlSync, runSync }}>
+        <SyncStatusContext.Provider value={{
+            isSyncing, activeJobs, syncState, logs, healthSummary,
+            controlSync, runSync, retrySync, reindexOrders, refreshStatus: fetchStatus
+        }}>
             {children}
         </SyncStatusContext.Provider>
     );
@@ -174,4 +248,3 @@ export function useSyncStatus() {
     }
     return context;
 }
-

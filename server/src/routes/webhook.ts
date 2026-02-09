@@ -53,12 +53,20 @@ export async function processWebhookPayload(
         // (Sync Engine checks if order exists in DB to determine if it's "new")
         try {
             const order = body as any;
+            const rawEmail = order.billing?.email;
+            const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
+            const billingCountry = order.billing?.country || null;
+            const wooCustomerId = order.customer_id > 0 ? order.customer_id : null;
+
             await prisma.wooOrder.upsert({
                 where: { accountId_wooId: { accountId, wooId: order.id } },
                 update: {
                     status: order.status.toLowerCase(),
                     total: order.total === '' ? '0' : order.total,
                     currency: order.currency,
+                    billingEmail,
+                    billingCountry,
+                    wooCustomerId,
                     dateModified: new Date(order.date_modified || new Date()),
                     rawData: order
                 },
@@ -69,6 +77,9 @@ export async function processWebhookPayload(
                     status: order.status.toLowerCase(),
                     total: order.total === '' ? '0' : order.total,
                     currency: order.currency,
+                    billingEmail,
+                    billingCountry,
+                    wooCustomerId,
                     dateCreated: new Date(order.date_created || new Date()),
                     dateModified: new Date(order.date_modified || new Date()),
                     rawData: order

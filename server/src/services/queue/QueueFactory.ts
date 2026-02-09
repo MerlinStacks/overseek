@@ -93,9 +93,13 @@ export class QueueFactory {
     }
 
     static createWorker(name: string, processor: (job: any) => Promise<void>) {
-        // Long-running jobs (BOM_SYNC, report generation) need extended lock durations
-        // to prevent false stall detection when processing many items
-        const isLongRunning = [QUEUES.BOM_SYNC, QUEUES.REPORTS].includes(name);
+        // Long-running jobs need extended lock durations to prevent false stall detection.
+        // Why: A full order sync (32k+ orders) takes 5-10min. With the default 30s lock,
+        // BullMQ kills the job thinking it's stalled, causing incomplete syncs.
+        const isLongRunning = [
+            QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS,
+            QUEUES.BOM_SYNC, QUEUES.REPORTS
+        ].includes(name);
 
         const worker = new Worker(name, async (job) => {
             Logger.info(`Processing Job ${job.id}`, { jobId: job.id, accountId: job.data.accountId });

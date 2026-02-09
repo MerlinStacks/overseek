@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useHaptic } from '../../hooks/useHaptic';
 import {
     User,
     Mail,
@@ -29,6 +30,7 @@ import {
 export function MobileProfile() {
     const navigate = useNavigate();
     const { token, user, logout, updateUser } = useAuth();
+    const { triggerHaptic } = useHaptic();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [fullName, setFullName] = useState(user?.fullName || '');
@@ -45,15 +47,6 @@ export function MobileProfile() {
             setEmail(user.email || '');
         }
     }, [user]);
-
-    /**
-     * Triggers haptic feedback if supported by the device.
-     */
-    const triggerHaptic = (duration = 10) => {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(duration);
-        }
-    };
 
     const handleSave = async () => {
         if (!token) return;
@@ -188,8 +181,8 @@ export function MobileProfile() {
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all duration-200 ${uploadSuccess
-                                ? 'bg-emerald-500 text-white'
-                                : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white active:scale-95'
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white active:scale-95'
                             }`}
                         aria-label="Change avatar"
                         disabled={uploading}
@@ -246,8 +239,8 @@ export function MobileProfile() {
                     onClick={handleSave}
                     disabled={saving}
                     className={`w-full py-3.5 font-semibold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 ${saved
-                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
-                            : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
+                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
+                        : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
                         }`}
                 >
                     {saving ? (

@@ -5,6 +5,7 @@ import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, Chec
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useSocket } from '../../context/SocketContext';
+import { useHaptic } from '../../hooks/useHaptic';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatTimeAgo } from '../../utils/format';
 import { getInitials } from '../../utils/string';
@@ -55,20 +56,12 @@ export function MobileInbox() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { triggerHaptic } = useHaptic();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
-
-    /**
-     * Triggers haptic feedback if supported.
-     */
-    const triggerHaptic = (duration = 10) => {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(duration);
-        }
-    };
 
     useEffect(() => {
         fetchConversations();

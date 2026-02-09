@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useHaptic } from '../../hooks/useHaptic';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatCurrency } from '../../utils/format';
 import { OrdersSkeleton } from '../../components/mobile/MobileSkeleton';
@@ -65,21 +66,13 @@ export function MobileOrders() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { triggerHaptic } = useHaptic();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('All');
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(1);
-
-    /**
-     * Triggers haptic feedback if supported.
-     */
-    const triggerHaptic = (duration = 10) => {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(duration);
-        }
-    };
 
     useEffect(() => {
         fetchOrders(true);

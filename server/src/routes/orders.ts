@@ -450,6 +450,12 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
+            // OPTIMISTIC LOCKING CHECK
+            const version = request.headers['x-order-version'] as string;
+            if (version && order.updatedAt.toISOString() !== version) {
+                return reply.code(409).send({ error: 'Order has been modified by another user' });
+            }
+
             // Get current rawData and remove the tag
             const rawData = order.rawData as any;
             const currentTags: string[] = rawData.tags || [];
@@ -508,6 +514,12 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!order || order.accountId !== accountId) {
                 return reply.code(404).send({ error: 'Order not found' });
+            }
+
+            // OPTIMISTIC LOCKING CHECK
+            const version = request.headers['x-order-version'] as string;
+            if (version && order.updatedAt.toISOString() !== version) {
+                return reply.code(409).send({ error: 'Order has been modified by another user' });
             }
 
             // Get current rawData and add the tag (avoid duplicates)

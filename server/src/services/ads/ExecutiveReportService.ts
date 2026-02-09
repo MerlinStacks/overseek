@@ -11,6 +11,7 @@ import path from 'path';
 import PDFDocument from 'pdfkit';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { AdMetric, DailyTrend } from './types';
 import { MetaAdsService, GoogleAdsService } from './index';
 
 // Ensure reports directory exists
@@ -160,15 +161,23 @@ export class ExecutiveReportService {
         let conversions = 0;
         const topCampaigns: ReportMetrics['ads']['topCampaigns'] = [];
 
+        // Initialize daily data map
+        const dailySpendMap = new Map<string, { date: string; spend: number; revenue: number }>();
+
         // Aggregate insights from each ad account
         for (const adAccount of adAccounts) {
             try {
                 // Use platform-specific service based on account platform
-                let insights = null;
-                if (adAccount.platform === 'meta') {
+                const normalizedPlatform = adAccount.platform?.toLowerCase();
+                let insights: AdMetric | null = null;
+                let dailyTrends: DailyTrend[] = [];
+
+                if (normalizedPlatform === 'meta') {
                     insights = await MetaAdsService.getInsights(adAccount.id);
-                } else if (adAccount.platform === 'google') {
+                    dailyTrends = await MetaAdsService.getDailyTrends(adAccount.id);
+                } else if (normalizedPlatform === 'google') {
                     insights = await GoogleAdsService.getInsights(adAccount.id);
+                    dailyTrends = await GoogleAdsService.getDailyTrends(adAccount.id);
                 }
 
                 if (insights) {
@@ -178,12 +187,26 @@ export class ExecutiveReportService {
                     clicks += insights.clicks || 0;
                     conversions += insights.conversions || 0;
                 }
+
+                if (dailyTrends) {
+                    for (const day of dailyTrends) {
+                        const existing = dailySpendMap.get(day.date) || { date: day.date, spend: 0, revenue: 0 };
+                        existing.spend += day.spend;
+                        existing.revenue += day.conversionsValue || 0; // Assuming conversionsValue is revenue in DailyTrend
+                        dailySpendMap.set(day.date, existing);
+                    }
+                }
+
             } catch (error) {
                 Logger.warn('[ExecutiveReport] Failed to get insights', {
                     adAccountId: adAccount.id
                 });
             }
         }
+
+        // Convert map to array and sort
+        const spendByDay = Array.from(dailySpendMap.values())
+            .sort((a, b) => a.date.localeCompare(b.date));
 
         // Calculate derived metrics
         const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
@@ -246,7 +269,7 @@ export class ExecutiveReportService {
                 conversions,
                 ctr,
                 topCampaigns,
-                spendByDay: [] // TODO: aggregate daily spend
+                spendByDay
             },
             store: {
                 revenue: storeRevenue,

@@ -1,4 +1,3 @@
-// @ts-expect-error - Responsive import has type issues with ESM
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { Logger } from '../utils/logger';
 import 'react-grid-layout/css/styles.css';

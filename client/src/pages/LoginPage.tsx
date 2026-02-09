@@ -40,7 +40,8 @@ export function LoginPage() {
                 throw new Error(data.error || 'Login failed');
             }
 
-            login(data.token, data.user);
+            // EDGE CASE FIX: Pass refresh token to auth context for silent refresh
+            login(data.token, data.user, data.refreshToken);
             navigate('/');
         } catch (err: any) {
             setError(err.message);

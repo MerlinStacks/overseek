@@ -530,7 +530,6 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}
                     >
                         {/* Grid Layout */}
-                        {/* @ts-expect-error - ResponsiveGridLayout has prop type mismatch */}
                         <ResponsiveGridLayout
                             className="layout"
                             layouts={{ lg: pageLayout }}

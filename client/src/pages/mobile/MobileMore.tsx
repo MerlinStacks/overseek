@@ -12,6 +12,7 @@ import {
     Eye
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useHaptic } from '../../hooks/useHaptic';
 
 /**
  * MobileMore - Premium dark glassmorphism settings menu for mobile PWA.
@@ -38,15 +39,7 @@ interface MenuItem {
 export function MobileMore() {
     const navigate = useNavigate();
     const { logout, user } = useAuth();
-
-    /**
-     * Triggers haptic feedback if supported.
-     */
-    const triggerHaptic = (duration = 10) => {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(duration);
-        }
-    };
+    const { triggerHaptic } = useHaptic();
 
     const handleLogout = () => {
         triggerHaptic(20);

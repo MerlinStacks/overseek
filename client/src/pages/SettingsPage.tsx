@@ -159,7 +159,11 @@ export function SettingsPage() {
                     </SettingsCard>
                 );
             case 'sync':
-                return <SyncStatus />;
+                return (
+                    <SettingsCard title="Data Sync" description="Manage WooCommerce ↔ OverSeek data synchronization.">
+                        <SyncStatus />
+                    </SettingsCard>
+                );
             case 'email':
                 return <EmailSettings />;
             case 'channels':

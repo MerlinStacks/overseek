@@ -73,6 +73,9 @@ export class SchedulerService {
                 case 'meta-token-refresh':
                     await MaintenanceScheduler.dispatchMetaTokenRefresh();
                     break;
+                case 'bom-deduction-recovery':
+                    await MaintenanceScheduler.dispatchBOMDeductionRecovery();
+                    break;
 
                 // Marketing jobs
                 case 'outcome-assessment':

@@ -30,7 +30,8 @@ export function RegisterPage() {
                 throw new Error(data.error || 'Registration failed');
             }
 
-            login(data.token, data.user);
+            // EDGE CASE FIX: Pass refresh token for silent refresh support
+            login(data.token, data.user, data.refreshToken);
             navigate('/');
         } catch (err: any) {
             setError(err.message);

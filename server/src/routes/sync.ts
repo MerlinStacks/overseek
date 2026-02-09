@@ -7,6 +7,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { SyncService } from '../services/sync';
 import { SearchQueryService } from '../services/search/SearchQueryService';
+import { IndexingService } from '../services/search/IndexingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { mapSyncError } from '../services/sync/syncErrors';
 
@@ -306,8 +307,12 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Get order status counts for tab filter
-    fastify.get('/orders/status-counts', async (request, reply) => {
+    /**
+     * Reindex all orders from PostgreSQL into Elasticsearch.
+     * Why: When ES is stale due to incomplete syncs or failed webhooks,
+     * this rebuilds the index from the Postgres source of truth.
+     */
+    fastify.post('/orders/reindex', async (request, reply) => {
         const accountId = request.accountId;
 
         if (!accountId) {
@@ -315,8 +320,54 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            const result = await SearchQueryService.getOrderStatusCounts(accountId);
-            return result;
+            const BATCH_SIZE = 200;
+            let offset = 0;
+            let totalIndexed = 0;
+
+            while (true) {
+                const orders = await prisma.wooOrder.findMany({
+                    where: { accountId },
+                    select: { wooId: true, rawData: true },
+                    skip: offset,
+                    take: BATCH_SIZE,
+                    orderBy: { wooId: 'asc' }
+                });
+
+                if (orders.length === 0) break;
+
+                const rawOrders = orders.map(o => o.rawData as any);
+                await IndexingService.bulkIndexOrders(accountId, rawOrders);
+                totalIndexed += orders.length;
+                offset += BATCH_SIZE;
+
+                Logger.info(`Reindex progress: ${totalIndexed} orders indexed`, { accountId });
+            }
+
+            Logger.info(`Reindex complete: ${totalIndexed} orders indexed from Postgres`, { accountId });
+            return { message: 'Reindex complete', totalIndexed };
+        } catch (error) {
+            Logger.error('Failed to reindex orders', { error });
+            return reply.code(500).send({ error: 'Failed to reindex orders' });
+        }
+    });
+
+    /**
+     * Get order status counts for tab filter.
+     * Supports ?source=db to query Postgres directly instead of ES.
+     */
+    fastify.get('/orders/status-counts', async (request, reply) => {
+        const accountId = request.accountId;
+        const { source } = request.query as { source?: string };
+
+        if (!accountId) {
+            return reply.code(400).send({ error: 'accountId is required' });
+        }
+
+        try {
+            const result = source === 'db'
+                ? await SearchQueryService.getOrderStatusCountsFromDB(accountId)
+                : await SearchQueryService.getOrderStatusCounts(accountId);
+            return { ...result, source: source === 'db' ? 'postgres' : 'elasticsearch' };
         } catch (error) {
             Logger.error('Failed to fetch order status counts', { error });
             return reply.code(500).send({ error: 'Failed to fetch order status counts' });

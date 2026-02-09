@@ -20,6 +20,34 @@ interface EmbeddingResult {
 
 export class EmbeddingService {
     /**
+     * Tracks whether the embedding column exists in the database.
+     * Why: The pgvector migration may not have been applied yet, so all
+     * raw SQL queries against the `embedding` column would fail. We check
+     * once and cache the result to avoid repeated error log spam.
+     */
+    private static columnExists: boolean | null = null;
+
+    private static async hasEmbeddingColumn(): Promise<boolean> {
+        if (this.columnExists !== null) return this.columnExists;
+        try {
+            const result = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'WooProduct' AND column_name = 'embedding'
+                ) as exists
+            `;
+            this.columnExists = result[0]?.exists ?? false;
+            if (!this.columnExists) {
+                Logger.warn('WooProduct.embedding column not found — skipping all embedding operations. Run the pgvector migration to enable semantic search.');
+            }
+            return this.columnExists;
+        } catch {
+            this.columnExists = false;
+            return false;
+        }
+    }
+
+    /**
      * Generate embeddings for multiple texts using OpenRouter API
      */
     static async generateEmbeddings(texts: string[], apiKey: string, model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[][]> {
@@ -88,6 +116,8 @@ export class EmbeddingService {
         accountData?: { openRouterApiKey: string | null; embeddingModel: string | null },
         productData?: any
     ): Promise<void> {
+        if (!(await this.hasEmbeddingColumn())) return;
+
         let account = accountData;
         if (!account) {
             account = await prisma.account.findUnique({
@@ -129,6 +159,8 @@ export class EmbeddingService {
      * Batch update embeddings for all products
      */
     static async batchUpdateEmbeddings(accountId: string, limit: number = 100): Promise<number> {
+        if (!(await this.hasEmbeddingColumn())) return 0;
+
         const account = await prisma.account.findUnique({
             where: { id: accountId },
             select: { openRouterApiKey: true, embeddingModel: true }
@@ -183,6 +215,8 @@ export class EmbeddingService {
         query: string,
         limit: number = 10
     ): Promise<EmbeddingResult[]> {
+        if (!(await this.hasEmbeddingColumn())) return [];
+
         const account = await prisma.account.findUnique({
             where: { id: accountId },
             select: { openRouterApiKey: true, embeddingModel: true }
@@ -222,6 +256,8 @@ export class EmbeddingService {
         accountId: string,
         limit: number = 5
     ): Promise<EmbeddingResult[]> {
+        if (!(await this.hasEmbeddingColumn())) return [];
+
         const results = await prisma.$queryRaw<EmbeddingResult[]>`
             SELECT 
                 p2.id, 

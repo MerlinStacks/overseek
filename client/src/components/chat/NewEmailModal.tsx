@@ -11,6 +11,7 @@ interface EmailAccount {
     id: string;
     name: string;
     email: string;
+    isDefault?: boolean;
 }
 
 interface NewEmailModalProps {
@@ -85,7 +86,8 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
                     const accounts = await res.json();
                     setEmailAccounts(accounts);
                     if (accounts.length > 0) {
-                        setEmailAccountId(accounts[0].id);
+                        const defaultAccount = accounts.find((a: EmailAccount) => a.isDefault) || accounts[0];
+                        setEmailAccountId(defaultAccount.id);
                     }
                 }
             } catch (err) {

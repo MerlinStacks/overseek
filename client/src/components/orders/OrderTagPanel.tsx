@@ -14,14 +14,16 @@ interface TagMapping {
 interface OrderTagPanelProps {
     orderId: string;
     currentTags: string[];
+    lastUpdate?: string;
     onTagsChange: (tags: string[]) => void;
+    onRefresh?: () => void;
 }
 
 /**
  * Sidebar panel for managing order tags.
  * Displays current tags with single-click removal and a dropdown to add available tags.
  */
-export function OrderTagPanel({ orderId, currentTags, onTagsChange }: OrderTagPanelProps) {
+export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, onRefresh }: OrderTagPanelProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
@@ -96,15 +98,28 @@ export function OrderTagPanel({ orderId, currentTags, onTagsChange }: OrderTagPa
         setSearchQuery('');
 
         try {
+            const headers: HeadersInit = {
+                'Authorization': `Bearer ${token}`,
+                'X-Account-ID': currentAccount.id,
+                'Content-Type': 'application/json'
+            };
+
+            if (lastUpdate) {
+                headers['X-Order-Version'] = lastUpdate;
+            }
+
             const res = await fetch(`/api/orders/${orderId}/tags`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
+                headers,
                 body: JSON.stringify({ tag: tagName })
             });
+
+            if (res.status === 409) {
+                Logger.warn('Order conflict detected, refreshing...');
+                alert('This order has been modified by another user. Refreshing...');
+                if (onRefresh) onRefresh();
+                return;
+            }
 
             if (res.ok) {
                 const data = await res.json();
@@ -122,13 +137,26 @@ export function OrderTagPanel({ orderId, currentTags, onTagsChange }: OrderTagPa
         setIsUpdating(true);
 
         try {
+            const headers: HeadersInit = {
+                'Authorization': `Bearer ${token}`,
+                'X-Account-ID': currentAccount.id
+            };
+
+            if (lastUpdate) {
+                headers['X-Order-Version'] = lastUpdate;
+            }
+
             const res = await fetch(`/api/orders/${orderId}/tags/${encodeURIComponent(tagName)}`, {
                 method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
+                headers
             });
+
+            if (res.status === 409) {
+                Logger.warn('Order conflict detected, refreshing...');
+                alert('This order has been modified by another user. Refreshing...');
+                if (onRefresh) onRefresh();
+                return;
+            }
 
             if (res.ok) {
                 const data = await res.json();

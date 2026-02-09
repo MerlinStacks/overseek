@@ -148,7 +148,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                             { relayEndpoint: { not: null } }
                         ]
                     },
-                    select: { id: true, name: true, email: true }
+                    select: { id: true, name: true, email: true, isDefault: true }
                 });
                 return accounts;
             } catch (error) {

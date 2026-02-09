@@ -637,4 +637,108 @@ export class MetaAdsService {
             throw error;
         }
     }
+
+    // =========================================================================
+    // AD-LEVEL MANAGEMENT (Phase 4: Creative A/B Engine)
+    // =========================================================================
+
+    /**
+     * Fetch metrics for a specific Ad (Creative).
+     */
+    static async getAdMetrics(adAccountId: string, adId: string): Promise<{
+        spend: number;
+        impressions: number;
+        clicks: number;
+        conversions: number;
+        revenue: number;
+    } | null> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const fields = 'spend,impressions,clicks,actions,action_values';
+        // Note: adId from platform is usually numeric string. Ensure it doesn't have "ad_" prefix unless stored that way.
+        // Our system stores externalAdId as returned by platform. Meta Ad IDs are just numbers.
+        const url = `${GRAPH_API_BASE}/${adId}/insights?fields=${fields}&date_preset=maximum&access_token=${adAccount.accessToken}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Ad Metrics Error', { error: data.error, adId });
+                // If ad not found or deleted, return null rather than throw
+                return null;
+            }
+
+            const insights = data.data?.[0];
+            if (!insights) return null;
+
+            const spend = parseFloat(insights.spend || '0');
+            const impressions = parseInt(insights.impressions || '0');
+            const clicks = parseInt(insights.clicks || '0');
+
+            let conversions = 0;
+            let revenue = 0;
+
+            if (insights.actions && Array.isArray(insights.actions)) {
+                const purchase = insights.actions.find((a: any) => a.action_type === 'purchase' || a.action_type === 'omni_purchase');
+                if (purchase) conversions = parseFloat(purchase.value);
+            }
+
+            if (insights.action_values && Array.isArray(insights.action_values)) {
+                const purchaseVal = insights.action_values.find((a: any) => a.action_type === 'purchase' || a.action_type === 'omni_purchase');
+                if (purchaseVal) revenue = parseFloat(purchaseVal.value);
+            }
+
+            return { spend, impressions, clicks, conversions, revenue };
+
+        } catch (error) {
+            Logger.error('Failed to fetch Meta Ad Metrics', { error, adId });
+            return null;
+        }
+    }
+
+    /**
+     * Update an Ad's status.
+     */
+    static async updateAdStatus(adAccountId: string, adId: string, status: 'ACTIVE' | 'PAUSED'): Promise<boolean> {
+        const adAccount = await prisma.adAccount.findUnique({
+            where: { id: adAccountId }
+        });
+
+        if (!adAccount || adAccount.platform !== 'META' || !adAccount.accessToken) {
+            throw new Error('Invalid Meta Ad Account');
+        }
+
+        const url = `${GRAPH_API_BASE}/${adId}?access_token=${adAccount.accessToken}`;
+
+        try {
+            Logger.info('[MetaAds] Updating Ad status', { adId, status });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: status
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                Logger.error('[MetaAds] Update Ad Status Error', { error: data.error });
+                throw new Error(data.error.message);
+            }
+
+            return data.success === true;
+        } catch (error) {
+            Logger.error('Failed to update Meta Ad status', { error });
+            throw error;
+        }
+    }
 }
