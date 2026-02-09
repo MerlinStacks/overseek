@@ -313,7 +313,8 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
      * this rebuilds the index from the Postgres source of truth.
      */
     fastify.post('/orders/reindex', async (request, reply) => {
-        const accountId = request.accountId;
+        const { accountId: bodyAccountId } = (request.body as any) || {};
+        const accountId = request.accountId || bodyAccountId;
 
         if (!accountId) {
             return reply.code(400).send({ error: 'accountId is required' });

@@ -246,7 +246,8 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
 
         const res = await fetch('/api/sync/orders/reindex', {
             method: 'POST',
-            headers: h
+            headers: h,
+            body: JSON.stringify({ accountId: currentAccount.id })
         });
 
         if (!res.ok) {

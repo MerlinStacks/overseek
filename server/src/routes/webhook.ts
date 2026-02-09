@@ -89,7 +89,11 @@ export async function processWebhookPayload(
             Logger.error('[Webhook] Failed to save order to DB', { accountId, orderId: body.id, error });
         }
 
-        await IndexingService.indexOrder(accountId, body);
+        try {
+            await IndexingService.indexOrder(accountId, body);
+        } catch (err: any) {
+            Logger.warn('[Webhook] Failed to index order in ES', { accountId, orderId: body.id, error: err.message });
+        }
 
         if (topic === 'order.created') {
             Logger.info(`[Webhook] New order received via webhook`, {
@@ -102,7 +106,12 @@ export async function processWebhookPayload(
             // Emit event - NotificationEngine handles in-app, push, and socket
             EventBus.emit(EVENTS.ORDER.CREATED, { accountId, order: body });
         }
-        Logger.info(`Indexed Order`, { orderId: body.id, accountId });
+
+        // Emit ORDER.SYNCED so BOM consumption triggers immediately on webhook,
+        // not just when the next sync cycle picks up the order.
+        EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order: body });
+
+        Logger.info(`Processed order webhook`, { orderId: body.id, accountId });
     }
 
     // Handle Product Events

@@ -99,8 +99,13 @@ export function useVisibilityPolling(
             }
         };
 
-        // Initial fetch if visible (and leader when coordinating)
-        executeIfVisible();
+        // Delay initial fetch when coordinating so leader election can settle
+        let initialTimeout: ReturnType<typeof setTimeout> | null = null;
+        if (shouldCoordinate) {
+            initialTimeout = setTimeout(executeIfVisible, 500);
+        } else {
+            executeIfVisible();
+        }
 
         // Set up polling interval
         const interval = setInterval(executeIfVisible, intervalMs);
@@ -119,6 +124,7 @@ export function useVisibilityPolling(
         // Cleanup
         return () => {
             clearInterval(interval);
+            if (initialTimeout) clearTimeout(initialTimeout);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

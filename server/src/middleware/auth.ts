@@ -39,7 +39,8 @@ const STRICT_ACCOUNT_ROUTES = [
     '/invoices',
     '/email',
     '/segments',
-    '/audits'
+    '/audits',
+    '/sync'
 ];
 
 /**

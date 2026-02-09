@@ -262,14 +262,16 @@ export class OrderSync extends BaseSync {
 
             for (let i = 0; i < counts.length; i += BATCH_SIZE) {
                 const batch = counts.slice(i, i + BATCH_SIZE);
-                const updates = batch.map(c =>
+                await Promise.all(batch.map(c =>
                     prisma.wooCustomer.updateMany({
                         where: { accountId, wooId: c.woo_id },
                         data: { ordersCount: c.count }
+                    }).catch(err => {
+                        Logger.warn('Failed to update order count for customer', {
+                            accountId, syncId, wooId: c.woo_id, error: err.message
+                        });
                     })
-                );
-
-                await prisma.$transaction(updates);
+                ));
                 updated += batch.length;
             }
 

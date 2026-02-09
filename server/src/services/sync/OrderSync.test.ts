@@ -6,7 +6,6 @@ import { prisma } from '../../utils/prisma';
 vi.mock('../../utils/prisma', () => ({
     prisma: {
         $queryRaw: vi.fn(),
-        $transaction: vi.fn(),
         wooOrder: {
             findMany: vi.fn(),
             upsert: vi.fn(),
@@ -97,8 +96,6 @@ describe('OrderSync Optimization', () => {
         ];
         (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
 
-        // Step 2: $transaction batches the updateMany calls
-        (prisma.$transaction as any).mockResolvedValue([]);
         (prisma.wooCustomer.updateMany as any).mockResolvedValue({ count: 1 });
 
         await orderSync.testRecalculate(accountId);
@@ -106,10 +103,7 @@ describe('OrderSync Optimization', () => {
         // Verify Step 1: Read counts via $queryRaw (no locks held)
         expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
 
-        // Verify Step 2: Batched updates via $transaction
-        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-
-        // Each customer gets an updateMany call inside the transaction
+        // Verify Step 2: Individual updateMany calls (no $transaction)
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(2);
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
             where: { accountId, wooId: 101 },
@@ -128,7 +122,7 @@ describe('OrderSync Optimization', () => {
         await orderSync.testRecalculate(accountId);
 
         expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(prisma.wooCustomer.updateMany).not.toHaveBeenCalled();
     });
 
     it('should not break sync if recalculation fails', async () => {
