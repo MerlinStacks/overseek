@@ -163,4 +163,4 @@ networks:
     # For reverse proxy integration (e.g. Nginx Proxy Manager):
     # 1. Create the network on your host: docker network create proxy-net
     # 2. Uncomment the line below so containers join the existing network:
-    # external: true
+    external: true
