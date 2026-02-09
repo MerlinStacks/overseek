@@ -147,21 +147,55 @@ export class BOMInventorySyncService {
             return null;
         }
 
+        // In-memory cache for variation fetches within this single calculation.
+        // Avoids re-fetching /products/{parentId}/variations for every BOM item
+        // that shares the same parent product.
+        const variationCache = new Map<number, any[] | null>();
+
+        /**
+         * Helper: fetch variations with per-call caching.
+         * Returns null when the API call fails (503/timeout), so callers
+         * can fall back to local DB data instead of treating it as "no variations."
+         */
+        const getCachedVariations = async (parentWooId: number): Promise<any[] | null> => {
+            if (variationCache.has(parentWooId)) return variationCache.get(parentWooId)!;
+            try {
+                const variations = await wooService.getProductVariations(parentWooId);
+                variationCache.set(parentWooId, variations);
+                return variations;
+            } catch {
+                variationCache.set(parentWooId, null);
+                return null;
+            }
+        };
+
         // Get current WooCommerce stock for the target (variation or parent product)
         let currentWooStock: number | null = null;
         try {
             if (variationId > 0) {
                 // For variations, fetch the specific variation's stock via the variations endpoint
-                const variations = await wooService.getProductVariations(product.wooId);
-                const targetVariation = variations.find((v: any) => v.id === variationId);
-                currentWooStock = targetVariation?.stock_quantity ?? null;
+                const variations = await getCachedVariations(product.wooId);
+                if (variations) {
+                    const targetVariation = variations.find((v: any) => v.id === variationId);
+                    currentWooStock = targetVariation?.stock_quantity ?? null;
 
-                if (!targetVariation) {
-                    Logger.warn(`[BOMInventorySync] Variation ${variationId} not found on parent product`, {
-                        productId,
-                        parentWooId: product.wooId,
-                        variationId
+                    if (!targetVariation) {
+                        Logger.warn(`[BOMInventorySync] Variation ${variationId} not found on parent product`, {
+                            productId,
+                            parentWooId: product.wooId,
+                            variationId
+                        });
+                    }
+                } else {
+                    // API failed — fall back to local DB stock
+                    Logger.warn(`[BOMInventorySync] API unavailable, using local stock for target variation`, {
+                        productId, variationId
                     });
+                    const localVariation = await prisma.productVariation.findUnique({
+                        where: { productId_wooId: { productId, wooId: variationId } },
+                        select: { stockQuantity: true }
+                    });
+                    currentWooStock = localVariation?.stockQuantity ?? null;
                 }
             } else {
                 // For main products, fetch the product directly
@@ -209,15 +243,17 @@ export class BOMInventorySyncService {
                         childWooId = bomItem.childVariation.wooId;
                         childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + childWooId})`;
 
-                        // Fetch variant stock from WooCommerce via parent's variations endpoint
-                        // Note: WooCommerce variations require /products/{parentId}/variations endpoint
-                        try {
-                            const parentWooId = bomItem.childProduct.wooId;
-                            const variations = await wooService.getProductVariations(parentWooId);
+                        // Fetch variant stock from WooCommerce via parent's variations endpoint.
+                        // Uses in-memory cache so we only call the API once per parent.
+                        const parentWooId = bomItem.childProduct.wooId;
+                        const variations = await getCachedVariations(parentWooId);
+
+                        if (variations) {
                             const targetVariation = variations.find((v: any) => v.id === childWooId);
                             childStock = targetVariation?.stock_quantity ?? bomItem.childVariation.stockQuantity ?? 0;
 
                             if (!targetVariation) {
+                                // API succeeded but variation genuinely absent from parent
                                 Logger.warn(`[BOMInventorySync] Variation ${childWooId} not found in parent ${parentWooId}`, { accountId });
                             } else {
                                 // Update local DB with live stock so UI calculations match
@@ -232,9 +268,12 @@ export class BOMInventorySyncService {
                                     });
                                 }
                             }
-                        } catch {
-                            // Fallback to local data if live fetch fails
+                        } else {
+                            // API unavailable (503/timeout) — fall back to local data
                             childStock = bomItem.childVariation.stockQuantity ?? 0;
+                            Logger.debug(`[BOMInventorySync] API unavailable, using local stock for variation`, {
+                                accountId, childWooId, parentWooId, localStock: childStock
+                            });
                         }
                     } else {
                         // Standard product component

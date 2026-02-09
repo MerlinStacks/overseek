@@ -10,6 +10,20 @@ import { Logger } from '../utils/logger';
 
 const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
     /**
+     * GET /google/callback-url - Return the actual callback URL the server uses.
+     * Why: Frontend needs to display this to admins for Google Cloud Console setup,
+     * and it may differ from window.location.origin when API_URL is set.
+     */
+    fastify.get('/google/callback-url', { preHandler: requireAuthFastify }, async (request) => {
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+        return {
+            callbackUrl: apiUrl
+                ? `${apiUrl}/api/oauth/google/callback`
+                : `${request.protocol}://${request.hostname}/api/oauth/google/callback`
+        };
+    });
+
+    /**
      * GET /google/authorize - Initiate Google OAuth
      */
     fastify.get('/google/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {

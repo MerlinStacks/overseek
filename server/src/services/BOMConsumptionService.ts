@@ -352,10 +352,13 @@ export class BOMConsumptionService {
 
     /**
      * Checks current stock vs planned stock to decide if rollback is needed.
+     * Uses a heuristic: if current stock <= post-deduction stock, the deduction
+     * likely occurred and should be rolled back.
      */
     private static async verifiedRollback(accountId: string, plan: ComponentDeduction[]) {
+        const itemsToRollback: ComponentDeduction[] = [];
+
         for (const item of plan) {
-            // Fetch fresh stock
             let currentStock = 0;
             if (item.componentType === 'InternalProduct') {
                 const p = await prisma.internalProduct.findUnique({ where: { id: item.componentId } });
@@ -364,35 +367,20 @@ export class BOMConsumptionService {
                 const p = await prisma.wooProduct.findUnique({ where: { id: item.componentId } });
                 currentStock = p?.stockQuantity ?? 0;
             } else if (item.componentType === 'ProductVariation') {
-                // Need to find by wooID
                 const p = await prisma.productVariation.findFirst({
                     where: { productId: item.componentId, wooId: item.wooId }
                 });
                 currentStock = p?.stockQuantity ?? 0;
             }
 
-            // Heuristic: If current stock is closer to "NewStock" than "oldStock" (or less), assume it was deducted.
-            // Especially if Current <= NewStock
             if (currentStock <= item.newStock) {
-                // Deducted. Add it back.
-                const wooService = await WooService.forAccount(accountId);
-                // Reuse rollback single logic or simple direct update
-                // ... (Simplified inline for brevity)
-
-                // Perform rollback (Add back quantity)
-                Logger.info(`[BOMConsumption] Verified Rollback: Restoring ${item.quantityDeducted} to ${item.componentName}`, { accountId });
-                // ... (Actual DB calls similar to rollbackDeductions)
-                // NOTE: To save code lines, we can call rollbackDeductions but with a filtered list.
-                // But wait, rollbackDeductions assumes blind rollback.
-
-                // Proper call: await this.rollbackDeductions(accountId, [item]);
+                Logger.info(`[BOMConsumption] Verified Rollback: Will restore ${item.quantityDeducted} to ${item.componentName}`, { accountId });
+                itemsToRollback.push(item);
             }
+        }
 
-            // Actually, calling the standard rollback for just this item is cleaner
-            // We just passed the check.
-            if (currentStock <= item.newStock) {
-                await this.rollbackDeductions(accountId, [item]);
-            }
+        if (itemsToRollback.length > 0) {
+            await this.rollbackDeductions(accountId, itemsToRollback);
         }
     }
 
@@ -603,183 +591,35 @@ export class BOMConsumptionService {
         return hash;
     }
 
-    /**
-     * Consume components for a single line item.
-     */
-    private static async consumeLineItemComponents(
-        accountId: string,
-        item: OrderLineItem
-    ): Promise<{ deductions: ComponentDeduction[]; modifiedComponents: { productId: string; variationId?: number }[] }> {
-        const deductions: ComponentDeduction[] = [];
-        const modifiedComponents: { productId: string; variationId?: number }[] = [];
-
-        // Find the product in our DB
-        const product = await prisma.wooProduct.findFirst({
-            where: { accountId, wooId: item.product_id },
-            select: { id: true, wooId: true, name: true }
-        });
-
-        if (!product) {
-            Logger.debug(`[BOMConsumption] Product wooId=${item.product_id} not found in DB`, { accountId });
-            return { deductions, modifiedComponents };
-        }
-
-        // Check for a BOM (either for the parent or specific variation)
-        const variationId = item.variation_id || 0;
-        const bom = await prisma.bOM.findUnique({
-            where: {
-                productId_variationId: { productId: product.id, variationId }
-            },
-            include: {
-                items: {
-                    include: {
-                        childProduct: { select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true } },
-                        childVariation: { select: { productId: true, wooId: true, sku: true, stockQuantity: true, rawData: true } },
-                        internalProduct: { select: { id: true, name: true, stockQuantity: true } }
-                    }
-                }
-            }
-        });
-
-        if (!bom || bom.items.length === 0) {
-            Logger.debug(`[BOMConsumption] No BOM found for product ${product.id} variation ${variationId}`, { accountId });
-            return { deductions, modifiedComponents };
-        }
-
-        Logger.info(`[BOMConsumption] Found BOM with ${bom.items.length} components for ${product.name}`, { accountId });
-
-        const wooService = await WooService.forAccount(accountId);
-
-        // Process each BOM component
-        for (const bomItem of bom.items) {
-            const quantityToDeduct = Number(bomItem.quantity) * item.quantity;
-
-            try {
-                if (bomItem.internalProduct) {
-                    // Internal product - just update local DB
-                    const prev = bomItem.internalProduct.stockQuantity;
-                    const newStock = Math.max(0, prev - quantityToDeduct);
-
-                    await prisma.internalProduct.update({
-                        where: { id: bomItem.internalProduct.id },
-                        data: { stockQuantity: newStock }
-                    });
-
-                    deductions.push({
-                        componentType: 'InternalProduct',
-                        componentId: bomItem.internalProduct.id,
-                        componentName: bomItem.internalProduct.name,
-                        quantityDeducted: quantityToDeduct,
-                        previousStock: prev,
-                        newStock
-                    });
-
-                    Logger.info(`[BOMConsumption] Deducted ${quantityToDeduct} from InternalProduct "${bomItem.internalProduct.name}": ${prev} → ${newStock}`, { accountId });
-
-                } else if (bomItem.childVariation && bomItem.childProduct) {
-                    // Product Variation - update local DB and WooCommerce
-                    const rawData = bomItem.childVariation.rawData as any;
-                    const prev = bomItem.childVariation.stockQuantity ?? rawData?.stock_quantity ?? 0;
-                    const newStock = Math.max(0, prev - quantityToDeduct);
-
-                    // Update local DB
-                    await prisma.productVariation.update({
-                        where: {
-                            productId_wooId: {
-                                productId: bomItem.childProduct.id,
-                                wooId: bomItem.childVariation.wooId
-                            }
-                        },
-                        data: { stockQuantity: newStock }
-                    });
-
-                    // Update WooCommerce with retry logic
-                    await withRetry(
-                        () => wooService.updateProductVariation(
-                            bomItem.childProduct!.wooId,
-                            bomItem.childVariation!.wooId,
-                            { stock_quantity: newStock }
-                        ),
-                        { context: `Update variation ${bomItem.childVariation.wooId}` }
-                    );
-
-                    deductions.push({
-                        componentType: 'ProductVariation',
-                        componentId: bomItem.childProduct.id,
-                        componentName: `${bomItem.childProduct.name} (Variation ${bomItem.childVariation.sku || bomItem.childVariation.wooId})`,
-                        wooId: bomItem.childVariation.wooId,
-                        parentWooId: bomItem.childProduct.wooId,
-                        quantityDeducted: quantityToDeduct,
-                        previousStock: prev,
-                        newStock
-                    });
-
-                    modifiedComponents.push({ productId: bomItem.childProduct.id, variationId: bomItem.childVariation.wooId });
-
-                    Logger.info(`[BOMConsumption] Deducted ${quantityToDeduct} from Variation "${bomItem.childProduct.name}": ${prev} → ${newStock}`, { accountId });
-
-                } else if (bomItem.childProduct) {
-                    // Simple product - update local DB and WooCommerce
-                    const rawData = bomItem.childProduct.rawData as any;
-                    const prev = bomItem.childProduct.stockQuantity ?? rawData?.stock_quantity ?? 0;
-                    const newStock = Math.max(0, prev - quantityToDeduct);
-
-                    // Update local DB
-                    await prisma.wooProduct.update({
-                        where: { id: bomItem.childProduct.id },
-                        data: { stockQuantity: newStock }
-                    });
-
-                    // Update WooCommerce with retry logic
-                    await withRetry(
-                        () => wooService.updateProduct(bomItem.childProduct!.wooId, { stock_quantity: newStock }),
-                        { context: `Update product ${bomItem.childProduct.wooId}` }
-                    );
-
-                    deductions.push({
-                        componentType: 'WooProduct',
-                        componentId: bomItem.childProduct.id,
-                        componentName: bomItem.childProduct.name,
-                        wooId: bomItem.childProduct.wooId,
-                        quantityDeducted: quantityToDeduct,
-                        previousStock: prev,
-                        newStock
-                    });
-
-                    modifiedComponents.push({ productId: bomItem.childProduct.id });
-
-                    Logger.info(`[BOMConsumption] Deducted ${quantityToDeduct} from Product "${bomItem.childProduct.name}": ${prev} → ${newStock}`, { accountId });
-                }
-            } catch (err: any) {
-                Logger.error(`[BOMConsumption] Failed to deduct from component`, {
-                    accountId,
-                    bomItemId: bomItem.id,
-                    error: err.message
-                });
-                throw err;
-            }
-        }
-
-        return { deductions, modifiedComponents };
-    }
+    // consumeLineItemComponents was removed — superseded by planLineItemDeductions + executeDeduction pattern
 
     /**
      * After a component's stock changes, find all BOM products that use it
      * and trigger a sync for each to update their effective stock in WooCommerce.
+     *
+     * @param componentType - Whether the component is a WooCommerce product or an internal product.
+     *   Defaults to 'wooProduct' for backward compatibility.
      */
     static async cascadeSyncAffectedProducts(
         accountId: string,
         componentProductId: string,
-        componentVariationId?: number
+        componentVariationId?: number,
+        componentType: 'wooProduct' | 'internalProduct' = 'wooProduct'
     ): Promise<void> {
-        // Find all BOMs that use this product as a component
-        const affectedBomItems = await prisma.bOMItem.findMany({
-            where: {
+        // Build the query based on component type
+        const whereClause = componentType === 'internalProduct'
+            ? { internalProductId: componentProductId }
+            : {
                 OR: [
                     { childProductId: componentProductId },
-                    ...(componentVariationId ? [{ childProductId: componentProductId, childVariationId: componentVariationId }] : [])
+                    ...(componentVariationId
+                        ? [{ childProductId: componentProductId, childVariationId: componentVariationId }]
+                        : [])
                 ]
-            },
+            };
+
+        const affectedBomItems = await prisma.bOMItem.findMany({
+            where: whereClause,
             include: {
                 bom: {
                     include: {
@@ -793,11 +633,11 @@ export class BOMConsumptionService {
         const accountBoms = affectedBomItems.filter(item => item.bom.product.accountId === accountId);
 
         if (accountBoms.length === 0) {
-            Logger.debug(`[BOMConsumption] No affected BOM products found for component ${componentProductId}`, { accountId });
+            Logger.debug(`[BOMConsumption] No affected BOM products found for component ${componentProductId} (type: ${componentType})`, { accountId });
             return;
         }
 
-        Logger.info(`[BOMConsumption] Cascade syncing ${accountBoms.length} affected BOM products`, { accountId });
+        Logger.info(`[BOMConsumption] Cascade syncing ${accountBoms.length} affected BOM products for ${componentType} ${componentProductId}`, { accountId });
 
         // Sync each affected BOM product
         for (const item of accountBoms) {

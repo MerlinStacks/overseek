@@ -159,6 +159,9 @@ export class WooService {
         const apiParams = {
             ...rest,
             per_page: params.per_page || 20,
+            // Only fetch standard WooCommerce statuses — excludes checkout-draft,
+            // trash, auto-draft, and custom plugin statuses that inflate counts.
+            status: 'pending,processing,on-hold,completed,cancelled,refunded,failed',
             // Use modified_after for incremental syncs to catch status changes
             ...(after && { modified_after: after })
         };
@@ -244,20 +247,36 @@ export class WooService {
     }
 
     /**
-     * Fetch all variations for a variable product.
-     * Includes stock_quantity, sku, price, attributes, etc.
+     * Fetch all variations for a variable product with Redis caching.
+     * Cache TTL: 30 seconds to balance freshness with API savings.
+     * Throws on API failure so callers can distinguish "store down" from "no variations."
      */
     async getProductVariations(productId: number): Promise<any[]> {
         if (this.isDemo) return [];
 
+        // Try cache first to avoid redundant API calls (BOM sync may fetch same parent repeatedly)
+        const { redisClient } = await import('../utils/redis');
+        const cacheKey = `woo:variations:${this.accountId}:${productId}`;
+
         try {
-            // WooCommerce has pagination for variations, fetch up to 100
-            const response = await this.requestWithRetry('get', `products/${productId}/variations`, { per_page: 100 });
-            return response.data || [];
-        } catch (error) {
-            Logger.warn(`Failed to fetch variations for product ${productId}`, { error });
-            return [];
+            const cached = await redisClient.get(cacheKey);
+            if (cached) return JSON.parse(cached);
+        } catch {
+            // Cache miss or Redis error — continue to API
         }
+
+        // WooCommerce has pagination for variations, fetch up to 100
+        const response = await this.requestWithRetry('get', `products/${productId}/variations`, { per_page: 100 });
+        const variations = response.data || [];
+
+        // Cache the result for 30 seconds
+        try {
+            await redisClient.setex(cacheKey, 30, JSON.stringify(variations));
+        } catch {
+            // Cache write failure is non-fatal
+        }
+
+        return variations;
     }
 
     async createProduct(data: WooProductData, userId?: string) {

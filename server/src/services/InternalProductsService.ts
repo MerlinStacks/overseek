@@ -175,7 +175,7 @@ export class InternalProductsService {
     ): Promise<InternalProductWithSupplier> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
-            select: { accountId: true }
+            select: { accountId: true, stockQuantity: true }
         });
 
         if (!existing) {
@@ -191,6 +191,9 @@ export class InternalProductsService {
                 throw new Error('Supplier not found');
             }
         }
+
+        // Track whether stock changed so we know if cascade sync is needed
+        const stockChanged = data.stockQuantity !== undefined && data.stockQuantity !== existing.stockQuantity;
 
         const item = await prisma.internalProduct.update({
             where: { id },
@@ -215,6 +218,11 @@ export class InternalProductsService {
             productId: id,
             updatedFields: Object.keys(data)
         });
+
+        // Cascade sync: if stock changed, recalculate all BOM parents that use this component
+        if (stockChanged) {
+            this.triggerCascadeSync(existing.accountId, id).catch(() => { });
+        }
 
         return {
             ...item,
@@ -335,12 +343,39 @@ export class InternalProductsService {
             reason
         });
 
+        // Cascade sync: recalculate all BOM parents that use this component
+        // Skip cascade when source is SYSTEM_BOM to prevent infinite loops
+        if (source !== 'SYSTEM_BOM') {
+            this.triggerCascadeSync(existing.accountId, id).catch(() => { });
+        }
+
         return {
             ...item,
             cogs: item.cogs ? Number(item.cogs) : null,
             images: (item.images as string[]) || [],
             bomUsageCount: item._count.bomItems
         };
+    }
+
+    /**
+     * Fire-and-forget cascade sync for BOM parents using this internal product.
+     * Non-blocking: errors are logged but never propagated.
+     */
+    private static async triggerCascadeSync(accountId: string, internalProductId: string): Promise<void> {
+        try {
+            const { BOMConsumptionService } = await import('./BOMConsumptionService');
+            await BOMConsumptionService.cascadeSyncAffectedProducts(
+                accountId,
+                internalProductId,
+                undefined,
+                'internalProduct'
+            );
+        } catch (err: any) {
+            Logger.warn('[InternalProductsService] Cascade sync failed for internal product', {
+                internalProductId,
+                error: err.message
+            });
+        }
     }
 
 

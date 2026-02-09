@@ -19,8 +19,9 @@ export interface SyncLog {
     itemsProcessed: number;
     errorMessage?: string;
     startedAt: string;
-    completedAt?: string;
+    completedAt?: string | null;
     /** Enriched fields from /health endpoint */
+    triggerSource?: string;
     retryCount?: number;
     errorCode?: string;
     friendlyError?: string;

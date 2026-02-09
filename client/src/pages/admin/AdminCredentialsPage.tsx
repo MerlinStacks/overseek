@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe, Facebook, Bell, Copy, Link } from 'lucide-react';
+import {
+    Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe,
+    Facebook, Bell, Copy, Link, ExternalLink, Shield, Eye, EyeOff, Info,
+    CheckCircle
+} from 'lucide-react';
 
 interface PlatformCredential {
     id: string;
@@ -11,69 +15,97 @@ interface PlatformCredential {
     updatedAt: string;
 }
 
+interface FieldConfig {
+    key: string;
+    label: string;
+    placeholder: string;
+    /** Brief help text shown below the field */
+    helpText?: string;
+    /** Whether this field is required for the integration to work */
+    required?: boolean;
+    /** Whether to treat this as a sensitive field (masked by default) */
+    sensitive?: boolean;
+}
+
 interface PlatformConfig {
     id: string;
     name: string;
     description: string;
     icon: React.ElementType;
-    fields: { key: string; label: string; placeholder: string }[];
+    /** Brand colour class for the icon badge */
+    iconColor: string;
+    fields: FieldConfig[];
     testable?: boolean;
     /** OAuth callback path for platforms that need it */
     callbackPath?: string;
     /** Webhook URL path for platforms that need it */
     webhookPath?: string;
+    /** Link to the provider's developer console */
+    docsUrl?: string;
+    /** Short label for the docs link */
+    docsLabel?: string;
 }
 
 const PLATFORMS: PlatformConfig[] = [
     {
         id: 'PLATFORM_SMTP',
-        name: 'Platform SMTP',
-        description: 'SMTP settings for system emails (password resets, MFA codes, notifications)',
+        name: 'Email (SMTP)',
+        description: 'Send system emails — password resets, MFA codes, and notifications.',
         icon: Mail,
+        iconColor: 'bg-sky-500',
         fields: [
-            { key: 'host', label: 'SMTP Host', placeholder: 'smtp.example.com' },
-            { key: 'port', label: 'Port', placeholder: '587' },
-            { key: 'username', label: 'Username', placeholder: 'your-email@example.com' },
-            { key: 'password', label: 'Password', placeholder: '••••••••' },
-            { key: 'fromEmail', label: 'From Email', placeholder: 'noreply@example.com' },
+            { key: 'host', label: 'SMTP Host', placeholder: 'smtp.example.com', required: true },
+            { key: 'port', label: 'Port', placeholder: '587', required: true, helpText: 'Use 587 for STARTTLS or 465 for implicit TLS.' },
+            { key: 'username', label: 'Username', placeholder: 'your-email@example.com', required: true },
+            { key: 'password', label: 'Password', placeholder: '••••••••', required: true, sensitive: true },
+            { key: 'fromEmail', label: 'From Email', placeholder: 'noreply@example.com', helpText: 'The sender address shown to recipients.' },
             { key: 'fromName', label: 'From Name', placeholder: 'OverSeek' },
-            { key: 'secure', label: 'Use TLS/SSL', placeholder: 'true (for port 465)' }
+            { key: 'secure', label: 'Use TLS/SSL', placeholder: 'true', helpText: 'Set to "true" for port 465 (implicit TLS).' }
         ],
         testable: true
     },
     {
         id: 'GOOGLE_ADS',
         name: 'Google Ads',
-        description: 'OAuth app credentials for Google Ads. Users connect via "Sign in with Google" using these credentials.',
+        description: 'Let users connect their Google Ads accounts via OAuth.',
         icon: Globe,
+        iconColor: 'bg-red-500',
+        docsUrl: 'https://console.cloud.google.com/apis/credentials',
+        docsLabel: 'Google Cloud Console',
         fields: [
-            { key: 'clientId', label: 'Client ID', placeholder: 'xxx.apps.googleusercontent.com' },
-            { key: 'clientSecret', label: 'Client Secret', placeholder: 'GOCSPX-xxx' },
-            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character token from Ads API Center' },
-            { key: 'loginCustomerId', label: 'Manager Account ID (MCC)', placeholder: '123-456-7890 (optional, for MCC access)' }
+            { key: 'clientId', label: 'Client ID', placeholder: 'xxx.apps.googleusercontent.com', required: true, helpText: 'From your Google Cloud OAuth 2.0 credential.' },
+            { key: 'clientSecret', label: 'Client Secret', placeholder: 'GOCSPX-xxx', required: true, sensitive: true },
+            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character alphanumeric token', required: true, helpText: 'Found in Google Ads → Tools & Settings → API Center. Required for all Ads API calls.' },
+            { key: 'loginCustomerId', label: 'Manager Account ID (MCC)', placeholder: '123-456-7890', helpText: 'Only needed if you manage ads through an MCC (Manager) account. Format: 123-456-7890.' }
         ],
         callbackPath: '/api/oauth/google/callback'
     },
     {
         id: 'META_ADS',
         name: 'Meta Ads',
-        description: 'OAuth app credentials for Facebook/Instagram Ads. Users connect via "Connect with Meta" using these credentials.',
+        description: 'Let users connect Facebook & Instagram Ads via OAuth.',
         icon: Facebook,
+        iconColor: 'bg-blue-600',
+        docsUrl: 'https://developers.facebook.com/apps',
+        docsLabel: 'Meta Developer Console',
         fields: [
-            { key: 'appId', label: 'App ID', placeholder: '123456789' },
-            { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...' }
+            { key: 'appId', label: 'App ID', placeholder: '123456789', required: true },
+            { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...', required: true, sensitive: true }
         ],
         callbackPath: '/api/oauth/meta/ads/callback'
     },
     {
         id: 'META_MESSAGING',
         name: 'Meta Messaging',
-        description: 'API credentials for Facebook Messenger & Instagram DMs integration',
+        description: 'Facebook Messenger & Instagram DM integration.',
         icon: Facebook,
+        iconColor: 'bg-indigo-500',
+        docsUrl: 'https://developers.facebook.com/apps',
+        docsLabel: 'Meta Developer Console',
         fields: [
-            { key: 'appId', label: 'App ID', placeholder: '123456789' },
-            { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...' },
-            { key: 'webhookVerifyToken', label: 'Webhook Verify Token', placeholder: 'your_secret_token (same as in Facebook Dev Console)' }
+            { key: 'appId', label: 'App ID', placeholder: '123456789', required: true },
+            { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...', required: true, sensitive: true },
+            { key: 'webhookVerifyToken', label: 'Webhook Verify Token', placeholder: 'your_secret_token', required: true, helpText: "Must match the Verify Token in your Facebook App's webhook settings." }
         ],
         callbackPath: '/api/oauth/meta/messaging/callback',
         webhookPath: '/api/meta-webhook'
@@ -81,11 +113,12 @@ const PLATFORMS: PlatformConfig[] = [
     {
         id: 'WEB_PUSH_VAPID',
         name: 'Push Notifications',
-        description: 'VAPID keys for Web Push notifications. Generate with: npx web-push generate-vapid-keys',
+        description: 'VAPID keys for browser push notifications.',
         icon: Bell,
+        iconColor: 'bg-violet-500',
         fields: [
-            { key: 'publicKey', label: 'Public Key', placeholder: 'Base64-encoded public key' },
-            { key: 'privateKey', label: 'Private Key', placeholder: 'Base64-encoded private key' }
+            { key: 'publicKey', label: 'Public Key', placeholder: 'Base64-encoded public key', required: true },
+            { key: 'privateKey', label: 'Private Key', placeholder: 'Base64-encoded private key', required: true, sensitive: true }
         ]
     }
 ];
@@ -93,8 +126,29 @@ const PLATFORMS: PlatformConfig[] = [
 type PlatformId = 'PLATFORM_SMTP' | 'GOOGLE_ADS' | 'META_ADS' | 'META_MESSAGING' | 'WEB_PUSH_VAPID';
 
 /**
+ * Copyable URL row — displays a URL with a one-click copy button.
+ */
+function CopyableUrl({ label, url, onCopied }: { label: string; url: string; onCopied: () => void }) {
+    return (
+        <div className="flex items-center gap-3 group">
+            <span className="text-xs font-medium text-slate-500 w-32 shrink-0">{label}</span>
+            <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono text-xs text-slate-700 overflow-x-auto">
+                {url}
+            </div>
+            <button
+                onClick={() => { navigator.clipboard.writeText(url); onCopied(); }}
+                className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                title="Copy to clipboard"
+            >
+                <Copy size={14} />
+            </button>
+        </div>
+    );
+}
+
+/**
  * Super Admin page for managing platform API credentials.
- * Credentials are stored securely in the database.
+ * Credentials are stored encrypted in the database.
  */
 export function AdminCredentialsPage() {
     const { token } = useAuth();
@@ -107,10 +161,19 @@ export function AdminCredentialsPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [activeTab, setActiveTab] = useState<PlatformId>('PLATFORM_SMTP');
     const [generating, setGenerating] = useState(false);
+    const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         fetchCredentials();
     }, [token]);
+
+    /** Auto-dismiss success messages after 4 seconds */
+    useEffect(() => {
+        if (message?.type === 'success') {
+            const timer = setTimeout(() => setMessage(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
 
     async function fetchCredentials() {
         try {
@@ -120,23 +183,19 @@ export function AdminCredentialsPage() {
             const data = await res.json();
             setCredentials(data);
 
-            // Initialize form data with existing values from saved credentials
             const initialForm: Record<string, Record<string, string>> = {};
             const initialNotes: Record<string, string> = {};
 
             PLATFORMS.forEach(platform => {
                 initialForm[platform.id] = {};
-                // Initialize all fields with empty values first
                 platform.fields.forEach(field => {
                     initialForm[platform.id][field.key] = '';
                 });
                 initialNotes[platform.id] = '';
             });
 
-            // Populate with existing credentials and notes
             data.forEach((cred: PlatformCredential) => {
                 if (cred.credentials) {
-                    // Populate form with saved credential values
                     Object.entries(cred.credentials).forEach(([key, value]) => {
                         if (initialForm[cred.platform]) {
                             initialForm[cred.platform][key] = value;
@@ -162,7 +221,6 @@ export function AdminCredentialsPage() {
         setMessage(null);
 
         try {
-            // Filter out empty values
             const creds: Record<string, string> = {};
             Object.entries(formData[platformId] || {}).forEach(([key, value]) => {
                 if (value.trim()) {
@@ -171,7 +229,7 @@ export function AdminCredentialsPage() {
             });
 
             if (Object.keys(creds).length === 0) {
-                setMessage({ type: 'error', text: 'Please fill in at least one credential field' });
+                setMessage({ type: 'error', text: 'Please fill in at least one credential field.' });
                 return;
             }
 
@@ -185,22 +243,21 @@ export function AdminCredentialsPage() {
             });
 
             if (res.ok) {
-                setMessage({ type: 'success', text: `${platformId} credentials saved successfully` });
-                // Refresh to get latest saved values (don't clear form)
+                setMessage({ type: 'success', text: `${PLATFORMS.find(p => p.id === platformId)?.name} credentials saved.` });
                 fetchCredentials();
             } else {
                 const err = await res.json();
-                setMessage({ type: 'error', text: err.error || 'Failed to save' });
+                setMessage({ type: 'error', text: err.error || 'Failed to save.' });
             }
-        } catch (err) {
-            setMessage({ type: 'error', text: 'Network error' });
+        } catch {
+            setMessage({ type: 'error', text: 'Network error.' });
         } finally {
             setSaving(null);
         }
     }
 
     async function handleDelete(platformId: string) {
-        if (!confirm(`Delete all ${platformId} credentials? This cannot be undone.`)) return;
+        if (!confirm(`Delete all ${PLATFORMS.find(p => p.id === platformId)?.name} credentials? This cannot be undone.`)) return;
 
         try {
             const res = await fetch(`/api/admin/platform-credentials/${platformId}`, {
@@ -209,16 +266,16 @@ export function AdminCredentialsPage() {
             });
 
             if (res.ok) {
-                setMessage({ type: 'success', text: 'Credentials deleted' });
+                setMessage({ type: 'success', text: 'Credentials deleted.' });
                 fetchCredentials();
             }
-        } catch (err) {
-            setMessage({ type: 'error', text: 'Failed to delete' });
+        } catch {
+            setMessage({ type: 'error', text: 'Failed to delete.' });
         }
     }
 
     /**
-     * Tests SMTP connection with the provided credentials.
+     * Tests SMTP connection with the saved credentials.
      */
     async function handleTestSmtp() {
         setTesting('PLATFORM_SMTP');
@@ -227,9 +284,8 @@ export function AdminCredentialsPage() {
         try {
             const smtpData = formData['PLATFORM_SMTP'] || {};
 
-            // Require at least host/port/username/password for test
             if (!smtpData.host || !smtpData.port || !smtpData.username || !smtpData.password) {
-                setMessage({ type: 'error', text: 'Please fill in host, port, username, and password to test' });
+                setMessage({ type: 'error', text: 'Host, port, username, and password are required to test.' });
                 return;
             }
 
@@ -253,10 +309,10 @@ export function AdminCredentialsPage() {
             if (res.ok && result.success) {
                 setMessage({ type: 'success', text: 'SMTP connection successful!' });
             } else {
-                setMessage({ type: 'error', text: result.error || 'SMTP connection failed' });
+                setMessage({ type: 'error', text: result.error || 'SMTP connection failed.' });
             }
-        } catch (err) {
-            setMessage({ type: 'error', text: 'Network error during SMTP test' });
+        } catch {
+            setMessage({ type: 'error', text: 'Network error during SMTP test.' });
         } finally {
             setTesting(null);
         }
@@ -267,11 +323,12 @@ export function AdminCredentialsPage() {
 
     const getLastUpdated = (platformId: string) => {
         const cred = credentials.find(c => c.platform === platformId);
-        return cred?.updatedAt ? new Date(cred.updatedAt).toLocaleDateString() : null;
+        if (!cred?.updatedAt) return null;
+        return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(cred.updatedAt));
     };
 
     /**
-     * Generates VAPID keys - the backend now saves them automatically.
+     * Generates VAPID keys via the backend.
      */
     async function handleGenerateVapidKeys() {
         setGenerating(true);
@@ -290,7 +347,6 @@ export function AdminCredentialsPage() {
                     const err = JSON.parse(text);
                     errorMsg = err.error || err.message || errorMsg;
                 } catch {
-                    // Response isn't JSON - use status text
                     errorMsg = `${res.statusText || 'Server error'} (${res.status})`;
                 }
                 setMessage({ type: 'error', text: errorMsg });
@@ -300,17 +356,15 @@ export function AdminCredentialsPage() {
             const result = await res.json();
 
             if (result.alreadyExists) {
-                // Keys already exist - just populate the form with the public key
                 setFormData(prev => ({
                     ...prev,
                     'WEB_PUSH_VAPID': {
                         publicKey: result.publicKey,
-                        privateKey: '••••••••' // Don't show private key for existing
+                        privateKey: '••••••••'
                     }
                 }));
                 setMessage({ type: 'success', text: result.message || 'VAPID keys already configured.' });
             } else {
-                // New keys generated and saved
                 setFormData(prev => ({
                     ...prev,
                     'WEB_PUSH_VAPID': {
@@ -321,7 +375,6 @@ export function AdminCredentialsPage() {
                 setMessage({ type: 'success', text: result.message || 'VAPID keys generated and saved!' });
             }
 
-            // Refresh to show updated status
             fetchCredentials();
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : 'Network error generating keys';
@@ -331,208 +384,334 @@ export function AdminCredentialsPage() {
         }
     }
 
+    /** Toggle visibility of a sensitive field */
+    function toggleReveal(fieldKey: string) {
+        setRevealedFields(prev => ({ ...prev, [fieldKey]: !prev[fieldKey] }));
+    }
+
     if (loading) {
-        return <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin text-gray-400" /></div>;
+        return (
+            <div className="flex items-center justify-center py-20">
+                <Loader2 className="animate-spin text-slate-400" size={28} />
+            </div>
+        );
     }
 
     const currentPlatform = PLATFORMS.find(p => p.id === activeTab)!;
+    const configured = isConfigured(currentPlatform.id);
+    const lastUpdated = getLastUpdated(currentPlatform.id);
+    const configuredCount = PLATFORMS.filter(p => isConfigured(p.id)).length;
 
     return (
         <div className="max-w-4xl">
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-                <Key className="text-slate-600" size={28} />
-                <h1 className="text-2xl font-bold text-slate-800">Platform Credentials</h1>
+            {/* ── Page Header ── */}
+            <div className="mb-8">
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-slate-100 rounded-lg">
+                        <Shield className="text-slate-600" size={22} />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900">Platform Credentials</h1>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                            {configuredCount}/{PLATFORMS.length} platforms configured
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            <p className="text-slate-600 mb-6">
-                Configure API credentials for ad platform integrations. These credentials are stored securely and used for OAuth flows and API access.
-            </p>
-
-            {/* Global Message */}
+            {/* ── Toast Message ── */}
             {message && (
-                <div className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-                    }`}>
-                    {message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+                <div
+                    className={`mb-6 px-4 py-3 rounded-lg flex items-center gap-3 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-200
+                        ${message.type === 'success'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-red-50 text-red-800 border border-red-200'
+                        }`}
+                >
+                    {message.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                     {message.text}
                 </div>
             )}
 
-            {/* Tabs Navigation */}
-            <div className="flex overflow-x-auto border-b border-gray-200 no-scrollbar mb-6">
-                {PLATFORMS.map((platform) => {
-                    const Icon = platform.icon;
-                    const isActive = activeTab === platform.id;
-                    const configured = isConfigured(platform.id);
+            {/* ── Platform Sidebar + Content Layout ── */}
+            <div className="flex gap-6">
+                {/* Left Sidebar — Platform List */}
+                <div className="w-56 shrink-0 space-y-1">
+                    {PLATFORMS.map((platform) => {
+                        const Icon = platform.icon;
+                        const isActive = activeTab === platform.id;
+                        const done = isConfigured(platform.id);
 
-                    return (
-                        <button
-                            key={platform.id}
-                            onClick={() => setActiveTab(platform.id as PlatformId)}
-                            className={`
-                                flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors relative
-                                ${isActive
-                                    ? 'border-blue-600 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                }
-                            `}
-                        >
-                            <Icon size={18} />
-                            {platform.name}
-                            {configured && (
-                                <span className="w-2 h-2 bg-green-500 rounded-full" title="Configured" />
-                            )}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* Active Tab Content */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                {/* Tab Header */}
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-linear-to-r from-slate-50 to-white">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <currentPlatform.icon className="text-slate-600" size={24} />
-                            <h2 className="text-lg font-semibold text-slate-900">{currentPlatform.name}</h2>
-                            {isConfigured(currentPlatform.id) && (
-                                <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Configured</span>
-                            )}
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1">{currentPlatform.description}</p>
-                        {getLastUpdated(currentPlatform.id) && (
-                            <p className="text-xs text-slate-400 mt-1">Last updated: {getLastUpdated(currentPlatform.id)}</p>
-                        )}
-                    </div>
-                </div>
-
-                {/* Callback/Webhook URLs (for OAuth platforms) */}
-                {(currentPlatform.callbackPath || currentPlatform.webhookPath) && (
-                    <div className="px-6 py-4 bg-amber-50 border-b border-amber-100">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Link size={16} className="text-amber-700" />
-                            <span className="text-sm font-medium text-amber-800">URL Configuration</span>
-                        </div>
-                        <p className="text-xs text-amber-700 mb-3">
-                            Add these URLs to your {currentPlatform.name === 'Google Ads' ? 'Google Cloud Console' : 'Meta Developer Console'}:
-                        </p>
-                        <div className="space-y-2">
-                            {currentPlatform.callbackPath && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-amber-700 font-medium w-28 shrink-0">
-                                        {currentPlatform.id === 'META_MESSAGING' ? 'OAuth Redirect:' : 'Callback URL:'}
-                                    </span>
-                                    <code className="flex-1 text-xs bg-white px-2 py-1.5 rounded border border-amber-200 font-mono text-amber-900 overflow-x-auto">
-                                        {window.location.origin}{currentPlatform.callbackPath}
-                                    </code>
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}${currentPlatform.callbackPath}`);
-                                            setMessage({ type: 'success', text: 'URL copied to clipboard!' });
-                                        }}
-                                        className="p-1.5 hover:bg-amber-100 rounded transition-colors"
-                                        title="Copy to clipboard"
-                                    >
-                                        <Copy size={14} className="text-amber-700" />
-                                    </button>
-                                </div>
-                            )}
-                            {currentPlatform.webhookPath && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-amber-700 font-medium w-28 shrink-0">Webhook URL:</span>
-                                    <code className="flex-1 text-xs bg-white px-2 py-1.5 rounded border border-amber-200 font-mono text-amber-900 overflow-x-auto">
-                                        {window.location.origin}{currentPlatform.webhookPath}
-                                    </code>
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}${currentPlatform.webhookPath}`);
-                                            setMessage({ type: 'success', text: 'URL copied to clipboard!' });
-                                        }}
-                                        className="p-1.5 hover:bg-amber-100 rounded transition-colors"
-                                        title="Copy to clipboard"
-                                    >
-                                        <Copy size={14} className="text-amber-700" />
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* Credential Fields */}
-                <div className="p-6 space-y-4">
-                    {currentPlatform.fields.map(field => (
-                        <div key={field.key}>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                                {field.label}
-                            </label>
-                            <input
-                                type="text"
-                                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-                                placeholder={isConfigured(currentPlatform.id) ? '••••••••' : field.placeholder}
-                                value={formData[currentPlatform.id]?.[field.key] || ''}
-                                onChange={e => setFormData(prev => ({
-                                    ...prev,
-                                    [currentPlatform.id]: {
-                                        ...prev[currentPlatform.id],
-                                        [field.key]: e.target.value
+                        return (
+                            <button
+                                key={platform.id}
+                                onClick={() => { setActiveTab(platform.id as PlatformId); setMessage(null); }}
+                                className={`
+                                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-all
+                                    ${isActive
+                                        ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200'
+                                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
                                     }
-                                }))}
-                            />
-                        </div>
-                    ))}
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
-                        <input
-                            type="text"
-                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-                            placeholder="e.g., Production credentials from Google Cloud Console"
-                            value={notes[currentPlatform.id] || ''}
-                            onChange={e => setNotes(prev => ({ ...prev, [currentPlatform.id]: e.target.value }))}
-                        />
-                    </div>
+                                `}
+                            >
+                                <div className={`p-1.5 rounded-md ${isActive ? platform.iconColor : 'bg-slate-200'}`}>
+                                    <Icon size={14} className="text-white" />
+                                </div>
+                                <span className="flex-1 truncate">{platform.name}</span>
+                                {done && <CheckCircle size={14} className="text-emerald-500 shrink-0" />}
+                            </button>
+                        );
+                    })}
                 </div>
 
-                {/* Actions */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                    {isConfigured(currentPlatform.id) && (
-                        <button
-                            onClick={() => handleDelete(currentPlatform.id)}
-                            className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
-                        >
-                            <Trash2 size={16} />
-                            Delete
-                        </button>
-                    )}
-                    {currentPlatform.testable && (
-                        <button
-                            onClick={() => handleTestSmtp()}
-                            disabled={testing === currentPlatform.id}
-                            className="px-4 py-2 text-amber-600 border border-amber-300 hover:bg-amber-50 rounded-lg flex items-center gap-2 transition-colors"
-                        >
-                            {testing === currentPlatform.id ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
-                            Test Connection
-                        </button>
-                    )}
-                    {currentPlatform.id === 'WEB_PUSH_VAPID' && (
-                        <button
-                            onClick={handleGenerateVapidKeys}
-                            disabled={generating}
-                            className="px-4 py-2 text-purple-600 border border-purple-300 hover:bg-purple-50 rounded-lg flex items-center gap-2 transition-colors"
-                        >
-                            {generating ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
-                            Generate Keys
-                        </button>
-                    )}
-                    <button
-                        onClick={() => handleSave(currentPlatform.id)}
-                        disabled={saving === currentPlatform.id}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
-                    >
-                        {saving === currentPlatform.id ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                        Save Credentials
-                    </button>
+                {/* Right Content — Active Platform */}
+                <div className="flex-1 min-w-0">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+                        {/* ── Platform Header ── */}
+                        <div className="px-6 py-5 border-b border-slate-100">
+                            <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2.5 rounded-xl ${currentPlatform.iconColor}`}>
+                                        <currentPlatform.icon size={20} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-lg font-semibold text-slate-900">{currentPlatform.name}</h2>
+                                            {configured ? (
+                                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-medium px-2 py-0.5 rounded-full border border-emerald-200">
+                                                    <CheckCircle size={10} /> Active
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-xs font-medium px-2 py-0.5 rounded-full">
+                                                    Not configured
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-slate-500 mt-0.5">{currentPlatform.description}</p>
+                                        {lastUpdated && (
+                                            <p className="text-xs text-slate-400 mt-1">Last updated {lastUpdated}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                {currentPlatform.docsUrl && (
+                                    <a
+                                        href={currentPlatform.docsUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                                    >
+                                        <ExternalLink size={12} />
+                                        {currentPlatform.docsLabel || 'Developer Console'}
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── URL Configuration Section ── */}
+                        {(currentPlatform.callbackPath || currentPlatform.webhookPath) && (
+                            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Link size={14} className="text-slate-500" />
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Required URLs</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mb-3">
+                                    Copy these URLs into your{' '}
+                                    <span className="font-medium text-slate-700">
+                                        {currentPlatform.docsLabel || 'developer console'}
+                                    </span>.
+                                </p>
+                                <div className="space-y-2">
+                                    {currentPlatform.callbackPath && (
+                                        <CopyableUrl
+                                            label={currentPlatform.id === 'META_MESSAGING' ? 'OAuth Redirect' : 'Callback URL'}
+                                            url={`${window.location.origin}${currentPlatform.callbackPath}`}
+                                            onCopied={() => setMessage({ type: 'success', text: 'Copied to clipboard!' })}
+                                        />
+                                    )}
+                                    {currentPlatform.webhookPath && (
+                                        <CopyableUrl
+                                            label="Webhook URL"
+                                            url={`${window.location.origin}${currentPlatform.webhookPath}`}
+                                            onCopied={() => setMessage({ type: 'success', text: 'Copied to clipboard!' })}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Credential Fields ── */}
+                        <div className="px-6 py-5 space-y-5">
+                            {/* Required fields section */}
+                            {currentPlatform.fields.some(f => f.required) && (
+                                <div>
+                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+                                        <Key size={12} />
+                                        Required Credentials
+                                    </h3>
+                                    <div className="space-y-4">
+                                        {currentPlatform.fields.filter(f => f.required).map(field => {
+                                            const fieldId = `${currentPlatform.id}.${field.key}`;
+                                            const isSensitive = field.sensitive;
+                                            const isRevealed = revealedFields[fieldId];
+
+                                            return (
+                                                <div key={field.key}>
+                                                    <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
+                                                        {field.label}
+                                                        <span className="text-red-400 text-xs">*</span>
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type={isSensitive && !isRevealed ? 'password' : 'text'}
+                                                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400"
+                                                            placeholder={configured ? '••••••••' : field.placeholder}
+                                                            value={formData[currentPlatform.id]?.[field.key] || ''}
+                                                            onChange={e => setFormData(prev => ({
+                                                                ...prev,
+                                                                [currentPlatform.id]: {
+                                                                    ...prev[currentPlatform.id],
+                                                                    [field.key]: e.target.value
+                                                                }
+                                                            }))}
+                                                        />
+                                                        {isSensitive && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleReveal(fieldId)}
+                                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                                                                title={isRevealed ? 'Hide' : 'Show'}
+                                                            >
+                                                                {isRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {field.helpText && (
+                                                        <p className="mt-1 text-xs text-slate-400 flex items-start gap-1">
+                                                            <Info size={11} className="mt-0.5 shrink-0" />
+                                                            {field.helpText}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Optional fields section */}
+                            {currentPlatform.fields.some(f => !f.required) && (
+                                <div>
+                                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                                        Optional
+                                    </h3>
+                                    <div className="space-y-4">
+                                        {currentPlatform.fields.filter(f => !f.required).map(field => {
+                                            const fieldId = `${currentPlatform.id}.${field.key}`;
+                                            const isSensitive = field.sensitive;
+                                            const isRevealed = revealedFields[fieldId];
+
+                                            return (
+                                                <div key={field.key}>
+                                                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">
+                                                        {field.label}
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type={isSensitive && !isRevealed ? 'password' : 'text'}
+                                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400 bg-slate-50 focus:bg-white"
+                                                            placeholder={configured ? '••••••••' : field.placeholder}
+                                                            value={formData[currentPlatform.id]?.[field.key] || ''}
+                                                            onChange={e => setFormData(prev => ({
+                                                                ...prev,
+                                                                [currentPlatform.id]: {
+                                                                    ...prev[currentPlatform.id],
+                                                                    [field.key]: e.target.value
+                                                                }
+                                                            }))}
+                                                        />
+                                                        {isSensitive && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleReveal(fieldId)}
+                                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                                                                title={isRevealed ? 'Hide' : 'Show'}
+                                                            >
+                                                                {isRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {field.helpText && (
+                                                        <p className="mt-1 text-xs text-slate-400 flex items-start gap-1">
+                                                            <Info size={11} className="mt-0.5 shrink-0" />
+                                                            {field.helpText}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Notes */}
+                            <div className="pt-2 border-t border-slate-100">
+                                <label className="text-sm font-medium text-slate-500 mb-1.5 block">Notes</label>
+                                <input
+                                    type="text"
+                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400 bg-slate-50 focus:bg-white"
+                                    placeholder="e.g., Production credentials from Google Cloud Console"
+                                    value={notes[currentPlatform.id] || ''}
+                                    onChange={e => setNotes(prev => ({ ...prev, [currentPlatform.id]: e.target.value }))}
+                                />
+                            </div>
+                        </div>
+
+                        {/* ── Actions Footer ── */}
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                {configured && (
+                                    <button
+                                        onClick={() => handleDelete(currentPlatform.id)}
+                                        className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
+                                    >
+                                        <Trash2 size={14} />
+                                        Remove Credentials
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {currentPlatform.testable && (
+                                    <button
+                                        onClick={() => handleTestSmtp()}
+                                        disabled={testing === currentPlatform.id}
+                                        className="px-4 py-2 text-sm text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+                                    >
+                                        {testing === currentPlatform.id ? <Loader2 className="animate-spin" size={14} /> : <Zap size={14} />}
+                                        Test Connection
+                                    </button>
+                                )}
+                                {currentPlatform.id === 'WEB_PUSH_VAPID' && (
+                                    <button
+                                        onClick={handleGenerateVapidKeys}
+                                        disabled={generating}
+                                        className="px-4 py-2 text-sm text-violet-700 border border-violet-300 bg-violet-50 hover:bg-violet-100 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+                                    >
+                                        {generating ? <Loader2 className="animate-spin" size={14} /> : <Zap size={14} />}
+                                        Generate Keys
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => handleSave(currentPlatform.id)}
+                                    disabled={saving === currentPlatform.id}
+                                    className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition-colors font-medium shadow-sm"
+                                >
+                                    {saving === currentPlatform.id ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                                    Save Credentials
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

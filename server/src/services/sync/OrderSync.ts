@@ -8,6 +8,11 @@ import { Logger } from '../../utils/logger';
 import { WooOrderSchema, WooOrder } from './wooSchemas';
 import { esClient } from '../../utils/elastic';
 
+/** Standard WooCommerce statuses we track. Others are skipped during sync. */
+const VALID_ORDER_STATUSES = new Set([
+    'pending', 'processing', 'on-hold', 'completed',
+    'cancelled', 'refunded', 'failed'
+]);
 
 export class OrderSync extends BaseSync {
     protected entityType = 'orders';
@@ -36,6 +41,14 @@ export class OrderSync extends BaseSync {
             for (const raw of rawOrders) {
                 const result = WooOrderSchema.safeParse(raw);
                 if (result.success) {
+                    if (!VALID_ORDER_STATUSES.has(result.data.status.toLowerCase())) {
+                        totalSkipped++;
+                        Logger.debug('Skipping order with non-standard status', {
+                            accountId, syncId, orderId: result.data.id,
+                            status: result.data.status
+                        });
+                        continue;
+                    }
                     orders.push(result.data);
                 } else {
                     totalSkipped++;
@@ -70,7 +83,8 @@ export class OrderSync extends BaseSync {
                     wooOrderIds.add(order.id);
                 }
 
-                await prisma.$transaction(
+                // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
+                await Promise.all(
                     chunk.map((order) => {
                         const rawEmail = (order as any).billing?.email;
                         const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
@@ -103,6 +117,10 @@ export class OrderSync extends BaseSync {
                                 dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
                                 rawData: order as any
                             }
+                        }).catch((err) => {
+                            Logger.warn('Failed to upsert order', {
+                                accountId, syncId, wooId: order.id, error: err.message
+                            });
                         });
                     })
                 );

@@ -7,15 +7,14 @@ import { IndexingService } from '../../search/IndexingService';
 const mockPrisma = vi.hoisted(() => ({
     wooProduct: {
         findMany: vi.fn(),
-        upsert: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({}),
         delete: vi.fn(),
         deleteMany: vi.fn(),
-        update: vi.fn(),
+        update: vi.fn().mockResolvedValue({}),
     },
     account: {
         findUnique: vi.fn(),
     },
-    $transaction: vi.fn(),
 }));
 
 // Fix path to point to src/utils/prisma from src/services/sync/__tests__
@@ -100,7 +99,6 @@ describe('ProductSync Reconciliation Performance', () => {
 
         mockPrisma.wooProduct.findMany.mockResolvedValue(localProducts);
         mockPrisma.wooProduct.delete.mockResolvedValue({});
-        mockPrisma.$transaction.mockResolvedValue([]);
 
         // Run sync (non-incremental to trigger reconciliation)
         // Accessing protected member via any cast

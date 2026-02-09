@@ -29,11 +29,7 @@ const { Logger, fastifyLoggerConfig } = require('./utils/logger');
 QueueFactory.init();
 
 const automationEngine = new AutomationEngine();
-import { InventoryService } from './services/InventoryService';
 import { NotificationEngine } from './services/NotificationEngine';
-
-// Initialize Inventory Listeners
-InventoryService.setupListeners();
 
 // Create Fastify instance
 const fastify = Fastify({

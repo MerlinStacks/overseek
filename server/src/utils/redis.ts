@@ -14,7 +14,7 @@ const baseOptions: RedisOptions = {
         // exponential backoff, max 30s
         const delay = Math.min(times * 50, 30000);
         // avoid log spam
-        if (times <= 3 || times % 10 === 0) {
+        if (times === 5 || times % 10 === 0) {
             Logger.warn(`Redis retry attempt ${times}, next retry in ${delay}ms`);
         }
         return delay;

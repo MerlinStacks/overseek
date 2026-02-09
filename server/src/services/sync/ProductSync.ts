@@ -112,8 +112,11 @@ export class ProductSync extends BaseSync {
                 });
             });
 
-            // Execute batch transaction
-            await prisma.$transaction(upsertOperations);
+            // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
+            await Promise.all(upsertOperations.map(op => op.catch((err) => {
+                totalSkipped++;
+                Logger.warn('Failed to upsert product', { accountId, syncId, error: err.message });
+            })));
 
             // Batch-fetch all upserted products once (avoids N+1 queries)
             const upsertedProducts = await prisma.wooProduct.findMany({
@@ -160,7 +163,9 @@ export class ProductSync extends BaseSync {
             }
 
             if (scoreUpdateOperations.length > 0) {
-                await prisma.$transaction(scoreUpdateOperations);
+                await Promise.all(scoreUpdateOperations.map(op => op.catch((err) => {
+                    Logger.warn('Failed to update product scores', { accountId, syncId, error: err.message });
+                })));
             }
 
             // Bulk index all products in one ES call
@@ -246,7 +251,9 @@ export class ProductSync extends BaseSync {
                             })
                         );
 
-                        await prisma.$transaction(variationOps);
+                        await Promise.all(variationOps.map(op => op.catch((err) => {
+                            Logger.warn('Failed to upsert variation', { accountId, syncId, error: err.message });
+                        })));
                         totalVariationsSynced += variations.length;
 
                         Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {

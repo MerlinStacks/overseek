@@ -18,8 +18,7 @@ vi.mock('../../../utils/prisma', () => {
         syncState: {
             findUnique: vi.fn(),
         },
-        $transaction: vi.fn(),
-        $executeRaw: vi.fn(),
+        $queryRaw: vi.fn(),
     };
 
     // Mock Prisma helpers
@@ -55,7 +54,7 @@ describe('OrderSync Benchmark', () => {
         vi.clearAllMocks();
     });
 
-    it('should update customer order counts (N+1 reproduction)', async () => {
+    it('should update customer order counts via two-step approach', async () => {
         const accountId = 'acc_123';
         const syncId = 'sync_123';
 
@@ -65,32 +64,26 @@ describe('OrderSync Benchmark', () => {
         // Mock getLastSync -> returns null
         (prisma.syncState.findUnique as any).mockResolvedValue(null);
 
-        // 2. Mock prisma.wooOrder.findMany to return orders with customer IDs for recalculation
+        // 2. Mock $queryRaw to return aggregated counts (step 1 of two-step approach)
         const customerCount = 50;
-        const orders: any[] = [];
-        // Create 2 orders for each customer
-        for (let i = 1; i <= customerCount; i++) {
-            orders.push({ rawData: { customer_id: i } });
-            orders.push({ rawData: { customer_id: i } });
-        }
+        const mockCounts = Array.from({ length: customerCount }, (_, i) => ({
+            woo_id: i + 1,
+            count: 2,
+        }));
 
-        (prisma.wooOrder.findMany as any).mockResolvedValue(orders);
+        (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
         (prisma.wooCustomer.updateMany as any).mockResolvedValue({ count: 1 });
 
         // 3. Run sync (incremental=true to skip reconciliation)
         // @ts-ignore - sync is protected
         await orderSync.sync(mockWooService, accountId, true, undefined, syncId);
 
-        // 4. Verify optimization
-        // We expect findMany to be called 0 times (optimized out by direct SQL update)
-        expect(prisma.wooOrder.findMany).toHaveBeenCalledTimes(0);
+        // 4. Verify two-step approach: $queryRaw for counts, updateMany per customer batch
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
 
-        // We expect updateMany to be called 0 times (replaced by raw query)
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(0);
+        // updateMany called once per customer (batched in groups of 50)
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(customerCount);
 
-        // We expect executeRaw to be called once
-        expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
-
-        console.log(`Executed optimized batch update.`);
+        console.log(`Executed two-step batch update for ${customerCount} customers.`);
     });
 });

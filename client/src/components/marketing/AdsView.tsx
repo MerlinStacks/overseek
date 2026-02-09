@@ -53,10 +53,30 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
     // Selected account for campaign breakdown view (only when no onSelectAccount prop)
     const [selectedAccount, setSelectedAccount] = useState<AdAccount | null>(null);
 
+    // Server-sourced callback URL for display (avoids mismatch with API_URL)
+    const [googleCallbackUrl, setGoogleCallbackUrl] = useState(`${window.location.origin}/api/oauth/google/callback`);
 
     useEffect(() => {
         fetchAccounts();
     }, [currentAccount, token]);
+
+    useEffect(() => {
+        /** Fetch the actual callback URL the server uses, so the displayed URL matches. */
+        async function fetchCallbackUrl() {
+            try {
+                const res = await fetch('/api/oauth/google/callback-url', {
+                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.callbackUrl) setGoogleCallbackUrl(data.callbackUrl);
+                }
+            } catch {
+                // Fallback already set via useState default
+            }
+        }
+        if (token) fetchCallbackUrl();
+    }, [token, currentAccount]);
 
     async function fetchAccounts() {
         if (!currentAccount) return;
@@ -333,7 +353,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                 Add this redirect URI to your Google Cloud OAuth credentials:
                                             </p>
                                             <code className="block bg-white border border-amber-300 rounded-sm px-3 py-2 text-xs font-mono text-gray-800 break-all select-all">
-                                                {window.location.origin}/api/oauth/google/callback
+                                                {googleCallbackUrl}
                                             </code>
                                         </div>
                                         <button

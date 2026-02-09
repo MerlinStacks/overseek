@@ -57,8 +57,8 @@ export class CustomerSync extends BaseSync {
                     wooCustomerIds.add(c.id);
                 }
 
-                // Execute batch upserts in a single transaction
-                await prisma.$transaction(
+                // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
+                await Promise.all(
                     batch.map((c) =>
                         prisma.wooCustomer.upsert({
                             where: { accountId_wooId: { accountId, wooId: c.id } },
@@ -77,6 +77,11 @@ export class CustomerSync extends BaseSync {
                                 ordersCount: c.orders_count ?? 0,
                                 rawData: c as any
                             }
+                        }).catch((err) => {
+                            totalSkipped++;
+                            Logger.warn('Failed to upsert customer', {
+                                accountId, syncId, wooId: c.id, error: err.message
+                            });
                         })
                     )
                 );

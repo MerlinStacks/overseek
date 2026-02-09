@@ -6,7 +6,7 @@ import {
     ShoppingCart, Users, Star, Layers, Filter,
     ChevronDown, ChevronUp, AlertTriangle, Loader2,
     Pause, Play, X, RotateCcw, Database, Activity,
-    TrendingDown
+    TrendingDown, Zap
 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 
@@ -193,13 +193,13 @@ export function SyncStatus() {
                         <RefreshCw size={12} />
                     </button>
 
-                    {/* Sync Now */}
+                    {/* Sync Now — always enabled so users can enqueue additional entity types */}
                     <button
                         onClick={handleSync}
-                        disabled={isSyncing}
+                        disabled={syncTriggered}
                         className={`
                             flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300
-                            ${isSyncing || syncTriggered
+                            ${syncTriggered
                                 ? 'bg-blue-500/20 dark:bg-blue-500/30 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/30 dark:ring-blue-400/20'
                                 : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 shadow-sm shadow-blue-500/20'
                             }
@@ -207,7 +207,7 @@ export function SyncStatus() {
                         `}
                     >
                         <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Syncing…' : 'Sync Now'}
+                        {syncTriggered ? 'Queued…' : isSyncing ? 'Sync More' : 'Sync Now'}
                     </button>
                 </div>
             </div>
@@ -226,9 +226,9 @@ export function SyncStatus() {
                             staleness={getStalenessLevel(lastSyncMap[key])}
                             lastSyncedAt={lastSyncMap[key]}
                             activeJob={activeJobMap[key]}
-                            isFullSync={fullSyncTypes[key]}
-                            onToggleFullSync={() => toggleFullSync(key)}
                             onCancel={activeJobMap[key] ? () => handleCancelJob(activeJobMap[key].queue, activeJobMap[key].id) : undefined}
+                            onSyncIncremental={() => runSync([key], true)}
+                            onSyncFull={() => runSync([key], false)}
                         />
                     ))}
 
@@ -238,8 +238,6 @@ export function SyncStatus() {
                         staleness={getStalenessLevel(lastSyncMap['bom'])}
                         lastSyncedAt={lastSyncMap['bom']}
                         activeJob={activeJobMap['bom'] || activeJobMap['bom-inventory']}
-                        isFullSync={syncBOM}
-                        onToggleFullSync={() => setSyncBOM(prev => !prev)}
                         onCancel={
                             (activeJobMap['bom'] || activeJobMap['bom-inventory'])
                                 ? () => {
@@ -248,7 +246,7 @@ export function SyncStatus() {
                                 }
                                 : undefined
                         }
-                        alwaysFull
+                        onSyncFull={() => runSync(['bom'], false)}
                     />
                 </div>
             </div>
@@ -377,19 +375,20 @@ interface EntityCardProps {
     staleness: 'fresh' | 'stale' | 'critical' | 'never';
     lastSyncedAt: string | null | undefined;
     activeJob?: { id: string; queue: string; progress: number };
-    isFullSync: boolean;
-    onToggleFullSync: () => void;
     onCancel?: () => void;
-    alwaysFull?: boolean;
+    /** Trigger an incremental sync for this entity (omit for full-only entities like BOM) */
+    onSyncIncremental?: () => void;
+    /** Trigger a full sync for this entity */
+    onSyncFull?: () => void;
 }
 
 /**
- * Individual data-source card showing sync freshness, toggle, and
- * optional inline progress bar + cancel button when a job is active.
+ * Individual data-source card showing sync freshness and
+ * direct Incremental / Full sync trigger buttons.
  */
 function EntityCard({
     label, Icon, staleness, lastSyncedAt,
-    activeJob, isFullSync, onToggleFullSync, onCancel, alwaysFull
+    activeJob, onCancel, onSyncIncremental, onSyncFull
 }: EntityCardProps) {
     const dotColor = STALENESS_COLORS[staleness];
     const stalenessLabel = STALENESS_LABELS[staleness];
@@ -450,19 +449,29 @@ function EntityCard({
                     <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
                         {formatRelativeTime(lastSyncedAt)}
                     </span>
-                    <button
-                        onClick={onToggleFullSync}
-                        className={`
-                            text-[11px] font-medium px-2.5 py-1 rounded-md transition-all duration-200
-                            ${isFullSync
-                                ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 ring-1 ring-blue-200 dark:ring-blue-500/30'
-                                : 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600/50'
-                            }
-                        `}
-                        title={alwaysFull ? 'BOM always runs full sync' : isFullSync ? 'Will run full sync' : 'Will run incremental sync'}
-                    >
-                        {alwaysFull ? (isFullSync ? '✓ Included' : 'Include') : (isFullSync ? '✓ Full' : 'Incremental')}
-                    </button>
+                    {/* Per-entity sync triggers — hidden when already syncing */}
+                    {!isActive && (
+                        <div className="flex items-center gap-1.5">
+                            {onSyncIncremental && (
+                                <button
+                                    onClick={onSyncIncremental}
+                                    className="text-[11px] font-medium px-2.5 py-1 rounded-md transition-all duration-200 bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                                    title={`Incremental sync — only fetch changes since last sync`}
+                                >
+                                    <span className="flex items-center gap-1"><Zap size={10} /> Incremental</span>
+                                </button>
+                            )}
+                            {onSyncFull && (
+                                <button
+                                    onClick={onSyncFull}
+                                    className="text-[11px] font-medium px-2.5 py-1 rounded-md transition-all duration-200 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20"
+                                    title={`Full sync — re-fetch all data from WooCommerce`}
+                                >
+                                    <span className="flex items-center gap-1"><RefreshCw size={10} /> Full</span>
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -512,7 +521,34 @@ function LogFilterPills({ activeFilter, onFilter }: { activeFilter: string | nul
     );
 }
 
-/** Single log entry row with expandable error details and retry button */
+/**
+ * Compute a human-readable duration string from two ISO timestamps.
+ * Why: helps users tell at a glance whether a sync was fast (< 1s) or
+ * suspiciously long, and spot redundant zero-item syncs.
+ */
+function formatDuration(startedAt: string, completedAt?: string | null): string {
+    if (!completedAt) return 'In progress';
+    const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+    if (ms < 1000) return `${ms}ms`;
+    const totalSec = Math.floor(ms / 1000);
+    if (totalSec < 60) return `${totalSec}s`;
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
+}
+
+/** Map trigger source codes to user-friendly labels */
+function formatTriggerSource(source?: string): string {
+    switch (source) {
+        case 'MANUAL': return 'Manual';
+        case 'RETRY': return 'Retry';
+        case 'WEBHOOK': return 'Webhook';
+        case 'SYSTEM':
+        default: return 'Scheduled';
+    }
+}
+
+/** Single log entry row with expandable detail accordion */
 function LogEntry({ log, isExpanded, onToggle, onRetry }: {
     log: SyncLog; isExpanded: boolean; onToggle: () => void; onRetry: () => void;
 }) {
@@ -536,9 +572,10 @@ function LogEntry({ log, isExpanded, onToggle, onRetry }: {
             }
         `}>
             <div className="flex items-center gap-3 p-3">
+                {/* Entire row is clickable to expand detail accordion */}
                 <button
-                    onClick={hasError ? onToggle : undefined}
-                    className={`flex items-center gap-3 flex-1 min-w-0 text-left ${hasError ? 'cursor-pointer' : 'cursor-default'}`}
+                    onClick={onToggle}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
                 >
                     <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${cfg.bg}`}>
                         <StatusIcon
@@ -563,6 +600,9 @@ function LogEntry({ log, isExpanded, onToggle, onRetry }: {
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {log.itemsProcessed} items
+                            {log.completedAt && (
+                                <span className="text-slate-400 dark:text-slate-500 ml-1">• {formatDuration(log.startedAt, log.completedAt)}</span>
+                            )}
                             {log.friendlyError
                                 ? <span className="text-red-500 dark:text-red-400 ml-1">• {log.friendlyError}</span>
                                 : isFailed && <span className="text-red-500 dark:text-red-400 ml-1">• Failed</span>
@@ -583,26 +623,58 @@ function LogEntry({ log, isExpanded, onToggle, onRetry }: {
                             Retry
                         </button>
                     )}
-                    {hasError && (
-                        <button onClick={onToggle} className="p-1">
-                            {isExpanded
-                                ? <ChevronUp size={14} className="text-slate-400 dark:text-slate-500" />
-                                : <ChevronDown size={14} className="text-slate-400 dark:text-slate-500" />
-                            }
-                        </button>
-                    )}
+                    <button onClick={onToggle} className="p-1">
+                        {isExpanded
+                            ? <ChevronUp size={14} className="text-slate-400 dark:text-slate-500" />
+                            : <ChevronDown size={14} className="text-slate-400 dark:text-slate-500" />
+                        }
+                    </button>
                 </div>
             </div>
 
-            {/* Expanded error details */}
-            {hasError && isExpanded && (
-                <div className="border-t border-red-100 dark:border-red-500/10 px-3 py-2.5 bg-red-50/50 dark:bg-red-500/5">
-                    <div className="flex items-start gap-2">
-                        <AlertTriangle size={12} className="text-red-500 dark:text-red-400 mt-0.5 shrink-0" />
-                        <pre className="text-xs text-red-700 dark:text-red-300 font-mono whitespace-pre-wrap break-all">
-                            {log.errorMessage}
-                        </pre>
+            {/* Expanded detail accordion — shows for ALL statuses, not just errors */}
+            {isExpanded && (
+                <div className={`border-t px-3 py-2.5 space-y-2 ${isFailed
+                    ? 'border-red-100 dark:border-red-500/10 bg-red-50/30 dark:bg-red-500/5'
+                    : 'border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/30'
+                    }`}>
+                    {/* Sync details grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Items</p>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{log.itemsProcessed}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Duration</p>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{formatDuration(log.startedAt, log.completedAt)}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Trigger</p>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{formatTriggerSource(log.triggerSource)}</p>
+                        </div>
+                        {(log.retryCount ?? 0) > 0 && (
+                            <div>
+                                <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Attempt</p>
+                                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{(log.retryCount ?? 0) + 1}{log.maxAttempts ? ` / ${log.maxAttempts}` : ''}</p>
+                            </div>
+                        )}
                     </div>
+
+                    {/* Timestamps */}
+                    <div className="flex items-center gap-4 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                        <span>Started: {new Date(log.startedAt).toLocaleTimeString()}</span>
+                        {log.completedAt && <span>Finished: {new Date(log.completedAt).toLocaleTimeString()}</span>}
+                    </div>
+
+                    {/* Error details (only for failed syncs) */}
+                    {hasError && (
+                        <div className="flex items-start gap-2 mt-1 pt-2 border-t border-red-100 dark:border-red-500/10">
+                            <AlertTriangle size={12} className="text-red-500 dark:text-red-400 mt-0.5 shrink-0" />
+                            <pre className="text-xs text-red-700 dark:text-red-300 font-mono whitespace-pre-wrap break-all">
+                                {log.errorMessage}
+                            </pre>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

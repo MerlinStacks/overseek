@@ -61,6 +61,13 @@ export function isCredentialError(error: any): boolean {
     return status === 401 || status === 403;
 }
 
+/** Detects 503 responses with Retry-After header indicating scheduled maintenance */
+export function isMaintenanceMode(error: any): boolean {
+    const status = error?.response?.status || error?.status;
+    const retryAfter = error?.response?.headers?.['retry-after'];
+    return status === 503 && !!retryAfter;
+}
+
 /** backoff with jitter: min(base * 2^attempt, max) ± 10% */
 export function calculateBackoffDelay(
     attempt: number,
@@ -107,6 +114,15 @@ export async function retryWithBackoff<T>(
             return await fn();
         } catch (error: any) {
             lastError = error;
+
+            // Maintenance mode: don't waste retries, fail immediately with descriptive error
+            if (isMaintenanceMode(error)) {
+                const retryAfter = error?.response?.headers?.['retry-after'] || 'unknown';
+                Logger.error(`[RetryWithBackoff] ${context} - site is in maintenance mode (Retry-After: ${retryAfter}s). Skipping retries.`, {
+                    error: error.message
+                });
+                throw error;
+            }
 
 
             if (attempt >= maxRetries || !retryOn(error)) {

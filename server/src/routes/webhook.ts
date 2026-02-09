@@ -11,6 +11,12 @@ import { IndexingService } from '../services/search/IndexingService';
 import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
 
+/** Standard WooCommerce statuses we track. Others are skipped. */
+const VALID_ORDER_STATUSES = new Set([
+    'pending', 'processing', 'on-hold', 'completed',
+    'cancelled', 'refunded', 'failed'
+]);
+
 /** Verify WooCommerce HMAC signature */
 const verifySignature = (
     payload: unknown,
@@ -49,6 +55,14 @@ export async function processWebhookPayload(
 ): Promise<void> {
     // Handle Order Events
     if (topic === 'order.created' || topic === 'order.updated') {
+        const orderStatus = ((body as any).status || '').toLowerCase();
+        if (!VALID_ORDER_STATUSES.has(orderStatus)) {
+            Logger.debug('[Webhook] Skipping order with non-standard status', {
+                accountId, orderId: body.id, status: orderStatus
+            });
+            return;
+        }
+
         // Save to database immediately to prevent duplicate notifications from Sync Engine
         // (Sync Engine checks if order exists in DB to determine if it's "new")
         try {
