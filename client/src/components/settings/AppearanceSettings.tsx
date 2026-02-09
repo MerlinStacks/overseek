@@ -18,8 +18,7 @@ export function AppearanceSettings() {
 
     useEffect(() => {
         if (currentAccount?.appearance) {
-            // @ts-ignore - appearance is Json in prisma but we typed it in context
-            const app = currentAccount.appearance;
+            const app = currentAccount.appearance as any;
             setSettings({
                 appName: app.appName || 'OverSeek',
                 primaryColor: app.primaryColor || '#2563eb',

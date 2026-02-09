@@ -193,6 +193,40 @@ export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitti
                     </div>
                 </div>
 
+                {/* Webhook URL Info */}
+                {hasValidAccount && (
+                    <div className="bg-indigo-50 rounded-xl p-5 border border-indigo-200">
+                        <div className="flex items-start gap-4">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm font-bold">
+                                ↻
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-sm font-semibold text-gray-900 mb-1">Webhook URL</h3>
+                                <p className="text-xs text-gray-600 mb-3">
+                                    To receive real-time order updates, add a webhook in WooCommerce → Settings → Advanced → Webhooks → Add Webhook. Use this URL as the <strong>Delivery URL</strong>:
+                                </p>
+                                <div className="relative group">
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`${publicApiUrl}/api/webhooks/${currentAccount!.id}`);
+                                        }}
+                                        className="absolute top-2 right-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                                    >
+                                        <Copy size={14} />
+                                        Copy
+                                    </button>
+                                    <pre className="bg-slate-900 text-slate-100 p-4 pr-24 rounded-lg overflow-x-auto font-mono text-xs break-all whitespace-pre-wrap">
+                                        <code>{`${publicApiUrl}/api/webhooks/${currentAccount!.id}`}</code>
+                                    </pre>
+                                </div>
+                                <p className="text-xs text-indigo-600 mt-2">
+                                    Set topics to <strong>Order created</strong> and <strong>Order updated</strong> for real-time sync.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Step 3: Verify */}
                 <div className="bg-green-50 rounded-xl p-5 border border-green-200">
                     <div className="flex items-start gap-4">

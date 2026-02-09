@@ -13,9 +13,6 @@ import { AdsService } from '../../ads';
 import { PeriodMetrics, testRoasChange, calculateAnomalyScore, ConfidenceResult } from '../utils/StatisticalUtils';
 import { ActionableRecommendation, BudgetAction, createBudgetHeadline } from '../types/ActionableTypes';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface MultiPeriodData {
     platform: 'google' | 'meta';
@@ -53,9 +50,6 @@ export interface MultiPeriodAnalysis {
     actionableRecommendations: ActionableRecommendation[];
 }
 
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 function emptyMetrics(): PeriodMetrics {
     return {
@@ -134,9 +128,6 @@ function determineTrajectory(values: number[]): 'increasing' | 'stable' | 'decre
     return 'stable';
 }
 
-// =============================================================================
-// MAIN ANALYZER
-// =============================================================================
 
 export class MultiPeriodAnalyzer {
 

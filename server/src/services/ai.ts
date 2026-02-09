@@ -5,25 +5,6 @@ import { Logger } from '../utils/logger';
 import { AI_LIMITS } from '../config/limits';
 import { AIServiceError, AIRateLimitError, ExternalAPIError, isOverseekError } from '../utils/errors';
 
-// ============================================================================
-// Rate Limit Retry Configuration
-// ============================================================================
-
-/** Maximum retries for rate-limited requests */
-const MAX_RATE_LIMIT_RETRIES = 3;
-
-/** Base delay for exponential backoff (ms) */
-const BASE_RETRY_DELAY_MS = 1000;
-
-/**
- * Sleep utility for retry delays.
- * @param ms - Milliseconds to sleep
- */
-const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
-
-// ============================================================================
-// Type Definitions
-// ============================================================================
 
 /** Result from AI tool execution */
 interface ToolResult {
@@ -232,67 +213,36 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
         // 2. Main Loop: LLM -> Tool Call -> LLM
         for (let i = 0; i < AI_LIMITS.MAX_TOOL_ITERATIONS; i++) {
             try {
-                // Retry loop for rate limit handling
-                let response: Response | null = null;
-                let lastError: string | null = null;
+                const response = await fetch(AI_LIMITS.API_ENDPOINT, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "HTTP-Referer": process.env.APP_URL || 'http://localhost:5173',
+                        "X-Title": process.env.APP_NAME || 'Commerce Platform',
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: messages,
+                        tools: AIToolsService.getDefinitions().map(tool => ({
+                            type: 'function',
+                            function: tool
+                        }))
+                    })
+                });
 
-                for (let retryAttempt = 0; retryAttempt <= MAX_RATE_LIMIT_RETRIES; retryAttempt++) {
-                    response = await fetch(AI_LIMITS.API_ENDPOINT, {
-                        method: "POST",
-                        headers: {
-                            "Authorization": `Bearer ${apiKey}`,
-                            "HTTP-Referer": process.env.APP_URL || 'http://localhost:5173',
-                            "X-Title": process.env.APP_NAME || 'Commerce Platform',
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            model: model,
-                            messages: messages,
-                            tools: AIToolsService.getDefinitions().map(tool => ({
-                                type: 'function',
-                                function: tool
-                            }))
-                        })
-                    });
-
-                    // Success or non-retryable error
-                    if (response.ok || response.status !== 429) {
-                        break;
-                    }
-
-                    // Rate limited - retry with exponential backoff
-                    const retryAfter = response.headers.get('retry-after');
-                    const delayMs = retryAfter
-                        ? parseInt(retryAfter) * 1000
-                        : BASE_RETRY_DELAY_MS * Math.pow(2, retryAttempt);
-
-                    Logger.warn('OpenRouter rate limited, retrying', {
-                        attempt: retryAttempt + 1,
-                        maxRetries: MAX_RATE_LIMIT_RETRIES,
-                        delayMs,
-                        accountId
-                    });
-
-                    if (retryAttempt < MAX_RATE_LIMIT_RETRIES) {
-                        await sleep(delayMs);
-                    } else {
-                        lastError = 'Rate limit exceeded after retries';
-                    }
-                }
-
-                if (!response!.ok) {
-                    const errorText = await response!.text();
-                    const isRateLimit = response!.status === 429;
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    const isRateLimit = response.status === 429;
                     Logger.error('OpenRouter Error', {
-                        status: response!.status,
+                        status: response.status,
                         error: errorText,
-                        accountId,
-                        wasRetried: isRateLimit
+                        accountId
                     });
 
                     if (isRateLimit) {
                         return {
-                            reply: "I'm currently experiencing high demand and retries were exhausted. Please wait a minute and try again.",
+                            reply: "I'm currently experiencing high demand. Please wait a moment and try again.",
                             sources: []
                         };
                     }

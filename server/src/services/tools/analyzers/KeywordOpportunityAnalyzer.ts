@@ -16,9 +16,6 @@ import {
     createKeywordHeadline
 } from '../types/ActionableTypes';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 interface SearchTermData {
     term: string;
@@ -40,9 +37,6 @@ interface KeywordOpportunityResult {
     };
 }
 
-// =============================================================================
-// MAIN ANALYZER
-// =============================================================================
 
 export class KeywordOpportunityAnalyzer {
 

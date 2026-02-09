@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 // Silence dotenv v17+ stdout output to prevent corrupting Pino's JSON log stream
 dotenv.config({ quiet: true });
 
+import os from 'os';
+
 import { appPromise, app } from './app';
 import { SchedulerService } from './services/scheduler';
 import { startWorkers } from './workers';
@@ -20,6 +22,19 @@ try {
 }
 
 const port = process.env.PORT || 3000;
+
+/** Detect the first non-internal IPv4 address for the startup banner */
+function getNetworkAddress(): string | null {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return null;
+}
 
 // Global Error Handlers to prevent silent crashes
 process.on('uncaughtException', (error) => {
@@ -88,6 +103,19 @@ async function start() {
   try {
     await app.listen({ port: Number(port), host: '0.0.0.0' });
     Logger.info(`[Server] Fastify listening on http://0.0.0.0:${port}`);
+
+    // Print human-readable startup banner to console
+    const networkAddress = getNetworkAddress();
+    console.log('');
+    console.log('  ╔══════════════════════════════════════════════╗');
+    console.log('  ║           OverSeek API Server Ready          ║');
+    console.log('  ╠══════════════════════════════════════════════╣');
+    console.log(`  ║  Local:    http://localhost:${port}             ║`);
+    if (networkAddress) {
+      console.log(`  ║  Network:  http://${networkAddress}:${port}`.padEnd(49) + '║');
+    }
+    console.log('  ╚══════════════════════════════════════════════╝');
+    console.log('');
 
     // Initialize graceful shutdown after server starts
     initGracefulShutdown(app.server);

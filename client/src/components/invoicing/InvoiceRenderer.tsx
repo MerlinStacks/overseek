@@ -530,14 +530,14 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}
                     >
                         {/* Grid Layout */}
-                        {/* @ts-ignore - ResponsiveGridLayout has prop type mismatch */}
+                        {/* @ts-expect-error - ResponsiveGridLayout has prop type mismatch */}
                         <ResponsiveGridLayout
                             className="layout"
                             layouts={{ lg: pageLayout }}
                             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                             cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                             rowHeight={30}
-                            // @ts-ignore - width prop type mismatch
+                            // @ts-expect-error - width prop type mismatch
                             width={794}
                             isDraggable={true}
                             isResizable={true}

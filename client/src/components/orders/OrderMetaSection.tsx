@@ -10,9 +10,6 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings } from 'lucide-react';
 import { fixMojibake } from '../../utils/format';
 
-// ============================================
-// TYPES
-// ============================================
 
 interface MetaCategory {
     id: string;
@@ -33,9 +30,6 @@ interface ImageThumbnailProps {
     onImageClick: (url: string) => void;
 }
 
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
 
 /**
  * Extracts an image URL from a meta value.
@@ -89,9 +83,6 @@ export function extractAllImageUrls(value: string): string[] {
     return urls;
 }
 
-// ============================================
-// COMPONENTS
-// ============================================
 
 /**
  * Displays a clickable thumbnail image with hover label.

@@ -10,6 +10,63 @@ import { Logger } from '../utils/logger';
 const wooRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
+    /**
+     * POST /test — Verify WooCommerce credentials without creating an account.
+     * Used by the Setup Wizard's "Test Connection" button (StoreStep).
+     */
+    fastify.post('/test', async (request, reply) => {
+        try {
+            const { wooUrl, wooConsumerKey, wooConsumerSecret } = request.body as any;
+
+            if (!wooUrl || !wooConsumerKey || !wooConsumerSecret) {
+                return reply.code(400).send({
+                    success: false,
+                    error: 'Store URL, Consumer Key, and Consumer Secret are all required.'
+                });
+            }
+
+            // Create a temporary WooService to test the credentials
+            const woo = new WooService({
+                url: wooUrl,
+                consumerKey: wooConsumerKey,
+                consumerSecret: wooConsumerSecret
+            });
+
+            const status = await woo.getSystemStatus();
+            const storeInfo = status?.data?.environment || status?.environment || {};
+
+            return {
+                success: true,
+                storeName: storeInfo.site_title || storeInfo.home_url || wooUrl,
+                wooVersion: storeInfo.version || 'unknown'
+            };
+        } catch (error: any) {
+            const statusCode = error.response?.status;
+            let userMessage = 'Could not connect to WooCommerce store.';
+
+            if (statusCode === 401 || statusCode === 403) {
+                userMessage = 'Invalid credentials. Please check your Consumer Key and Secret, and ensure they have Read/Write permissions.';
+            } else if (statusCode === 404) {
+                userMessage = 'WooCommerce REST API not found. Please check that WooCommerce is installed and the store URL is correct (e.g. https://mystore.com).';
+            } else if (error.code === 'ENOTFOUND') {
+                userMessage = 'Could not reach the store URL. Please check the domain is correct and accessible.';
+            } else if (error.code === 'ECONNREFUSED') {
+                userMessage = 'Connection refused. Is your store server running?';
+            }
+
+            Logger.error('WooCommerce connection test failed', {
+                error: error.message,
+                status: statusCode,
+                url: (request.body as any)?.wooUrl
+            });
+
+            return reply.code(statusCode === 401 || statusCode === 403 ? 401 : 400).send({
+                success: false,
+                error: userMessage
+            });
+        }
+    });
+
     fastify.get('/orders', async (request, reply) => {
         try {
             const accountId = request.accountId;

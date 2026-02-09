@@ -7,9 +7,6 @@
 
 import { ANALYTICS_CONFIG } from './analyticsConfig';
 
-// ============================================================================
-// Types
-// ============================================================================
 
 export type StockoutRisk = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type TrendDirection = 'up' | 'down' | 'stable';
@@ -35,17 +32,11 @@ export interface ForecastConfig {
     wmaWeights: readonly number[];
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
 
 export function getForecastConfig(): ForecastConfig {
     return ANALYTICS_CONFIG.forecasting;
 }
 
-// ============================================================================
-// Weighted Moving Average
-// ============================================================================
 
 /**
  * Calculate weighted moving average with bias toward recent data.
@@ -89,9 +80,6 @@ export function weightedMovingAverage(
     return weightSum > 0 ? weightedSum / weightSum : 0;
 }
 
-// ============================================================================
-// Seasonality Detection
-// ============================================================================
 
 /**
  * Calculate monthly seasonality coefficients from historical sales.
@@ -149,9 +137,6 @@ export function getSeasonalityFactor(
     return coefficients.get(targetMonth) ?? 1.0;
 }
 
-// ============================================================================
-// Linear Trend Analysis
-// ============================================================================
 
 /**
  * Calculate linear regression slope from daily sales data.
@@ -207,9 +192,6 @@ export function classifyTrend(
     return { direction, percent };
 }
 
-// ============================================================================
-// Ensemble Demand Prediction
-// ============================================================================
 
 /**
  * Predict daily demand using ensemble approach:
@@ -302,9 +284,6 @@ function calculateConfidence(dataPoints: number, monthsCovered: number): number 
     return Math.min(100, Math.round(confidence));
 }
 
-// ============================================================================
-// Stockout Risk Classification
-// ============================================================================
 
 /**
  * Classify stockout risk based on days remaining vs lead time.
@@ -348,9 +327,6 @@ export function calculateDaysUntilStockout(
     return Math.floor(currentStock / dailyDemand);
 }
 
-// ============================================================================
-// Reorder Quantity Calculation
-// ============================================================================
 
 /**
  * Calculate recommended reorder quantity.

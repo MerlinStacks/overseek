@@ -1,8 +1,6 @@
 import { Logger } from './logger';
 
-/**
- * Configuration options for retry behavior.
- */
+
 export interface RetryOptions {
     /** Maximum number of retry attempts. Default: 3 */
     maxRetries?: number;
@@ -16,28 +14,18 @@ export interface RetryOptions {
     context?: string;
 }
 
-/**
- * Default conditions that trigger a retry:
- * - HTTP 429 (Too Many Requests)
- * - HTTP 500, 502, 503, 504 (Server errors)
- * - Network errors (ECONNRESET, ETIMEDOUT, ECONNREFUSED, etc.)
- */
+/** retryable by default: 429, 5xx, network errors, timeouts */
 export function isRetryableError(error: any): boolean {
-    // HTTP status code checks
+
     const status = error?.response?.status || error?.status;
     if (status) {
-        // Never retry auth failures - credentials are revoked
-        if (status === 401 || status === 403) {
-            return false;
-        }
-
         const retryableStatuses = [429, 500, 502, 503, 504];
         if (retryableStatuses.includes(status)) {
             return true;
         }
     }
 
-    // Network error code checks
+
     const code = error?.code || error?.cause?.code;
     if (code) {
         const retryableCodes = [
@@ -54,12 +42,12 @@ export function isRetryableError(error: any): boolean {
         }
     }
 
-    // Axios-specific network error
+
     if (error?.message?.includes('Network Error')) {
         return true;
     }
 
-    // WooCommerce REST API timeout
+
     if (error?.message?.includes('timeout') || error?.message?.includes('Timeout')) {
         return true;
     }
@@ -67,56 +55,32 @@ export function isRetryableError(error: any): boolean {
     return false;
 }
 
-/**
- * Check if an error indicates credential revocation/expiry.
- * Useful for triggering "reconnect required" flows.
- */
-export function isCredentialError(error: any): boolean {
-    const status = error?.response?.status || error?.status;
-    return status === 401 || status === 403;
-}
-
-/**
- * Calculate delay with exponential backoff and jitter.
- * Formula: min(baseDelay * 2^attempt, maxDelay) ± 10% jitter
- * 
- * @param attempt - Current attempt number (0-indexed)
- * @param baseDelayMs - Base delay in milliseconds
- * @param maxDelayMs - Maximum delay cap
- */
+/** backoff with jitter: min(base * 2^attempt, max) ± 10% */
 export function calculateBackoffDelay(
     attempt: number,
     baseDelayMs: number,
     maxDelayMs: number
 ): number {
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s...
+
     const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
     const cappedDelay = Math.min(exponentialDelay, maxDelayMs);
 
-    // Add jitter: ±10% randomization to prevent thundering herd
-    const jitterFactor = 0.9 + Math.random() * 0.2; // 0.9 to 1.1
+    // jitter to avoid thundering herd
+    const jitterFactor = 0.9 + Math.random() * 0.2;
     return Math.round(cappedDelay * jitterFactor);
 }
 
 /**
- * Execute an async function with automatic retry on transient failures.
- * Uses exponential backoff with jitter to prevent thundering herd.
- * 
+ * retry an async fn with exponential backoff on transient failures.
+ *
  * @example
- * // Basic usage
  * const result = await retryWithBackoff(() => fetchFromApi());
- * 
+ *
  * @example
- * // With custom options
  * const result = await retryWithBackoff(
  *   () => wooApi.getOrders(),
  *   { maxRetries: 5, context: 'WooCommerce:getOrders' }
  * );
- * 
- * @param fn - Async function to execute
- * @param options - Retry configuration
- * @returns Result of the function
- * @throws Last error if all retries exhausted
  */
 export async function retryWithBackoff<T>(
     fn: () => Promise<T>,
@@ -138,7 +102,7 @@ export async function retryWithBackoff<T>(
         } catch (error: any) {
             lastError = error;
 
-            // Check if we should retry
+
             if (attempt >= maxRetries || !retryOn(error)) {
                 break;
             }

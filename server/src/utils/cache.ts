@@ -1,28 +1,17 @@
-/**
- * Redis Caching Layer
- * 
- * Provides a simple, type-safe caching abstraction with:
- * - TTL-based expiration
- * - Cache-aside pattern (get-or-set)
- * - Namespace prefixing to avoid collisions
- * - JSON serialization for complex objects
- */
+
 
 import { redisClient } from './redis';
 import { Logger } from './logger';
 
-/** Default TTL in seconds (5 minutes) */
+
 const DEFAULT_TTL = 300;
 
-/** Cache key prefix to namespace all cache entries */
+
 const CACHE_PREFIX = 'cache:';
 
-/** Maximum safe cache value size (10MB) - larger values may cause OOM during JSON.parse */
-const MAX_SAFE_CACHE_SIZE = 10 * 1024 * 1024;
+const MAX_SAFE_CACHE_SIZE = 10 * 1024 * 1024; // 10MB - larger values can OOM during JSON.parse
 
-/**
- * Cache configuration options
- */
+
 export interface CacheOptions {
     /** Time-to-live in seconds */
     ttl?: number;
@@ -30,25 +19,20 @@ export interface CacheOptions {
     namespace?: string;
 }
 
-/**
- * Build a namespaced cache key
- */
+
 function buildKey(key: string, namespace?: string): string {
     const ns = namespace ? `${namespace}:` : '';
     return `${CACHE_PREFIX}${ns}${key}`;
 }
 
-/**
- * Get a value from cache.
- * Returns null if not found or expired.
- */
+
 export async function cacheGet<T>(key: string, options?: CacheOptions): Promise<T | null> {
     const fullKey = buildKey(key, options?.namespace);
 
     try {
         const cached = await redisClient.get(fullKey);
         if (cached) {
-            // Guard against massive payloads that could OOM during JSON.parse
+            // guard against huge payloads that could OOM during parse
             if (cached.length > MAX_SAFE_CACHE_SIZE) {
                 Logger.error('[Cache] DANGEROUS: Cached value exceeds safe size limit', {
                     key: fullKey,
@@ -56,7 +40,7 @@ export async function cacheGet<T>(key: string, options?: CacheOptions): Promise<
                     sizeMB: (cached.length / 1024 / 1024).toFixed(2),
                     limitMB: (MAX_SAFE_CACHE_SIZE / 1024 / 1024).toFixed(0)
                 });
-                // Delete the corrupted/oversized entry and return null
+
                 await redisClient.del(fullKey);
                 return null;
             }
@@ -69,9 +53,7 @@ export async function cacheGet<T>(key: string, options?: CacheOptions): Promise<
     }
 }
 
-/**
- * Set a value in cache with TTL.
- */
+
 export async function cacheSet<T>(
     key: string,
     value: T,
@@ -87,9 +69,7 @@ export async function cacheSet<T>(
     }
 }
 
-/**
- * Delete a value from cache.
- */
+
 export async function cacheDelete(key: string, options?: CacheOptions): Promise<void> {
     const fullKey = buildKey(key, options?.namespace);
 
@@ -100,10 +80,7 @@ export async function cacheDelete(key: string, options?: CacheOptions): Promise<
     }
 }
 
-/**
- * Delete all cached values matching a pattern.
- * Uses SCAN for non-blocking iteration (safe for large datasets).
- */
+/** delete all keys matching a pattern. uses SCAN to avoid blocking. */
 export async function cacheDeletePattern(pattern: string, namespace?: string): Promise<number> {
     const fullPattern = buildKey(pattern, namespace);
     let deleted = 0;
@@ -130,8 +107,8 @@ export async function cacheDeletePattern(pattern: string, namespace?: string): P
 }
 
 /**
- * Cache-aside pattern: Get from cache, or execute function and cache result.
- * 
+ * get-or-set: try cache first, otherwise fetch and cache the result.
+ *
  * @example
  * const products = await cacheAside(
  *   `products:${accountId}`,
@@ -144,23 +121,20 @@ export async function cacheAside<T>(
     fetchFn: () => Promise<T>,
     options?: CacheOptions
 ): Promise<T> {
-    // Try cache first
+
     const cached = await cacheGet<T>(key, options);
     if (cached !== null) {
         return cached;
     }
 
-    // Cache miss - fetch and store
+
     const result = await fetchFn();
     await cacheSet(key, result, options);
 
     return result;
 }
 
-/**
- * Invalidate cache for a specific entity.
- * Use after mutations to ensure fresh data.
- */
+
 export async function invalidateCache(namespace: string, entityId?: string): Promise<void> {
     const pattern = entityId ? `${entityId}*` : '*';
     const deleted = await cacheDeletePattern(pattern, namespace);
@@ -169,24 +143,20 @@ export async function invalidateCache(namespace: string, entityId?: string): Pro
     }
 }
 
-// --- Convenience exports for common TTLs ---
-
 export const CacheTTL = {
-    /** 30 seconds - for frequently changing data */
+    /** 30s - fast-changing data */
     SHORT: 30,
-    /** 2 minutes - for dashboard widgets on large accounts */
+    /** 2m - dashboard widgets */
     DASHBOARD: 120,
-    /** 5 minutes - default for most queries */
+    /** 5m - default */
     MEDIUM: 300,
-    /** 30 minutes - for stable data */
+    /** 30m */
     LONG: 1800,
-    /** 1 hour - for rarely changing data */
+    /** 1h */
     HOUR: 3600,
-    /** 24 hours - for static data */
+    /** 24h */
     DAY: 86400,
 } as const;
-
-// --- Common cache namespaces ---
 
 export const CacheNamespace = {
     ANALYTICS: 'analytics',

@@ -29,8 +29,8 @@ export class CustomersService {
                 from,
                 size: limit,
                 sort: [
-                    { firstName: { order: 'asc', unmapped_type: 'keyword' } },
-                    { lastName: { order: 'asc', unmapped_type: 'keyword' } }
+                    { 'firstName.keyword': { order: 'asc', unmapped_type: 'keyword' } },
+                    { 'lastName.keyword': { order: 'asc', unmapped_type: 'keyword' } }
                 ],
                 track_total_hits: true
             });

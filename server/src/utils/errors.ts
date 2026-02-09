@@ -1,21 +1,11 @@
-/**
- * Custom Error Classes for Overseek
- * 
- * Structured error handling with context for better debugging and user feedback.
- */
 
-// ============================================================================
-// Base Error
-// ============================================================================
+
+
 
 export class OverseekError extends Error {
-    /** HTTP status code */
     readonly statusCode: number;
-    /** Error code for client handling */
     readonly code: string;
-    /** Additional context for debugging */
     readonly context?: Record<string, unknown>;
-    /** Whether this error is recoverable */
     readonly isRecoverable: boolean;
 
     constructor(
@@ -36,7 +26,7 @@ export class OverseekError extends Error {
         this.isRecoverable = options.isRecoverable ?? false;
     }
 
-    /** Convert to JSON for API responses */
+
     toJSON() {
         return {
             error: this.message,
@@ -46,9 +36,7 @@ export class OverseekError extends Error {
     }
 }
 
-// ============================================================================
-// AI Service Errors
-// ============================================================================
+
 
 export class AIServiceError extends OverseekError {
     constructor(
@@ -90,9 +78,7 @@ export class AIConfigurationError extends AIServiceError {
     }
 }
 
-// ============================================================================
-// External API Errors
-// ============================================================================
+
 
 export class ExternalAPIError extends OverseekError {
     constructor(
@@ -114,9 +100,7 @@ export class ExternalAPIError extends OverseekError {
     }
 }
 
-// ============================================================================
-// Validation Errors
-// ============================================================================
+
 
 export class ValidationError extends OverseekError {
     constructor(
@@ -136,9 +120,7 @@ export class ValidationError extends OverseekError {
     }
 }
 
-// ============================================================================
-// Resource Errors
-// ============================================================================
+
 
 export class NotFoundError extends OverseekError {
     constructor(resource: string, id?: string | number) {
@@ -152,9 +134,7 @@ export class NotFoundError extends OverseekError {
     }
 }
 
-// ============================================================================
-// Authentication & Authorization Errors
-// ============================================================================
+
 
 export class AuthenticationError extends OverseekError {
     constructor(message = 'Authentication required') {
@@ -178,9 +158,7 @@ export class AuthorizationError extends OverseekError {
     }
 }
 
-// ============================================================================
-// Rate Limiting & Conflicts
-// ============================================================================
+
 
 export class RateLimitError extends OverseekError {
     constructor(retryAfterSeconds?: number) {
@@ -218,59 +196,49 @@ export class ServiceUnavailableError extends OverseekError {
     }
 }
 
-// ============================================================================
-// Type Guards
-// ============================================================================
+
 
 export function isOverseekError(error: unknown): error is OverseekError {
     return error instanceof OverseekError;
 }
 
-// ============================================================================
-// User-Friendly Message Mapping
-// ============================================================================
 
-/**
- * Error code to user-friendly message mapping.
- * These messages are safe to display directly to end users.
- */
+
+/** user-safe error messages by error code */
 const FRIENDLY_MESSAGES: Record<string, string> = {
-    // Authentication & Authorization
+
     'AUTHENTICATION_ERROR': 'Please log in to continue.',
     'AUTHORIZATION_ERROR': 'You don\'t have permission to do this.',
 
-    // Rate Limiting
+
     'RATE_LIMIT_ERROR': 'Too many requests. Please wait a moment and try again.',
 
-    // Resource Errors
+
     'NOT_FOUND': 'The requested item could not be found.',
     'CONFLICT_ERROR': 'This action conflicts with existing data.',
     'VALIDATION_ERROR': 'Please check your input and try again.',
 
-    // AI Service
+
     'AI_SERVICE_ERROR': 'AI features are temporarily unavailable. Please try again.',
     'AI_RATE_LIMITED': 'AI service is busy. Please wait a moment and try again.',
     'AI_NOT_CONFIGURED': 'AI features are not available for this account.',
 
-    // External Services
+
     'EXTERNAL_API_ERROR': 'A connected service is temporarily unavailable.',
     'SERVICE_UNAVAILABLE': 'This service is temporarily unavailable. Please try again later.',
 
-    // Generic
+
     'INTERNAL_ERROR': 'Something went wrong. Please try again or contact support.',
 };
 
-/**
- * Gets a user-friendly message for an error.
- * Falls back to a generic message for unknown errors.
- */
+
 export function getFriendlyMessage(error: unknown): string {
     if (isOverseekError(error)) {
         return FRIENDLY_MESSAGES[error.code] || error.message;
     }
 
     if (error instanceof Error) {
-        // Check for common error patterns
+
         const msg = error.message.toLowerCase();
 
         if (msg.includes('network') || msg.includes('fetch')) {
@@ -284,9 +252,7 @@ export function getFriendlyMessage(error: unknown): string {
     return FRIENDLY_MESSAGES['INTERNAL_ERROR'];
 }
 
-/**
- * Converts any error to a consistent API response format.
- */
+
 export function toErrorResponse(error: unknown): {
     error: string;
     code: string;
@@ -323,13 +289,13 @@ export function handleRouteError(
     reply: { code: (statusCode: number) => { send: (body: unknown) => unknown } },
     context?: string
 ): unknown {
-    // Extract status code
+
     const statusCode = isOverseekError(error) ? error.statusCode : 500;
 
-    // Build response
+
     const response = toErrorResponse(error);
 
-    // Add context if provided and not in production
+
     if (context && process.env.NODE_ENV !== 'production') {
         response.context = { ...response.context, operation: context };
     }

@@ -9,38 +9,38 @@ import { EventBus, EVENTS } from '../services/events';
 export async function startWorkers() {
     Logger.info('Starting Workers...');
 
-    // Order Worker
+
     QueueFactory.createWorker(QUEUES.ORDERS, async (job) => {
         const syncer = new OrderSync();
         await syncer.perform(job.data, job);
     });
 
-    // Product Worker
+
     QueueFactory.createWorker(QUEUES.PRODUCTS, async (job) => {
         const syncer = new ProductSync();
         await syncer.perform(job.data, job);
     });
 
-    // Customer Worker
+
     QueueFactory.createWorker(QUEUES.CUSTOMERS, async (job) => {
         const syncer = new CustomerSync();
         await syncer.perform(job.data, job);
     });
 
-    // Review Worker
+
     QueueFactory.createWorker(QUEUES.REVIEWS, async (job) => {
         const syncer = new ReviewSync();
         await syncer.perform(job.data, job);
     });
 
-    // Report Worker
+
     await import('../services/analytics/ReportWorker').then(({ ReportWorker }) => {
         QueueFactory.createWorker(QUEUES.REPORTS, async (job) => {
             await ReportWorker.process(job);
         });
     });
 
-    // BOM Inventory Sync Worker
+
     try {
         const { BOMInventorySyncService } = await import('../services/BOMInventorySyncService');
         QueueFactory.createWorker(QUEUES.BOM_SYNC, async (job) => {
@@ -58,8 +58,7 @@ export async function startWorkers() {
         Logger.error('[Workers] FAILED to register BOM Inventory Sync worker', { error: err.message, stack: err.stack });
     }
 
-    // BOM Consumption on Order Creation/Sync
-    // When an order is synced, check if it's in 'processing' status and consume BOM components
+    // consume BOM components when orders hit 'processing' status
     await import('../services/BOMConsumptionService').then(({ BOMConsumptionService }) => {
         EventBus.on(EVENTS.ORDER.SYNCED, async ({ accountId, order }) => {
             try {
@@ -83,10 +82,7 @@ export async function startWorkers() {
     // Graceful Shutdown
     process.on('SIGTERM', async () => {
         Logger.info('SIGTERM received. Closing workers...');
-        // QueueFactory doesn't expose list of workers yet for closeAll, 
-        // but for now process exit will handle it via BullMQ's own handlers usually, 
-        // or we should track them.
-        // For v1, basic node process exit is 'ok' but we should close redis.
+        // TODO: properly track and close workers instead of relying on process exit
         await import('../utils/redis').then(r => r.redisClient.quit());
         process.exit(0);
     });

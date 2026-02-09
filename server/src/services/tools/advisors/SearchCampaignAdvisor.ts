@@ -18,9 +18,6 @@ import {
 import { AdCopyGenerator } from '../AdCopyGenerator';
 import { GoogleAdsService } from '../../ads/GoogleAdsService';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 interface SearchCampaignData {
     id: string;
@@ -46,9 +43,6 @@ interface SearchCampaignAdvisorResult {
     };
 }
 
-// =============================================================================
-// ADVISOR
-// =============================================================================
 
 export class SearchCampaignAdvisor {
 

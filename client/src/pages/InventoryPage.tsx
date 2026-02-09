@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -156,6 +156,26 @@ export function InventoryPage() {
         }
     }
 
+    // Memoize sorted products to avoid re-sorting on every render
+    const sortedProducts = useMemo(() => {
+        if (!sortField) return products;
+        return [...products].sort((a, b) => {
+            if (sortField === 'name') {
+                const nameA = a.name.toLowerCase();
+                const nameB = b.name.toLowerCase();
+                return sortDirection === 'asc'
+                    ? nameA.localeCompare(nameB)
+                    : nameB.localeCompare(nameA);
+            }
+            if (sortField === 'price') {
+                const priceA = parseFloat(a.price) || 0;
+                const priceB = parseFloat(b.price) || 0;
+                return sortDirection === 'asc' ? priceA - priceB : priceB - priceA;
+            }
+            return 0;
+        });
+    }, [products, sortField, sortDirection]);
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-end border-b pb-4">
@@ -296,23 +316,7 @@ export function InventoryPage() {
                                             <p>No products found.</p>
                                         </td></tr>
                                     ) : (
-                                        [...products]
-                                            .sort((a, b) => {
-                                                if (!sortField) return 0;
-                                                if (sortField === 'name') {
-                                                    const nameA = a.name.toLowerCase();
-                                                    const nameB = b.name.toLowerCase();
-                                                    return sortDirection === 'asc'
-                                                        ? nameA.localeCompare(nameB)
-                                                        : nameB.localeCompare(nameA);
-                                                }
-                                                if (sortField === 'price') {
-                                                    const priceA = parseFloat(a.price) || 0;
-                                                    const priceB = parseFloat(b.price) || 0;
-                                                    return sortDirection === 'asc' ? priceA - priceB : priceB - priceA;
-                                                }
-                                                return 0;
-                                            })
+                                        [...sortedProducts]
                                             .map((product) => (
                                                 <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-6 py-4">

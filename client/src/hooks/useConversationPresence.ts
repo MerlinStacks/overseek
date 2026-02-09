@@ -1,9 +1,9 @@
 /**
  * Hook for tracking conversation presence/viewers.
- * Emits join/leave events and listens for viewers:sync updates.
+ * Reuses the shared socket from SocketContext instead of creating new connections.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 
 interface Viewer {
@@ -14,37 +14,26 @@ interface Viewer {
 }
 
 interface UseConversationPresenceReturn {
-    /** List of users currently viewing this conversation */
     viewers: Viewer[];
-    /** Other viewers (excluding current user) */
     otherViewers: Viewer[];
-    /** Whether there are other viewers */
     hasOtherViewers: boolean;
 }
 
 /**
  * Tracks who is viewing a conversation for collision detection.
- * Emits join/leave events and syncs viewer list via Socket.IO.
+ * Uses the shared socket — no new connections per switch.
  */
 export function useConversationPresence(conversationId: string | null): UseConversationPresenceReturn {
     const { user } = useAuth();
+    const { socket } = useSocket();
     const [viewers, setViewers] = useState<Viewer[]>([]);
-    const socketRef = useRef<Socket | null>(null);
     const prevConversationId = useRef<string | null>(null);
 
     useEffect(() => {
-        if (!conversationId || !user) {
+        if (!socket || !conversationId || !user) {
             setViewers([]);
             return;
         }
-
-        // Get or create socket connection
-        const socketUrl = import.meta.env.VITE_API_URL || '';
-        const socket = io(socketUrl, {
-            transports: ['websocket'],
-            autoConnect: true
-        });
-        socketRef.current = socket;
 
         // Leave previous conversation if switching
         if (prevConversationId.current && prevConversationId.current !== conversationId) {
@@ -62,23 +51,23 @@ export function useConversationPresence(conversationId: string | null): UseConve
         });
         prevConversationId.current = conversationId;
 
-        // Listen for viewer updates
         const handleViewersSync = (viewerList: Viewer[]) => {
             setViewers(viewerList);
         };
 
         socket.on('viewers:sync', handleViewersSync);
 
-        // Cleanup on unmount or when conversation changes
         return () => {
             socket.emit('leave:conversation', { conversationId });
             socket.off('viewers:sync', handleViewersSync);
-            socket.disconnect();
         };
-    }, [conversationId, user]);
+    }, [socket, conversationId, user]);
 
-    // Filter out current user from viewer list
-    const otherViewers = viewers.filter(v => v.userId !== user?.id);
+    // Memoize filtered list to avoid recalc on every render
+    const otherViewers = useMemo(
+        () => viewers.filter(v => v.userId !== user?.id),
+        [viewers, user?.id]
+    );
 
     return {
         viewers,

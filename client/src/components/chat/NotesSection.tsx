@@ -23,13 +23,16 @@ interface NotesSectionProps {
     conversationId: string;
 }
 
+// Module-level cache: show cached notes instantly, revalidate in background
+const notesCache = new Map<string, Note[]>();
+
 /**
  * Manages notes for a conversation with add/delete functionality.
  */
 export function NotesSection({ conversationId }: NotesSectionProps) {
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
-    const [notes, setNotes] = useState<Note[]>([]);
+    const [notes, setNotes] = useState<Note[]>(() => notesCache.get(conversationId) || []);
     const [newNote, setNewNote] = useState('');
     const [isAddingNote, setIsAddingNote] = useState(false);
 
@@ -42,15 +45,23 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
                     'x-account-id': currentAccount?.id || ''
                 }
             });
-            if (res.ok) setNotes(await res.json());
+            if (res.ok) {
+                const data = await res.json();
+                setNotes(data);
+                notesCache.set(conversationId, data);
+            }
         } catch (e) {
             Logger.error('Failed to fetch notes:', { error: e });
         }
     }, [conversationId, token, currentAccount?.id]);
 
     useEffect(() => {
+        // Show cached notes instantly
+        const cached = notesCache.get(conversationId);
+        if (cached) setNotes(cached);
+        // Always revalidate in background
         fetchNotes();
-    }, [fetchNotes]);
+    }, [fetchNotes, conversationId]);
 
     const addNote = async () => {
         if (!newNote.trim() || !conversationId) return;
@@ -67,7 +78,9 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
             });
             if (res.ok) {
                 const note = await res.json();
-                setNotes([note, ...notes]);
+                const updated = [note, ...notes];
+                setNotes(updated);
+                notesCache.set(conversationId, updated);
                 setNewNote('');
             }
         } catch (e) {
@@ -87,7 +100,9 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
                     'x-account-id': currentAccount?.id || ''
                 }
             });
-            setNotes(notes.filter(n => n.id !== noteId));
+            const updated = notes.filter(n => n.id !== noteId);
+            setNotes(updated);
+            notesCache.set(conversationId, updated);
         } catch (e) {
             Logger.error('Failed to delete note:', { error: e });
         }

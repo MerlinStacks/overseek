@@ -55,21 +55,31 @@ The fastest way to get OverSeek running:
 ```bash
 git clone https://github.com/MerlinStacks/overseek.git
 cd overseek
-cp stack.env.example stack.env
-# Edit stack.env to set your POSTGRES_PASSWORD and JWT_SECRET
-docker-compose up -d
+bash setup.sh           # generates stack.env with secure defaults
+docker compose up -d
 ```
 
 Wait for services to start (~2-3 minutes on first run), then open `http://localhost:5173`.
 
 > **Requirements:** Docker and Docker Compose
 
+<details>
+<summary><strong>Manual setup</strong> (skip setup.sh)</summary>
+
+```bash
+cp stack.env.example stack.env
+# Edit stack.env — set POSTGRES_PASSWORD, JWT_SECRET, ENCRYPTION_KEY
+docker compose up -d
+```
+
+</details>
+
 ### First-Time Setup
 
 After containers are running, create your admin account:
 
 ```bash
-docker-compose exec api npm run create-admin
+docker compose exec api npm run create-admin
 ```
 
 This will output your login credentials.
@@ -78,7 +88,7 @@ This will output your login credentials.
 
 ## Configuration
 
-OverSeek is fully configurable via environment variables. Copy `stack.env.example` to `stack.env` and customize:
+OverSeek is fully configurable via environment variables. Run `bash setup.sh` for guided setup, or copy `stack.env.example` to `stack.env` and customize:
 
 ### Required Settings
 
@@ -86,32 +96,17 @@ OverSeek is fully configurable via environment variables. Copy `stack.env.exampl
 |----------|-------------|--------|
 | `POSTGRES_PASSWORD` | Database password | `your-secure-password` |
 | `JWT_SECRET` | Auth token secret (use `openssl rand -hex 32`) | `abc123...` |
+| `ENCRYPTION_KEY` | Encryption key for secrets (use `openssl rand -hex 32`) | `def456...` |
 
-### Branding & URLs (Server)
+### Deployment
 
 | Variable | Description | Default |
-|----------|-------------|--------|
-| `APP_NAME` | Your application name | `OverSeek` |
+|----------|-------------|---------|
 | `APP_URL` | Frontend URL | `http://localhost:5173` |
-| `API_URL` | Backend API URL | `http://localhost:3000` |
+| `APP_NAME` | Your application name | `OverSeek` |
 | `CONTACT_EMAIL` | Notification/VAPID email | `notifications@localhost` |
 
-### Branding (Frontend)
-
-| Variable | Description | Default |
-|----------|-------------|--------|
-| `VITE_APP_NAME` | App name in UI/legal pages | `Commerce Platform` |
-| `VITE_SUPPORT_EMAIL` | Support contact email | `support@localhost` |
-| `VITE_LEGAL_EMAIL` | Legal contact email | `legal@localhost` |
-| `VITE_PRIVACY_EMAIL` | Privacy contact email | `privacy@localhost` |
-
-### CORS & Security
-
-| Variable | Description |
-|----------|-------------|
-| `CLIENT_URL` | Frontend URL for CORS |
-| `CORS_ORIGIN` | Allowed CORS origin |
-| `ALLOWED_HOSTS` | Comma-separated allowed hostnames |
+> **Auto-derived:** `API_URL`, `CLIENT_URL`, `CORS_ORIGIN`, and `CORS_ORIGINS` are automatically derived from `APP_URL` at startup. You can override any of them in `stack.env` if you need a non-standard setup.
 
 > **Note:** API keys and integrations (OpenRouter, Google Ads, Meta Ads, SMTP) are configured in the app UI, not via environment variables.
 

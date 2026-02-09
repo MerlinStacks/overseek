@@ -5,9 +5,6 @@
  * for ad performance recommendations.
  */
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface ConfidenceResult {
     isSignificant: boolean;
@@ -31,9 +28,6 @@ export interface PeriodMetrics {
     cpa: number;
 }
 
-// =============================================================================
-// STATISTICAL TESTS
-// =============================================================================
 
 /**
  * Calculate z-score for a proportion change.

@@ -9,9 +9,6 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface ROISummary {
     period: {
@@ -95,9 +92,6 @@ const ACTION_TIME_ESTIMATES: Record<string, number> = {
 // Average agency hourly rate for time value calculation
 const AGENCY_HOURLY_RATE = 150;
 
-// =============================================================================
-// SERVICE
-// =============================================================================
 
 export class CoPilotROIService {
 

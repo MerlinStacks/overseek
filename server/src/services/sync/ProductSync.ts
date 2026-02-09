@@ -31,7 +31,7 @@ export class ProductSync extends BaseSync {
         const wooVariationIds = new Set<string>(); // "productId:variationId"
 
         while (hasMore) {
-            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 25 });
+            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 100 });
             if (!rawProducts.length) {
                 hasMore = false;
                 break;
@@ -125,7 +125,6 @@ export class ProductSync extends BaseSync {
             const productMap = new Map(upsertedProducts.map(p => [p.wooId, p]));
 
             // Process scoring and indexing
-            const indexPromises: Promise<any>[] = [];
             const scoringResults: { seoScore: number; merchantCenterScore: number }[] = [];
 
             // Score products and batch-collect update operations
@@ -164,100 +163,105 @@ export class ProductSync extends BaseSync {
                 await prisma.$transaction(scoreUpdateOperations);
             }
 
+            // Bulk index all products in one ES call
+            const productsToIndex: any[] = [];
             for (let i = 0; i < products.length; i++) {
                 const p = products[i];
                 const upsertedProduct = productMap.get(p.id);
                 const scores = scoringResults[i] || { seoScore: 0, merchantCenterScore: 0 };
 
                 if (upsertedProduct) {
-                    indexPromises.push(
-                        IndexingService.indexProduct(accountId, { ...upsertedProduct, ...scores })
-                            .catch((error: any) => {
-                                Logger.warn(`Failed to index product ${p.id}`, { accountId, syncId, error: error.message });
-                            })
-                    );
+                    productsToIndex.push({ ...upsertedProduct, ...scores });
                 }
 
                 EventBus.emit(EVENTS.PRODUCT.SYNCED, { accountId, product: p });
             }
 
-            await Promise.allSettled(indexPromises);
+            try {
+                await IndexingService.bulkIndexProducts(accountId, productsToIndex);
+            } catch (error: any) {
+                Logger.warn('Bulk index products failed', { accountId, syncId, error: error.message });
+            }
             totalProcessed += products.length;
 
-            // Sync variations for variable products
+            // Sync variations for variable products (parallelized in batches of 5)
             const variableProducts = products.filter(p =>
                 p.type === 'variable' || (p.type && p.type.includes('variable'))
             );
 
-            for (const varProduct of variableProducts) {
-                const parentDbProduct = productMap.get(varProduct.id);
-                if (!parentDbProduct) continue;
+            const VAR_BATCH_SIZE = 5;
+            for (let vi = 0; vi < variableProducts.length; vi += VAR_BATCH_SIZE) {
+                const varBatch = variableProducts.slice(vi, vi + VAR_BATCH_SIZE);
+                await Promise.allSettled(varBatch.map(async (varProduct) => {
+                    const parentDbProduct = productMap.get(varProduct.id);
+                    if (!parentDbProduct) return;
 
-                try {
-                    const rawVariations = await woo.getProductVariations(varProduct.id);
-                    const variations = safeParseVariations(rawVariations);
+                    try {
+                        const rawVariations = await woo.getProductVariations(varProduct.id);
+                        const variations = safeParseVariations(rawVariations);
 
-                    if (variations.length === 0) continue;
+                        if (variations.length === 0) return;
 
-                    // Update parent rawData to include variationsData (for ProductsService.getProductByWooId)
-                    const parentRawData = (parentDbProduct.rawData as any) || {};
-                    await prisma.wooProduct.update({
-                        where: { id: parentDbProduct.id },
-                        data: {
-                            rawData: {
-                                ...parentRawData,
-                                variationsData: rawVariations
-                            } as any
-                        }
-                    });
-
-                    // Track for reconciliation
-                    for (const v of variations) {
-                        wooVariationIds.add(`${parentDbProduct.id}:${v.id}`);
-                    }
-
-                    // Batch upsert variations
-                    const variationOps = variations.map(v =>
-                        prisma.productVariation.upsert({
-                            where: { productId_wooId: { productId: parentDbProduct.id, wooId: v.id } },
-                            update: {
-                                sku: v.sku || null,
-                                price: v.price ? parseFloat(v.price) : null,
-                                salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
-                                stockStatus: v.stock_status,
-                                stockQuantity: v.stock_quantity ?? null,
-                                images: (v.image ? [v.image] : []) as any,
-                                rawData: v as any
-                            },
-                            create: {
-                                productId: parentDbProduct.id,
-                                wooId: v.id,
-                                sku: v.sku || null,
-                                price: v.price ? parseFloat(v.price) : null,
-                                salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
-                                stockStatus: v.stock_status,
-                                stockQuantity: v.stock_quantity ?? null,
-                                images: (v.image ? [v.image] : []) as any,
-                                rawData: v as any
+                        // Update parent rawData to include variationsData
+                        const parentRawData = (parentDbProduct.rawData as any) || {};
+                        await prisma.wooProduct.update({
+                            where: { id: parentDbProduct.id },
+                            data: {
+                                rawData: {
+                                    ...parentRawData,
+                                    variationsData: rawVariations
+                                } as any
                             }
-                        })
-                    );
+                        });
 
-                    await prisma.$transaction(variationOps);
-                    totalVariationsSynced += variations.length;
+                        // Track for reconciliation
+                        for (const v of variations) {
+                            wooVariationIds.add(`${parentDbProduct.id}:${v.id}`);
+                        }
 
-                    Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {
-                        accountId, syncId, productId: varProduct.id
-                    });
-                } catch (error: any) {
-                    Logger.warn(`Failed to sync variations for product ${varProduct.id}`, {
-                        accountId, syncId, error: error.message
-                    });
-                }
+                        // Batch upsert variations
+                        const variationOps = variations.map(v =>
+                            prisma.productVariation.upsert({
+                                where: { productId_wooId: { productId: parentDbProduct.id, wooId: v.id } },
+                                update: {
+                                    sku: v.sku || null,
+                                    price: v.price ? parseFloat(v.price) : null,
+                                    salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
+                                    stockStatus: v.stock_status,
+                                    stockQuantity: v.stock_quantity ?? null,
+                                    images: (v.image ? [v.image] : []) as any,
+                                    rawData: v as any
+                                },
+                                create: {
+                                    productId: parentDbProduct.id,
+                                    wooId: v.id,
+                                    sku: v.sku || null,
+                                    price: v.price ? parseFloat(v.price) : null,
+                                    salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
+                                    stockStatus: v.stock_status,
+                                    stockQuantity: v.stock_quantity ?? null,
+                                    images: (v.image ? [v.image] : []) as any,
+                                    rawData: v as any
+                                }
+                            })
+                        );
+
+                        await prisma.$transaction(variationOps);
+                        totalVariationsSynced += variations.length;
+
+                        Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {
+                            accountId, syncId, productId: varProduct.id
+                        });
+                    } catch (error: any) {
+                        Logger.warn(`Failed to sync variations for product ${varProduct.id}`, {
+                            accountId, syncId, error: error.message
+                        });
+                    }
+                }));
             }
 
             Logger.info(`Synced batch of ${products.length} products (${totalVariationsSynced} variations)`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
-            if (products.length < 25) hasMore = false;
+            if (page >= totalPages) hasMore = false;
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;

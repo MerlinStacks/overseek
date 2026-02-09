@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition, lazy, Suspense } from 'react';
 import { Logger } from '../utils/logger';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,8 @@ import { NewEmailModal } from '../components/chat/NewEmailModal';
 import { KeyboardShortcutsHelp } from '../components/chat/KeyboardShortcutsHelp';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useCannedResponses } from '../hooks/useCannedResponses';
+import { useEmailAccounts } from '../hooks/useEmailAccounts';
 import { MessageSquare } from 'lucide-react';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
 
@@ -29,6 +31,10 @@ export function InboxPage() {
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
     const [availableChannels, setAvailableChannels] = useState<Array<{ channel: ConversationChannel; identifier: string; available: boolean }>>([]);
+
+    // Lifted hooks — persist across conversation switches (no re-fetch per switch)
+    const canned = useCannedResponses();
+    const emailAccounts = useEmailAccounts();
 
     // Pagination state
     const [hasMore, setHasMore] = useState(false);
@@ -180,24 +186,26 @@ export function InboxPage() {
     useEffect(() => {
         if (!socket || !currentAccount || !token) return;
 
-        // Listen for list updates
+        // Listen for list updates — wrapped in startTransition so it
+        // doesn't block higher-priority UI like conversation switching
         socket.on('conversation:updated', async (data: any) => {
-            setConversations(prev => {
-                const idx = prev.findIndex(c => c.id === data.id);
-                if (idx === -1) {
-                    fetchNewConversation(data.id);
-                    return prev;
-                }
-                const updated = [...prev];
-                updated[idx] = {
-                    ...updated[idx],
-                    messages: [data.lastMessage],
-                    updatedAt: data.updatedAt,
-                    isRead: selectedId === data.id // Mark as unread unless currently viewing
-                };
-                // Sort newest first (descending by updatedAt)
-                return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-            });
+            startTransition(() => {
+                setConversations(prev => {
+                    const idx = prev.findIndex(c => c.id === data.id);
+                    if (idx === -1) {
+                        fetchNewConversation(data.id);
+                        return prev;
+                    }
+                    const updated = [...prev];
+                    updated[idx] = {
+                        ...updated[idx],
+                        messages: [data.lastMessage],
+                        updatedAt: data.updatedAt,
+                        isRead: selectedId === data.id
+                    };
+                    return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+                });
+            }); // end startTransition
 
             if (selectedId === data.id && data.lastMessage) {
                 setMessages(prev => {
@@ -207,11 +215,12 @@ export function InboxPage() {
             }
         });
 
-        // Listen for read status updates from other clients
         socket.on('conversation:read', (data: { id: string }) => {
-            setConversations(prev => prev.map(c =>
-                c.id === data.id ? { ...c, isRead: true } : c
-            ));
+            startTransition(() => {
+                setConversations(prev => prev.map(c =>
+                    c.id === data.id ? { ...c, isRead: true } : c
+                ));
+            });
         });
 
         socket.on('message:new', (msg: any) => {
@@ -353,6 +362,114 @@ export function InboxPage() {
         }
     };
 
+    // Memoized customer data for ChatWindow
+    const customerData = useMemo(() => {
+        if (activeConversation?.wooCustomer) {
+            return {
+                firstName: activeConversation.wooCustomer.firstName,
+                lastName: activeConversation.wooCustomer.lastName,
+                email: activeConversation.wooCustomer.email,
+                ordersCount: activeConversation.wooCustomer.ordersCount,
+                totalSpent: activeConversation.wooCustomer.totalSpent,
+                wooId: activeConversation.wooCustomer.wooId
+            };
+        }
+        return {
+            firstName: activeConversation?.guestName?.split(' ')[0],
+            lastName: activeConversation?.guestName?.split(' ').slice(1).join(' '),
+            email: activeConversation?.guestEmail
+        };
+    }, [activeConversation?.wooCustomer, activeConversation?.guestName, activeConversation?.guestEmail]);
+
+    // Stable callback refs for ChatWindow (avoids re-render on every parent update)
+    const handleStatusChange = useCallback(async (newStatus: string, snoozeUntil?: Date) => {
+        if (!selectedId || !token || !currentAccount) return;
+        const res = await fetch(`/api/chat/${selectedId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount.id
+            },
+            body: JSON.stringify({
+                status: newStatus,
+                snoozeUntil: snoozeUntil?.toISOString()
+            })
+        });
+        if (res.ok) {
+            setConversations(prev => prev.map(c =>
+                c.id === selectedId ? { ...c, status: newStatus } : c
+            ));
+        }
+    }, [selectedId, token, currentAccount]);
+
+    const handleAssign = useCallback(async (userId: string) => {
+        if (!selectedId || !token || !currentAccount) return;
+        const res = await fetch(`/api/chat/${selectedId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount.id
+            },
+            body: JSON.stringify({ assignedTo: userId || null })
+        });
+        if (res.ok) {
+            setConversations(prev => prev.map(c =>
+                c.id === selectedId ? { ...c, assignedTo: userId || null } : c
+            ));
+        }
+    }, [selectedId, token, currentAccount]);
+
+    const handleMerge = useCallback(async (targetConversationId: string) => {
+        if (!selectedId || !token || !currentAccount) return;
+        const res = await fetch(`/api/chat/${selectedId}/merge`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount.id
+            },
+            body: JSON.stringify({ sourceId: targetConversationId })
+        });
+        if (res.ok) {
+            await fetchConversations();
+        }
+    }, [selectedId, token, currentAccount, fetchConversations]);
+
+    const handleBlock = useMemo(() => {
+        if (!recipientEmail) return undefined;
+        return async () => {
+            if (!selectedId || !token || !currentAccount) return;
+            const res = await fetch('/api/chat/block', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({ email: recipientEmail })
+            });
+            if (res.ok) {
+                await fetch(`/api/chat/${selectedId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    },
+                    body: JSON.stringify({ status: 'CLOSED' })
+                });
+                setConversations(prev => prev.map(c =>
+                    c.id === selectedId ? { ...c, status: 'CLOSED' } : c
+                ));
+                alert('Contact blocked. Their future messages will be auto-resolved.');
+            } else {
+                alert('Failed to block contact');
+            }
+        };
+    }, [recipientEmail, selectedId, token, currentAccount]);
+
     // Update conversation status (for keyboard shortcuts)
     const updateConversationStatus = useCallback(async (status: 'OPEN' | 'CLOSED') => {
         if (!selectedId || !token || !currentAccount) return;
@@ -366,7 +483,6 @@ export function InboxPage() {
                 },
                 body: JSON.stringify({ status })
             });
-            // Update local state
             setConversations(prev => prev.map(c =>
                 c.id === selectedId ? { ...c, status } : c
             ));
@@ -419,98 +535,25 @@ export function InboxPage() {
                         availableChannels={availableChannels}
                         currentChannel={activeConversation?.channel || 'CHAT'}
                         mergedRecipients={activeConversation?.mergedFrom || []}
-                        customerData={activeConversation?.wooCustomer ? {
-                            firstName: activeConversation.wooCustomer.firstName,
-                            lastName: activeConversation.wooCustomer.lastName,
-                            email: activeConversation.wooCustomer.email,
-                            ordersCount: activeConversation.wooCustomer.ordersCount,
-                            totalSpent: activeConversation.wooCustomer.totalSpent,
-                            wooId: activeConversation.wooCustomer.wooId
-                        } : {
-                            // Fallback for guest conversations
-                            firstName: activeConversation?.guestName?.split(' ')[0],
-                            lastName: activeConversation?.guestName?.split(' ').slice(1).join(' '),
-                            email: activeConversation?.guestEmail
-                        }}
-                        onStatusChange={async (newStatus, snoozeUntil) => {
-                            const res = await fetch(`/api/chat/${selectedId}`, {
-                                method: 'PUT',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`,
-                                    'x-account-id': currentAccount?.id || ''
-                                },
-                                body: JSON.stringify({
-                                    status: newStatus,
-                                    snoozeUntil: snoozeUntil?.toISOString()
-                                })
-                            });
-                            if (res.ok) {
-                                setConversations(prev => prev.map(c =>
-                                    c.id === selectedId ? { ...c, status: newStatus } : c
-                                ));
-                            }
-                        }}
-                        onAssign={async (userId) => {
-                            const res = await fetch(`/api/chat/${selectedId}`, {
-                                method: 'PUT',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`,
-                                    'x-account-id': currentAccount?.id || ''
-                                },
-                                body: JSON.stringify({ assignedTo: userId || null })
-                            });
-                            if (res.ok) {
-                                setConversations(prev => prev.map(c =>
-                                    c.id === selectedId ? { ...c, assignedTo: userId || null } : c
-                                ));
-                            }
-                        }}
-                        onMerge={async (targetConversationId) => {
-                            const res = await fetch(`/api/chat/${selectedId}/merge`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`,
-                                    'x-account-id': currentAccount?.id || ''
-                                },
-                                body: JSON.stringify({ sourceId: targetConversationId })
-                            });
-                            if (res.ok) {
-                                // Refresh conversations list silently (no skeleton)
-                                await fetchConversations();
-                            }
-                        }}
-                        onBlock={recipientEmail ? async () => {
-                            const res = await fetch('/api/chat/block', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`,
-                                    'x-account-id': currentAccount?.id || ''
-                                },
-                                body: JSON.stringify({ email: recipientEmail })
-                            });
-                            if (res.ok) {
-                                // Update conversation to CLOSED
-                                await fetch(`/api/chat/${selectedId}`, {
-                                    method: 'PUT',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${token}`,
-                                        'x-account-id': currentAccount?.id || ''
-                                    },
-                                    body: JSON.stringify({ status: 'CLOSED' })
-                                });
-                                setConversations(prev => prev.map(c =>
-                                    c.id === selectedId ? { ...c, status: 'CLOSED' } : c
-                                ));
-                                alert('Contact blocked. Their future messages will be auto-resolved.');
-                            } else {
-                                alert('Failed to block contact');
-                            }
-                        } : undefined}
+                        customerData={customerData}
+                        onStatusChange={handleStatusChange}
+                        onAssign={handleAssign}
+                        onMerge={handleMerge}
+                        onBlock={handleBlock}
+                        // Canned responses (lifted hook)
+                        cannedResponses={canned.cannedResponses}
+                        filteredCanned={canned.filteredCanned}
+                        showCanned={canned.showCanned}
+                        setShowCanned={canned.setShowCanned}
+                        showCannedManager={canned.showCannedManager}
+                        setShowCannedManager={canned.setShowCannedManager}
+                        handleInputForCanned={canned.handleInputForCanned}
+                        selectCanned={canned.selectCanned}
+                        refetchCanned={canned.refetchCanned}
+                        // Email accounts (lifted hook)
+                        emailAccounts={emailAccounts.emailAccounts}
+                        selectedEmailAccountId={emailAccounts.selectedEmailAccountId}
+                        onEmailAccountChange={emailAccounts.setSelectedEmailAccountId}
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-400">

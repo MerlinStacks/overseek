@@ -8,9 +8,6 @@
 import { Logger } from '../../../utils/logger';
 import { BaseAnalysisResult, Suggestion, AnalysisMetadata } from '../types/AnalysisTypes';
 
-// =============================================================================
-// ABSTRACT BASE CLASS
-// =============================================================================
 
 export abstract class BaseAnalyzer<TResult extends BaseAnalysisResult = BaseAnalysisResult> {
 
@@ -85,9 +82,6 @@ export abstract class BaseAnalyzer<TResult extends BaseAnalysisResult = BaseAnal
     }
 }
 
-// =============================================================================
-// ANALYZERS REGISTRY
-// =============================================================================
 
 /** All available analyzer names */
 export type AnalyzerName =

@@ -86,9 +86,7 @@ export abstract class BaseSync {
 
     protected abstract sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult>;
 
-    // --- Helpers ---
-
-    private async createLog(accountId: string, type: string, triggerSource?: string, retryCount: number = 0) {
+        private async createLog(accountId: string, type: string, triggerSource?: string, retryCount: number = 0) {
         return prisma.syncLog.create({
             data: {
                 accountId,

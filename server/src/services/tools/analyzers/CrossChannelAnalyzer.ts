@@ -10,9 +10,6 @@
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface CrossChannelInsight {
     hasData: boolean;
@@ -52,18 +49,12 @@ export interface CrossChannelInsight {
     suggestions: string[];
 }
 
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 import { normalizeChannel } from '../utils/ChannelUtils';
 
 // Alias for backwards compatibility
 const normalizeSource = normalizeChannel;
 
-// =============================================================================
-// MAIN ANALYZER
-// =============================================================================
 
 export class CrossChannelAnalyzer {
 

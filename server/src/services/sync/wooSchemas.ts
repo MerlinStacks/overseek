@@ -4,8 +4,6 @@
  */
 import { z } from 'zod';
 
-// --- Common Schemas ---
-
 const WooImageSchema = z.object({
     id: z.number(),
     src: z.string().url().optional().or(z.literal('')),
@@ -33,8 +31,6 @@ const WooBillingSchema = z.object({
 }).passthrough();
 
 const WooShippingSchema = WooBillingSchema.omit({ email: true, phone: true });
-
-// --- Product Schema ---
 
 export const WooProductSchema = z.object({
     id: z.number(),
@@ -68,8 +64,6 @@ export const WooProductSchema = z.object({
 
 export type WooProduct = z.infer<typeof WooProductSchema>;
 
-// --- Product Variation Schema ---
-
 const WooVariationAttributeSchema = z.object({
     id: z.number(),
     name: z.string(),
@@ -92,8 +86,6 @@ export const WooProductVariationSchema = z.object({
 
 export type WooProductVariation = z.infer<typeof WooProductVariationSchema>;
 
-// --- Customer Schema ---
-
 export const WooCustomerSchema = z.object({
     id: z.number(),
     email: z.string().email().optional().or(z.literal('')),
@@ -109,8 +101,6 @@ export const WooCustomerSchema = z.object({
 }).passthrough();
 
 export type WooCustomer = z.infer<typeof WooCustomerSchema>;
-
-// --- Order Schemas ---
 
 const WooLineItemSchema = z.object({
     id: z.number(),
@@ -149,8 +139,6 @@ export const WooOrderSchema = z.object({
 
 export type WooOrder = z.infer<typeof WooOrderSchema>;
 
-// --- Review Schema ---
-
 export const WooReviewSchema = z.object({
     id: z.number(),
     product_id: z.number(),
@@ -166,8 +154,6 @@ export const WooReviewSchema = z.object({
 }).passthrough();
 
 export type WooReview = z.infer<typeof WooReviewSchema>;
-
-// --- Safe Parse Helpers ---
 
 export function safeParseProduct(data: unknown): WooProduct | null {
     const result = WooProductSchema.safeParse(data);

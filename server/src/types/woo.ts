@@ -5,9 +5,6 @@
  * These replace `as any` casts throughout the codebase for better type safety.
  */
 
-// ============================================
-// ORDER TYPES
-// ============================================
 
 export interface WooOrderBillingAddress {
     first_name: string;
@@ -143,9 +140,6 @@ export interface WooOrderRawData {
     refunds?: WooOrderRefund[];
 }
 
-// ============================================
-// PRODUCT TYPES
-// ============================================
 
 export interface WooProductImage {
     id: number;
@@ -249,9 +243,6 @@ export interface WooProductRawData {
     meta_data?: Array<{ id: number; key: string; value: any }>;
 }
 
-// ============================================
-// CUSTOMER TYPES
-// ============================================
 
 /**
  * WooCommerce Customer Raw Data
@@ -274,9 +265,6 @@ export interface WooCustomerRawData {
     meta_data?: Array<{ id: number; key: string; value: any }>;
 }
 
-// ============================================
-// REVIEW TYPES
-// ============================================
 
 /**
  * WooCommerce Review Raw Data
@@ -295,9 +283,6 @@ export interface WooReviewRawData {
     reviewer_avatar_urls?: Record<string, string>;
 }
 
-// ============================================
-// UTILITY TYPE GUARD FUNCTIONS
-// ============================================
 
 /**
  * Type guard - use when accessing rawData from Prisma models

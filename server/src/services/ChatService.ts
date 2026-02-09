@@ -26,9 +26,7 @@ export class ChatService {
         this.automationEngine = new AutomationEngine();
     }
 
-    // --- Conversations ---
-
-    /**
+        /**
      * List conversations with caching and pagination for performance.
      * Cached for 30 seconds to reduce database load.
      */
@@ -177,9 +175,7 @@ export class ChatService {
         return { ...conversation, messages: enrichedMessages };
     }
 
-    // --- Messages ---
-
-    async addMessage(
+        async addMessage(
         conversationId: string,
         content: string,
         senderType: 'AGENT' | 'CUSTOMER' | 'SYSTEM',
@@ -286,9 +282,7 @@ export class ChatService {
         return message;
     }
 
-    // --- Actions ---
-
-    async assignConversation(id: string, userId: string) {
+        async assignConversation(id: string, userId: string) {
         const conv = await prisma.conversation.update({
             where: { id },
             data: { assignedTo: userId }
@@ -367,15 +361,11 @@ export class ChatService {
         });
     }
 
-    // --- Email delegation ---
-
-    async handleIncomingEmail(emailData: IncomingEmailData) {
+        async handleIncomingEmail(emailData: IncomingEmailData) {
         return this.emailIngestion.handleIncomingEmail(emailData);
     }
 
-    // --- Business Hours ---
-
-    private isOutsideBusinessHours(businessHours: any): boolean {
+        private isOutsideBusinessHours(businessHours: any): boolean {
         const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
         const now = new Date();
         const schedule = businessHours.days?.[days[now.getDay()]];

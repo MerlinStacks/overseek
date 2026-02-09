@@ -13,9 +13,6 @@ import { getSeasonalContext, SeasonalContext } from '../AdContext';
 import { ActionableRecommendation, BudgetAction } from '../types/ActionableTypes';
 import { REVENUE_STATUSES } from '../../../constants/orderStatus';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 interface StrategyAnalysisResult {
     hasData: boolean;
@@ -35,9 +32,6 @@ interface ChannelMetrics {
     conversions: number;
 }
 
-// =============================================================================
-// MAIN ADVISOR
-// =============================================================================
 
 export class MarketingStrategyAdvisor {
 

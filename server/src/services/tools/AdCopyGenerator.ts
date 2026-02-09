@@ -8,9 +8,6 @@
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 /** Tone presets for ad copy generation */
 export type TonePreset = 'professional' | 'playful' | 'urgent' | 'luxury';
@@ -90,9 +87,6 @@ export interface BulkGenerationResult {
     failedCount: number;
 }
 
-// =============================================================================
-// PROMPTS
-// =============================================================================
 
 const HEADLINE_PROMPT = `You are an expert Google Ads copywriter. Generate 15 unique headlines for a Responsive Search Ad.
 
@@ -196,9 +190,6 @@ TONE: Luxurious and premium
 - Appeal to aspirational desires`
 };
 
-// =============================================================================
-// SERVICE
-// =============================================================================
 
 export class AdCopyGenerator {
 

@@ -74,8 +74,8 @@ export class IndexingService {
                 accountId: { type: 'keyword' },
                 id: { type: 'keyword' },
                 email: { type: 'keyword' },
-                firstName: { type: 'text' },
-                lastName: { type: 'text' },
+                firstName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+                lastName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
                 totalSpent: { type: 'float' },
                 ordersCount: { type: 'integer' },
                 dateCreated: { type: 'date' }
@@ -182,20 +182,7 @@ export class IndexingService {
         Logger.info('Elasticsearch indices initialization complete.');
     }
 
-    static async indexCustomer(accountId: string, customer: any) {
-        await this.createIndexIfNotExists('customers', {
-            properties: {
-                accountId: { type: 'keyword' },
-                id: { type: 'keyword' },
-                email: { type: 'keyword' },
-                firstName: { type: 'text' },
-                lastName: { type: 'text' },
-                totalSpent: { type: 'float' },
-                ordersCount: { type: 'integer' },
-                dateCreated: { type: 'date' }
-            }
-        });
-
+    static async indexCustomer(accountId: string, customer: any, refresh: boolean = true) {
         await esClient.index({
             index: 'customers',
             id: `${accountId}_${customer.id}`,
@@ -209,42 +196,11 @@ export class IndexingService {
                 ordersCount: customer.orders_count || 0,
                 dateCreated: customer.date_created
             },
-            refresh: true
+            refresh
         });
     }
 
-    static async indexProduct(accountId: string, product: any) {
-        await this.createIndexIfNotExists('products', {
-            properties: {
-                accountId: { type: 'keyword' },
-                id: { type: 'keyword' },
-                wooId: { type: 'integer' },
-                name: { type: 'text' },
-                sku: { type: 'keyword' },
-                stock_status: { type: 'keyword' },
-                stock_quantity: { type: 'integer' },
-                low_stock_amount: { type: 'integer' },
-                price: { type: 'float' },
-                date_created: { type: 'date' },
-                mainImage: { type: 'keyword' },
-                images: { type: 'nested', properties: { src: { type: 'keyword' } } },
-                categories: { type: 'nested', properties: { name: { type: 'keyword' } } },
-                seoScore: { type: 'integer' },
-                merchantCenterScore: { type: 'integer' },
-                type: { type: 'keyword' },
-                variations: {
-                    type: 'nested',
-                    properties: {
-                        id: { type: 'integer' },
-                        stock_status: { type: 'keyword' },
-                        stock_quantity: { type: 'integer' },
-                        price: { type: 'float' },
-                        sku: { type: 'keyword' }
-                    }
-                }
-            }
-        });
-
+    static async indexProduct(accountId: string, product: any, refresh: boolean = true) {
         // Handle both Prisma object (camelCase) and raw Woo object (snake_case)
         const rawData = product.rawData || product;
 
@@ -277,42 +233,11 @@ export class IndexingService {
                     sku: v.sku
                 })) || []
             },
-            refresh: true
+            refresh
         });
     }
 
-    static async indexOrder(accountId: string, order: any, tags: string[] = []) {
-        await this.createIndexIfNotExists('orders', {
-            properties: {
-                accountId: { type: 'keyword' },
-                id: { type: 'keyword' },
-                status: { type: 'keyword' },
-                total: { type: 'float' },
-                currency: { type: 'keyword' },
-                date_created: { type: 'date' },
-                tags: { type: 'keyword' },
-                billing: { properties: { first_name: { type: 'text' }, last_name: { type: 'text' }, email: { type: 'keyword' } } },
-                line_items: {
-                    type: 'nested',
-                    properties: {
-                        name: { type: 'text', fields: { keyword: { type: 'keyword' } } },
-                        sku: { type: 'keyword' },
-                        productId: { type: 'keyword' },
-                        variationId: { type: 'keyword' },
-                        quantity: { type: 'integer' },
-                        meta_data: {
-                            type: 'nested',
-                            properties: { key: { type: 'keyword' }, value: { type: 'text' } }
-                        }
-                    }
-                },
-                meta_data: {
-                    type: 'nested',
-                    properties: { key: { type: 'keyword' }, value: { type: 'text' } }
-                }
-            }
-        });
-
+    static async indexOrder(accountId: string, order: any, tags: string[] = [], refresh: boolean = true) {
         await esClient.index({
             index: 'orders',
             id: `${accountId}_${order.id}`,
@@ -346,25 +271,11 @@ export class IndexingService {
                     value: typeof m.value === 'string' ? m.value : JSON.stringify(m.value)
                 })) || []
             },
-            refresh: true
+            refresh
         });
     }
 
-    static async indexReview(accountId: string, review: any) {
-        await this.createIndexIfNotExists('reviews', {
-            properties: {
-                accountId: { type: 'keyword' },
-                id: { type: 'keyword' },
-                productId: { type: 'keyword' },
-                productName: { type: 'text' },
-                reviewer: { type: 'text' },
-                rating: { type: 'integer' },
-                content: { type: 'text' },
-                status: { type: 'keyword' },
-                dateCreated: { type: 'date' }
-            }
-        });
-
+    static async indexReview(accountId: string, review: any, refresh: boolean = true) {
         await esClient.index({
             index: 'reviews',
             id: `${accountId}_${review.id}`,
@@ -379,8 +290,134 @@ export class IndexingService {
                 status: review.status,
                 dateCreated: review.date_created
             },
-            refresh: true
+            refresh
         });
+    }
+
+    // --- Bulk Indexing Methods (for sync) ---
+
+    /**
+     * Bulk index orders in a single ES request.
+     * tagsMap: Map<orderId, tags[]> for per-order tags.
+     */
+    static async bulkIndexOrders(accountId: string, orders: any[], tagsMap?: Map<number, string[]>) {
+        if (!orders.length) return;
+
+        const operations = orders.flatMap(order => {
+            const tags = tagsMap?.get(order.id) || [];
+            return [
+                { index: { _index: 'orders', _id: `${accountId}_${order.id}` } },
+                {
+                    accountId,
+                    id: order.id,
+                    status: order.status.toLowerCase(),
+                    total: parseFloat(order.total),
+                    total_tax: parseFloat(order.total_tax || '0'),
+                    net_sales: parseFloat(order.total) - parseFloat(order.total_tax || '0'),
+                    currency: order.currency,
+                    date_created: IndexingService.formatDateToUTC(order.date_created_gmt || order.date_created),
+                    tags,
+                    billing: order.billing,
+                    line_items: order.line_items?.map((item: any) => ({
+                        name: item.name,
+                        sku: item.sku,
+                        productId: item.product_id,
+                        variationId: item.variation_id || 0,
+                        quantity: item.quantity,
+                        total: parseFloat(item.total || '0') + parseFloat(item.total_tax || '0'),
+                        total_tax: parseFloat(item.total_tax || '0'),
+                        net_total: parseFloat(item.total || '0'),
+                        meta_data: item.meta_data?.map((m: any) => ({
+                            key: m.key,
+                            value: typeof m.value === 'string' ? m.value : JSON.stringify(m.value)
+                        })) || []
+                    })) || [],
+                    meta_data: order.meta_data?.map((m: any) => ({
+                        key: m.key,
+                        value: typeof m.value === 'string' ? m.value : JSON.stringify(m.value)
+                    })) || []
+                }
+            ];
+        });
+
+        const result = await esClient.bulk({ operations, refresh: 'wait_for' });
+        if (result.errors) {
+            const failed = result.items.filter((item: any) => item.index?.error);
+            Logger.warn(`Bulk index orders: ${failed.length}/${orders.length} failed`, { accountId });
+        }
+    }
+
+    /**
+     * Bulk index customers in a single ES request.
+     */
+    static async bulkIndexCustomers(accountId: string, customers: any[]) {
+        if (!customers.length) return;
+
+        const operations = customers.flatMap(c => [
+            { index: { _index: 'customers', _id: `${accountId}_${c.id}` } },
+            {
+                accountId,
+                id: c.id,
+                email: c.email,
+                firstName: c.first_name,
+                lastName: c.last_name,
+                totalSpent: parseFloat(c.total_spent || '0'),
+                ordersCount: c.orders_count || 0,
+                dateCreated: c.date_created
+            }
+        ]);
+
+        const result = await esClient.bulk({ operations, refresh: 'wait_for' });
+        if (result.errors) {
+            const failed = result.items.filter((item: any) => item.index?.error);
+            Logger.warn(`Bulk index customers: ${failed.length}/${customers.length} failed`, { accountId });
+        }
+    }
+
+    /**
+     * Bulk index products in a single ES request.
+     */
+    static async bulkIndexProducts(accountId: string, products: any[]) {
+        if (!products.length) return;
+
+        const operations = products.flatMap(product => {
+            const rawData = product.rawData || product;
+            return [
+                { index: { _index: 'products', _id: `${accountId}_${product.id}` } },
+                {
+                    accountId,
+                    id: product.id,
+                    wooId: product.wooId || product.id,
+                    name: product.name,
+                    sku: product.sku,
+                    stock_status: product.stockStatus || product.stock_status,
+                    stock_quantity: product.stockQuantity ?? product.stock_quantity ?? null,
+                    low_stock_amount: product.low_stock_amount ?? 5,
+                    price: parseFloat(product.price?.toString() || '0'),
+                    date_created: product.createdAt || product.date_created,
+                    mainImage: product.mainImage || product.images?.[0]?.src || null,
+                    images: (Array.isArray(product.images) ? product.images : rawData.images)?.map((img: any) => ({ src: img.src })) || [],
+                    categories: rawData.categories?.map((cat: any) => ({ name: cat.name })) || [],
+                    seoScore: product.seoScore || 0,
+                    merchantCenterScore: product.merchantCenterScore || 0,
+                    cogs: product.cogs ? parseFloat(product.cogs.toString()) : 0,
+                    type: rawData.type || 'simple',
+                    variations: product.variations?.map((v: any) => ({
+                        id: v.id,
+                        stock_status: v.stockStatus || v.stock_status,
+                        stock_quantity: v.stockQuantity ?? v.stock_quantity ?? null,
+                        price: parseFloat(v.price?.toString() || '0'),
+                        sku: v.sku
+                    })) || []
+                }
+            ];
+        });
+
+        const result = await esClient.bulk({ operations, refresh: 'wait_for' });
+        if (result.errors) {
+            const failed = result.items.filter((item: any) => item.index?.error);
+            Logger.warn(`Bulk index products: ${failed.length}/${products.length} failed`, { accountId });
+        }
     }
 
     /**

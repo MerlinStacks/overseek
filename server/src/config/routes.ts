@@ -81,6 +81,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // WooCommerce & Sync
     const wooRoutes = (await import('../routes/woo')).default;
     await fastify.register(wooRoutes, { prefix: '/api/woo' });
+    // Also register under /api/woocommerce (used by Setup Wizard StoreStep)
+    const wooRoutesAlias = (await import('../routes/woo')).default;
+    await fastify.register(wooRoutesAlias, { prefix: '/api/woocommerce' });
     const syncRoutes = (await import('../routes/sync')).default;
     await fastify.register(syncRoutes, { prefix: '/api/sync' });
     const statusCenterRoutes = (await import('../routes/statusCenter')).default;

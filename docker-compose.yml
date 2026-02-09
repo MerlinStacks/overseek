@@ -1,15 +1,20 @@
 services:
   # Postgres Database
   postgres:
+    # Use pg16 if you have an existing database from PostgreSQL 16
+    # PostgreSQL major versions are NOT compatible — you cannot use a pg17
+    # image to read data created by pg16 (or vice versa) without a migration.
     image: pgvector/pgvector:pg17
-
+    env_file:
+      - stack.env
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Allow override, default to password
       POSTGRES_DB: overseek
-    # Ports removed to prevent external access
-    # ports:
-    #   - "5432:5432"
+      # POSTGRES_PASSWORD comes from stack.env via env_file
+      # Do NOT set it here — Docker Compose interpolation doesn't read env_file
+      # Ports removed to prevent external access
+      # ports:
+      #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - postgres_backups:/backups # Backup volume for migrations
@@ -24,7 +29,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Elasticsearch
+  # Elasticsearch — requires version 9.x (matches the @elastic/elasticsearch client)
+  # Do NOT downgrade to 8.x without also changing the client library in server/package.json
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.2.4
     environment:
@@ -82,7 +88,12 @@ services:
     env_file:
       - stack.env
     environment:
-      DATABASE_URL: postgres://admin:${POSTGRES_PASSWORD:-password}@postgres:5432/overseek
+      # DATABASE_URL is auto-constructed in start.sh from POSTGRES_PASSWORD (in stack.env)
+      # This avoids Docker Compose interpolation issues with env_file
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_DB: overseek
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
@@ -143,13 +154,13 @@ volumes:
   postgres_backups: # Separate volume for database backups (survives data volume deletion)
   elasticsearch_data:
   redis_data:
-  server_node_modules:
   uploads_data:
   geoip_data:
 
 
 networks:
   proxy-net:
-    # External network for reverse proxy (Nginx Proxy Manager)
-    # Create once on host: docker network create proxy-net
-    external: true
+    # For reverse proxy integration (e.g. Nginx Proxy Manager):
+    # 1. Create the network on your host: docker network create proxy-net
+    # 2. Uncomment the line below so containers join the existing network:
+    # external: true

@@ -13,9 +13,6 @@ import { AdsService } from '../../ads';
 import { CampaignInsight } from '../../ads/types';
 import { getCampaignType, getExpectedRoasThreshold, isBrandCampaign, CampaignType } from '../AdContext';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export type FunnelStage = 'awareness' | 'consideration' | 'conversion' | 'retention';
 
@@ -93,9 +90,6 @@ export interface FunnelAnalysis {
     suggestions: string[];
 }
 
-// =============================================================================
-// FUNNEL STAGE DEFINITIONS
-// =============================================================================
 
 const FUNNEL_STAGE_METRICS: Record<FunnelStage, FunnelStageMetrics> = {
     awareness: {
@@ -136,9 +130,6 @@ const FUNNEL_STAGE_METRICS: Record<FunnelStage, FunnelStageMetrics> = {
     }
 };
 
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 function mapCampaignTypeToFunnelStage(type: CampaignType): FunnelStage {
     switch (type) {
@@ -202,9 +193,6 @@ function assessPerformance(
     return 'poor';
 }
 
-// =============================================================================
-// MAIN ANALYZER
-// =============================================================================
 
 export class FunnelAnalyzer {
 

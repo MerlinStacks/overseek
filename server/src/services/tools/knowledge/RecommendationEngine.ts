@@ -12,9 +12,6 @@ import { getCampaignType, CampaignType } from '../AdContext';
 import { CampaignInsight } from '../../ads/types';
 import { Logger } from '../../../utils/logger';
 
-// =============================================================================
-// TYPES
-// =============================================================================
 
 export interface ExplainableRecommendation {
     id: string;
@@ -48,9 +45,6 @@ export interface RecommendationSummary {
     topRecommendations: ExplainableRecommendation[];
 }
 
-// =============================================================================
-// CONFIDENCE CALCULATION
-// =============================================================================
 
 function calculateConfidence(
     recommendation: MatchedRecommendation,
@@ -112,9 +106,6 @@ function calculateConfidence(
     return { level, score, factors };
 }
 
-// =============================================================================
-// MAIN ENGINE
-// =============================================================================
 
 export class RecommendationEngine {
 

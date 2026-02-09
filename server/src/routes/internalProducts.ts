@@ -3,7 +3,6 @@
  * 
  * REST endpoints for managing internal-only products that are not synced to WooCommerce.
  * 
- * @module routes/internalProducts
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
