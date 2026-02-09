@@ -100,18 +100,18 @@ export function ReviewStep({ draft, setDraft, onNext, onBack, isSubmitting }: On
                         <div
                             key={integration.step}
                             className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${integration.isCompleted
-                                    ? 'bg-green-50 border-green-200'
-                                    : integration.isSkipped
-                                        ? 'bg-amber-50 border-amber-200'
-                                        : 'bg-gray-50 border-gray-200'
+                                ? 'bg-green-50 border-green-200'
+                                : integration.isSkipped
+                                    ? 'bg-amber-50 border-amber-200'
+                                    : 'bg-gray-50 border-gray-200'
                                 }`}
                         >
                             {/* Status Icon */}
                             <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${integration.isCompleted
-                                    ? 'bg-green-100 text-green-600'
-                                    : integration.isSkipped
-                                        ? 'bg-amber-100 text-amber-600'
-                                        : 'bg-gray-100 text-gray-400'
+                                ? 'bg-green-100 text-green-600'
+                                : integration.isSkipped
+                                    ? 'bg-amber-100 text-amber-600'
+                                    : 'bg-gray-100 text-gray-400'
                                 }`}>
                                 {integration.isCompleted ? (
                                     <CheckCircle size={20} />
@@ -125,8 +125,8 @@ export function ReviewStep({ draft, setDraft, onNext, onBack, isSubmitting }: On
                             {/* Label & Details */}
                             <div className="flex-1 min-w-0">
                                 <div className={`text-sm font-semibold ${integration.isCompleted ? 'text-green-800' :
-                                        integration.isSkipped ? 'text-amber-800' :
-                                            'text-gray-600'
+                                    integration.isSkipped ? 'text-amber-800' :
+                                        'text-gray-600'
                                     }`}>
                                     {integration.label}
                                 </div>
@@ -139,10 +139,10 @@ export function ReviewStep({ draft, setDraft, onNext, onBack, isSubmitting }: On
 
                             {/* Status Badge */}
                             <div className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${integration.isCompleted
-                                    ? 'bg-green-100 text-green-700'
-                                    : integration.isSkipped
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : 'bg-gray-100 text-gray-500'
+                                ? 'bg-green-100 text-green-700'
+                                : integration.isSkipped
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-gray-100 text-gray-500'
                                 }`}>
                                 {integration.isCompleted ? 'Ready' : integration.isSkipped ? 'Skipped' : 'Pending'}
                             </div>
@@ -185,7 +185,7 @@ export function ReviewStep({ draft, setDraft, onNext, onBack, isSubmitting }: On
                     {isSubmitting ? (
                         <>
                             <span className="animate-spin">⏳</span>
-                            Creating Account...
+                            Completing Setup...
                         </>
                     ) : (
                         <>

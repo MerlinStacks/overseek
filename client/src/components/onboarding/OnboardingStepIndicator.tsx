@@ -13,6 +13,8 @@ interface OnboardingStepIndicatorProps {
     currentStep: number;
     completedSteps: number[];
     skippedSteps: number[];
+    /** Called when user clicks a completed/skipped step to navigate back */
+    onStepClick?: (stepId: number) => void;
 }
 
 /**
@@ -22,7 +24,8 @@ interface OnboardingStepIndicatorProps {
 export function OnboardingStepIndicator({
     currentStep,
     completedSteps,
-    skippedSteps
+    skippedSteps,
+    onStepClick
 }: OnboardingStepIndicatorProps) {
     return (
         <div className="space-y-6">
@@ -35,16 +38,22 @@ export function OnboardingStepIndicator({
                     const isCompleted = completedSteps.includes(step.id);
                     const isSkipped = skippedSteps.includes(step.id);
                     const isLast = index === STEP_CONFIG.length - 1;
+                    const isClickable = isCompleted || isSkipped;
                     const Icon = step.icon;
 
                     return (
-                        <div key={step.id} className="relative flex items-start gap-4 group">
+                        <button
+                            key={step.id}
+                            type="button"
+                            onClick={() => isClickable && onStepClick?.(step.id)}
+                            className={`relative flex items-start gap-4 group w-full text-left ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+                        >
                             {/* Connector Line */}
                             {!isLast && (
                                 <div
                                     className={`absolute left-[19px] top-10 w-0.5 h-8 -ml-px transition-colors ${isCompleted ? 'bg-green-500' :
-                                            isSkipped ? 'bg-amber-400' :
-                                                'bg-gray-200'
+                                        isSkipped ? 'bg-amber-400' :
+                                            'bg-gray-200'
                                         }`}
                                     aria-hidden="true"
                                 />
@@ -53,12 +62,12 @@ export function OnboardingStepIndicator({
                             {/* Step Icon */}
                             <div
                                 className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300 ${isActive
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 scale-110'
-                                        : isCompleted
-                                            ? 'bg-green-100 text-green-600'
-                                            : isSkipped
-                                                ? 'bg-amber-100 text-amber-600'
-                                                : 'bg-white border border-gray-200 text-gray-400'
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 scale-110'
+                                    : isCompleted
+                                        ? 'bg-green-100 text-green-600'
+                                        : isSkipped
+                                            ? 'bg-amber-100 text-amber-600'
+                                            : 'bg-white border border-gray-200 text-gray-400'
                                     }`}
                                 aria-current={isActive ? 'step' : undefined}
                             >
@@ -75,8 +84,8 @@ export function OnboardingStepIndicator({
                             <div className="flex flex-col pt-1">
                                 <span
                                     className={`text-sm font-semibold transition-colors ${isActive || isCompleted ? 'text-gray-900' :
-                                            isSkipped ? 'text-amber-700' :
-                                                'text-gray-400'
+                                        isSkipped ? 'text-amber-700' :
+                                            'text-gray-400'
                                         }`}
                                 >
                                     {step.label}
@@ -102,7 +111,7 @@ export function OnboardingStepIndicator({
                                     </span>
                                 )}
                             </div>
-                        </div>
+                        </button>
                     );
                 })}
             </div>

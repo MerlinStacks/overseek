@@ -234,25 +234,34 @@ export function createInitialDraft(): OnboardingDraft {
 /** LocalStorage key for persisting draft */
 export const ONBOARDING_STORAGE_KEY = 'overseek_onboarding_draft';
 
-/** Save draft to localStorage (excludes sensitive data like SMTP password) */
+/** Save draft to localStorage (excludes sensitive data like SMTP password and API keys) */
 export function saveDraftToStorage(draft: OnboardingDraft, currentStep: number): void {
     try {
         // Exclude sensitive fields before persisting
         const safeDraft: OnboardingDraft = {
             ...draft,
+            store: {
+                ...draft.store,
+                wooConsumerKey: '',   // Never store API keys in localStorage
+                wooConsumerSecret: '' // Never store API secrets in localStorage
+            },
             email: {
                 ...draft.email,
                 smtpPassword: '' // Never store passwords in localStorage
             }
         };
-        localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ draft: safeDraft, currentStep }));
+        localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+            draft: safeDraft,
+            currentStep,
+            wizardSessionActive: true
+        }));
     } catch {
         // Silently fail if localStorage is unavailable
     }
 }
 
 /** Load draft from localStorage */
-export function loadDraftFromStorage(): { draft: OnboardingDraft; currentStep: number } | null {
+export function loadDraftFromStorage(): { draft: OnboardingDraft; currentStep: number; wizardSessionActive?: boolean } | null {
     try {
         const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY);
         if (stored) {

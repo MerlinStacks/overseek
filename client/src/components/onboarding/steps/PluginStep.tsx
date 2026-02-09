@@ -35,6 +35,7 @@ export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitti
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [configCopied, setConfigCopied] = useState(false);
+    const [webhookCopied, setWebhookCopied] = useState(false);
     const [verifyStatus, setVerifyStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [verifyResult, setVerifyResult] = useState<StoreVerificationResult | null>(null);
 
@@ -209,11 +210,16 @@ export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitti
                                     <button
                                         onClick={() => {
                                             navigator.clipboard.writeText(`${publicApiUrl}/api/webhooks/${currentAccount!.id}`);
+                                            setWebhookCopied(true);
+                                            setTimeout(() => setWebhookCopied(false), 2000);
                                         }}
-                                        className="absolute top-2 right-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                                        className={`absolute top-2 right-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${webhookCopied
+                                            ? 'bg-green-100 text-green-700 border border-green-200'
+                                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                                            }`}
                                     >
-                                        <Copy size={14} />
-                                        Copy
+                                        {webhookCopied ? <Check size={14} /> : <Copy size={14} />}
+                                        {webhookCopied ? 'Copied!' : 'Copy'}
                                     </button>
                                     <pre className="bg-slate-900 text-slate-100 p-4 pr-24 rounded-lg overflow-x-auto font-mono text-xs break-all whitespace-pre-wrap">
                                         <code>{`${publicApiUrl}/api/webhooks/${currentAccount!.id}`}</code>

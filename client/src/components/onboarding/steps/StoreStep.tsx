@@ -5,7 +5,7 @@
  * Includes connection testing functionality.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Store, ArrowRight, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
@@ -26,6 +26,19 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
     const [isCreatingAccount, setIsCreatingAccount] = useState(false);
     // Initialize from context to handle component remount after account was already created
     const [accountCreated, setAccountCreated] = useState(() => Boolean(currentAccount?.id));
+    const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Auto-advance to next step after successful test + account creation
+    useEffect(() => {
+        if (accountCreated && testStatus === 'success') {
+            autoAdvanceTimer.current = setTimeout(() => {
+                onNext();
+            }, 1500);
+        }
+        return () => {
+            if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+        };
+    }, [accountCreated, testStatus, onNext]);
 
     const handleChange = (field: keyof typeof draft.store, value: string | boolean) => {
         setDraft(prev => ({
@@ -68,9 +81,11 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                 setTestStatus('success');
                 handleChange('connectionVerified', true);
 
-                // Create account immediately after successful test (if not already created)
+                // Guard: only create account if one doesn't already exist
                 if (!accountCreated && !currentAccount) {
                     await createAccountEarly();
+                } else {
+                    setAccountCreated(true);
                 }
             } else {
                 setTestStatus('error');
@@ -257,7 +272,7 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                         {testStatus === 'success' && accountCreated && (
                             <p className="mt-2 text-sm text-green-600 flex items-center gap-1.5">
                                 <CheckCircle size={14} />
-                                Connected and ready! Your store has been set up.
+                                Connected and ready! Advancing to plugin setup…
                             </p>
                         )}
 

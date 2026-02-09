@@ -5,7 +5,7 @@
  * Guides users through store connection, plugin setup, email, and ad accounts.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -35,6 +35,9 @@ export function SetupWizard() {
     const [draft, setDraft] = useState<OnboardingDraft>(createInitialDraft);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Tracks whether an account was created within this wizard session,
+    // so the redirect-to-dashboard guard doesn't fire prematurely.
+    const createdInSession = useRef(false);
 
     // Hooks
     const { token, logout, isLoading: authLoading } = useAuth();
@@ -54,9 +57,18 @@ export function SetupWizard() {
         }
     }, [authLoading, token, navigate]);
 
-    // Redirect to dashboard if user already has accounts (unless adding new)
+    // Detect when an account is created mid-wizard (via StoreStep early-create)
+    // and suppress the redirect so the user can proceed to the Plugin step.
     useEffect(() => {
-        if (!accountsLoading && accounts.length > 0 && !isAddingNew) {
+        if (currentAccount?.id && currentStep === ONBOARDING_STEPS.STORE) {
+            createdInSession.current = true;
+        }
+    }, [currentAccount, currentStep]);
+
+    // Redirect to dashboard if user already has accounts (unless adding new
+    // or the account was just created within this wizard session).
+    useEffect(() => {
+        if (!accountsLoading && accounts.length > 0 && !isAddingNew && !createdInSession.current) {
             Logger.debug('SetupWizard: User has accounts, redirecting to dashboard');
             navigate('/');
         }
@@ -69,6 +81,10 @@ export function SetupWizard() {
             Logger.debug('SetupWizard: Resuming from saved draft', { step: saved.currentStep });
             setDraft(saved.draft);
             setCurrentStep(saved.currentStep);
+            // Preserve wizard session flag across page reloads / new tabs
+            if (saved.wizardSessionActive) {
+                createdInSession.current = true;
+            }
         }
     }, [isAddingNew]);
 
@@ -135,6 +151,18 @@ export function SetupWizard() {
             setCurrentStep(prev => prev + 1);
         }
     }, [currentStep, draft]);
+
+    /** Navigate directly to a previously completed or skipped step */
+    const goToStep = useCallback((stepId: number) => {
+        // Only allow navigating to completed, skipped, or the current step
+        const canNavigate = draft.completedSteps.includes(stepId)
+            || draft.skippedSteps.includes(stepId)
+            || stepId === currentStep;
+        if (canNavigate && stepId >= ONBOARDING_STEPS.STORE && stepId <= ONBOARDING_STEPS.TOTAL) {
+            setCurrentStep(stepId);
+            setError(null);
+        }
+    }, [draft.completedSteps, draft.skippedSteps, currentStep]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Finalization
@@ -284,6 +312,7 @@ export function SetupWizard() {
                                 currentStep={currentStep}
                                 completedSteps={draft.completedSteps}
                                 skippedSteps={draft.skippedSteps}
+                                onStepClick={goToStep}
                             />
                         </div>
                     </div>
@@ -298,19 +327,27 @@ export function SetupWizard() {
 
                         {/* Mobile Step Indicator */}
                         <div className="md:hidden mt-6 flex justify-center gap-2">
-                            {STEP_CONFIG.map((step) => (
-                                <div
-                                    key={step.id}
-                                    className={`w-2.5 h-2.5 rounded-full transition-colors ${step.id === currentStep
-                                        ? 'bg-blue-600'
-                                        : draft.completedSteps.includes(step.id)
-                                            ? 'bg-green-500'
-                                            : draft.skippedSteps.includes(step.id)
-                                                ? 'bg-amber-400'
-                                                : 'bg-gray-300'
-                                        }`}
-                                />
-                            ))}
+                            {STEP_CONFIG.map((step) => {
+                                const isClickable = draft.completedSteps.includes(step.id)
+                                    || draft.skippedSteps.includes(step.id)
+                                    || step.id === currentStep;
+                                return (
+                                    <button
+                                        key={step.id}
+                                        type="button"
+                                        onClick={() => isClickable && goToStep(step.id)}
+                                        className={`w-2.5 h-2.5 rounded-full transition-colors ${isClickable ? 'cursor-pointer' : 'cursor-default'} ${step.id === currentStep
+                                            ? 'bg-blue-600'
+                                            : draft.completedSteps.includes(step.id)
+                                                ? 'bg-green-500'
+                                                : draft.skippedSteps.includes(step.id)
+                                                    ? 'bg-amber-400'
+                                                    : 'bg-gray-300'
+                                            }`}
+                                        aria-label={`Go to ${step.label}`}
+                                    />
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
