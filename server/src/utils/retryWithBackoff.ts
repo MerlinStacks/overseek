@@ -55,6 +55,12 @@ export function isRetryableError(error: any): boolean {
     return false;
 }
 
+/** Detects 401/403 responses indicating revoked or invalid API credentials */
+export function isCredentialError(error: any): boolean {
+    const status = error?.response?.status || error?.status;
+    return status === 401 || status === 403;
+}
+
 /** backoff with jitter: min(base * 2^attempt, max) ± 10% */
 export function calculateBackoffDelay(
     attempt: number,
