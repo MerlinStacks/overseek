@@ -320,36 +320,40 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'accountId is required' });
         }
 
-        try {
-            const BATCH_SIZE = 200;
-            let offset = 0;
-            let totalIndexed = 0;
+        // Return 202 immediately — reindex runs in the background to avoid
+        // nginx upstream timeout (110) on large order sets.
+        reply.code(202).send({ message: 'Reindex started' });
 
-            while (true) {
-                const orders = await prisma.wooOrder.findMany({
-                    where: { accountId },
-                    select: { wooId: true, rawData: true },
-                    skip: offset,
-                    take: BATCH_SIZE,
-                    orderBy: { wooId: 'asc' }
-                });
+        // Background processing (not awaited by the HTTP handler)
+        (async () => {
+            try {
+                const BATCH_SIZE = 200;
+                let cursor = 0; // wooId cursor for keyset pagination
+                let totalIndexed = 0;
 
-                if (orders.length === 0) break;
+                while (true) {
+                    const orders = await prisma.wooOrder.findMany({
+                        where: { accountId, wooId: { gt: cursor } },
+                        select: { wooId: true, rawData: true },
+                        take: BATCH_SIZE,
+                        orderBy: { wooId: 'asc' }
+                    });
 
-                const rawOrders = orders.map(o => o.rawData as any);
-                await IndexingService.bulkIndexOrders(accountId, rawOrders);
-                totalIndexed += orders.length;
-                offset += BATCH_SIZE;
+                    if (orders.length === 0) break;
 
-                Logger.info(`Reindex progress: ${totalIndexed} orders indexed`, { accountId });
+                    const rawOrders = orders.map(o => o.rawData as any);
+                    await IndexingService.bulkIndexOrders(accountId, rawOrders);
+                    totalIndexed += orders.length;
+                    cursor = orders[orders.length - 1].wooId;
+
+                    Logger.info(`Reindex progress: ${totalIndexed} orders indexed`, { accountId });
+                }
+
+                Logger.info(`Reindex complete: ${totalIndexed} orders indexed from Postgres`, { accountId });
+            } catch (error) {
+                Logger.error('Failed to reindex orders', { accountId, error });
             }
-
-            Logger.info(`Reindex complete: ${totalIndexed} orders indexed from Postgres`, { accountId });
-            return { message: 'Reindex complete', totalIndexed };
-        } catch (error) {
-            Logger.error('Failed to reindex orders', { error });
-            return reply.code(500).send({ error: 'Failed to reindex orders' });
-        }
+        })();
     });
 
     /**
