@@ -119,6 +119,8 @@ export default defineConfig(({ mode }) => {
                 transformMixedEsModules: true
             },
             rollupOptions: {
+                // Capacitor is optional (only used in native builds) - don't fail Docker builds
+                external: ['@capacitor/haptics'],
                 output: {
                     manualChunks: (id) => {
                         if (id.includes('node_modules')) {

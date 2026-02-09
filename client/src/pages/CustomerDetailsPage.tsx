@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from 'react';
 import { Logger } from '../utils/logger';
-// Force reload
+import { formatCurrency } from '../utils/format';
 import { ArrowLeft, Mail, ShoppingBag, Calendar, Activity, Zap, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -64,6 +64,8 @@ export function CustomerDetailsPage() {
     if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;
 
     const { customer, orders, automations, activity } = data;
+    const currency = currentAccount?.currency || 'USD';
+    const fmt = (amount: number) => formatCurrency(amount, currency);
 
     // Helper to get initials
     const initials = (customer.firstName?.[0] || '') + (customer.lastName?.[0] || '');
@@ -105,7 +107,7 @@ export function CustomerDetailsPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Total Spent</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">${Number(customer.totalSpent).toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(Number(customer.totalSpent))}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Orders</p>
@@ -113,7 +115,7 @@ export function CustomerDetailsPage() {
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Average Order</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">${customer.ordersCount > 0 ? (Number(customer.totalSpent) / customer.ordersCount).toFixed(2) : '0.00'}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(customer.ordersCount > 0 ? Number(customer.totalSpent) / customer.ordersCount : 0)}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Last Active</p>
@@ -192,7 +194,7 @@ export function CustomerDetailsPage() {
                                                 {order.status}
                                             </span>
                                         </td>
-                                        <td className="py-4 text-right font-medium">${Number(order.total).toFixed(2)}</td>
+                                        <td className="py-4 text-right font-medium">{formatCurrency(Number(order.total), order.currency || currency)}</td>
                                     </tr>
                                 ))}
                                 {orders.length === 0 && (

@@ -185,8 +185,18 @@ export class CustomersService {
             take: 5
         });
 
+        // Compute stats from actual fetched orders as fallback when WooCommerce reports 0
+        const dbTotalSpent = Number(customer.totalSpent);
+        const computedTotalSpent = orders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+        const effectiveTotalSpent = dbTotalSpent > 0 ? dbTotalSpent : computedTotalSpent;
+        const effectiveOrdersCount = customer.ordersCount > 0 ? customer.ordersCount : orders.length;
+
         return {
-            customer,
+            customer: {
+                ...customer,
+                totalSpent: effectiveTotalSpent,
+                ordersCount: effectiveOrdersCount,
+            },
             orders,
             automations: automationEnrollments,
             activity: activitySessions

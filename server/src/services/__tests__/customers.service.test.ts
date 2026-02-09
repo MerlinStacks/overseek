@@ -56,7 +56,9 @@ describe('CustomersService', () => {
                 id: customerId,
                 accountId: accountId,
                 email: 'test@example.com',
-                wooId: 123
+                wooId: 123,
+                totalSpent: 0,
+                ordersCount: 0
             };
 
             mockFindFirst.mockResolvedValueOnce(mockCustomer);
@@ -64,7 +66,12 @@ describe('CustomersService', () => {
             const result = await CustomersService.getCustomerDetails(accountId, customerId);
 
             expect(result).not.toBeNull();
-            expect(result?.customer).toEqual(mockCustomer);
+            // Service enriches customer with computed stats from orders (fallback when DB value is 0)
+            expect(result?.customer).toEqual({
+                ...mockCustomer,
+                totalSpent: 0,
+                ordersCount: 0
+            });
             expect(mockFindFirst).toHaveBeenCalledTimes(1);
         });
 
@@ -74,7 +81,7 @@ describe('CustomersService', () => {
 
             // Mock ES fallback to also return nothing (to ensure we reach end of function)
             mockSearch.mockResolvedValueOnce({
-                 hits: { hits: [], total: { value: 0 } }
+                hits: { hits: [], total: { value: 0 } }
             });
 
             const result = await CustomersService.getCustomerDetails(accountId, customerId);
