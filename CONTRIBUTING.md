@@ -53,7 +53,7 @@ This section guides you through submitting an enhancement suggestion for OverSee
 To contribute code, please ensure your environment matches our "Iron Core" stack:
 
 - **Node.js**: v22.x or higher (Required for Prisma 7)
-- **Database**: PostgreSQL 16+
+- **Database**: PostgreSQL 17+ (with pgvector extension)
 - **Search**: Elasticsearch 9.x
 - **Cache**: Redis 7+
 - **Backend Framework**: Fastify 5.x (We no longer use Express)
@@ -70,6 +70,8 @@ cp stack.env.example stack.env
 cd server && npx prisma migrate dev && cd ..
 npm run dev
 ```
+
+> **Docker users:** If running the full stack with Docker Compose, create the proxy network first: `docker network create proxy-net`
 
 Please run `npm run lint` before submitting PRs to ensure your code follows our ESLint 9 Flat Config standards.
 

@@ -7,7 +7,7 @@ A WordPress plugin that connects your WooCommerce store to your self-hosted Over
 ## Requirements
 
 - WordPress 6.0+
-- WooCommerce 8.0+
+- WooCommerce 8.0+ (classic or Blocks-based checkout)
 - PHP 8.1+
 - A running OverSeek server (see main [README](../README.md))
 
@@ -54,6 +54,18 @@ The plugin works alongside WooCommerce's built-in REST API for:
 - Product sync (bidirectional)
 - Customer sync (bidirectional)
 - Inventory updates
+
+### WooCommerce Blocks Compatibility
+The plugin fully supports the block-based checkout introduced in WooCommerce 8.x. Visitor cookies are initialised during Store API REST requests so that tracking works correctly regardless of checkout type.
+
+### Caching Plugin Compatibility
+The plugin is tested with popular caching solutions including LiteSpeed Cache, WP Super Cache, and W3 Total Cache. It automatically:
+- Excludes OverSeek tracking cookies from cache key generation
+- Prevents caching of cart and checkout pages
+- Sets `no-cache` headers on tracking endpoints
+
+### Bot Detection
+Server-side tracking includes improved bot detection patterns to filter out crawlers, headless browsers, and monitoring bots, reducing false positives in visitor analytics.
 
 ## REST API Endpoints
 

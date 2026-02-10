@@ -2,13 +2,16 @@
 
 ## Initial Setup
 
-For first-time installations, run the setup script to generate `stack.env`:
+For first-time installations:
 
 ```bash
-bash setup.sh           # interactive, or:
+docker network create proxy-net   # required once per host (for reverse proxy integration)
+bash setup.sh                      # interactive, or:
 bash setup.sh --domain=myapp.example.com  # non-interactive
 docker compose up -d
 ```
+
+After containers start, open your `APP_URL` and register. The **first user to register becomes the platform superadmin**.
 
 See the [README](./README.md) for full Quick Start instructions.
 
@@ -28,8 +31,8 @@ OverSeek supports zero-downtime updates via Portainer with health checks.
    - `/health/live` - Simple liveness ping
 
 2. **Docker Health Checks** (added to docker-compose.yml):
-   - API: Waits 45s startup, checks `/health/ready` every 15s
-   - Web: Waits 30s startup, checks port 5173 every 15s
+   - API: Waits 180s startup, checks `/health/live` every 15s
+   - Web: Waits 30s startup, checks port 80 every 15s
 
 3. **Portainer Integration**:
    - Portainer monitors health status
@@ -69,10 +72,12 @@ docker compose up -d --no-deps web
 ## NPM Configuration
 
 Your Nginx Proxy Manager should route to the container names:
-- **API**: `http://overseekv2-api-1:3000`
-- **Web**: `http://overseekv2-web-1:80`
+- **API**: `http://<stack-name>-api-1:3000`
+- **Web**: `http://<stack-name>-web-1:80`
 
-No changes needed - NPM continues routing to the same hostnames.
+> **Note:** `<stack-name>` is the directory name where `docker-compose.yml` lives (e.g., `overseekv2-api-1` if cloned into `overseekv2/`). Check with `docker ps --format "{{.Names}}"`.
+
+No changes needed after initial setup — NPM continues routing to the same hostnames.
 
 ---
 

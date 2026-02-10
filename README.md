@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.3.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.3.2-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/AI-powered-ff6b6b?logo=openai&logoColor=white" alt="AI Powered">
@@ -55,7 +55,8 @@ The fastest way to get OverSeek running:
 ```bash
 git clone https://github.com/MerlinStacks/overseek.git
 cd overseek
-bash setup.sh           # generates stack.env with secure defaults
+docker network create proxy-net   # required once per host
+bash setup.sh                      # generates stack.env with secure defaults
 docker compose up -d
 ```
 
@@ -69,6 +70,7 @@ Wait for services to start (~2-3 minutes on first run), then open `http://localh
 ```bash
 cp stack.env.example stack.env
 # Edit stack.env — set POSTGRES_PASSWORD, JWT_SECRET, ENCRYPTION_KEY
+docker network create proxy-net   # required once per host
 docker compose up -d
 ```
 
@@ -76,13 +78,7 @@ docker compose up -d
 
 ### First-Time Setup
 
-After containers are running, create your admin account:
-
-```bash
-docker compose exec api npm run create-admin
-```
-
-This will output your login credentials.
+After containers are running, open `http://localhost:5173` and register your account. **The first user to register automatically becomes the platform superadmin.** The onboarding wizard will guide you through connecting your WooCommerce store and optional integrations (email, ad accounts).
 
 ---
 
@@ -142,13 +138,13 @@ Open `http://localhost:5173` for the frontend and `http://localhost:3000` for th
 ## Core Features
 
 ### 📊 Analytics & Tracking
-See your store in real-time. Live visitors on a globe, add-to-cart events streaming in, abandoned carts flagged automatically. Works even with ad blockers (server-side tracking).
+See your store in real-time. Live visitors on a globe, add-to-cart events streaming in, abandoned carts flagged automatically. Works even with ad blockers (server-side tracking). Compatible with WooCommerce Blocks checkout and major caching plugins (LiteSpeed Cache, WP Super Cache, etc.).
 
 ### 💬 Unified Inbox
 One inbox for everything. Emails (via IMAP), live chat widget, Facebook messages, Instagram DMs. Canned responses, AI-drafted replies, conversation search. No more tab-switching.
 
 ### 🤖 AI Marketing Co-Pilot
-Connect your Google Ads and Meta Ads accounts. The AI analyzes your campaigns across 7, 30, and 90-day windows, spots trends, and gives you specific recommendations—with confidence scores so you know what to trust.
+Connect your Google Ads, Meta Ads, and TikTok Ads accounts. The AI analyzes your campaigns across 7, 30, and 90-day windows, spots trends, and gives you specific recommendations—with confidence scores so you know what to trust. Includes AI-powered ad copy generation and creative A/B experiment tracking.
 
 ### 📈 Business Intelligence
 Daily/weekly email digests land in your inbox with revenue, top products, and traffic sources. Customer cohort analysis shows you which acquisition channels bring the best long-term customers. Product rankings reveal your winners and losers.
@@ -170,7 +166,7 @@ Full 360° view of every customer. Order history, lifetime value, all their conv
 |-------|------------|
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS v4 |
 | Backend | Node.js 22, Fastify 5, Prisma 7 |
-| Database | PostgreSQL 16, Elasticsearch 9, Redis 7 |
+| Database | PostgreSQL 17 (pgvector), Elasticsearch 9, Redis 7 |
 | AI | OpenRouter API (GPT-4, Claude, etc.) |
 | Infrastructure | Docker Compose |
 
@@ -190,6 +186,8 @@ Full 360° view of every customer. Order history, lifetime value, all their conv
 ### What the Plugin Does:
 
 - **Server-side tracking** — Pageviews, cart events, and purchases tracked directly from your server (ad-blocker proof)
+- **WooCommerce Blocks compatible** — Works with both classic and block-based checkout
+- **Cache-aware** — Automatically excludes tracking cookies from LiteSpeed Cache, WP Super Cache, and similar plugins
 - **Live chat widget** — Optional chat bubble connecting customers to your OverSeek inbox
 - **Email relay** — Allows OverSeek to send emails through your WordPress server's configured SMTP
 - **Full data sync** — Orders, products, and customers sync bidirectionally via WooCommerce REST API
@@ -213,7 +211,9 @@ overseek/
 ├── client/              # React frontend
 ├── server/              # Fastify backend
 ├── overseek-wc-plugin/  # WordPress plugin
-└── docker-compose.yml   # Infrastructure
+├── docker-compose.yml   # Infrastructure
+├── setup.sh             # Guided setup (generates stack.env)
+└── stack.env.example    # Environment variable reference
 ```
 
 ---
@@ -222,7 +222,7 @@ overseek/
 
 - [Changelog](./CHANGELOG.md) — What's new
 - [Contributing](./CONTRIBUTING.md) — How to help
-- [Code of Conduct](./CODE_OF_CONDUCT.md) — Community guidelines
+- [Deployment](./DEPLOYMENT.md) — Zero-downtime updates via Portainer
 
 ---
 
