@@ -70,7 +70,7 @@ export function SetupWizard() {
     useEffect(() => {
         if (!accountsLoading && accounts.length > 0 && !isAddingNew && !createdInSession.current) {
             Logger.debug('SetupWizard: User has accounts, redirecting to dashboard');
-            navigate('/');
+            navigate('/dashboard');
         }
     }, [accounts, accountsLoading, navigate, isAddingNew]);
 
@@ -182,7 +182,7 @@ export function SetupWizard() {
                 // For now, just clear draft and navigate
                 clearDraftFromStorage();
                 await refreshAccounts();
-                navigate('/');
+                navigate('/dashboard');
                 return;
             }
 
@@ -222,7 +222,7 @@ export function SetupWizard() {
 
             // Refresh accounts and navigate
             await refreshAccounts();
-            navigate('/');
+            navigate('/dashboard');
         } catch (err) {
             Logger.error('SetupWizard: Account creation failed', { error: err });
             setError(err instanceof Error ? err.message : 'Failed to create account');

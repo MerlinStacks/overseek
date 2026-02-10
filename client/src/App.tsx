@@ -13,6 +13,7 @@ import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { LandingPage } from './pages/LandingPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
@@ -142,7 +143,7 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
 
     // Map desktop routes to mobile routes
     const mobileRouteMap: Record<string, string> = {
-        '/': '/m/dashboard',
+        '/dashboard': '/m/dashboard',
         '/orders': '/m/orders',
         '/inbox': '/m/inbox',
         '/analytics': '/m/analytics',
@@ -183,6 +184,7 @@ function App() {
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>
                                         {/* Public Routes */}
+                                        <Route path="/" element={<LandingPage />} />
                                         <Route path="/login" element={<LoginPage />} />
                                         <Route path="/register" element={<RegisterPage />} />
                                         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
@@ -207,7 +209,7 @@ function App() {
                                             </Route>
 
                                             <Route element={<DashboardLayout><ErrorBoundary><Outlet /></ErrorBoundary></DashboardLayout>}>
-                                                <Route path="/" element={<AccountGuard><DashboardPage /></AccountGuard>} />
+                                                <Route path="/dashboard" element={<AccountGuard><DashboardPage /></AccountGuard>} />
                                                 <Route path="/orders" element={<AccountGuard><OrdersPage /></AccountGuard>} />
                                                 <Route path="/orders/:id" element={<AccountGuard><OrderDetailPage /></AccountGuard>} />
                                                 <Route path="/inventory" element={<AccountGuard><InventoryPage /></AccountGuard>} />

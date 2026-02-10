@@ -1,11 +1,12 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, Users, Edit2, Trash2 } from 'lucide-react';
 import { SegmentBuilder, SegmentCriteria } from '../components/segments/SegmentBuilder';
 import { useNavigate } from 'react-router-dom';
+import { Toast, ToastType } from '../components/ui/Toast';
 
 interface Segment {
     id: string;
@@ -27,6 +28,12 @@ export function SegmentsPage() {
     const [segmentName, setSegmentName] = useState('');
     const [segmentDesc, setSegmentDesc] = useState('');
 
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
     useEffect(() => {
         fetchSegments();
     }, [currentAccount, token]);
@@ -54,9 +61,8 @@ export function SegmentsPage() {
     async function handleSave(criteria: SegmentCriteria) {
         if (!currentAccount || !token) return;
 
-        // Basic validation
         if (!segmentName.trim()) {
-            alert('Please enter a segment name');
+            showToast('Please enter a segment name');
             return;
         }
 
@@ -96,12 +102,14 @@ export function SegmentsPage() {
                 setSegmentName('');
                 setSegmentDesc('');
                 fetchSegments();
+                showToast(editingSegment ? 'Segment updated' : 'Segment created', 'success');
             } else {
-                const err = await res.json();
-                alert(err.error || 'Failed to save segment');
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to save segment');
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
+            showToast('Failed to save segment — network error');
         }
     }
 
@@ -118,54 +126,63 @@ export function SegmentsPage() {
             });
             if (res.ok) {
                 fetchSegments();
+                showToast('Segment deleted', 'success');
+            } else {
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to delete segment');
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
+            showToast('Failed to delete segment');
         }
     }
 
     if (isCreating || editingSegment) {
         return (
-            <div className="space-y-6 max-w-4xl mx-auto">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">{editingSegment ? 'Edit Segment' : 'Create New Segment'}</h1>
-                    <p className="text-sm text-gray-500">Define criteria to group your customers.</p>
+            <>
+                <div className="space-y-6 max-w-4xl mx-auto">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900">{editingSegment ? 'Edit Segment' : 'Create New Segment'}</h1>
+                        <p className="text-sm text-gray-500">Define criteria to group your customers.</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-xs space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Segment Name</label>
+                            <input
+                                type="text"
+                                className="w-full border border-gray-300 rounded-sm px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                placeholder="e.g. VIP Customers"
+                                value={segmentName}
+                                onChange={e => setSegmentName(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                            <input
+                                type="text"
+                                className="w-full border border-gray-300 rounded-sm px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                placeholder="Customers who spent over $500"
+                                value={segmentDesc}
+                                onChange={e => setSegmentDesc(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <SegmentBuilder
+                        initialCriteria={editingSegment?.criteria}
+                        onSave={handleSave}
+                        onCancel={() => {
+                            setIsCreating(false);
+                            setEditingSegment(null);
+                            setSegmentName('');
+                            setSegmentDesc('');
+                        }}
+                    />
                 </div>
 
-                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-xs space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Segment Name</label>
-                        <input
-                            type="text"
-                            className="w-full border border-gray-300 rounded-sm px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            placeholder="e.g. VIP Customers"
-                            value={segmentName}
-                            onChange={e => setSegmentName(e.target.value)}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
-                        <input
-                            type="text"
-                            className="w-full border border-gray-300 rounded-sm px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500"
-                            placeholder="Customers who spent over $500"
-                            value={segmentDesc}
-                            onChange={e => setSegmentDesc(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <SegmentBuilder
-                    initialCriteria={editingSegment?.criteria}
-                    onSave={handleSave}
-                    onCancel={() => {
-                        setIsCreating(false);
-                        setEditingSegment(null);
-                        setSegmentName('');
-                        setSegmentDesc('');
-                    }}
-                />
-            </div>
+                <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
+            </>
         )
     }
 
@@ -248,6 +265,8 @@ export function SegmentsPage() {
                     </div>
                 )}
             </div>
+
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }

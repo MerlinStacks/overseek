@@ -213,7 +213,7 @@ export function CommandPalette() {
                     {query === '' && (
                         <Command.Group heading="Navigation" className="text-xs font-semibold text-slate-400 dark:text-slate-500 mb-2 px-2 uppercase tracking-wider py-2">
                             <div className="space-y-1">
-                                <CommandItem onSelect={() => runCommand(() => navigate('/'))}>
+                                <CommandItem onSelect={() => runCommand(() => navigate('/dashboard'))}>
                                     <LayoutDashboard className="w-4 h-4 mr-3" />
                                     <span>Dashboard</span>
                                 </CommandItem>

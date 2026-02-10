@@ -7,7 +7,7 @@ export function SuperAdminGuard({ children }: { children?: React.ReactNode }) {
     if (isLoading) return <div>Loading...</div>;
 
     if (!user || !user.isSuperAdmin) {
-        return <Navigate to="/" replace />;
+        return <Navigate to="/dashboard" replace />;
     }
 
     return <>{children || <Outlet />}</>;

@@ -133,7 +133,7 @@ export function GoldPriceMarginReportPage() {
             {/* Header */}
             <div className="mb-6">
                 <Link
-                    to="/"
+                    to="/dashboard"
                     className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4"
                 >
                     <ArrowLeft size={16} />
@@ -354,8 +354,8 @@ export function GoldPriceMarginReportPage() {
                                                     key={pageNum}
                                                     onClick={() => goToPage(pageNum)}
                                                     className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${pageNum === currentPage
-                                                            ? 'bg-amber-500 text-white'
-                                                            : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-300'
+                                                        ? 'bg-amber-500 text-white'
+                                                        : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-300'
                                                         }`}
                                                 >
                                                     {pageNum}

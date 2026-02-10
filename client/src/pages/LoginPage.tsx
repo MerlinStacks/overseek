@@ -42,7 +42,7 @@ export function LoginPage() {
 
             // EDGE CASE FIX: Pass refresh token to auth context for silent refresh
             login(data.token, data.user, data.refreshToken);
-            navigate('/');
+            navigate('/dashboard');
         } catch (err: any) {
             setError(err.message);
         } finally {

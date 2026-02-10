@@ -104,7 +104,7 @@ export function AdminAccountsPage() {
             if (data.token) {
                 // EDGE CASE FIX: Pass refresh token for silent refresh support
                 login(data.token, data.user, data.refreshToken);
-                navigate('/');
+                navigate('/dashboard');
             } else {
                 alert('Impersonation failed: ' + data.error);
             }

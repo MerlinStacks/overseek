@@ -104,7 +104,7 @@ export function AdminSidebar() {
 
             <div className="p-4 border-t border-slate-800">
                 <Link
-                    to="/"
+                    to="/dashboard"
                     className="flex items-center gap-3 w-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors mb-2"
                 >
                     <LogOut size={20} />

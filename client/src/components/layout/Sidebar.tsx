@@ -51,7 +51,7 @@ interface SidebarProps {
 }
 
 const navItems = [
-    { type: 'link', icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { type: 'link', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { type: 'link', icon: MessageSquare, label: 'Inbox', path: '/inbox' },
     {
         type: 'group',
