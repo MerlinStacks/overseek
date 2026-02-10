@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, FileText, BookOpen, GraduationCap, Trash2, Edit2, EyeOff, Save, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { PoliciesPageSkeleton } from '../components/ui/PageSkeletons';
+import { Toast, ToastType } from '../components/ui/Toast';
 
 interface Policy {
     id: string;
@@ -38,6 +39,18 @@ export function PoliciesPage() {
     const [formType, setFormType] = useState<'POLICY' | 'SOP' | 'TRAINING'>('POLICY');
     const [formCategory, setFormCategory] = useState('');
     const [formIsPublished, setFormIsPublished] = useState(true);
+
+    // Toast state
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+
+    /** Display a toast notification */
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message);
+        setToastType(type);
+        setToastVisible(true);
+    }, []);
 
     useEffect(() => {
         if (currentAccount && token) fetchPolicies();
@@ -82,7 +95,15 @@ export function PoliciesPage() {
     };
 
     const handleSave = async () => {
-        if (!formTitle.trim()) return;
+        // Client-side validation with specific error messages
+        if (!formTitle.trim()) {
+            showToast('No title entered');
+            return;
+        }
+        if (!formContent.trim()) {
+            showToast('No content entered');
+            return;
+        }
 
         const body = {
             title: formTitle,
@@ -108,15 +129,24 @@ export function PoliciesPage() {
             if (res.ok) {
                 fetchPolicies();
                 setIsEditing(false);
+                showToast(
+                    selectedPolicy ? 'Policy updated successfully' : 'Policy created successfully',
+                    'success'
+                );
                 if (!selectedPolicy) {
                     setSelectedPolicy(null);
                 } else {
                     const updated = await res.json();
                     setSelectedPolicy(updated);
                 }
+            } else {
+                // Surface the API error message
+                const data = await res.json().catch(() => null);
+                showToast(data?.error || 'Failed to save policy');
             }
         } catch (e) {
             Logger.error('Failed to save policy:', { error: e });
+            showToast('Failed to save policy — network error');
         }
     };
 
@@ -130,13 +160,18 @@ export function PoliciesPage() {
             });
             if (res.ok) {
                 fetchPolicies();
+                showToast('Policy deleted', 'success');
                 if (selectedPolicy?.id === policyId) {
                     setSelectedPolicy(null);
                     setIsEditing(false);
                 }
+            } else {
+                const data = await res.json().catch(() => null);
+                showToast(data?.error || 'Failed to delete policy');
             }
         } catch (e) {
             Logger.error('Failed to delete policy:', { error: e });
+            showToast('Failed to delete policy — network error');
         }
     };
 
@@ -155,198 +190,207 @@ export function PoliciesPage() {
     if (isLoading) return <PoliciesPageSkeleton />;
 
     return (
-        <div className="flex h-[calc(100vh-4rem)]">
-            {/* Left Panel: List */}
-            <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
-                <div className="p-4 border-b border-gray-200">
-                    <div className="flex items-center justify-between mb-2">
-                        <h1 className="text-lg font-bold text-gray-900">Policies & SOP</h1>
-                        <button
-                            onClick={handleCreate}
-                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                            <Plus size={18} />
-                        </button>
-                    </div>
-                    <p className="text-xs text-gray-500">Manage policies, SOPs, and training materials</p>
-                </div>
-
-                <div className="flex-1 overflow-y-auto">
-                    {(['POLICY', 'SOP', 'TRAINING'] as const).map(type => {
-                        const config = typeConfig[type];
-                        const items = groupedPolicies[type];
-                        const isExpanded = expandedTypes.includes(type);
-
-                        return (
-                            <div key={type} className="border-b border-gray-100">
-                                <button
-                                    onClick={() => toggleType(type)}
-                                    className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-                                >
-                                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    <config.icon size={18} className="text-gray-500" />
-                                    <span className="font-medium text-gray-700">{config.label}s</span>
-                                    <span className="ml-auto text-xs text-gray-400">{items.length}</span>
-                                </button>
-
-                                {isExpanded && items.length > 0 && (
-                                    <div className="pb-2">
-                                        {items.map(policy => (
-                                            <button
-                                                key={policy.id}
-                                                onClick={() => handleView(policy)}
-                                                className={cn(
-                                                    "w-full flex items-center gap-2 px-6 py-2 text-left text-sm transition-colors",
-                                                    selectedPolicy?.id === policy.id
-                                                        ? "bg-blue-50 text-blue-700 border-r-2 border-blue-600"
-                                                        : "hover:bg-gray-50 text-gray-600"
-                                                )}
-                                            >
-                                                <span className="truncate flex-1">{policy.title}</span>
-                                                {!policy.isPublished && (
-                                                    <EyeOff size={14} className="text-gray-400" />
-                                                )}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {isExpanded && items.length === 0 && (
-                                    <p className="px-6 py-2 text-xs text-gray-400 italic">No {config.label.toLowerCase()}s yet</p>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Right Panel: View/Edit */}
-            <div className="flex-1 bg-gray-50 flex flex-col">
-                {!selectedPolicy && !isEditing ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-400">
-                        <div className="text-center">
-                            <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
-                            <p>Select a policy to view or click + to create new</p>
+        <>
+            <div className="flex h-[calc(100vh-4rem)]">
+                {/* Left Panel: List */}
+                <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+                    <div className="p-4 border-b border-gray-200">
+                        <div className="flex items-center justify-between mb-2">
+                            <h1 className="text-lg font-bold text-gray-900">Policies & SOP</h1>
+                            <button
+                                onClick={handleCreate}
+                                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                <Plus size={18} />
+                            </button>
                         </div>
+                        <p className="text-xs text-gray-500">Manage policies, SOPs, and training materials</p>
                     </div>
-                ) : (
-                    <>
-                        {/* Header */}
-                        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                            {isEditing ? (
-                                <input
-                                    type="text"
-                                    placeholder="Enter title..."
-                                    value={formTitle}
-                                    onChange={e => setFormTitle(e.target.value)}
-                                    className="text-xl font-bold text-gray-900 bg-transparent border-none outline-hidden w-full"
-                                />
-                            ) : (
-                                <div>
-                                    <h2 className="text-xl font-bold text-gray-900">{selectedPolicy?.title}</h2>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", typeConfig[selectedPolicy?.type || 'POLICY'].color)}>
-                                            {typeConfig[selectedPolicy?.type || 'POLICY'].label}
-                                        </span>
-                                        {selectedPolicy?.category && (
-                                            <span className="text-xs text-gray-500">• {selectedPolicy.category}</span>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
-                            <div className="flex items-center gap-2">
-                                {isEditing ? (
-                                    <>
-                                        <button
-                                            onClick={() => {
-                                                setIsEditing(false);
-                                                if (!selectedPolicy) setSelectedPolicy(null);
-                                            }}
-                                            className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={handleSave}
-                                            className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                        >
-                                            <Save size={16} />
-                                            Save
-                                        </button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <button
-                                            onClick={() => selectedPolicy && handleEdit(selectedPolicy)}
-                                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                        >
-                                            <Edit2 size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => selectedPolicy && handleDelete(selectedPolicy.id)}
-                                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
+                    <div className="flex-1 overflow-y-auto">
+                        {(['POLICY', 'SOP', 'TRAINING'] as const).map(type => {
+                            const config = typeConfig[type];
+                            const items = groupedPolicies[type];
+                            const isExpanded = expandedTypes.includes(type);
 
-                        {/* Metadata Bar (Edit Mode) */}
-                        {isEditing && (
-                            <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
-                                <select
-                                    value={formType}
-                                    onChange={e => setFormType(e.target.value as any)}
-                                    className="text-sm border border-gray-300 rounded-lg px-2 py-1"
-                                >
-                                    <option value="POLICY">Policy</option>
-                                    <option value="SOP">SOP</option>
-                                    <option value="TRAINING">Training</option>
-                                </select>
-                                <input
-                                    type="text"
-                                    placeholder="Category (optional)"
-                                    value={formCategory}
-                                    onChange={e => setFormCategory(e.target.value)}
-                                    className="text-sm border border-gray-300 rounded-lg px-2 py-1 w-40"
-                                />
-                                <label className="flex items-center gap-2 text-sm text-gray-600">
-                                    <input
-                                        type="checkbox"
-                                        checked={formIsPublished}
-                                        onChange={e => setFormIsPublished(e.target.checked)}
-                                        className="rounded-sm"
-                                    />
-                                    Published
-                                </label>
-                            </div>
-                        )}
+                            return (
+                                <div key={type} className="border-b border-gray-100">
+                                    <button
+                                        onClick={() => toggleType(type)}
+                                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                                    >
+                                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                        <config.icon size={18} className="text-gray-500" />
+                                        <span className="font-medium text-gray-700">{config.label}s</span>
+                                        <span className="ml-auto text-xs text-gray-400">{items.length}</span>
+                                    </button>
 
-                        {/* Content */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                            {isEditing ? (
-                                <textarea
-                                    placeholder="Write your policy content here... (Markdown supported)"
-                                    value={formContent}
-                                    onChange={e => setFormContent(e.target.value)}
-                                    className="w-full h-full min-h-[400px] p-4 bg-white border border-gray-200 rounded-lg text-sm font-mono resize-none outline-hidden focus:ring-2 focus:ring-blue-500"
-                                />
-                            ) : (
-                                <div className="bg-white rounded-lg border border-gray-200 p-6 prose max-w-none">
-                                    {selectedPolicy?.content ? (
-                                        <div className="whitespace-pre-wrap">{selectedPolicy.content}</div>
-                                    ) : (
-                                        <p className="text-gray-400 italic">No content</p>
+                                    {isExpanded && items.length > 0 && (
+                                        <div className="pb-2">
+                                            {items.map(policy => (
+                                                <button
+                                                    key={policy.id}
+                                                    onClick={() => handleView(policy)}
+                                                    className={cn(
+                                                        "w-full flex items-center gap-2 px-6 py-2 text-left text-sm transition-colors",
+                                                        selectedPolicy?.id === policy.id
+                                                            ? "bg-blue-50 text-blue-700 border-r-2 border-blue-600"
+                                                            : "hover:bg-gray-50 text-gray-600"
+                                                    )}
+                                                >
+                                                    <span className="truncate flex-1">{policy.title}</span>
+                                                    {!policy.isPublished && (
+                                                        <EyeOff size={14} className="text-gray-400" />
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {isExpanded && items.length === 0 && (
+                                        <p className="px-6 py-2 text-xs text-gray-400 italic">No {config.label.toLowerCase()}s yet</p>
                                     )}
                                 </div>
-                            )}
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Right Panel: View/Edit */}
+                <div className="flex-1 bg-gray-50 flex flex-col">
+                    {!selectedPolicy && !isEditing ? (
+                        <div className="flex-1 flex items-center justify-center text-gray-400">
+                            <div className="text-center">
+                                <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
+                                <p>Select a policy to view or click + to create new</p>
+                            </div>
                         </div>
-                    </>
-                )}
+                    ) : (
+                        <>
+                            {/* Header */}
+                            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                                {isEditing ? (
+                                    <input
+                                        type="text"
+                                        placeholder="Enter title..."
+                                        value={formTitle}
+                                        onChange={e => setFormTitle(e.target.value)}
+                                        className="text-xl font-bold text-gray-900 bg-transparent border-none outline-hidden w-full"
+                                    />
+                                ) : (
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">{selectedPolicy?.title}</h2>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", typeConfig[selectedPolicy?.type || 'POLICY'].color)}>
+                                                {typeConfig[selectedPolicy?.type || 'POLICY'].label}
+                                            </span>
+                                            {selectedPolicy?.category && (
+                                                <span className="text-xs text-gray-500">• {selectedPolicy.category}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                    {isEditing ? (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    setIsEditing(false);
+                                                    if (!selectedPolicy) setSelectedPolicy(null);
+                                                }}
+                                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSave}
+                                                className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                            >
+                                                <Save size={16} />
+                                                Save
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => selectedPolicy && handleEdit(selectedPolicy)}
+                                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                            >
+                                                <Edit2 size={18} />
+                                            </button>
+                                            <button
+                                                onClick={() => selectedPolicy && handleDelete(selectedPolicy.id)}
+                                                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Metadata Bar (Edit Mode) */}
+                            {isEditing && (
+                                <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
+                                    <select
+                                        value={formType}
+                                        onChange={e => setFormType(e.target.value as any)}
+                                        className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+                                    >
+                                        <option value="POLICY">Policy</option>
+                                        <option value="SOP">SOP</option>
+                                        <option value="TRAINING">Training</option>
+                                    </select>
+                                    <input
+                                        type="text"
+                                        placeholder="Category (optional)"
+                                        value={formCategory}
+                                        onChange={e => setFormCategory(e.target.value)}
+                                        className="text-sm border border-gray-300 rounded-lg px-2 py-1 w-40"
+                                    />
+                                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={formIsPublished}
+                                            onChange={e => setFormIsPublished(e.target.checked)}
+                                            className="rounded-sm"
+                                        />
+                                        Published
+                                    </label>
+                                </div>
+                            )}
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-y-auto p-6">
+                                {isEditing ? (
+                                    <textarea
+                                        placeholder="Write your policy content here... (Markdown supported)"
+                                        value={formContent}
+                                        onChange={e => setFormContent(e.target.value)}
+                                        className="w-full h-full min-h-[400px] p-4 bg-white border border-gray-200 rounded-lg text-sm font-mono resize-none outline-hidden focus:ring-2 focus:ring-blue-500"
+                                    />
+                                ) : (
+                                    <div className="bg-white rounded-lg border border-gray-200 p-6 prose max-w-none">
+                                        {selectedPolicy?.content ? (
+                                            <div className="whitespace-pre-wrap">{selectedPolicy.content}</div>
+                                        ) : (
+                                            <p className="text-gray-400 italic">No content</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
+
+            <Toast
+                message={toastMessage}
+                isVisible={toastVisible}
+                onClose={() => setToastVisible(false)}
+                type={toastType}
+            />
+        </>
     );
 }

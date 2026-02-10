@@ -99,6 +99,9 @@ class OverSeek_Server_Tracking
         // This ensures the cookie is properly set and persisted across requests.
         add_action('init', array($this, 'init_visitor_cookie'), 1);
 
+        // Auto-configure cache plugin exclusions (LiteSpeed, WP Rocket, W3TC, etc.)
+        add_action('init', array($this, 'configure_cache_exclusions'), 0);
+
         // Flush event queue at shutdown (non-blocking for performance)
         add_action('shutdown', array($this, 'flush_event_queue'));
 
@@ -150,8 +153,23 @@ class OverSeek_Server_Tracking
      */
     public function init_visitor_cookie()
     {
-        // Skip admin, AJAX, cron, and REST API requests
-        if (is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
+        // Skip admin, AJAX, and cron
+        if (is_admin() || wp_doing_ajax() || wp_doing_cron()) {
+            return;
+        }
+
+        // For REST requests: only allow WooCommerce Store API through (Blocks checkout).
+        // Other REST endpoints (health check, settings) should be skipped.
+        // During Store API requests, read existing cookies but don't set new ones
+        // because response headers may already be committed.
+        if (defined('REST_REQUEST') && REST_REQUEST) {
+            if (!$this->is_wc_store_api_request()) {
+                return;
+            }
+            $cookie_name = '_os_vid';
+            if (isset($_COOKIE[$cookie_name]) && !empty($_COOKIE[$cookie_name])) {
+                $this->visitor_id = sanitize_text_field($_COOKIE[$cookie_name]);
+            }
             return;
         }
 
@@ -183,6 +201,29 @@ class OverSeek_Server_Tracking
 
         // Persist landing page referrer (only if external)
         $this->persist_landing_referrer();
+    }
+
+    /**
+     * Check if the current REST request is a WooCommerce Store API request.
+     * Store API is used by WooCommerce Blocks for cart/checkout operations.
+     *
+     * @return bool True if this is a WC Store API request
+     */
+    private function is_wc_store_api_request()
+    {
+        // Primary: check the parsed REST route
+        global $wp;
+        if (isset($wp->query_vars['rest_route'])) {
+            return strpos($wp->query_vars['rest_route'], '/wc/store/') === 0;
+        }
+
+        // Fallback: inspect REQUEST_URI for Store API pattern
+        if (isset($_SERVER['REQUEST_URI'])) {
+            $uri = esc_url_raw(wp_unslash($_SERVER['REQUEST_URI']));
+            return strpos($uri, '/wc/store/') !== false;
+        }
+
+        return false;
     }
 
     /**
@@ -785,6 +826,48 @@ class OverSeek_Server_Tracking
         }
 
         $_COOKIE[$name] = $value;
+    }
+
+    /**
+     * Auto-configure cache exclusions for popular caching plugins.
+     * Ensures the _os_vid cookie isn't stripped and tracking pages aren't cached.
+     *
+     * Supports: LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache,
+     * WP Fastest Cache, SG Optimizer.
+     */
+    public function configure_cache_exclusions()
+    {
+        // LiteSpeed Cache: vary by our tracking cookie so each visitor
+        // gets their own cached version
+        if (defined('LSCWP_V')) {
+            add_action('litespeed_vary_add', function () {
+                if (function_exists('do_action')) {
+                    do_action('litespeed_vary_append', '_os_vid');
+                }
+            });
+        }
+
+        // WP Rocket: add cookie to "Don't cache pages with these cookies"
+        add_filter('rocket_cache_reject_cookies', function ($cookies) {
+            $cookies[] = '_os_vid';
+            $cookies[] = '_os_utm';
+            $cookies[] = '_os_click';
+            return $cookies;
+        });
+
+        // W3 Total Cache: add cookie to rejected cookies list
+        add_filter('w3tc_rejected_cookies', function ($cookies) {
+            if (!is_array($cookies)) {
+                $cookies = array();
+            }
+            $cookies[] = '_os_vid';
+            return $cookies;
+        });
+
+        // General: send Vary header so CDN/proxies vary cache by cookie
+        if (!headers_sent() && !is_admin()) {
+            header('Vary: Cookie', false);
+        }
     }
 
     /**
@@ -1393,6 +1476,12 @@ class OverSeek_Server_Tracking
         }
         $this->cart_view_tracked = true;
 
+        // Signal to CDN/reverse proxy not to cache this page
+        if (!headers_sent()) {
+            header('Cache-Control: no-cache, no-store, must-revalidate', false);
+            header('X-OverSeek-NoCache: 1', false);
+        }
+
         $payload = array();
 
         $cart = $this->get_cart_safely();
@@ -1428,6 +1517,12 @@ class OverSeek_Server_Tracking
             return;
         }
         $this->checkout_view_tracked = true;
+
+        // Signal to CDN/reverse proxy not to cache this page
+        if (!headers_sent()) {
+            header('Cache-Control: no-cache, no-store, must-revalidate', false);
+            header('X-OverSeek-NoCache: 1', false);
+        }
 
         $payload = array();
 

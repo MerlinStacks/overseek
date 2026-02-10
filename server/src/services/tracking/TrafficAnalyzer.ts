@@ -128,12 +128,13 @@ export function isBot(userAgent: string): boolean {
         'ccbot', 'cohere-ai', 'bytespider', 'petalbot',
         'amazonbot', 'applebot',
 
-        // Generic bot indicators
-        'bot', 'spider', 'crawl', 'scrape', 'fetch',
+        // Generic bot indicators (use boundary-aware patterns to avoid
+        // false positives on real browsers — e.g. bare 'bot' matches 'About')
+        'bot/', '/bot', 'bot;', 'spider/', 'crawl/', 'scraper',
         'headless', 'phantom', 'selenium', 'puppeteer', 'playwright',
         'wget', 'curl', 'python-requests', 'python-urllib',
-        'java/', 'libwww', 'apache-httpclient',
-        'go-http-client', 'ruby', 'perl',
+        'java/', 'libwww', 'apache-httpclient', 'httpx/',
+        'go-http-client', 'ruby/', 'perl/',
 
         // Uptime monitors
         'pingdom', 'uptimerobot', 'statuscake', 'site24x7',

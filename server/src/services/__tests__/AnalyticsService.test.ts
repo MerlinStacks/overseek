@@ -96,8 +96,8 @@ describe('AnalyticsService.getProfitabilityReport', () => {
 
         // Mock Products (COGS)
         (prisma.wooProduct.findMany as any).mockResolvedValue([
-            { wooId: 1, cogs: '40.00', sku: 'A' },
-            { wooId: 2, cogs: '40.00', sku: 'B' } // 2 units * 40 = 80 cost
+            { wooId: 1, cogs: '40.00', miscCosts: [], sku: 'A' },
+            { wooId: 2, cogs: '40.00', miscCosts: [], sku: 'B' } // 2 units * 40 = 80 cost
         ]);
         (prisma.productVariation.findMany as any).mockResolvedValue([]);
 
@@ -145,12 +145,12 @@ describe('AnalyticsService.getProfitabilityReport', () => {
 
         // Parent product has COGS of 50
         (prisma.wooProduct.findMany as any).mockResolvedValue([
-            { wooId: 1, cogs: '50.00', sku: 'A', name: 'Product A' }
+            { wooId: 1, cogs: '50.00', miscCosts: [], sku: 'A', name: 'Product A' }
         ]);
 
         // Variant has COGS of 75 - this should be used instead
         (prisma.productVariation.findMany as any).mockResolvedValue([
-            { wooId: 10, cogs: '75.00', sku: 'A-L' }
+            { wooId: 10, cogs: '75.00', miscCosts: [], sku: 'A-L' }
         ]);
 
         const result = await AnalyticsService.getProfitabilityReport(accountId, startDate, endDate);
@@ -163,5 +163,54 @@ describe('AnalyticsService.getProfitabilityReport', () => {
         expect(result.summary.cost).toBe(75); // Variant COGS, not parent
         expect(result.summary.profit).toBe(75);
         expect(result.breakdown[0].cogsUnit).toBe(75);
+    });
+
+    it('should include miscCosts in COGS calculation', async () => {
+        const accountId = 'acc_123';
+        const startDate = new Date('2023-01-01');
+        const endDate = new Date('2023-01-31');
+
+        const mockOrders = [
+            {
+                id: 'ord_1',
+                wooId: 101,
+                number: '1001',
+                dateCreated: new Date('2023-01-10'),
+                rawData: {
+                    total: '100.00',
+                    line_items: [
+                        { product_id: 1, quantity: 2, total: '100.00', name: 'Product A' }
+                    ],
+                    meta_data: []
+                }
+            }
+        ];
+        (prisma.wooOrder.findMany as any).mockResolvedValue(mockOrders);
+
+        // Product has COGS of 10 + miscCosts of 3 + 2 = 5 → total cogsUnit = 15
+        (prisma.wooProduct.findMany as any).mockResolvedValue([
+            {
+                wooId: 1,
+                cogs: '10.00',
+                miscCosts: [
+                    { amount: 3, note: 'Shipping' },
+                    { amount: 2, note: 'Packaging' }
+                ],
+                sku: 'A'
+            }
+        ]);
+        (prisma.productVariation.findMany as any).mockResolvedValue([]);
+
+        const result = await AnalyticsService.getProfitabilityReport(accountId, startDate, endDate);
+
+        // Revenue: 100
+        // COGS per unit: 10 (base) + 3 + 2 (misc) = 15
+        // Total Cost: 15 * 2 = 30
+        // Profit: 100 - 30 = 70
+
+        expect(result.summary.revenue).toBe(100);
+        expect(result.summary.cost).toBe(30);
+        expect(result.summary.profit).toBe(70);
+        expect(result.breakdown[0].cogsUnit).toBe(15);
     });
 });

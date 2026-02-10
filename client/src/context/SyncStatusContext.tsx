@@ -4,6 +4,7 @@ import { useAccount } from './AccountContext';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useIsPWA } from '../hooks/usePWA';
 
 export interface SyncJob {
     id: string;
@@ -87,13 +88,15 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     const [healthSummary, setHealthSummary] = useState<SyncHealthSummary | null>(null);
     const [syncToasts, setSyncToasts] = useState<SyncToast[]>([]);
     const toastIdRef = useRef(0);
+    const isPWA = useIsPWA();
 
-    /** Push a toast notification (auto-dismisses after 5s, max 3 visible) */
+    /** Push a toast notification (auto-dismisses after 5s, max 3 visible). Suppressed in PWA mode to avoid intrusive overlays. */
     const pushToast = useCallback((message: string, type: SyncToast['type']) => {
+        if (isPWA) return;
         const id = `sync-toast-${++toastIdRef.current}`;
         setSyncToasts(prev => [...prev.slice(-2), { id, message, type, timestamp: Date.now() }]);
         setTimeout(() => setSyncToasts(prev => prev.filter(t => t.id !== id)), 5000);
-    }, []);
+    }, [isPWA]);
 
     const dismissSyncToast = useCallback((id: string) => {
         setSyncToasts(prev => prev.filter(t => t.id !== id));

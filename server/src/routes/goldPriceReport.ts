@@ -15,6 +15,7 @@ import {
     parseAccountGoldPrices,
     AccountGoldPrices
 } from '../utils/goldPriceCalculations';
+import { sumMiscCosts } from '../utils/miscCosts';
 
 /** Default and max page sizes for pagination */
 const DEFAULT_PAGE_SIZE = 50;
@@ -101,6 +102,7 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
                 price: true,
                 weight: true,
                 goldPriceType: true,
+                miscCosts: true,
                 mainImage: true
             }
         });
@@ -118,6 +120,7 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
                 price: true,
                 weight: true,
                 goldPriceType: true,
+                miscCosts: true,
                 rawData: true,
                 product: {
                     select: {
@@ -133,11 +136,12 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Process products
         for (const p of products) {
-            const goldCogs = calculateGoldCogs(
+            const baseGoldCogs = calculateGoldCogs(
                 Number(p.weight) || 0,
                 p.goldPriceType,
                 accountPrices
             );
+            const goldCogs = baseGoldCogs + sumMiscCosts(p.miscCosts);
             const price = Number(p.price) || 0;
             const profitMargin = calculateMargin(price, goldCogs);
 
@@ -160,11 +164,12 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
         for (const v of variations) {
             const variantName = extractVariantName(v.rawData, v.wooId);
 
-            const goldCogs = calculateGoldCogs(
+            const baseGoldCogs = calculateGoldCogs(
                 Number(v.weight) || 0,
                 v.goldPriceType,
                 accountPrices
             );
+            const goldCogs = baseGoldCogs + sumMiscCosts(v.miscCosts);
             const price = Number(v.price) || 0;
             const profitMargin = calculateMargin(price, goldCogs);
 
@@ -252,7 +257,7 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
             // Fetch limited items to calculate margins (optimization: only fetch what we might need)
             const products = await prisma.wooProduct.findMany({
                 where: { accountId, isGoldPriceApplied: true },
-                select: { name: true, price: true, weight: true, goldPriceType: true },
+                select: { name: true, price: true, weight: true, goldPriceType: true, miscCosts: true },
                 take: 20
             });
 
@@ -262,6 +267,7 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
                     price: true,
                     weight: true,
                     goldPriceType: true,
+                    miscCosts: true,
                     rawData: true,
                     product: { select: { name: true } }
                 },
@@ -271,7 +277,7 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
             const allItems: { name: string; margin: number }[] = [];
 
             for (const p of products) {
-                const goldCogs = calculateGoldCogs(Number(p.weight), p.goldPriceType, accountPrices);
+                const goldCogs = calculateGoldCogs(Number(p.weight), p.goldPriceType, accountPrices) + sumMiscCosts(p.miscCosts);
                 const margin = calculateMargin(Number(p.price), goldCogs);
                 allItems.push({ name: p.name, margin });
             }
@@ -282,7 +288,7 @@ const goldPriceReportRoutes: FastifyPluginAsync = async (fastify) => {
                     ? `${v.product.name} - ${variantName}`
                     : v.product.name;
 
-                const goldCogs = calculateGoldCogs(Number(v.weight), v.goldPriceType, accountPrices);
+                const goldCogs = calculateGoldCogs(Number(v.weight), v.goldPriceType, accountPrices) + sumMiscCosts(v.miscCosts);
                 const margin = calculateMargin(Number(v.price), goldCogs);
                 allItems.push({ name, margin });
             }

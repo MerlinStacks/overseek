@@ -11,6 +11,7 @@ import { cn } from '../../utils/cn';
 import { CannedResponseLabelManager, CannedResponseLabel } from './CannedResponseLabelManager';
 import { CannedResponseForm } from './CannedResponseForm';
 import { CannedResponseList, CannedResponse } from './CannedResponseList';
+import { Toast, ToastType } from '../ui/Toast';
 
 export function CannedResponsesSettings() {
     const { token } = useAuth();
@@ -25,6 +26,13 @@ export function CannedResponsesSettings() {
     const [newLabelName, setNewLabelName] = useState('');
     const [newLabelColor, setNewLabelColor] = useState('#6366f1');
     const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
 
     const fetchLabels = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -51,7 +59,8 @@ export function CannedResponsesSettings() {
     useEffect(() => { fetchLabels(); fetchResponses(); }, [fetchLabels, fetchResponses]);
 
     const handleSave = async () => {
-        if (!formData.shortcut.trim() || !formData.content.trim()) return;
+        if (!formData.shortcut.trim()) { showToast('Shortcut is required'); return; }
+        if (!formData.content.trim()) { showToast('Response content is required'); return; }
         const payload = { shortcut: formData.shortcut.trim(), content: formData.content.trim(), labelId: formData.labelId || null };
         try {
             const res = await fetch(editingId ? `/api/chat/canned-responses/${editingId}` : '/api/chat/canned-responses', {
@@ -59,8 +68,17 @@ export function CannedResponsesSettings() {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' },
                 body: JSON.stringify(payload)
             });
-            if (res.ok) { setFormData({ shortcut: '', content: '', labelId: '' }); setEditingId(null); fetchResponses(); }
-        } catch (error) { Logger.error('Failed to save canned response:', { error }); }
+            if (res.ok) {
+                setFormData({ shortcut: '', content: '', labelId: '' }); setEditingId(null); fetchResponses();
+                showToast('Canned response saved', 'success');
+            } else {
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to save canned response');
+            }
+        } catch (error) {
+            Logger.error('Failed to save canned response:', { error });
+            showToast('Failed to save — network error');
+        }
     };
 
     const handleEdit = (response: CannedResponse) => {
@@ -77,15 +95,15 @@ export function CannedResponsesSettings() {
     };
 
     const handleCreateLabel = async () => {
-        if (!newLabelName.trim()) return;
+        if (!newLabelName.trim()) { showToast('Label name is required'); return; }
         try {
             const res = await fetch('/api/chat/canned-labels', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' },
                 body: JSON.stringify({ name: newLabelName.trim(), color: newLabelColor })
             });
-            if (res.ok) { setNewLabelName(''); setNewLabelColor('#6366f1'); fetchLabels(); }
-            else { const err = await res.json(); alert(err.error || 'Failed to create label'); }
-        } catch (error) { Logger.error('Failed to create label:', { error }); }
+            if (res.ok) { setNewLabelName(''); setNewLabelColor('#6366f1'); fetchLabels(); showToast('Label created', 'success'); }
+            else { const err = await res.json().catch(() => null); showToast(err?.error || 'Failed to create label'); }
+        } catch (error) { Logger.error('Failed to create label:', { error }); showToast('Failed to create label — network error'); }
     };
 
     const handleUpdateLabel = async (id: string, name: string, color: string) => {
@@ -151,6 +169,8 @@ export function CannedResponsesSettings() {
                 onCancel={() => { setEditingId(null); setFormData({ shortcut: '', content: '', labelId: '' }); }} />
 
             <CannedResponseList groups={filteredGroups} editingId={editingId} isLoading={isLoading} searchQuery={searchQuery} onEdit={handleEdit} onDelete={handleDelete} />
+
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }

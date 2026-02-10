@@ -4,7 +4,7 @@
  * Settings panel for managing ad account connections.
  * Includes edit functionality to fix broken connections without removing/re-adding.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -13,6 +13,7 @@ import { Plus, Loader2 } from 'lucide-react';
 import { AdAccountCard, AdAccount, AdInsights } from './AdAccountCard';
 import { EditAdAccountModal, PendingSetupModal } from './AdAccountModals';
 import { AdConnectForm } from './AdConnectForm';
+import { Toast, ToastType } from '../ui/Toast';
 
 export function AdAccountSettings() {
     const { token } = useAuth();
@@ -33,6 +34,13 @@ export function AdAccountSettings() {
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     const [pendingSetup, setPendingSetup] = useState({ show: false, pendingId: '', customerId: '', isSubmitting: false });
+
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
 
     useEffect(() => { fetchAccounts(); }, [currentAccount, token]);
 
@@ -80,8 +88,8 @@ export function AdAccountSettings() {
             });
             const data = await res.json();
             if (data.authUrl) window.location.href = data.authUrl;
-            else alert('Failed to initiate Google OAuth');
-        } catch { alert('Error initiating Google OAuth'); }
+            else showToast('Failed to initiate Google OAuth');
+        } catch { showToast('Error initiating Google OAuth'); }
     }
 
     async function handleMetaOAuth(existingAccountId?: string) {
@@ -93,8 +101,8 @@ export function AdAccountSettings() {
             });
             const data = await res.json();
             if (data.authUrl) window.location.href = data.authUrl;
-            else alert('Failed to initiate Meta OAuth');
-        } catch { alert('Error initiating Meta OAuth'); }
+            else showToast('Failed to initiate Meta OAuth');
+        } catch { showToast('Error initiating Meta OAuth'); }
     }
 
     async function handleDisconnect(adAccountId: string) {
@@ -103,8 +111,8 @@ export function AdAccountSettings() {
             const res = await fetch(`/api/ads/${adAccountId}`, {
                 method: 'DELETE', headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
             });
-            if (res.ok) fetchAccounts(); else alert('Failed to disconnect');
-        } catch { alert('Error disconnecting account'); }
+            if (res.ok) { fetchAccounts(); showToast('Account disconnected', 'success'); } else showToast('Failed to disconnect');
+        } catch { showToast('Error disconnecting account'); }
     }
 
     function openEditModal(account: AdAccount) {
@@ -128,9 +136,9 @@ export function AdAccountSettings() {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
                 body: JSON.stringify(payload)
             });
-            if (res.ok) { setEditingAccount(null); fetchAccounts(); }
-            else { const err = await res.json(); alert(err.error || 'Failed to update'); }
-        } catch { alert('Error updating account'); }
+            if (res.ok) { setEditingAccount(null); fetchAccounts(); showToast('Account updated', 'success'); }
+            else { const err = await res.json(); showToast(err.error || 'Failed to update'); }
+        } catch { showToast('Error updating account'); }
         finally { setIsSavingEdit(false); }
     }
 
@@ -144,11 +152,11 @@ export function AdAccountSettings() {
                 body: JSON.stringify({ customerId: pendingSetup.customerId.trim() })
             });
             if (res.ok) {
-                alert('Google Ads account configured successfully!');
+                showToast('Google Ads account configured successfully!', 'success');
                 setPendingSetup({ show: false, pendingId: '', customerId: '', isSubmitting: false });
                 fetchAccounts();
-            } else { const err = await res.json(); alert(err.error || 'Failed to complete setup'); }
-        } catch { alert('Error completing setup'); }
+            } else { const err = await res.json(); showToast(err.error || 'Failed to complete setup'); }
+        } catch { showToast('Error completing setup'); }
         finally { setPendingSetup(prev => ({ ...prev, isSubmitting: false })); }
     }
 
@@ -156,16 +164,16 @@ export function AdAccountSettings() {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const success = params.get('success');
-        if (success === 'google_connected') { alert('Google Ads account connected successfully!'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'google_reconnected') { alert('Google Ads account reconnected successfully!'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'meta_ads_connected') { alert('Meta Ads account connected successfully!'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
-        else if (success === 'meta_ads_reconnected') { alert('Meta Ads account reconnected successfully!'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
+        if (success === 'google_connected') { showToast('Google Ads account connected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
+        else if (success === 'google_reconnected') { showToast('Google Ads account reconnected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
+        else if (success === 'meta_ads_connected') { showToast('Meta Ads account connected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
+        else if (success === 'meta_ads_reconnected') { showToast('Meta Ads account reconnected successfully!', 'success'); window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts(); }
         else if (success === 'google_pending') {
             const pendingId = params.get('pendingId') || '';
             setPendingSetup({ show: true, pendingId, customerId: '', isSubmitting: false });
             window.history.replaceState({}, '', '/settings?tab=ads'); fetchAccounts();
         } else if (params.get('error')) {
-            alert(`OAuth Error: ${params.get('error')}${params.get('message') ? ` - ${params.get('message')}` : ''}`);
+            showToast(`OAuth Error: ${params.get('error')}${params.get('message') ? ` - ${params.get('message')}` : ''}`);
             window.history.replaceState({}, '', '/settings?tab=ads');
         }
     }, []);
@@ -236,6 +244,8 @@ export function AdAccountSettings() {
                     ))
                 )}
             </div>
+
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }

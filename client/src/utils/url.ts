@@ -10,13 +10,11 @@
  * 
  * Logic:
  * - If VITE_PUBLIC_API_URL is explicitly set, uses that
- * - In localhost/dev: Uses window.location.origin
- * - In production: Prepends 'api.' to the current hostname
- *   (e.g., overseek.plateit.au -> api.overseek.plateit.au)
+ * - Otherwise: Uses window.location.origin (works for both dev and production)
  * 
- * Why: Internal Docker URLs like `http://api:3000` are not accessible from
- * external services like WooCommerce. This function derives a publicly-routable
- * URL from the current browser context.
+ * Why: The standard deployment uses nginx to proxy /api requests to the backend.
+ * External clients (WooCommerce plugin) reach the API through the same origin
+ * as the dashboard — no separate api. subdomain is needed.
  */
 export function getPublicApiUrl(): string {
     // Explicit override takes priority
@@ -24,18 +22,8 @@ export function getPublicApiUrl(): string {
         return import.meta.env.VITE_PUBLIC_API_URL;
     }
 
-    const { protocol, hostname, port } = window.location;
-
-    // Localhost: use origin directly (dev environment)
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return window.location.origin;
-    }
-
-    // Production: derive API subdomain from current hostname
-    // e.g., overseek.plateit.au -> api.overseek.plateit.au
-    const apiHostname = `api.${hostname}`;
-    const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-    return `${protocol}//${apiHostname}${portSuffix}`;
+    // Use the dashboard origin — nginx proxies /api to the backend
+    return window.location.origin;
 }
 
 /**

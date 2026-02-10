@@ -6,6 +6,7 @@
  */
 
 import { prisma } from '../utils/prisma';
+import { sumMiscCosts } from '../utils/miscCosts';
 
 interface LineItem {
     orderId: string;
@@ -96,7 +97,7 @@ export async function getProfitabilityReport(
     // Batch fetch COGS - Products
     const products = await prisma.wooProduct.findMany({
         where: { accountId, wooId: { in: Array.from(productIds) } },
-        select: { wooId: true, cogs: true, name: true, sku: true }
+        select: { wooId: true, cogs: true, miscCosts: true, name: true, sku: true }
     });
     const productMap = new Map(products.map(p => [p.wooId, p]));
 
@@ -106,7 +107,7 @@ export async function getProfitabilityReport(
             product: { accountId },
             wooId: { in: Array.from(variationIds) }
         },
-        select: { wooId: true, cogs: true, sku: true }
+        select: { wooId: true, cogs: true, miscCosts: true, sku: true }
     });
     const variationMap = new Map(variations.map(v => [v.wooId, v]));
 
@@ -118,12 +119,14 @@ export async function getProfitabilityReport(
     for (const line of lineItemsMap) {
         let cogsUnit = 0;
         let sku = '';
+        let miscCostsSource: unknown = null;
 
         // Try Variation first
         if (line.variationId && variationMap.has(line.variationId)) {
             const v = variationMap.get(line.variationId)!;
             cogsUnit = v.cogs ? Number(v.cogs) : 0;
             sku = v.sku || '';
+            miscCostsSource = v.miscCosts;
         }
         // Fallback to Product
         else if (productMap.has(line.productId)) {
@@ -132,7 +135,11 @@ export async function getProfitabilityReport(
                 cogsUnit = p.cogs ? Number(p.cogs) : 0;
                 if (!sku) sku = p.sku || '';
             }
+            miscCostsSource = p.miscCosts;
         }
+
+        // Add miscellaneous costs (shipping, packaging, etc.) to COGS
+        cogsUnit += sumMiscCosts(miscCostsSource);
 
         const cost = cogsUnit * line.quantity;
         const profit = line.revenue - cost;

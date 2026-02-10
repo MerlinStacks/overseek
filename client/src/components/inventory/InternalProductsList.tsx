@@ -5,7 +5,7 @@
  * Used as a tab within the InventoryPage.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -15,6 +15,7 @@ import {
     AlertTriangle, Building2
 } from 'lucide-react';
 import { Pagination } from '../ui/Pagination';
+import { Toast, ToastType } from '../ui/Toast';
 
 interface InternalProduct {
     id: string;
@@ -74,6 +75,13 @@ export function InternalProductsList() {
 
     // Suppliers for dropdown
     const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
 
     // Debounce search
     useEffect(() => {
@@ -173,7 +181,8 @@ export function InternalProductsList() {
     }
 
     async function handleSave() {
-        if (!currentAccount || !token || !formData.name.trim()) return;
+        if (!currentAccount || !token) return;
+        if (!formData.name.trim()) { showToast('Component name is required'); return; }
 
         setIsSaving(true);
         try {
@@ -204,13 +213,14 @@ export function InternalProductsList() {
             if (res.ok) {
                 setShowModal(false);
                 fetchProducts();
+                showToast(editingProduct ? 'Component updated' : 'Component created', 'success');
             } else {
-                const err = await res.json();
-                alert(err.error || 'Failed to save');
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to save');
             }
         } catch (err) {
             Logger.error('Failed to save internal product', { error: err });
-            alert('Failed to save');
+            showToast('Failed to save — network error');
         } finally {
             setIsSaving(false);
         }
@@ -237,12 +247,14 @@ export function InternalProductsList() {
 
             if (res.ok) {
                 fetchProducts();
+                showToast('Component deleted', 'success');
             } else {
-                const err = await res.json();
-                alert(err.error || 'Failed to delete');
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to delete');
             }
         } catch (err) {
             Logger.error('Failed to delete internal product', { error: err });
+            showToast('Failed to delete — network error');
         }
     }
 
@@ -502,6 +514,8 @@ export function InternalProductsList() {
                     </div>
                 </div>
             )}
+
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }

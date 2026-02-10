@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Trash2, UserPlus, Shield, User, Edit2, Check, X, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { TeamPageSkeleton } from '../components/ui/PageSkeletons';
+import { Toast, ToastType } from '../components/ui/Toast';
 
 interface CustomRole {
     id: string;
@@ -48,6 +49,13 @@ export function TeamPage() {
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<{ role: string; roleId: string | null }>({ role: 'STAFF', roleId: null });
     const [isSaving, setIsSaving] = useState(false);
+
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -104,7 +112,6 @@ export function TeamPage() {
                     const data = await res.json();
                     errorMessage = data.error || errorMessage;
                 } catch {
-                    // Response body is not valid JSON, use status text
                     errorMessage = res.statusText || `Error ${res.status}`;
                 }
                 throw new Error(errorMessage);
@@ -112,21 +119,30 @@ export function TeamPage() {
 
             setEmail('');
             fetchMembers();
+            showToast('User added to team', 'success');
         } catch (err: any) {
             setError(err.message);
+            showToast(err.message);
         }
     };
 
     const handleRemove = async (userId: string) => {
         if (!confirm('Are you sure you want to remove this member?')) return;
         try {
-            await fetch(`/api/accounts/${currentAccount?.id}/users/${userId}`, {
+            const res = await fetch(`/api/accounts/${currentAccount?.id}/users/${userId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` }
             });
-            fetchMembers();
+            if (res.ok) {
+                fetchMembers();
+                showToast('Member removed', 'success');
+            } else {
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to remove member');
+            }
         } catch (e) {
             Logger.error('Failed to remove member', { error: e });
+            showToast('Failed to remove member');
         }
     };
 
@@ -158,7 +174,6 @@ export function TeamPage() {
                     const data = await res.json();
                     errorMessage = data.error || errorMessage;
                 } catch {
-                    // Response body is not valid JSON, use status text
                     errorMessage = res.statusText || `Error ${res.status}`;
                 }
                 throw new Error(errorMessage);
@@ -166,8 +181,9 @@ export function TeamPage() {
 
             setEditingUserId(null);
             fetchMembers();
+            showToast('Role updated', 'success');
         } catch (err: any) {
-            alert(err.message);
+            showToast(err.message);
         } finally {
             setIsSaving(false);
         }
@@ -372,6 +388,8 @@ export function TeamPage() {
                     </p>
                 </div>
             )}
+
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }

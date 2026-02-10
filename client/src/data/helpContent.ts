@@ -37,13 +37,13 @@ export const helpCollections: HelpCollection[] = [
         articles: [
             {
                 id: 'art-welcome',
-                title: 'Welcome to OverSeek v2',
+                title: 'Welcome to OverSeek',
                 slug: 'welcome-to-overseek',
                 excerpt: 'An introduction to the OverSeek platform and its core philosophy.',
                 order: 0,
                 collectionSlug: 'getting-started',
                 updatedAt: LAST_UPDATED,
-                content: `# Welcome to OverSeek v2
+                content: `# Welcome to OverSeek
 
 OverSeek is a modern, high-performance warehouse and analytics dashboard designed specifically for WooCommerce. Unlike traditional dashboards that feel slow and clunky, OverSeek is built on a "local-first" philosophy.
 
@@ -443,7 +443,7 @@ If a sync fails:
                 updatedAt: LAST_UPDATED,
                 content: `# In-Situ Picklists
 
-OverSeek v2 introduces "In-Situ" picklists, removing the need for a separate "Picking" tab. You can generate picklists directly where you manage orders.
+OverSeek introduces "In-Situ" picklists, removing the need for a separate "Picking" tab. You can generate picklists directly where you manage orders.
 
 ## How to Generate
 1.  Go to the **Orders** page.

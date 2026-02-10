@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +8,7 @@ import { CreateSupplierModal } from '../components/inventory/CreateSupplierModal
 import { ProductSearchInput, ProductSelection } from '../components/inventory/ProductSearchInput';
 import { SupplierSearchInput } from '../components/inventory/SupplierSearchInput';
 import { POStatusStepper } from '../components/inventory/POStatusStepper';
+import { Toast, ToastType } from '../components/ui/Toast';
 
 interface POItem {
     id?: string;
@@ -49,6 +50,13 @@ export function PurchaseOrderEditPage() {
     const [trackingLink, setTrackingLink] = useState('');
     const [items, setItems] = useState<POItem[]>([]);
     const [showCreateSupplier, setShowCreateSupplier] = useState(false);
+
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
+    const showToast = useCallback((message: string, type: ToastType = 'error') => {
+        setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
 
     const [poNumber, setPoNumber] = useState('');
 
@@ -125,7 +133,7 @@ export function PurchaseOrderEditPage() {
     };
 
     const handleSave = async () => {
-        if (!supplierId) return alert('Select a supplier');
+        if (!supplierId) { showToast('Please select a supplier'); return; }
 
         setIsLoading(true);
         const payload = {
@@ -163,7 +171,6 @@ export function PurchaseOrderEditPage() {
             if (res.ok) {
                 navigate('/inventory?tab=purchasing');
             } else {
-                // Parse error response to show actual server error
                 let errorMessage = 'Failed to save';
                 try {
                     const errorData = await res.json();
@@ -172,11 +179,11 @@ export function PurchaseOrderEditPage() {
                     errorMessage = `Failed to save (HTTP ${res.status})`;
                 }
                 Logger.error('PO save failed', { status: res.status, errorMessage });
-                alert(errorMessage);
+                showToast(errorMessage);
             }
         } catch (err) {
             Logger.error('PO save error', { error: err });
-            alert(`Error saving: ${err instanceof Error ? err.message : 'Network error'}`);
+            showToast(`Error saving: ${err instanceof Error ? err.message : 'Network error'}`);
         } finally {
             setIsLoading(false);
         }
@@ -451,18 +458,18 @@ export function PurchaseOrderEditPage() {
                 </div>
             </div>
 
-            {/* Inline Supplier Creation Modal */}
             <CreateSupplierModal
                 isOpen={showCreateSupplier}
                 onClose={() => setShowCreateSupplier(false)}
                 onSuccess={(newSupplier) => {
-                    // Refresh suppliers list and auto-select the new one
                     fetchSuppliers().then(() => {
                         setSupplierId(newSupplier.id);
                     });
                     setShowCreateSupplier(false);
                 }}
             />
+
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }
