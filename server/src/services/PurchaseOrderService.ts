@@ -394,4 +394,140 @@ export class PurchaseOrderService {
 
         return { updated, errors, updatedProductIds };
     }
+
+    /**
+     * Unreceive stock from a Purchase Order.
+     * Reverses stock changes when a PO transitions away from RECEIVED.
+     */
+    async unreceiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
+        const po = await prisma.purchaseOrder.findFirst({
+            where: { id: poId, accountId },
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            include: {
+                                boms: {
+                                    select: {
+                                        id: true,
+                                        items: {
+                                            where: { childProductId: { not: null } },
+                                            select: { id: true }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!po) {
+            throw new Error('Purchase Order not found');
+        }
+
+        const errors: string[] = [];
+        const updatedProductIds: string[] = [];
+        let updated = 0;
+
+        let wooService: WooService | null = null;
+        try {
+            wooService = await WooService.forAccount(accountId);
+        } catch (err) {
+            Logger.warn('Unable to connect to WooCommerce for stock unreceive', { error: err, accountId });
+        }
+
+        for (const item of po.items) {
+            if (!item.productId || !item.product) continue;
+
+            const hasBOM = item.product.boms?.some(bom => bom.items.length > 0) ?? false;
+            if (hasBOM) continue;
+
+            try {
+                const product = item.product;
+
+                if (item.variationWooId) {
+                    // Reverse variation stock
+                    const variation = await prisma.productVariation.findUnique({
+                        where: { productId_wooId: { productId: product.id, wooId: item.variationWooId } }
+                    });
+
+                    if (variation) {
+                        const currentStock = variation.stockQuantity ?? 0;
+                        const newStock = Math.max(0, currentStock - item.quantity);
+
+                        await prisma.productVariation.update({
+                            where: { id: variation.id },
+                            data: {
+                                stockQuantity: newStock,
+                                stockStatus: newStock > 0 ? 'instock' : 'outofstock'
+                            }
+                        });
+
+                        if (wooService) {
+                            try {
+                                await wooService.updateProductVariation(product.wooId, item.variationWooId, {
+                                    stock_quantity: newStock
+                                });
+                            } catch (wooErr) {
+                                errors.push(`WooCommerce variation sync failed for ${item.name}: ${(wooErr as Error).message}`);
+                            }
+                        }
+                    }
+                } else {
+                    // Reverse parent product stock
+                    const currentStock = product.stockQuantity ?? 0;
+                    const newStock = Math.max(0, currentStock - item.quantity);
+
+                    await prisma.wooProduct.update({
+                        where: { id: product.id },
+                        data: {
+                            stockQuantity: newStock,
+                            stockStatus: newStock > 0 ? 'instock' : 'outofstock'
+                        }
+                    });
+
+                    if (wooService) {
+                        try {
+                            await wooService.updateProduct(product.wooId, {
+                                stock_quantity: newStock
+                            });
+                        } catch (wooErr) {
+                            errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
+                        }
+                    }
+                }
+
+                updated++;
+                updatedProductIds.push(product.id);
+
+                Logger.info('Stock unreceived for item', {
+                    productId: product.id,
+                    itemName: item.name,
+                    quantity: item.quantity,
+                    variationWooId: item.variationWooId
+                });
+            } catch (err) {
+                const errorMsg = `Failed to unreceive stock for "${item.name}": ${(err as Error).message}`;
+                Logger.error('Error unreceiving stock for PO item', { error: err, itemId: item.id });
+                errors.push(errorMsg);
+            }
+        }
+
+        // Cascade BOM sync for affected products
+        if (updatedProductIds.length > 0) {
+            for (const productId of updatedProductIds) {
+                try {
+                    await BOMConsumptionService.cascadeSyncAffectedProducts(accountId, productId);
+                } catch (syncErr) {
+                    Logger.warn('Cascade BOM sync failed during unreceive', {
+                        productId, error: (syncErr as Error).message
+                    });
+                }
+            }
+        }
+
+        return { updated, errors, updatedProductIds };
+    }
 }

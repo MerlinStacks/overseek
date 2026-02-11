@@ -450,6 +450,37 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 await invalidateCache('products', accountId);
             }
 
+            // If status changed FROM RECEIVED to something else, reverse the stock
+            if (status && status !== 'RECEIVED' && !wasNotReceived) {
+                const result = await poService.unreceiveStock(accountId, id);
+                Logger.info('Stock unreceived from PO', { poId: id, ...result });
+
+                // Re-index affected products
+                for (const productId of result.updatedProductIds) {
+                    try {
+                        const product = await prisma.wooProduct.findUnique({
+                            where: { id: productId },
+                            include: { variations: true }
+                        });
+                        if (product) {
+                            await IndexingService.indexProduct(accountId, {
+                                ...product,
+                                variations: product.variations.map(v => ({
+                                    ...v,
+                                    id: v.wooId,
+                                }))
+                            });
+                        }
+                    } catch (indexErr) {
+                        Logger.warn('Failed to re-index product after PO unreceive', {
+                            productId, error: (indexErr as Error).message
+                        });
+                    }
+                }
+
+                await invalidateCache('products', accountId);
+            }
+
             const updated = await poService.getPurchaseOrder(accountId, id);
             return updated;
         } catch (error) {
