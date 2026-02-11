@@ -528,6 +528,148 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to repair products' });
         }
     });
+
+    // POST /reprocess-received-pos - One-time fix: unreceive, backfill variationWooId, re-receive
+    // Fixes stock that was incorrectly applied to parent products instead of variations
+    fastify.post('/reprocess-received-pos', async (request, reply) => {
+        const accountId = request.accountId!;
+
+        try {
+            // 1. Find all RECEIVED POs with full item + product + variation data
+            const receivedPOs = await prisma.purchaseOrder.findMany({
+                where: { accountId, status: 'RECEIVED' },
+                include: {
+                    items: {
+                        include: {
+                            product: {
+                                include: {
+                                    variations: true,
+                                    boms: {
+                                        select: {
+                                            id: true,
+                                            items: {
+                                                where: { childProductId: { not: null } },
+                                                select: { id: true }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (receivedPOs.length === 0) {
+                return { success: true, message: 'No RECEIVED POs found', processed: 0 };
+            }
+
+            const log: string[] = [];
+            let variationsBackfilled = 0;
+
+            // 2. UNRECEIVE: Subtract old stock from parent products + backfill variationWooId
+            for (const po of receivedPOs) {
+                for (const item of po.items) {
+                    if (!item.productId || !item.product) continue;
+
+                    // Skip BOM products (their stock wasn't modified by receiveStock either)
+                    const hasBOM = item.product.boms?.some(bom => bom.items.length > 0) ?? false;
+                    if (hasBOM) continue;
+
+                    // Subtract the old incorrectly-applied stock from parent (atomic decrement)
+                    await prisma.wooProduct.update({
+                        where: { id: item.product.id },
+                        data: { stockQuantity: { decrement: item.quantity } }
+                    });
+                    log.push(`Unreceived: ${item.name} (qty: ${item.quantity}) from parent ${item.product.name}`);
+
+                    // Backfill variationWooId by matching SKU to a variation
+                    if (!item.variationWooId && item.sku && item.product.variations.length > 0) {
+                        const matchedVariation = item.product.variations.find(v => v.sku === item.sku);
+                        if (matchedVariation) {
+                            await prisma.purchaseOrderItem.update({
+                                where: { id: item.id },
+                                data: { variationWooId: matchedVariation.wooId }
+                            });
+                            variationsBackfilled++;
+                            log.push(`  → Matched to variation wooId=${matchedVariation.wooId} by SKU="${item.sku}"`);
+                        }
+                    }
+                }
+
+                // Set PO back to DRAFT so receiveStock can process it
+                await prisma.purchaseOrder.update({
+                    where: { id: po.id },
+                    data: { status: 'DRAFT' }
+                });
+            }
+
+            // 3. RE-RECEIVE: Apply stock correctly using variant-aware receiveStock
+            const allUpdatedProductIds: string[] = [];
+            const receiveErrors: string[] = [];
+
+            for (const po of receivedPOs) {
+                try {
+                    const result = await poService.receiveStock(accountId, po.id);
+                    allUpdatedProductIds.push(...result.updatedProductIds);
+                    log.push(`Re-received PO ${po.orderNumber || po.id}: ${result.updated} items updated`);
+                    if (result.errors.length > 0) {
+                        receiveErrors.push(...result.errors);
+                    }
+                } catch (err) {
+                    receiveErrors.push(`Failed to re-receive PO ${po.orderNumber || po.id}: ${(err as Error).message}`);
+                }
+
+                // Set back to RECEIVED
+                await prisma.purchaseOrder.update({
+                    where: { id: po.id },
+                    data: { status: 'RECEIVED' }
+                });
+            }
+
+            // 4. Re-index ALL products in ES
+            const products = await prisma.wooProduct.findMany({
+                where: { accountId },
+                include: { variations: true }
+            });
+
+            let reindexed = 0;
+            for (const product of products) {
+                try {
+                    await IndexingService.indexProduct(accountId, {
+                        ...product,
+                        variations: product.variations.map(v => ({
+                            ...v,
+                            id: v.wooId,
+                        }))
+                    });
+                    reindexed++;
+                } catch (_) { /* non-critical */ }
+            }
+
+            await invalidateCache('products', accountId);
+
+            Logger.info('Reprocess completed', {
+                accountId,
+                totalPOs: receivedPOs.length,
+                variationsBackfilled,
+                reindexed,
+                receiveErrors: receiveErrors.length
+            });
+
+            return {
+                success: true,
+                totalPOs: receivedPOs.length,
+                variationsBackfilled,
+                productsReindexed: reindexed,
+                log,
+                errors: receiveErrors.length > 0 ? receiveErrors : undefined
+            };
+        } catch (error) {
+            Logger.error('Error reprocessing POs', { error });
+            return reply.code(500).send({ error: 'Failed to reprocess POs' });
+        }
+    });
 };
 
 export default inventoryRoutes;
