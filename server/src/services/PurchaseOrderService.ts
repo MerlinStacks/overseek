@@ -49,6 +49,7 @@ export class PurchaseOrderService {
         items: {
             productId?: string;
             supplierItemId?: string;
+            variationWooId?: number | null;
             quantity: number;
             unitCost: number;
             name: string;
@@ -68,6 +69,7 @@ export class PurchaseOrderService {
             return {
                 productId: item.productId,
                 supplierItemId: item.supplierItemId,
+                variationWooId: item.variationWooId || null,
                 quantity: item.quantity,
                 unitCost: item.unitCost,
                 totalCost: lineTotal,
@@ -108,6 +110,7 @@ export class PurchaseOrderService {
         items?: {
             productId?: string;
             supplierItemId?: string;
+            variationWooId?: number | null;
             quantity: number;
             unitCost: number;
             name: string;
@@ -134,6 +137,7 @@ export class PurchaseOrderService {
                 return {
                     productId: item.productId || null,
                     supplierItemId: item.supplierItemId || null,
+                    variationWooId: item.variationWooId || null,
                     quantity: item.quantity,
                     unitCost: item.unitCost,
                     totalCost: lineTotal,
@@ -196,7 +200,7 @@ export class PurchaseOrderService {
      * Receive stock from a Purchase Order.
      * Increments stockQuantity on linked products/variants and syncs to WooCommerce.
      */
-    async receiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[] }> {
+    async receiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
         const po = await prisma.purchaseOrder.findFirst({
             where: { id: poId, accountId },
             include: {
@@ -251,46 +255,114 @@ export class PurchaseOrderService {
 
             try {
                 const product = item.product;
-                const currentStock = product.stockQuantity ?? 0;
-                const newStock = currentStock + item.quantity;
 
-                // Update local stock
-                await prisma.wooProduct.update({
-                    where: { id: product.id },
-                    data: {
-                        stockQuantity: newStock,
-                        manageStock: true,
-                        stockStatus: newStock > 0 ? 'instock' : 'outofstock'
+                // Check if this item targets a specific variation
+                if (item.variationWooId) {
+                    // Find the local ProductVariation record
+                    const variation = await prisma.productVariation.findUnique({
+                        where: { productId_wooId: { productId: product.id, wooId: item.variationWooId } }
+                    });
+
+                    if (variation) {
+                        const currentStock = variation.stockQuantity ?? 0;
+                        const newStock = currentStock + item.quantity;
+
+                        // Update local variation stock
+                        await prisma.productVariation.update({
+                            where: { id: variation.id },
+                            data: {
+                                stockQuantity: newStock,
+                                manageStock: true,
+                                stockStatus: newStock > 0 ? 'instock' : 'outofstock'
+                            }
+                        });
+
+                        Logger.info('Stock received for variation', {
+                            productId: product.id,
+                            variationWooId: item.variationWooId,
+                            previousStock: currentStock,
+                            addedQuantity: item.quantity,
+                            newStock
+                        });
+
+                        // Sync variation to WooCommerce
+                        if (wooService) {
+                            try {
+                                await wooService.updateProductVariation(product.wooId, item.variationWooId, {
+                                    manage_stock: true,
+                                    stock_quantity: newStock
+                                });
+                            } catch (wooErr) {
+                                Logger.warn('Failed to sync variation stock to WooCommerce', {
+                                    error: wooErr,
+                                    productWooId: product.wooId,
+                                    variationWooId: item.variationWooId
+                                });
+                                errors.push(`WooCommerce variation sync failed for ${item.name}: ${(wooErr as Error).message}`);
+                            }
+                        }
+                    } else {
+                        Logger.warn('Variation not found locally, falling back to parent product', {
+                            productId: product.id,
+                            variationWooId: item.variationWooId
+                        });
+                        // Fall through to parent product update below
+                        const currentStock = product.stockQuantity ?? 0;
+                        const newStock = currentStock + item.quantity;
+                        await prisma.wooProduct.update({
+                            where: { id: product.id },
+                            data: { stockQuantity: newStock, manageStock: true, stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
+                        });
+                        if (wooService) {
+                            try {
+                                await wooService.updateProduct(product.wooId, { manage_stock: true, stock_quantity: newStock });
+                            } catch (wooErr) {
+                                errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
+                            }
+                        }
                     }
-                });
+                } else {
+                    // Simple/parent product — existing behavior
+                    const currentStock = product.stockQuantity ?? 0;
+                    const newStock = currentStock + item.quantity;
 
-                Logger.info('Stock received for product', {
-                    productId: product.id,
-                    wooId: product.wooId,
-                    previousStock: currentStock,
-                    addedQuantity: item.quantity,
-                    newStock
-                });
+                    await prisma.wooProduct.update({
+                        where: { id: product.id },
+                        data: {
+                            stockQuantity: newStock,
+                            manageStock: true,
+                            stockStatus: newStock > 0 ? 'instock' : 'outofstock'
+                        }
+                    });
 
-                // Sync to WooCommerce (non-blocking)
-                if (wooService) {
-                    try {
-                        await wooService.updateProduct(product.wooId, {
-                            manage_stock: true,
-                            stock_quantity: newStock
-                        });
-                    } catch (wooErr) {
-                        Logger.warn('Failed to sync received stock to WooCommerce', {
-                            error: wooErr,
-                            productWooId: product.wooId
-                        });
-                        errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
+                    Logger.info('Stock received for product', {
+                        productId: product.id,
+                        wooId: product.wooId,
+                        previousStock: currentStock,
+                        addedQuantity: item.quantity,
+                        newStock
+                    });
+
+                    // Sync to WooCommerce
+                    if (wooService) {
+                        try {
+                            await wooService.updateProduct(product.wooId, {
+                                manage_stock: true,
+                                stock_quantity: newStock
+                            });
+                        } catch (wooErr) {
+                            Logger.warn('Failed to sync received stock to WooCommerce', {
+                                error: wooErr,
+                                productWooId: product.wooId
+                            });
+                            errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
+                        }
                     }
                 }
 
                 updated++;
 
-                // Track this product for cascade BOM sync
+                // Track this product for cascade BOM sync + ES re-index
                 updatedProductIds.push(product.id);
             } catch (err) {
                 const errorMsg = `Failed to update stock for item "${item.name}": ${(err as Error).message}`;
@@ -320,6 +392,6 @@ export class PurchaseOrderService {
             }
         }
 
-        return { updated, errors };
+        return { updated, errors, updatedProductIds };
     }
 }

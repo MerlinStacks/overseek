@@ -10,6 +10,8 @@ import { PurchaseOrderService } from '../services/PurchaseOrderService';
 import { PicklistService } from '../services/PicklistService';
 import { InventoryService } from '../services/InventoryService';
 import { BOMInventorySyncService } from '../services/BOMInventorySyncService';
+import { IndexingService } from '../services/search/IndexingService';
+import { invalidateCache } from '../utils/cache';
 
 // Modular sub-routes (extracted for maintainability)
 import { supplierRoutes } from './inventory/suppliers';
@@ -26,7 +28,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(bomSyncRoutes);
 
 
-        // GET /settings
+    // GET /settings
     fastify.get('/settings', async (request, reply) => {
         const accountId = request.accountId;
         try {
@@ -67,7 +69,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-        fastify.get<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
+    fastify.get<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
         const { productId } = request.params;
         const query = request.query as { variationId?: string };
         const variationId = parseInt(query.variationId || '0');
@@ -370,7 +372,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-        fastify.get('/purchase-orders', async (request, reply) => {
+    fastify.get('/purchase-orders', async (request, reply) => {
         const accountId = request.accountId!;
         const { status } = request.query as { status?: string };
         try {
@@ -420,6 +422,29 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             if (status === 'RECEIVED' && wasNotReceived) {
                 const result = await poService.receiveStock(accountId, id);
                 Logger.info('Stock received from PO', { poId: id, ...result });
+
+                // Re-index affected products in Elasticsearch so inventory screen reflects changes
+                for (const productId of result.updatedProductIds) {
+                    try {
+                        const product = await prisma.wooProduct.findUnique({
+                            where: { id: productId },
+                            include: { variations: true }
+                        });
+                        if (product) {
+                            await IndexingService.indexProduct(accountId, {
+                                ...product,
+                                variations: product.variations
+                            });
+                        }
+                    } catch (indexErr) {
+                        Logger.warn('Failed to re-index product after PO receive', {
+                            productId, error: (indexErr as Error).message
+                        });
+                    }
+                }
+
+                // Invalidate product list cache so next fetch returns fresh data
+                await invalidateCache('products', accountId);
             }
 
             const updated = await poService.getPurchaseOrder(accountId, id);
@@ -430,7 +455,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-        fastify.get('/picklist', async (request, reply) => {
+    fastify.get('/picklist', async (request, reply) => {
         const accountId = request.accountId!;
         const { status, limit } = request.query as { status?: string; limit?: string };
         try {
@@ -442,6 +467,76 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to generate picklist' });
+        }
+    });
+    // POST /repair-received-pos - One-time repair: re-index products from existing RECEIVED POs in ES
+    // Does NOT modify stock — only fixes Elasticsearch index so inventory screen shows correct data
+    fastify.post('/repair-received-pos', async (request, reply) => {
+        const accountId = request.accountId!;
+
+        try {
+            // Find all RECEIVED POs and their linked products
+            const receivedPOs = await prisma.purchaseOrder.findMany({
+                where: { accountId, status: 'RECEIVED' },
+                include: {
+                    items: {
+                        where: { productId: { not: null } },
+                        select: { productId: true }
+                    }
+                }
+            });
+
+            // Collect unique product IDs
+            const productIds = [...new Set(
+                receivedPOs.flatMap(po => po.items.map(item => item.productId!))
+            )];
+
+            if (productIds.length === 0) {
+                return { success: true, message: 'No products to repair', reindexed: 0 };
+            }
+
+            // Fetch all products with their variations
+            const products = await prisma.wooProduct.findMany({
+                where: { id: { in: productIds } },
+                include: { variations: true }
+            });
+
+            // Re-index each product in Elasticsearch
+            let reindexed = 0;
+            const errors: string[] = [];
+            for (const product of products) {
+                try {
+                    await IndexingService.indexProduct(accountId, {
+                        ...product,
+                        variations: product.variations
+                    });
+                    reindexed++;
+                } catch (err) {
+                    errors.push(`Failed to re-index ${product.name}: ${(err as Error).message}`);
+                }
+            }
+
+            // Invalidate cache
+            await invalidateCache('products', accountId);
+
+            Logger.info('Repair completed: re-indexed products from RECEIVED POs', {
+                accountId,
+                totalPOs: receivedPOs.length,
+                totalProducts: productIds.length,
+                reindexed,
+                errors: errors.length
+            });
+
+            return {
+                success: true,
+                totalPOs: receivedPOs.length,
+                totalProducts: productIds.length,
+                reindexed,
+                errors: errors.length > 0 ? errors : undefined
+            };
+        } catch (error) {
+            Logger.error('Error repairing received POs', { error });
+            return reply.code(500).send({ error: 'Failed to repair received POs' });
         }
     });
 };

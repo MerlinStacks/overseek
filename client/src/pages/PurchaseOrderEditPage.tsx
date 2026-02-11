@@ -147,6 +147,7 @@ export function PurchaseOrderEditPage() {
             items: items.map(i => ({
                 productId: i.productId,
                 supplierItemId: i.supplierItemId,
+                variationWooId: i.variationWooId || null,
                 name: i.name,
                 sku: i.sku,
                 quantity: Number(i.quantity),

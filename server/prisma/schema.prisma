@@ -756,6 +756,7 @@ model PurchaseOrderItem {
 
   productId      String? // Link to internal product
   supplierItemId String? // Link to supplier item catalog
+  variationWooId Int?    // WooCommerce variation ID (null = parent/simple product)
 
   // Snapshot of data at time of order
   name String
