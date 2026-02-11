@@ -180,26 +180,34 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!adAccounts.length) return { spend: 0, roas: 0, clicks: 0, impressions: 0, currency };
 
+            /** Why Promise.allSettled: ad account fetches are independent; one failure shouldn't block the rest */
+            const results = await Promise.allSettled(
+                adAccounts.map(async (adAccount) => {
+                    if (adAccount.platform === 'META') return AdsService.getMetaInsights(adAccount.id);
+                    if (adAccount.platform === 'GOOGLE') return AdsService.getGoogleInsights(adAccount.id);
+                    return null;
+                })
+            );
+
             let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalRevenue = 0;
 
-            for (const adAccount of adAccounts) {
-                try {
-                    const metrics = adAccount.platform === 'META'
-                        ? await AdsService.getMetaInsights(adAccount.id)
-                        : adAccount.platform === 'GOOGLE' ? await AdsService.getGoogleInsights(adAccount.id) : null;
-
-                    if (metrics) {
-                        totalSpend += metrics.spend;
-                        totalClicks += metrics.clicks;
-                        totalImpressions += metrics.impressions;
-                        totalRevenue += metrics.spend * metrics.roas;
-                    }
-                } catch (err) { Logger.warn('Failed to fetch insights', { adAccountId: adAccount.id }); }
+            for (let i = 0; i < results.length; i++) {
+                const result = results[i];
+                if (result.status === 'fulfilled' && result.value) {
+                    const metrics = result.value;
+                    totalSpend += metrics.spend;
+                    totalClicks += metrics.clicks;
+                    totalImpressions += metrics.impressions;
+                    totalRevenue += metrics.spend * metrics.roas;
+                } else if (result.status === 'rejected') {
+                    Logger.warn('Failed to fetch insights', { adAccountId: adAccounts[i].id });
+                }
             }
 
             return { spend: totalSpend, roas: totalSpend > 0 ? totalRevenue / totalSpend : 0, clicks: totalClicks, impressions: totalImpressions, currency };
         } catch (error) { Logger.error('Error fetching ad summary', { error }); return reply.code(500).send({ error: 'Failed' }); }
     });
+
 
     // --- Acquisition & Behaviour ---
     fastify.get('/acquisition/channels', async (request, reply) => {

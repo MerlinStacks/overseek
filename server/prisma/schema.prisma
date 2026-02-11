@@ -1731,6 +1731,7 @@ model AnalyticsEvent {
   @@index([sessionId, type])  // Event type filtering within session
   @@index([visitId])
   @@index([createdAt]) // For time-based cleanup queries
+  @@index([type, createdAt(sort: Desc)])  // Cross-session event queries (ecommerce log, behaviour analytics)
 }
 
 // Individual browsing visit (session gap detection: 30 min inactivity = new visit)

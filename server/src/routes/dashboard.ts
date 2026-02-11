@@ -7,7 +7,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AdsTools } from '../services/tools/AdsTools';
-import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
+import { cacheAside, cacheDelete, CacheTTL, CacheNamespace, invalidateCache } from '../utils/cache';
 
 const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -172,39 +172,49 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    /** Why namespace: dashboard layout is per-user and only changes on explicit save */
+    const LAYOUT_NAMESPACE = 'dash-layout';
+
     // GET Layout
     fastify.get('/', async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'No account' });
+        const userId = request.user?.id ?? '';
 
-        let layout = await prisma.dashboardLayout.findFirst({
-            where: { accountId, userId: request.user?.id },
-            include: { widgets: { orderBy: { sortOrder: 'asc' } } }
-        });
+        return cacheAside(
+            `${userId}:${accountId}`,
+            async () => {
+                let layout = await prisma.dashboardLayout.findFirst({
+                    where: { accountId, userId },
+                    include: { widgets: { orderBy: { sortOrder: 'asc' } } }
+                });
 
-        if (!layout) {
-            layout = await prisma.dashboardLayout.create({
-                data: {
-                    accountId,
-                    userId: request.user?.id ?? '',
-                    name: 'Main Dashboard',
-                    isDefault: true,
-                    widgets: {
-                        create: [
-                            { widgetKey: 'total-sales', position: { x: 0, y: 0, w: 4, h: 4 }, sortOrder: 0 },
-                            { widgetKey: 'recent-orders', position: { x: 4, y: 0, w: 4, h: 4 }, sortOrder: 1 },
-                            { widgetKey: 'marketing-roas', position: { x: 8, y: 0, w: 4, h: 4 }, sortOrder: 2 },
-                            { widgetKey: 'sales-chart', position: { x: 0, y: 4, w: 8, h: 6 }, sortOrder: 3 },
-                            { widgetKey: 'top-products', position: { x: 8, y: 4, w: 4, h: 6 }, sortOrder: 4 },
-                            { widgetKey: 'customer-growth', position: { x: 0, y: 10, w: 6, h: 6 }, sortOrder: 5 }
-                        ]
-                    }
-                },
-                include: { widgets: { orderBy: { sortOrder: 'asc' } } }
-            });
-        }
+                if (!layout) {
+                    layout = await prisma.dashboardLayout.create({
+                        data: {
+                            accountId,
+                            userId,
+                            name: 'Main Dashboard',
+                            isDefault: true,
+                            widgets: {
+                                create: [
+                                    { widgetKey: 'total-sales', position: { x: 0, y: 0, w: 4, h: 4 }, sortOrder: 0 },
+                                    { widgetKey: 'recent-orders', position: { x: 4, y: 0, w: 4, h: 4 }, sortOrder: 1 },
+                                    { widgetKey: 'marketing-roas', position: { x: 8, y: 0, w: 4, h: 4 }, sortOrder: 2 },
+                                    { widgetKey: 'sales-chart', position: { x: 0, y: 4, w: 8, h: 6 }, sortOrder: 3 },
+                                    { widgetKey: 'top-products', position: { x: 8, y: 4, w: 4, h: 6 }, sortOrder: 4 },
+                                    { widgetKey: 'customer-growth', position: { x: 0, y: 10, w: 6, h: 6 }, sortOrder: 5 }
+                                ]
+                            }
+                        },
+                        include: { widgets: { orderBy: { sortOrder: 'asc' } } }
+                    });
+                }
 
-        return layout;
+                return layout;
+            },
+            { ttl: CacheTTL.MEDIUM, namespace: LAYOUT_NAMESPACE }
+        );
     });
 
     // SAVE Layout (Widgets Update)
@@ -232,6 +242,10 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
                 }))
             })
         ]);
+
+        /** Bust the layout cache so next GET picks up the new widgets */
+        const userId = request.user?.id ?? '';
+        await cacheDelete(`${userId}:${accountId}`, { namespace: LAYOUT_NAMESPACE });
 
         const updated = await prisma.dashboardLayout.findUnique({
             where: { id: layout.id },

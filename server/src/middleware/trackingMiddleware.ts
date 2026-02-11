@@ -31,25 +31,28 @@ export async function isValidAccount(accountId: string): Promise<boolean> {
     return false;
 }
 
-// Per-account rate limiting
-const accountRateLimits = new Map<string, number[]>();
+/** Why fixed-window: O(1) per check vs O(n) array filter; no GC pressure under load */
+interface RateWindow {
+    count: number;
+    windowStart: number;
+}
+
+const accountRateLimits = new Map<string, RateWindow>();
 const MAX_EVENTS_PER_MINUTE = 100;
 
 /**
- * Checks if account is rate limited (100 events/min).
+ * Checks if account is rate limited (100 events/min) using a fixed-window counter.
  */
 export function isRateLimited(accountId: string): boolean {
     const now = Date.now();
-    const timestamps = accountRateLimits.get(accountId) || [];
-    const recent = timestamps.filter(t => now - t < 60000);
+    const window = accountRateLimits.get(accountId);
 
-    if (recent.length >= MAX_EVENTS_PER_MINUTE) {
-        return true;
+    if (!window || now - window.windowStart >= 60000) {
+        accountRateLimits.set(accountId, { count: 1, windowStart: now });
+        return false;
     }
 
-    recent.push(now);
-    accountRateLimits.set(accountId, recent);
-    return false;
+    return ++window.count >= MAX_EVENTS_PER_MINUTE;
 }
 
 // Cleanup stale entries every 5 minutes
@@ -58,27 +61,13 @@ export async function cleanupRateLimits() {
     const batchSize = 1000;
     let count = 0;
 
-    for (const [accountId, timestamps] of accountRateLimits.entries()) {
-        // Yield to event loop every batchSize iterations
+    for (const [accountId, window] of accountRateLimits.entries()) {
         if (++count % batchSize === 0) {
             await new Promise(resolve => setImmediate(resolve));
         }
 
-        // Check for concurrent modification
-        // If the entry in the map has changed (reference differs), it means
-        // it was updated by isRateLimited (which creates a new array).
-        // In that case, the entry is already "fresh" (filtered by isRateLimited)
-        // so we can skip it.
-        if (accountRateLimits.get(accountId) !== timestamps) {
-            continue;
-        }
-
-        const recent = timestamps.filter(t => now - t < 60000);
-
-        if (recent.length === 0) {
+        if (now - window.windowStart >= 60000) {
             accountRateLimits.delete(accountId);
-        } else if (recent.length < timestamps.length) {
-            accountRateLimits.set(accountId, recent);
         }
     }
 }
@@ -86,3 +75,4 @@ export async function cleanupRateLimits() {
 setInterval(() => {
     cleanupRateLimits().catch(err => console.error('Rate limit cleanup failed', err));
 }, 5 * 60 * 1000);
+
