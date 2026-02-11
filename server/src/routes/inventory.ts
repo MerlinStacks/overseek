@@ -433,7 +433,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         if (product) {
                             await IndexingService.indexProduct(accountId, {
                                 ...product,
-                                variations: product.variations
+                                variations: product.variations.map(v => ({
+                                    ...v,
+                                    id: v.wooId, // ES expects numeric WooCommerce ID, not Prisma UUID
+                                }))
                             });
                         }
                     } catch (indexErr) {
@@ -508,7 +511,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 try {
                     await IndexingService.indexProduct(accountId, {
                         ...product,
-                        variations: product.variations
+                        variations: product.variations.map(v => ({
+                            ...v,
+                            id: v.wooId, // ES expects numeric WooCommerce ID, not Prisma UUID
+                        }))
                     });
                     reindexed++;
                 } catch (err) {
