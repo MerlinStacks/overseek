@@ -472,37 +472,22 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to generate picklist' });
         }
     });
-    // POST /repair-received-pos - One-time repair: re-index products from existing RECEIVED POs in ES
+    // POST /repair-received-pos - One-time repair: re-index ALL products in ES
     // Does NOT modify stock — only fixes Elasticsearch index so inventory screen shows correct data
+    // Covers PO-linked products, BOM parents, variants, and everything else
     fastify.post('/repair-received-pos', async (request, reply) => {
         const accountId = request.accountId!;
 
         try {
-            // Find all RECEIVED POs and their linked products
-            const receivedPOs = await prisma.purchaseOrder.findMany({
-                where: { accountId, status: 'RECEIVED' },
-                include: {
-                    items: {
-                        where: { productId: { not: null } },
-                        select: { productId: true }
-                    }
-                }
-            });
-
-            // Collect unique product IDs
-            const productIds = [...new Set(
-                receivedPOs.flatMap(po => po.items.map(item => item.productId!))
-            )];
-
-            if (productIds.length === 0) {
-                return { success: true, message: 'No products to repair', reindexed: 0 };
-            }
-
-            // Fetch all products with their variations
+            // Fetch ALL products for this account with their variations
             const products = await prisma.wooProduct.findMany({
-                where: { id: { in: productIds } },
+                where: { accountId },
                 include: { variations: true }
             });
+
+            if (products.length === 0) {
+                return { success: true, message: 'No products to repair', reindexed: 0 };
+            }
 
             // Re-index each product in Elasticsearch
             let reindexed = 0;
@@ -525,24 +510,22 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             // Invalidate cache
             await invalidateCache('products', accountId);
 
-            Logger.info('Repair completed: re-indexed products from RECEIVED POs', {
+            Logger.info('Repair completed: re-indexed all products', {
                 accountId,
-                totalPOs: receivedPOs.length,
-                totalProducts: productIds.length,
+                totalProducts: products.length,
                 reindexed,
                 errors: errors.length
             });
 
             return {
                 success: true,
-                totalPOs: receivedPOs.length,
-                totalProducts: productIds.length,
+                totalProducts: products.length,
                 reindexed,
                 errors: errors.length > 0 ? errors : undefined
             };
         } catch (error) {
-            Logger.error('Error repairing received POs', { error });
-            return reply.code(500).send({ error: 'Failed to repair received POs' });
+            Logger.error('Error repairing products', { error });
+            return reply.code(500).send({ error: 'Failed to repair products' });
         }
     });
 };
