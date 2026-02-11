@@ -5,7 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import { AccountProvider, useAccount } from './context/AccountContext';
 import { SocketProvider } from './context/SocketContext';
 import { SyncStatusProvider } from './context/SyncStatusContext';
-import { SyncToastOverlay } from './components/sync/SyncToastOverlay';
+
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { SuperAdminGuard } from './components/layout/SuperAdminGuard';
@@ -279,7 +279,7 @@ function App() {
                                     </Routes>
                                 </Suspense>
                             </MobileRedirect>
-                            <SyncToastOverlay />
+
                         </SyncStatusProvider>
                     </SocketProvider>
                 </AccountProvider>
