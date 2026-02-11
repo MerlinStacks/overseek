@@ -25,7 +25,7 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
             if (!credentials) return reply.code(400).send({ error: 'TikTok messaging not configured' });
 
             const { clientKey } = credentials.credentials as any;
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64');
+            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64url');
 
             const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
             const callbackUrl = apiUrl
@@ -59,7 +59,7 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!code || !state) return reply.redirect(`${frontendRedirect}&error=missing_params`);
 
-            const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+            const stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
             // State contains relative path, prepend appUrl
             frontendRedirect = stateData.frontendRedirect
                 ? `${appUrl}${stateData.frontendRedirect}`

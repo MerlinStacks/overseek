@@ -11,6 +11,7 @@ import path from 'path';
 import PDFDocument from 'pdfkit';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { AI_LIMITS } from '../../config/limits';
 import { AdMetric, DailyTrend } from './types';
 import { MetaAdsService, GoogleAdsService } from './index';
 
@@ -313,7 +314,7 @@ export class ExecutiveReportService {
                     'HTTP-Referer': 'https://overseek.app'
                 },
                 body: JSON.stringify({
-                    model: account.aiModel || 'mistralai/mistral-7b-instruct',
+                    model: account.aiModel || AI_LIMITS.DEFAULT_MODEL,
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0.7
                 })

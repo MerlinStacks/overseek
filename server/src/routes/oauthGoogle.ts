@@ -35,7 +35,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64');
+            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
 
             const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
             const callbackUrl = apiUrl
@@ -72,7 +72,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
-                stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+                stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
                 // State contains relative path, prepend appUrl
                 frontendRedirect = stateData.frontendRedirect
                     ? `${appUrl}${stateData.frontendRedirect}`

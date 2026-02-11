@@ -52,7 +52,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             const { appId } = await MetaTokenService.getCredentials('META_ADS');
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64');
+            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
 
             const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
             const callbackUrl = apiUrl
@@ -87,7 +87,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
-                stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+                stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
                 // State contains relative path, prepend appUrl
                 frontendRedirect = stateData.frontendRedirect
                     ? `${appUrl}${stateData.frontendRedirect}`
@@ -174,7 +174,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Use MetaTokenService for unified credential access
             const { appId } = await MetaTokenService.getCredentials('META_MESSAGING');
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64');
+            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64url');
 
             const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
             const callbackUrl = apiUrl
@@ -207,7 +207,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             }
             if (!code || !state) return reply.redirect(`${frontendRedirect}&error=missing_params`);
 
-            const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+            const stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
             // State contains relative path, prepend appUrl
             frontendRedirect = stateData.frontendRedirect
                 ? `${appUrl}${stateData.frontendRedirect}`

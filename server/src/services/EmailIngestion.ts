@@ -206,6 +206,34 @@ export class EmailIngestion {
                     Logger.info('[EmailIngestion] Matched by threading', { conversationId: conv.id });
                     return conv;
                 }
+
+                // Fallback: outbound SMTP messageIds are stored in emailLog, not message table.
+                // Without this, replies to emails WE sent can't be threaded via In-Reply-To.
+                const matchedLog = await prisma.emailLog.findFirst({
+                    where: { messageId: { in: threadIds }, accountId }
+                });
+                if (matchedLog?.sourceId) {
+                    const conv = await prisma.conversation.findUnique({
+                        where: { id: matchedLog.sourceId }
+                    });
+                    if (conv && !conv.mergedIntoId) {
+                        const updates: any = {};
+                        if (conv.guestEmail && !conv.guestName && fromName) {
+                            updates.guestName = fromName;
+                        }
+                        if (!conv.title && cleanTitle) {
+                            updates.title = cleanTitle;
+                        }
+                        if (Object.keys(updates).length > 0) {
+                            await prisma.conversation.update({ where: { id: conv.id }, data: updates });
+                        }
+                        Logger.info('[EmailIngestion] Matched by emailLog threading (outbound reply)', {
+                            conversationId: conv.id,
+                            matchedMessageId: matchedLog.messageId
+                        });
+                        return conv;
+                    }
+                }
             }
         }
 

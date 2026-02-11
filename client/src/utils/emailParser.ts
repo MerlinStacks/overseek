@@ -142,8 +142,8 @@ export function parseQuotedContent(body: string): QuotedContentInfo {
         /<blockquote[^>]*class="[^"]*gmail_quote[^"]*"[^>]*>/i,
         // Generic blockquote with cite
         /<blockquote[^>]*type="cite"[^>]*>/i,
-        // Outlook-style divider
-        /<div[^>]*style="[^"]*border-top[^"]*"[^>]*>/i,
+        // Outlook-style divider (handles both single and double-quoted style attributes)
+        /<div[^>]*style=["'][^"']*border-top[^"']*["'][^>]*>/i,
         // Apple Mail quote wrapper
         /<div[^>]*class="[^"]*AppleOriginalContents[^"]*"[^>]*>/i,
     ];
@@ -230,12 +230,17 @@ export function parseQuotedContent(body: string): QuotedContentInfo {
     }
 
     if (splitIndex > 0) {
-        if (matchedInTextBody) {
+        const isHtml = /<[a-z][\s\S]*>/i.test(body);
+
+        if (matchedInTextBody && isHtml) {
+            // Body is HTML — map the text-based splitIndex back to an HTML position
+            // using the last few words before the split as an anchor.
             const textBeforeQuote = textBody.slice(0, splitIndex).trim();
-            const lastWords = textBeforeQuote.split(/\s+/).slice(-5).join('\\s*');
+            // Escape each word individually, then join with \s+ for flexible whitespace matching
+            const lastWords = textBeforeQuote.split(/\s+/).slice(-5).map(escapeRegex).join('\\s+');
             if (lastWords.length > 10) {
                 try {
-                    const htmlSearchPattern = new RegExp(escapeRegex(lastWords), 'i');
+                    const htmlSearchPattern = new RegExp(lastWords, 'i');
                     const htmlMatch = body.match(htmlSearchPattern);
                     if (htmlMatch && htmlMatch.index !== undefined) {
                         const htmlSplitIndex = htmlMatch.index + htmlMatch[0].length;
@@ -248,11 +253,14 @@ export function parseQuotedContent(body: string): QuotedContentInfo {
                         );
                     }
                 } catch {
-                    // If regex construction fails, fall through to simple split
+                    // If regex construction fails, fall through
                 }
             }
+            // Could not map text index to HTML — return unsplit to avoid garbled output
+            return buildResult(body, null);
         }
 
+        // Plain text body — splitIndex maps directly
         return buildResult(
             body.slice(0, splitIndex).trim(),
             body.slice(splitIndex).trim()

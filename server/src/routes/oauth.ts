@@ -20,6 +20,32 @@ const oauthRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(oauthTikTokRoutes);    // /tiktok/authorize, /tiktok/callback
 
     // ──────────────────────────────────────────────────────────────
+    // CALLBACK URLS — single source of truth for all platforms
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * GET /callback-urls — Return the canonical callback/webhook URLs for
+     * every OAuth platform.  The frontend displays these to the user so they
+     * can register them in each provider's developer console.
+     *
+     * Why: When API_URL is set (e.g. behind a reverse proxy), the origin the
+     * browser sees differs from the origin the server actually uses in OAuth
+     * redirects.  Fetching from the server eliminates the mismatch.
+     */
+    fastify.get('/callback-urls', { preHandler: requireAuthFastify }, async (request) => {
+        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+        const base = apiUrl || `${request.protocol}://${request.hostname}`;
+
+        return {
+            google: `${base}/api/oauth/google/callback`,
+            metaAds: `${base}/api/oauth/meta/ads/callback`,
+            metaMessaging: `${base}/api/oauth/meta/messaging/callback`,
+            tiktok: `${base}/api/oauth/tiktok/callback`,
+            metaWebhook: `${base}/api/meta-webhook`,
+        };
+    });
+
+    // ──────────────────────────────────────────────────────────────
     // SOCIAL ACCOUNTS API
     // ──────────────────────────────────────────────────────────────
 

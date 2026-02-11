@@ -18,7 +18,7 @@ export function AISettings() {
     const { token } = useAuth();
 
     const [apiKey, setApiKey] = useState('');
-    const [selectedModel, setSelectedModel] = useState('mistralai/mistral-7b-instruct');
+    const [selectedModel, setSelectedModel] = useState('openai/gpt-4o');
     const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('openai/text-embedding-3-small');
     const [models, setModels] = useState<any[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -36,8 +36,8 @@ export function AISettings() {
                 setIsOpen(false);
                 // Revert to selected model name on close
                 if (selectedModel) {
-                    const name = selectedModel === 'mistralai/mistral-7b-instruct'
-                        ? 'Mistral 7B Instruct'
+                    const name = selectedModel === 'openai/gpt-4o'
+                        ? 'GPT-4o'
                         : (models.find(m => m.id === selectedModel)?.name || selectedModel);
                     setSearchQuery(name);
                 }
@@ -58,8 +58,8 @@ export function AISettings() {
     );
 
     useEffect(() => {
-        const name = selectedModel === 'mistralai/mistral-7b-instruct'
-            ? 'Mistral 7B Instruct'
+        const name = selectedModel === 'openai/gpt-4o'
+            ? 'GPT-4o'
             : (models.find(m => m.id === selectedModel)?.name || selectedModel);
         setSearchQuery(name);
     }, [selectedModel, models]);
@@ -199,17 +199,17 @@ export function AISettings() {
                                 <div className="overflow-y-auto flex-1 p-1">
                                     <div
                                         onClick={() => {
-                                            setSelectedModel('mistralai/mistral-7b-instruct');
+                                            setSelectedModel('openai/gpt-4o');
                                             setIsOpen(false);
                                         }}
-                                        className={`px-3 py-2 text-sm rounded-md cursor-pointer flex items-center justify-between group ${selectedModel === 'mistralai/mistral-7b-instruct' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'
+                                        className={`px-3 py-2 text-sm rounded-md cursor-pointer flex items-center justify-between group ${selectedModel === 'openai/gpt-4o' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'
                                             }`}
                                     >
                                         <div className="flex flex-col">
-                                            <span className="font-medium">Mistral 7B Instruct</span>
-                                            <span className="text-xs opacity-70">Default</span>
+                                            <span className="font-medium">GPT-4o</span>
+                                            <span className="text-xs opacity-70">Default – supports tool use</span>
                                         </div>
-                                        {selectedModel === 'mistralai/mistral-7b-instruct' && <Check size={14} />}
+                                        {selectedModel === 'openai/gpt-4o' && <Check size={14} />}
                                     </div>
 
                                     {filteredModels.map(model => (

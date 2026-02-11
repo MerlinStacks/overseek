@@ -7,6 +7,7 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { AI_LIMITS } from '../config/limits';
 import { AdsService } from './ads';
 import { EmailService } from './EmailService';
 
@@ -342,7 +343,7 @@ export class PerformanceDigestService {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: account.aiModel || 'mistralai/mistral-7b-instruct',
+                    model: account.aiModel || AI_LIMITS.DEFAULT_MODEL,
                     messages: [{ role: 'user', content: prompt }],
                     max_tokens: 1000,
                     temperature: 0.7

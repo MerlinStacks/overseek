@@ -7,6 +7,7 @@
 
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
+import { AI_LIMITS } from '../../config/limits';
 
 
 /** Tone presets for ad copy generation */
@@ -216,14 +217,14 @@ export class AdCopyGenerator {
             // Generate headlines
             const headlinesResult = await this.callOpenRouter(
                 account.openRouterApiKey,
-                account.aiModel || 'mistralai/mistral-7b-instruct',
+                account.aiModel || AI_LIMITS.DEFAULT_MODEL,
                 this.buildPrompt(HEADLINE_PROMPT, context)
             );
 
             // Generate descriptions
             const descriptionsResult = await this.callOpenRouter(
                 account.openRouterApiKey,
-                account.aiModel || 'mistralai/mistral-7b-instruct',
+                account.aiModel || AI_LIMITS.DEFAULT_MODEL,
                 this.buildPrompt(DESCRIPTION_PROMPT, context)
             );
 
@@ -408,7 +409,7 @@ export class AdCopyGenerator {
                 return this.generateTemplateBasedCopy({ ...context, platform: 'meta' });
             }
 
-            const model = account.aiModel || 'mistralai/mistral-7b-instruct';
+            const model = account.aiModel || AI_LIMITS.DEFAULT_MODEL;
 
             // Generate primary texts
             const primaryTextsResult = await this.callOpenRouter(
@@ -619,7 +620,7 @@ export class AdCopyGenerator {
             });
 
             const apiKey = account?.openRouterApiKey;
-            const model = account?.aiModel || 'mistralai/mistral-7b-instruct';
+            const model = account?.aiModel || AI_LIMITS.DEFAULT_MODEL;
 
             if (!apiKey) {
                 // Fallback: generate simple template variations

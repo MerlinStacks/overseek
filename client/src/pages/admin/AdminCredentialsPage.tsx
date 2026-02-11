@@ -163,6 +163,12 @@ export function AdminCredentialsPage() {
     const [generating, setGenerating] = useState(false);
     const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({});
 
+    /**
+     * Server-sourced callback/webhook URLs keyed by callbackPath.
+     * Why: window.location.origin diverges from API_URL behind a reverse proxy.
+     */
+    const [serverUrls, setServerUrls] = useState<Record<string, string>>({});
+
     useEffect(() => {
         fetchCredentials();
     }, [token]);
@@ -174,6 +180,30 @@ export function AdminCredentialsPage() {
             return () => clearTimeout(timer);
         }
     }, [message]);
+
+    /** Fetch canonical callback URLs from the server so displayed URLs match. */
+    useEffect(() => {
+        async function fetchCallbackUrls() {
+            try {
+                const res = await fetch('/api/oauth/callback-urls', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                /* Map callbackPath → server URL for easy lookup */
+                const map: Record<string, string> = {};
+                if (data.google) map['/api/oauth/google/callback'] = data.google;
+                if (data.metaAds) map['/api/oauth/meta/ads/callback'] = data.metaAds;
+                if (data.metaMessaging) map['/api/oauth/meta/messaging/callback'] = data.metaMessaging;
+                if (data.tiktok) map['/api/oauth/tiktok/callback'] = data.tiktok;
+                if (data.metaWebhook) map['/api/meta-webhook'] = data.metaWebhook;
+                setServerUrls(map);
+            } catch {
+                /* Fallback to window.location.origin via default empty map */
+            }
+        }
+        if (token) fetchCallbackUrls();
+    }, [token]);
 
     async function fetchCredentials() {
         try {
@@ -525,14 +555,14 @@ export function AdminCredentialsPage() {
                                     {currentPlatform.callbackPath && (
                                         <CopyableUrl
                                             label={currentPlatform.id === 'META_MESSAGING' ? 'OAuth Redirect' : 'Callback URL'}
-                                            url={`${window.location.origin}${currentPlatform.callbackPath}`}
+                                            url={serverUrls[currentPlatform.callbackPath] || `${window.location.origin}${currentPlatform.callbackPath}`}
                                             onCopied={() => setMessage({ type: 'success', text: 'Copied to clipboard!' })}
                                         />
                                     )}
                                     {currentPlatform.webhookPath && (
                                         <CopyableUrl
                                             label="Webhook URL"
-                                            url={`${window.location.origin}${currentPlatform.webhookPath}`}
+                                            url={serverUrls[currentPlatform.webhookPath] || `${window.location.origin}${currentPlatform.webhookPath}`}
                                             onCopied={() => setMessage({ type: 'success', text: 'Copied to clipboard!' })}
                                         />
                                     )}

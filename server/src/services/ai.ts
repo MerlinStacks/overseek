@@ -53,6 +53,14 @@ interface AIResponse {
     sources?: ToolResult[];
 }
 
+/**
+ * Checks whether a model ID is known to support tool/function calling.
+ * Uses prefix matching against AI_LIMITS.TOOL_CAPABLE_PREFIXES.
+ */
+function isToolCapable(modelId: string): boolean {
+    return AI_LIMITS.TOOL_CAPABLE_PREFIXES.some(prefix => modelId.startsWith(prefix));
+}
+
 export class AIService {
 
     static async getModels(apiKey?: string) {
@@ -204,15 +212,38 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
 
         const apiKey = account?.openRouterApiKey || process.env.OPENAI_API_KEY;
         const model = account?.aiModel || AI_LIMITS.DEFAULT_MODEL;
+        const useTools = isToolCapable(model);
+
+        // Strip tool instructions from prompt when model can't use tools
+        const effectivePrompt = useTools
+            ? systemPrompt
+            : systemPrompt.replace(
+                /You have access to tools[\s\S]*?Current Date:/,
+                'Answer questions using your general knowledge about e-commerce best practices.\n\nCurrent Date:'
+            );
 
         const messages: ChatMessage[] = [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: effectivePrompt },
             { role: "user", content: query }
         ];
 
+        const toolDefinitions = useTools
+            ? AIToolsService.getDefinitions().map(tool => ({ type: 'function' as const, function: tool }))
+            : undefined;
+
         // 2. Main Loop: LLM -> Tool Call -> LLM
+        let toolsDisabledByRetry = false;
         for (let i = 0; i < AI_LIMITS.MAX_TOOL_ITERATIONS; i++) {
             try {
+                const body: Record<string, unknown> = {
+                    model,
+                    messages,
+                };
+                // Only include tools when model supports them and we haven't disabled via retry
+                if (toolDefinitions && !toolsDisabledByRetry) {
+                    body.tools = toolDefinitions;
+                }
+
                 const response = await fetch(AI_LIMITS.API_ENDPOINT, {
                     method: "POST",
                     headers: {
@@ -221,14 +252,7 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
                         "X-Title": process.env.APP_NAME || 'Commerce Platform',
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({
-                        model: model,
-                        messages: messages,
-                        tools: AIToolsService.getDefinitions().map(tool => ({
-                            type: 'function',
-                            function: tool
-                        }))
-                    })
+                    body: JSON.stringify(body)
                 });
 
                 if (!response.ok) {
@@ -239,6 +263,13 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
                         error: errorText,
                         accountId
                     });
+
+                    // Retry without tools if 404 is about tool support
+                    if (response.status === 404 && errorText.includes('tool use') && !toolsDisabledByRetry) {
+                        Logger.warn(`Model ${model} does not support tool use, retrying without tools`, { accountId });
+                        toolsDisabledByRetry = true;
+                        continue;
+                    }
 
                     if (isRateLimit) {
                         return {

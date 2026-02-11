@@ -64,12 +64,12 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
         /** Fetch the actual callback URL the server uses, so the displayed URL matches. */
         async function fetchCallbackUrl() {
             try {
-                const res = await fetch('/api/oauth/google/callback-url', {
+                const res = await fetch('/api/oauth/callback-urls', {
                     headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.callbackUrl) setGoogleCallbackUrl(data.callbackUrl);
+                    if (data.google) setGoogleCallbackUrl(data.google);
                 }
             } catch {
                 // Fallback already set via useState default

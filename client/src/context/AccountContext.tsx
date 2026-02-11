@@ -54,6 +54,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
             return;
         }
 
+        // Re-raise the loading gate so guards (e.g. AccountGuard) don't
+        // see accounts=[] + isLoading=false while we fetch.
+        setIsLoading(true);
+
         try {
             const response = await fetch('/api/accounts', {
                 headers: { Authorization: `Bearer ${token}` }

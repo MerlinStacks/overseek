@@ -29,6 +29,21 @@ export const AI_LIMITS = {
     API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
     /** OpenRouter models endpoint */
     MODELS_ENDPOINT: 'https://openrouter.ai/api/v1/models',
+    /**
+     * Model ID prefixes known to support tool/function calling on OpenRouter.
+     * Models outside these prefixes will be called without tool definitions
+     * to avoid "No endpoints found that support tool use" 404 errors.
+     */
+    TOOL_CAPABLE_PREFIXES: [
+        'openai/',
+        'anthropic/',
+        'google/',
+        'mistralai/mistral-large',
+        'mistralai/mistral-medium',
+        'mistralai/mistral-small',
+        'cohere/',
+        'meta-llama/llama-3',
+    ] as readonly string[],
 } as const;
 
 
