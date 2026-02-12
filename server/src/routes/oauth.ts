@@ -7,6 +7,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { buildCallbackUrl, getApiBase } from './oauthHelpers';
 
 // Import sub-plugins
 import oauthGoogleRoutes from './oauthGoogle';
@@ -35,16 +36,13 @@ const oauthRoutes: FastifyPluginAsync = async (fastify) => {
      * redirects.  Fetching from the server eliminates the mismatch.
      */
     fastify.get('/callback-urls', { preHandler: requireAuthFastify }, async (request) => {
-        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-        const base = apiUrl || `${request.protocol}://${request.hostname}`;
-
         return {
-            google: `${base}/api/oauth/google/callback`,
-            metaAds: `${base}/api/oauth/meta/ads/callback`,
-            metaMessaging: `${base}/api/oauth/meta/messaging/callback`,
-            tiktok: `${base}/api/oauth/tiktok/callback`,
-            searchConsole: `${base}/api/oauth/search-console/callback`,
-            metaWebhook: `${base}/api/meta-webhook`,
+            google: buildCallbackUrl(request, 'google/callback'),
+            metaAds: buildCallbackUrl(request, 'meta/ads/callback'),
+            metaMessaging: buildCallbackUrl(request, 'meta/messaging/callback'),
+            tiktok: buildCallbackUrl(request, 'tiktok/callback'),
+            searchConsole: buildCallbackUrl(request, 'search-console/callback'),
+            metaWebhook: `${getApiBase(request)}/api/meta-webhook`,
         };
     });
 

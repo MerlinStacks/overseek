@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
 import { getCredentials } from '../services/ads/types';
 
 /** Why HMAC: prevent forged state params — an attacker could craft a state to link SC to their account */
@@ -116,10 +117,7 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
 
             const state = signState({ accountId, frontendRedirect });
 
-            const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-            const redirectUri = apiUrl
-                ? `${apiUrl}/api/oauth/search-console/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/search-console/callback`;
+            const redirectUri = buildCallbackUrl(request, 'search-console/callback');
 
             const params = new URLSearchParams({
                 client_id: creds.clientId,
@@ -142,38 +140,34 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /search-console/callback — Handle OAuth callback, list sites, store tokens
      */
     fastify.get('/search-console/callback', async (request, reply) => {
-        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
-        let frontendRedirect = `${appUrl}/settings/integrations`;
+        let frontendRedirect = '/settings/integrations';
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string };
             if (query.error) {
                 Logger.warn('Search Console OAuth denied', { error: query.error });
-                return reply.redirect(`${frontendRedirect}?error=oauth_denied`);
+                return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'oauth_denied' }));
             }
 
             if (!query.code || !query.state) {
-                return reply.redirect(`${frontendRedirect}?error=missing_params`);
+                return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'missing_params' }));
             }
 
             const stateData = verifyState(query.state);
             if (!stateData) {
                 Logger.warn('OAuth state verification failed — possible CSRF attempt');
-                return reply.redirect(`${frontendRedirect}?error=invalid_state`);
+                return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'invalid_state' }));
             }
-            frontendRedirect = stateData.frontendRedirect
-                ? `${appUrl}${sanitizeRedirect(stateData.frontendRedirect)}`
-                : frontendRedirect;
+            if (stateData.frontendRedirect) {
+                frontendRedirect = sanitizeRedirect(stateData.frontendRedirect);
+            }
 
             const creds = await getCredentials('GOOGLE_ADS');
             if (!creds?.clientId || !creds?.clientSecret) {
-                return reply.redirect(`${frontendRedirect}?error=missing_credentials`);
+                return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'missing_credentials' }));
             }
 
-            const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-            const redirectUri = apiUrl
-                ? `${apiUrl}/api/oauth/search-console/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/search-console/callback`;
+            const redirectUri = buildCallbackUrl(request, 'search-console/callback');
 
             const tokens = await exchangeCodeForTokens(query.code, redirectUri, creds.clientId, creds.clientSecret);
 
@@ -185,7 +179,7 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const sites = await listVerifiedSites(tokens.accessToken);
 
             if (sites.length === 0) {
-                return reply.redirect(`${frontendRedirect}?error=no_sites`);
+                return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'no_sites' }));
             }
 
             // Store all verified sites so the user can select later
@@ -215,11 +209,11 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
                 siteCount: sites.length
             });
 
-            return reply.redirect(`${frontendRedirect}?success=search_console_connected`);
+            return reply.redirect(buildFrontendUrl(frontendRedirect, { success: 'search_console_connected' }));
 
         } catch (error: any) {
             Logger.error('Search Console OAuth callback failed', { error: error.message });
-            return reply.redirect(`${frontendRedirect}?error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+            return reply.redirect(buildFrontendUrl(frontendRedirect, { error: 'oauth_failed', message: error.message }));
         }
     });
 
@@ -277,12 +271,7 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /search-console/callback-url — Return the callback URL for GCP setup
      */
     fastify.get('/search-console/callback-url', { preHandler: requireAuthFastify }, async (request) => {
-        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-        return {
-            callbackUrl: apiUrl
-                ? `${apiUrl}/api/oauth/search-console/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/search-console/callback`
-        };
+        return { callbackUrl: buildCallbackUrl(request, 'search-console/callback') };
     });
 };
 

@@ -7,6 +7,9 @@ import { FastifyPluginAsync } from 'fastify';
 import { AdsService } from '../services/ads';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
+import { buildCallbackUrl, buildFrontendUrl, getAppUrl } from './oauthHelpers';
+
+const CALLBACK_SUFFIX = 'google/callback';
 
 const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -15,12 +18,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
      * and it may differ from window.location.origin when API_URL is set.
      */
     fastify.get('/google/callback-url', { preHandler: requireAuthFastify }, async (request) => {
-        const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-        return {
-            callbackUrl: apiUrl
-                ? `${apiUrl}/api/oauth/google/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/google/callback`
-        };
+        return { callbackUrl: buildCallbackUrl(request, CALLBACK_SUFFIX) };
     });
 
     /**
@@ -36,12 +34,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
-
-            const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-            const callbackUrl = apiUrl
-                ? `${apiUrl}/api/oauth/google/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/google/callback`;
-
+            const callbackUrl = buildCallbackUrl(request, CALLBACK_SUFFIX);
             const authUrl = await AdsService.getGoogleAuthUrl(callbackUrl, state);
             return { authUrl };
         } catch (error: any) {
@@ -54,8 +47,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /google/callback - Handle Google OAuth callback
      */
     fastify.get('/google/callback', async (request, reply) => {
-        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
-        let frontendRedirect = `${appUrl}/marketing?tab=ads`;
+        let frontendRedirect = buildFrontendUrl('/marketing?tab=ads');
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string };
@@ -63,29 +55,25 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (error) {
                 Logger.warn('Google OAuth denied', { error });
-                return reply.redirect(`${frontendRedirect}&error=oauth_denied`);
+                return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'oauth_denied' }));
             }
 
             if (!code || !state) {
-                return reply.redirect(`${frontendRedirect}&error=missing_params`);
+                return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'missing_params' }));
             }
 
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
                 stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-                // State contains relative path, prepend appUrl
-                frontendRedirect = stateData.frontendRedirect
-                    ? `${appUrl}${stateData.frontendRedirect}`
-                    : frontendRedirect;
+                /* State contains a relative path — use it as the redirect base */
+                if (stateData.frontendRedirect) {
+                    frontendRedirect = buildFrontendUrl(stateData.frontendRedirect);
+                }
             } catch {
-                return reply.redirect(`${frontendRedirect}&error=invalid_state`);
+                return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'invalid_state' }));
             }
 
-            const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-            const redirectUri = apiUrl
-                ? `${apiUrl}/api/oauth/google/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/google/callback`;
-
+            const redirectUri = buildCallbackUrl(request, CALLBACK_SUFFIX);
             const tokens = await AdsService.exchangeGoogleCode(code, redirectUri);
 
             // If reconnecting an existing account, update its tokens
@@ -94,7 +82,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                     accessToken: tokens.accessToken,
                     refreshToken: tokens.refreshToken || ''
                 });
-                return reply.redirect(`${frontendRedirect}&success=google_reconnected`);
+                return reply.redirect(buildFrontendUrl(stateData.frontendRedirect || '/marketing?tab=ads', { success: 'google_reconnected' }));
             }
 
             // Otherwise create new pending account
@@ -106,11 +94,14 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                 name: 'Google Ads (Pending Setup)'
             });
 
-            return reply.redirect(`${frontendRedirect}&success=google_pending&pendingId=${pendingAccount.id}`);
+            return reply.redirect(buildFrontendUrl(
+                stateData.frontendRedirect || '/marketing?tab=ads',
+                { success: 'google_pending', pendingId: pendingAccount.id }
+            ));
 
         } catch (error: any) {
             Logger.error('Google OAuth callback failed', { error: error.message });
-            return reply.redirect(`${frontendRedirect}&error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+            return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'oauth_failed', message: error.message }));
         }
     });
 };

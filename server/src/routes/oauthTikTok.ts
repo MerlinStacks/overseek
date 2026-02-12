@@ -8,6 +8,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { TikTokMessagingService } from '../services/messaging/TikTokMessagingService';
+import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
 
 const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -27,10 +28,7 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
             const { clientKey } = credentials.credentials as any;
             const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64url');
 
-            const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-            const callbackUrl = apiUrl
-                ? `${apiUrl}/api/oauth/tiktok/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/tiktok/callback`;
+            const callbackUrl = buildCallbackUrl(request, 'tiktok/callback');
 
             const scopes = 'user.info.basic,dm.manage';
             const authUrl = `https://www.tiktok.com/v2/auth/authorize?client_key=${clientKey}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=${scopes}&response_type=code&state=${state}`;
@@ -45,8 +43,8 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /tiktok/callback - Handle TikTok OAuth callback
      */
     fastify.get('/tiktok/callback', async (request, reply) => {
-        const appUrl = process.env.APP_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
-        let frontendRedirect = `${appUrl}/settings?tab=channels`;
+        const defaultPath = '/settings?tab=channels';
+        let redirectPath = defaultPath;
 
         try {
             const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
@@ -54,30 +52,23 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (error) {
                 Logger.warn('TikTok OAuth denied', { error, error_description });
-                return reply.redirect(`${frontendRedirect}&error=oauth_denied`);
+                return reply.redirect(buildFrontendUrl(defaultPath, { error: 'oauth_denied' }));
             }
 
-            if (!code || !state) return reply.redirect(`${frontendRedirect}&error=missing_params`);
+            if (!code || !state) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
             const stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-            // State contains relative path, prepend appUrl
-            frontendRedirect = stateData.frontendRedirect
-                ? `${appUrl}${stateData.frontendRedirect}`
-                : frontendRedirect;
+            if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
             const accountId = stateData.accountId;
 
             const credentials = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });
-            if (!credentials) return reply.redirect(`${frontendRedirect}&error=not_configured`);
+            if (!credentials) return reply.redirect(buildFrontendUrl(redirectPath, { error: 'not_configured' }));
 
             const { clientKey, clientSecret } = credentials.credentials as any;
-
-            const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
-            const callbackUrl = apiUrl
-                ? `${apiUrl}/api/oauth/tiktok/callback`
-                : `${request.protocol}://${request.hostname}/api/oauth/tiktok/callback`;
+            const callbackUrl = buildCallbackUrl(request, 'tiktok/callback');
 
             const tokens = await TikTokMessagingService.exchangeAuthCode(code, clientKey, clientSecret, callbackUrl);
-            if (!tokens) return reply.redirect(`${frontendRedirect}&error=token_exchange_failed`);
+            if (!tokens) return reply.redirect(buildFrontendUrl(redirectPath, { error: 'token_exchange_failed' }));
 
             const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
 
@@ -88,11 +79,11 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             Logger.info('TikTok messaging connected', { accountId, openId: tokens.openId });
-            return reply.redirect(`${frontendRedirect}&success=tiktok_connected`);
+            return reply.redirect(buildFrontendUrl(redirectPath, { success: 'tiktok_connected' }));
 
         } catch (error: any) {
             Logger.error('TikTok OAuth callback failed', { error });
-            return reply.redirect(`${frontendRedirect}&error=oauth_failed&message=${encodeURIComponent(error.message)}`);
+            return reply.redirect(buildFrontendUrl(redirectPath, { error: 'oauth_failed', message: error.message }));
         }
     });
 };
