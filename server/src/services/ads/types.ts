@@ -134,7 +134,7 @@ const credentialsCache: Map<string, { data: any; expiry: number }> = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /** Valid platform identifiers for credentials */
-export type AdsPlatform = 'GOOGLE_ADS' | 'META_ADS' | 'META' | 'META_MESSAGING';
+export type AdsPlatform = 'GOOGLE_ADS' | 'GOOGLE_SEARCH_CONSOLE' | 'META_ADS' | 'META' | 'META_MESSAGING';
 
 /**
  * Clear the credentials cache for a specific platform or all platforms.

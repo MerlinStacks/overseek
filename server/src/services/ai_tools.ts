@@ -6,6 +6,7 @@ import { CustomerTools } from './tools/CustomerTools';
 import { AdsTools } from './tools/AdsTools';
 import { WooCommerceTools } from './tools/WooCommerceTools';
 import { AnalyticsTools } from './tools/AnalyticsTools';
+import { SearchConsoleTools } from './tools/SearchConsoleTools';
 import { Logger } from '../utils/logger';
 
 export interface ToolDefinition {
@@ -241,6 +242,26 @@ export class AIToolsService {
                     },
                     required: ["segment"]
                 }
+            },
+
+            // ─────────────────────────────────────────────────────────
+            // SEO & Organic Search (Search Console)
+            // ─────────────────────────────────────────────────────────
+            {
+                name: "get_seo_keyword_recommendations",
+                description: "Get AI-powered SEO keyword recommendations. Shows low-hanging fruit keywords (position 5-20), keyword gaps (products without organic visibility), and trending search queries. Requires Google Search Console connection.",
+                parameters: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_organic_search_performance",
+                description: "Get organic search performance overview from Google Search Console. Shows total clicks, impressions, average position, top queries, and top pages. Requires Google Search Console connection.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        days: { type: "integer", description: "Number of days to analyze (default 28)" }
+                    },
+                    required: []
+                }
             }
         ];
     }
@@ -281,6 +302,10 @@ export class AIToolsService {
         get_profitability: (args, accountId) => AnalyticsTools.getProfitability(accountId, args.period as string),
         forecast_sales: (_args, accountId) => AnalyticsTools.forecastSales(accountId),
         analyze_customer_segment: (args, accountId) => AnalyticsTools.analyzeCustomerSegments(accountId, args.segment as 'at_risk' | 'whales' | 'new'),
+
+        // SEO & Organic Search
+        get_seo_keyword_recommendations: (_args, accountId) => SearchConsoleTools.getKeywordRecommendations(accountId),
+        get_organic_search_performance: (args, accountId) => SearchConsoleTools.getOrganicPerformance(accountId, (args.days as number) || 28),
     };
 
     /**

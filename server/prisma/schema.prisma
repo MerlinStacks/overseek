@@ -196,6 +196,10 @@ model Account {
   // Backup System
   backupSettings      AccountBackupSettings?
   storedBackups       StoredBackup[]
+
+  // Google Search Console
+  searchConsoleAccounts SearchConsoleAccount[]
+  trackedKeywords       TrackedKeyword[]
 }
 
 // --------------------------------------
@@ -2255,4 +2259,74 @@ model StoredBackup {
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId, createdAt(sort: Desc)])
+}
+
+// --------------------------------------
+// Google Search Console
+// --------------------------------------
+
+/// Stores Google Search Console connections for organic search analytics.
+/// Each account can connect one or more Search Console properties.
+model SearchConsoleAccount {
+  id           String  @id @default(uuid())
+  accountId    String
+  siteUrl      String    // e.g. "sc-domain:example.com" or "https://example.com/"
+  accessToken  String
+  refreshToken String
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, siteUrl])
+  @@index([accountId])
+}
+
+/// Keywords being actively tracked for rank position over time.
+model TrackedKeyword {
+  id        String @id @default(uuid())
+  accountId String
+  keyword   String
+  /// Optional: specific page URL to track for this keyword
+  targetUrl String?
+  /// Current latest position (denormalized for fast reads)
+  currentPosition Float?  @default(0)
+  /// Current latest CTR (denormalized)
+  currentCtr      Float?  @default(0)
+  /// Current latest impressions (denormalized)
+  currentImpressions Int? @default(0)
+  /// Current latest clicks (denormalized)
+  currentClicks     Int?  @default(0)
+  /// Whether tracking is active
+  isActive  Boolean @default(true)
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  history   KeywordRankHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, keyword])
+  @@index([accountId, isActive])
+}
+
+/// Daily rank snapshots for tracked keywords.
+model KeywordRankHistory {
+  id        String @id @default(uuid())
+  keywordId String
+  /// Average position on this date
+  position  Float
+  clicks    Int    @default(0)
+  impressions Int  @default(0)
+  ctr       Float  @default(0)
+  /// The date this snapshot represents (YYYY-MM-DD)
+  date      DateTime @db.Date
+
+  keyword   TrackedKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([keywordId, date])
+  @@index([keywordId, date(sort: Desc)])
 }

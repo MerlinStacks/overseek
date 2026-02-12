@@ -83,10 +83,23 @@ export function PurchaseOrderList() {
         return { drafts, pendingOrders: ordered.length, pendingValue, receivedThisMonth };
     }, [orders]);
 
-    // Filter orders
+    /** Status priority: ORDERED first, DRAFT second, everything else last */
+    const STATUS_PRIORITY: Record<string, number> = { ORDERED: 0, DRAFT: 1, RECEIVED: 2, CANCELLED: 3 };
+
+    // Filter then sort by status priority → newest date first within each group
     const filteredOrders = useMemo(() => {
-        if (statusFilter === 'ALL') return orders;
-        return orders.filter(o => o.status === statusFilter);
+        const base = statusFilter === 'ALL' ? orders : orders.filter(o => o.status === statusFilter);
+
+        return [...base].sort((a, b) => {
+            const priorityA = STATUS_PRIORITY[a.status] ?? 99;
+            const priorityB = STATUS_PRIORITY[b.status] ?? 99;
+            if (priorityA !== priorityB) return priorityA - priorityB;
+
+            // Within the same status group, sort by date descending
+            const dateA = new Date(a.orderDate ?? a.createdAt).getTime();
+            const dateB = new Date(b.orderDate ?? b.createdAt).getTime();
+            return dateB - dateA;
+        });
     }, [orders, statusFilter]);
 
     return (

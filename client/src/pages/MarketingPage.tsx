@@ -101,7 +101,7 @@ export function MarketingPage() {
 
 
 
-        if (editorMode === 'email') {
+    if (editorMode === 'email') {
         return (
             <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-gray-500">Loading email editor...</div></div>}>
                 <EmailDesignEditor
@@ -115,7 +115,7 @@ export function MarketingPage() {
 
 
 
-        return (
+    return (
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
                 <h1 className="text-2xl font-bold text-gray-900">Marketing</h1>

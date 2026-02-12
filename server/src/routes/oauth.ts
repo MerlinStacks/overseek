@@ -12,12 +12,14 @@ import { prisma } from '../utils/prisma';
 import oauthGoogleRoutes from './oauthGoogle';
 import oauthMetaRoutes from './oauthMeta';
 import oauthTikTokRoutes from './oauthTikTok';
+import oauthSearchConsoleRoutes from './oauthSearchConsole';
 
 const oauthRoutes: FastifyPluginAsync = async (fastify) => {
     // Mount platform-specific OAuth routes as nested plugins
-    await fastify.register(oauthGoogleRoutes);    // /google/authorize, /google/callback
-    await fastify.register(oauthMetaRoutes);      // /meta/exchange, /meta/messaging/...
-    await fastify.register(oauthTikTokRoutes);    // /tiktok/authorize, /tiktok/callback
+    await fastify.register(oauthGoogleRoutes);          // /google/authorize, /google/callback
+    await fastify.register(oauthMetaRoutes);            // /meta/exchange, /meta/messaging/...
+    await fastify.register(oauthTikTokRoutes);          // /tiktok/authorize, /tiktok/callback
+    await fastify.register(oauthSearchConsoleRoutes);   // /search-console/authorize, /search-console/callback
 
     // ──────────────────────────────────────────────────────────────
     // CALLBACK URLS — single source of truth for all platforms
@@ -41,6 +43,7 @@ const oauthRoutes: FastifyPluginAsync = async (fastify) => {
             metaAds: `${base}/api/oauth/meta/ads/callback`,
             metaMessaging: `${base}/api/oauth/meta/messaging/callback`,
             tiktok: `${base}/api/oauth/tiktok/callback`,
+            searchConsole: `${base}/api/oauth/search-console/callback`,
             metaWebhook: `${base}/api/meta-webhook`,
         };
     });

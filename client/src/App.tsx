@@ -45,6 +45,7 @@ const InboxPage = lazy(() => import('./pages/InboxPage').then(m => ({ default: m
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 const PaidAdsPage = lazy(() => import('./pages/PaidAdsPage').then(m => ({ default: m.PaidAdsPage })));
 const AdAIPage = lazy(() => import('./pages/AdAIPage').then(m => ({ default: m.AdAIPage })));
+const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.SeoPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
 const HelpCenterHome = lazy(() => import('./pages/HelpCenter/HelpCenterHome').then(m => ({ default: m.HelpCenterHome })));
 const HelpArticle = lazy(() => import('./pages/HelpCenter/HelpArticle').then(m => ({ default: m.HelpArticle })));
@@ -224,6 +225,7 @@ function App() {
                                                 <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
                                                 <Route path="/ads" element={<AccountGuard><PaidAdsPage /></AccountGuard>} />
                                                 <Route path="/marketing/ai" element={<AccountGuard><AdAIPage /></AccountGuard>} />
+                                                <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><BroadcastsPage /></AccountGuard>} />
                                                 <Route path="/flows" element={<AccountGuard><FlowsPage /></AccountGuard>} />
                                                 <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />

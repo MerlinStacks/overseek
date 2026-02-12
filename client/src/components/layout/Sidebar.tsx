@@ -32,7 +32,8 @@ import {
     Filter,
     TrendingDown,
     RefreshCw,
-    Activity
+    Activity,
+    Search
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -89,6 +90,7 @@ const navItems = [
             { icon: Zap, label: 'Flows', path: '/flows' },
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
             { icon: Star, label: 'Reviews', path: '/reviews' },
+            { icon: Search, label: 'SEO Keywords', path: '/seo' },
         ]
     },
     { type: 'link', icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
