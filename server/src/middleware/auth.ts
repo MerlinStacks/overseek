@@ -95,8 +95,11 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
         request.accountId = accountId;
 
         // Check if route requires strict accountId
-        const path = request.url;
-        const requiresAccount = STRICT_ACCOUNT_ROUTES.some(prefix => path.startsWith(`/api${prefix}`));
+        // Strip query string before matching and require exact boundary (/ or end)
+        const pathWithoutQuery = request.url.split('?')[0];
+        const requiresAccount = STRICT_ACCOUNT_ROUTES.some(prefix =>
+            pathWithoutQuery === `/api${prefix}` || pathWithoutQuery.startsWith(`/api${prefix}/`)
+        );
 
         if (requiresAccount && !accountId) {
             return reply.code(400).send({ error: 'Account ID required for this resource' });

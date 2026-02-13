@@ -40,15 +40,16 @@ export class SecurityService {
     }
 
     static async enableTwoFactor(userId: string, secret: string) {
-        // Generate backup codes
+        // Generate backup codes — return plaintext to user once, store hashes
         const backupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+        const hashedBackupCodes = backupCodes.map(code => this.hashToken(code));
 
         await prisma.user.update({
             where: { id: userId },
             data: {
                 twoFactorSecret: secret,
                 isTwoFactorEnabled: true,
-                twoFactorBackupCodes: backupCodes as any
+                twoFactorBackupCodes: hashedBackupCodes as any
             }
         });
 
@@ -110,22 +111,23 @@ export class SecurityService {
         // EDGE CASE FIX: 30-day expiry for rotated refresh tokens
         const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
-        // Revoke old, create new
-        // Transaction to ensure atomicity - using separate operations to get new ID
-        await prisma.refreshToken.update({
-            where: { id: refreshToken.id },
-            data: { revokedAt: new Date() }
-        });
-
-        const newRefreshTokenRecord = await prisma.refreshToken.create({
-            data: {
-                token: newRefreshTokenHash, // Store hash
-                userId: refreshToken.userId,
-                expiresAt: newExpiresAt,
-                ipAddress,
-                userAgent
-            }
-        });
+        // Revoke old + create new atomically to prevent session loss on crash
+        // and eliminate race conditions on concurrent refresh calls
+        const [, newRefreshTokenRecord] = await prisma.$transaction([
+            prisma.refreshToken.update({
+                where: { id: refreshToken.id },
+                data: { revokedAt: new Date() }
+            }),
+            prisma.refreshToken.create({
+                data: {
+                    token: newRefreshTokenHash, // Store hash
+                    userId: refreshToken.userId,
+                    expiresAt: newExpiresAt,
+                    ipAddress,
+                    userAgent
+                }
+            })
+        ]);
 
         // Include new sessionId in access token
         const newAccessToken = generateToken({ userId: refreshToken.userId, sessionId: newRefreshTokenRecord.id });

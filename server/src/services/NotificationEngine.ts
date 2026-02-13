@@ -486,11 +486,15 @@ export class NotificationEngine {
             }
 
             // Sanitize data to ensure valid JSON (removes undefined, functions, circular refs)
-            const sanitize = <T>(obj: T): T | undefined => {
+            const sanitize = <T>(obj: T, label = 'unknown'): T | undefined => {
                 if (obj === null || obj === undefined) return undefined;
                 try {
                     return JSON.parse(JSON.stringify(obj));
-                } catch {
+                } catch (err) {
+                    Logger.warn('[NotificationEngine] Failed to serialize payload for delivery log', {
+                        label,
+                        error: (err as Error).message
+                    });
                     return undefined;
                 }
             };

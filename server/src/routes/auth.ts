@@ -86,7 +86,7 @@ if (typeof process !== 'undefined') {
  * Check if IP is currently rate limited (without incrementing).
  * Returns true if allowed to attempt login, false if blocked.
  */
-function isRateLimitedFallback(ip: string): boolean {
+function isLoginAllowedFallback(ip: string): boolean {
     const now = Date.now();
     const record = loginAttempts.get(ip);
 
@@ -140,10 +140,10 @@ function incrementFailedLoginFallback(ip: string): void {
 }
 
 /**
- * Check if IP is currently rate limited using Redis.
- * Returns true if allowed to attempt login, false if blocked.
+ * Check if IP is allowed to attempt login.
+ * Returns true if allowed, false if blocked by rate limit.
  */
-async function isRateLimited(ip: string): Promise<boolean> {
+async function isLoginAllowed(ip: string): Promise<boolean> {
     const key = `login:failed:${ip}`;
 
     try {
@@ -152,7 +152,7 @@ async function isRateLimited(ip: string): Promise<boolean> {
         return parseInt(count) < MAX_FAILED_ATTEMPTS;
     } catch (error) {
         Logger.warn('Rate limit check fallback to memory', { error });
-        return isRateLimitedFallback(ip);
+        return isLoginAllowedFallback(ip);
     }
 }
 
@@ -257,8 +257,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 data: { email, passwordHash, fullName, isSuperAdmin }
             });
 
-            const token = generateToken({ userId: user.id });
-            return { token, user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin } };
+            const { accessToken, refreshToken } = await SecurityService.createSession(
+                user.id, request.ip, request.headers['user-agent'] as string
+            );
+            return { token: accessToken, refreshToken, user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin } };
         } catch (error) {
             Logger.error('Register error', { error });
             return reply.code(500).send({ error: 'Internal server error' });
@@ -270,8 +272,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const ip = request.ip;
 
-            // Check if IP is currently rate limited (don't increment yet - only count failures)
-            if (!(await isRateLimited(ip))) {
+            // Check if IP is currently rate limited
+            if (!(await isLoginAllowed(ip))) {
                 return reply.code(429).send({ error: 'Too many login attempts, please try again later.' });
             }
 

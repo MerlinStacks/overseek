@@ -94,9 +94,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             let order;
 
-            // Try finding by internal UUID first
-            order = await prisma.wooOrder.findUnique({
-                where: { id: id }
+            // Try finding by internal UUID first (scoped to account to prevent IDOR)
+            order = await prisma.wooOrder.findFirst({
+                where: { id, accountId }
             });
 
             // If not found and ID is numeric, try finding by WooID
@@ -113,11 +113,6 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
-            }
-
-            // Ensure the order belongs to the requesting account (security check)
-            if (order.accountId !== accountId) {
-                return reply.code(403).send({ error: 'Access denied' });
             }
 
             // Lookup customer metadata for order count
@@ -184,8 +179,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             let order;
 
-            // Try finding by internal UUID first
-            order = await prisma.wooOrder.findUnique({ where: { id } });
+            // Try finding by internal UUID first (scoped to account to prevent IDOR)
+            order = await prisma.wooOrder.findFirst({ where: { id, accountId } });
 
             // If not found and ID is numeric, try finding by WooID
             if (!order && !isNaN(Number(id))) {
@@ -194,7 +189,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
-            if (!order || order.accountId !== accountId) {
+            if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
@@ -260,7 +255,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                     }
                 },
                 orderBy: { createdAt: 'desc' },
-                take: 200
+                take: 1000
             });
 
             // 3. Match events to orders by wooId in payload
@@ -301,8 +296,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             let order;
 
-            // Try finding by internal UUID first
-            order = await prisma.wooOrder.findUnique({ where: { id } });
+            // Try finding by internal UUID first (scoped to account to prevent IDOR)
+            order = await prisma.wooOrder.findFirst({ where: { id, accountId } });
 
             // If not found and ID is numeric, try finding by WooID
             if (!order && !isNaN(Number(id))) {
@@ -311,45 +306,43 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
-            if (!order || order.accountId !== accountId) {
+            if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
-            // Find purchase event that matches this order's wooId
-            // The purchase event stores orderId in the payload
-            const purchaseEvent = await prisma.analyticsEvent.findFirst({
+            // Find purchase event matching this order by scanning all recent events.
+            // Cannot filter by JSON payload fields in Prisma, so we fetch a reasonable set
+            // and scan for a match.
+            const sessionSelect = {
+                firstTouchSource: true,
+                lastTouchSource: true,
+                utmSource: true,
+                utmMedium: true,
+                utmCampaign: true,
+                referrer: true,
+                country: true,
+                city: true,
+                deviceType: true,
+                browser: true,
+                os: true
+            };
+
+            let attribution = null;
+
+            const allPurchaseEvents = await prisma.analyticsEvent.findMany({
                 where: {
                     type: 'purchase',
                     session: { accountId }
                 },
-                include: {
-                    session: {
-                        select: {
-                            firstTouchSource: true,
-                            lastTouchSource: true,
-                            utmSource: true,
-                            utmMedium: true,
-                            utmCampaign: true,
-                            referrer: true,
-                            country: true,
-                            city: true,
-                            deviceType: true,
-                            browser: true,
-                            os: true
-                        }
-                    }
-                },
-                orderBy: { createdAt: 'desc' }
+                include: { session: { select: sessionSelect } },
+                orderBy: { createdAt: 'desc' },
+                take: 500
             });
 
-            // Filter by orderId in payload (can't do this in Prisma query easily)
-            let attribution = null;
-
-            if (purchaseEvent) {
-                const payload = purchaseEvent.payload as any;
-                // Check if this event matches our order
+            for (const event of allPurchaseEvents) {
+                const payload = event.payload as any;
                 if (payload?.orderId === order.wooId || payload?.order_id === order.wooId) {
-                    const session = purchaseEvent.session;
+                    const session = event.session;
                     attribution = {
                         firstTouchSource: session.firstTouchSource || 'direct',
                         lastTouchSource: session.lastTouchSource || 'direct',
@@ -363,56 +356,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                         browser: session.browser,
                         os: session.os
                     };
-                }
-            }
-
-            // If no match by payload, try to find by looking at all purchase events
-            if (!attribution) {
-                const allPurchaseEvents = await prisma.analyticsEvent.findMany({
-                    where: {
-                        type: 'purchase',
-                        session: { accountId }
-                    },
-                    include: {
-                        session: {
-                            select: {
-                                firstTouchSource: true,
-                                lastTouchSource: true,
-                                utmSource: true,
-                                utmMedium: true,
-                                utmCampaign: true,
-                                referrer: true,
-                                country: true,
-                                city: true,
-                                deviceType: true,
-                                browser: true,
-                                os: true
-                            }
-                        }
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    take: 100
-                });
-
-                for (const event of allPurchaseEvents) {
-                    const payload = event.payload as any;
-                    if (payload?.orderId === order.wooId || payload?.order_id === order.wooId) {
-                        const session = event.session;
-                        attribution = {
-                            firstTouchSource: session.firstTouchSource || 'direct',
-                            lastTouchSource: session.lastTouchSource || 'direct',
-                            utmSource: session.utmSource,
-                            utmMedium: session.utmMedium,
-                            utmCampaign: session.utmCampaign,
-                            referrer: session.referrer,
-                            country: session.country,
-                            city: session.city,
-                            deviceType: session.deviceType,
-                            browser: session.browser,
-                            os: session.os
-                        };
-                        break;
-                    }
+                    break;
                 }
             }
 
@@ -436,8 +380,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             let order;
 
-            // Try finding by internal UUID first
-            order = await prisma.wooOrder.findUnique({ where: { id } });
+            // Try finding by internal UUID first (scoped to account to prevent IDOR)
+            order = await prisma.wooOrder.findFirst({ where: { id, accountId } });
 
             // If not found and ID is numeric, try finding by WooID
             if (!order && !isNaN(Number(id))) {
@@ -446,7 +390,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
-            if (!order || order.accountId !== accountId) {
+            if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
@@ -502,8 +446,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             let order;
 
-            // Try finding by internal UUID first
-            order = await prisma.wooOrder.findUnique({ where: { id } });
+            // Try finding by internal UUID first (scoped to account to prevent IDOR)
+            order = await prisma.wooOrder.findFirst({ where: { id, accountId } });
 
             // If not found and ID is numeric, try finding by WooID
             if (!order && !isNaN(Number(id))) {
@@ -512,7 +456,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
-            if (!order || order.accountId !== accountId) {
+            if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
@@ -612,12 +556,16 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                     }
                 }
 
-                // Sync successful updates to local database
-                if (updated > 0) {
+                // Sync only the successfully updated orders to local database
+                const successfulIds = batchResult.update
+                    ?.filter((r: any) => !r.error)
+                    ?.map((r: any) => r.id) ?? [];
+
+                if (successfulIds.length > 0) {
                     await prisma.wooOrder.updateMany({
                         where: {
                             accountId,
-                            wooId: { in: body.orderIds }
+                            wooId: { in: successfulIds }
                         },
                         data: { status: body.status }
                     });
