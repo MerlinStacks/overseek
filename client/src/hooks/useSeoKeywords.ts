@@ -87,36 +87,46 @@ export function useSearchConsoleStatus() {
 }
 
 /** Hook: Fetch raw search analytics */
-export function useSearchAnalytics(days: number = 28) {
+export function useSearchAnalytics(days: number = 28, siteUrl?: string) {
     const api = useApi();
 
     return useQuery<{ queries: QueryAnalytics[]; count: number }>({
-        queryKey: ['search-console', 'analytics', days],
-        queryFn: () => api.get(`/api/search-console/analytics?days=${days}`),
+        queryKey: ['search-console', 'analytics', days, siteUrl],
+        queryFn: () => {
+            const params = new URLSearchParams({ days: String(days) });
+            if (siteUrl) params.set('siteUrl', siteUrl);
+            return api.get(`/api/search-console/analytics?${params}`);
+        },
         enabled: api.isReady,
         staleTime: 10 * 60 * 1000,
     });
 }
 
 /** Hook: Fetch keyword recommendations (low-hanging fruit + gaps + AI) */
-export function useKeywordRecommendations() {
+export function useKeywordRecommendations(siteUrl?: string) {
     const api = useApi();
 
     return useQuery<RecommendationsResponse>({
-        queryKey: ['search-console', 'recommendations'],
-        queryFn: () => api.get('/api/search-console/recommendations'),
+        queryKey: ['search-console', 'recommendations', siteUrl],
+        queryFn: () => {
+            const params = siteUrl ? `?siteUrl=${encodeURIComponent(siteUrl)}` : '';
+            return api.get(`/api/search-console/recommendations${params}`);
+        },
         enabled: api.isReady,
         staleTime: 15 * 60 * 1000,
     });
 }
 
 /** Hook: Fetch trending keywords */
-export function useKeywordTrends() {
+export function useKeywordTrends(siteUrl?: string) {
     const api = useApi();
 
     return useQuery<{ trends: QueryTrend[]; count: number }>({
-        queryKey: ['search-console', 'trends'],
-        queryFn: () => api.get('/api/search-console/trends'),
+        queryKey: ['search-console', 'trends', siteUrl],
+        queryFn: () => {
+            const params = siteUrl ? `?siteUrl=${encodeURIComponent(siteUrl)}` : '';
+            return api.get(`/api/search-console/trends${params}`);
+        },
         enabled: api.isReady,
         staleTime: 10 * 60 * 1000,
     });

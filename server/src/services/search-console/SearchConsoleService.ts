@@ -191,17 +191,18 @@ export class SearchConsoleService {
      */
     static async getSearchAnalytics(
         accountId: string,
-        options: AnalyticsOptions = {}
+        options: AnalyticsOptions = {},
+        siteUrl?: string
     ): Promise<QueryAnalytics[]> {
-        const scAccount = await this.getActiveAccount(accountId);
+        const scAccount = await this.getActiveAccount(accountId, siteUrl);
         if (!scAccount) return [];
 
         const days = options.days || 28;
         const endDate = options.endDate || formatDate(daysAgo(3)); // SC data has ~3 day lag
         const startDate = options.startDate || formatDate(daysAgo(days + 3));
 
-        const siteUrl = encodeURIComponent(scAccount.siteUrl);
-        const url = `https://www.googleapis.com/webmasters/v3/sites/${siteUrl}/searchAnalytics/query`;
+        const encodedSiteUrl = encodeURIComponent(scAccount.siteUrl);
+        const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSiteUrl}/searchAnalytics/query`;
 
         const body = {
             startDate,
@@ -234,15 +235,16 @@ export class SearchConsoleService {
      */
     static async getTopPages(
         accountId: string,
-        days: number = 28
+        days: number = 28,
+        siteUrl?: string
     ): Promise<PageAnalytics[]> {
-        const scAccount = await this.getActiveAccount(accountId);
+        const scAccount = await this.getActiveAccount(accountId, siteUrl);
         if (!scAccount) return [];
 
         const endDate = formatDate(daysAgo(3));
         const startDate = formatDate(daysAgo(days + 3));
-        const siteUrl = encodeURIComponent(scAccount.siteUrl);
-        const url = `https://www.googleapis.com/webmasters/v3/sites/${siteUrl}/searchAnalytics/query`;
+        const encodedSiteUrl = encodeURIComponent(scAccount.siteUrl);
+        const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSiteUrl}/searchAnalytics/query`;
 
         const body = {
             startDate,
@@ -276,9 +278,10 @@ export class SearchConsoleService {
      */
     static async getSearchTrends(
         accountId: string,
-        days: number = 28
+        days: number = 28,
+        siteUrl?: string
     ): Promise<QueryTrend[]> {
-        const scAccount = await this.getActiveAccount(accountId);
+        const scAccount = await this.getActiveAccount(accountId, siteUrl);
         if (!scAccount) return [];
 
         const halfDays = Math.floor(days / 2);
@@ -287,8 +290,8 @@ export class SearchConsoleService {
         const previousEnd = formatDate(daysAgo(halfDays + 3));
         const previousStart = formatDate(daysAgo(days + 3));
 
-        const siteUrl = encodeURIComponent(scAccount.siteUrl);
-        const url = `https://www.googleapis.com/webmasters/v3/sites/${siteUrl}/searchAnalytics/query`;
+        const encodedSiteUrl = encodeURIComponent(scAccount.siteUrl);
+        const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSiteUrl}/searchAnalytics/query`;
 
         try {
             // Fetch both periods in parallel

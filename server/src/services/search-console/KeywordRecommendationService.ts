@@ -54,11 +54,11 @@ export class KeywordRecommendationService {
      * Why positions 5-20: these are on page 1-2 of Google and can often be pushed higher
      * with focused SEO work, delivering meaningful traffic increases.
      */
-    static async getLowHangingFruit(accountId: string): Promise<LowHangingFruit[]> {
+    static async getLowHangingFruit(accountId: string, siteUrl?: string): Promise<LowHangingFruit[]> {
         const analytics = await SearchConsoleService.getSearchAnalytics(accountId, {
             days: 28,
             rowLimit: 1000
-        });
+        }, siteUrl);
 
         if (analytics.length === 0) return [];
 
@@ -89,9 +89,9 @@ export class KeywordRecommendationService {
      * Cross-references WooCommerce product names and categories against
      * Search Console queries to find blind spots.
      */
-    static async getKeywordGaps(accountId: string): Promise<KeywordGap[]> {
+    static async getKeywordGaps(accountId: string, siteUrl?: string): Promise<KeywordGap[]> {
         const [analytics, products] = await Promise.all([
-            SearchConsoleService.getSearchAnalytics(accountId, { days: 28, rowLimit: 1000 }),
+            SearchConsoleService.getSearchAnalytics(accountId, { days: 28, rowLimit: 1000 }, siteUrl),
             prisma.wooProduct.findMany({
                 where: { accountId, stockStatus: 'instock' },
                 select: { name: true, rawData: true, price: true }
@@ -139,8 +139,8 @@ export class KeywordRecommendationService {
      * Find trending keywords: queries with significant impression growth.
      * Surfaces emerging search interest that could represent product demand.
      */
-    static async getTrendingKeywords(accountId: string): Promise<QueryTrend[]> {
-        const trends = await SearchConsoleService.getSearchTrends(accountId, 28);
+    static async getTrendingKeywords(accountId: string, siteUrl?: string): Promise<QueryTrend[]> {
+        const trends = await SearchConsoleService.getSearchTrends(accountId, 28, siteUrl);
 
         // Filter for meaningful growth (>30% impression increase, decent volume)
         return trends
@@ -152,12 +152,12 @@ export class KeywordRecommendationService {
      * Generate AI-powered strategic recommendations.
      * Sends a structured prompt to the AI model with all data points.
      */
-    static async getAIRecommendations(accountId: string): Promise<AIKeywordRecommendation[]> {
+    static async getAIRecommendations(accountId: string, siteUrl?: string): Promise<AIKeywordRecommendation[]> {
         try {
             const [lowHanging, trends, topQueries, products] = await Promise.all([
-                this.getLowHangingFruit(accountId),
-                this.getTrendingKeywords(accountId),
-                SearchConsoleService.getSearchAnalytics(accountId, { days: 28, rowLimit: 50 }),
+                this.getLowHangingFruit(accountId, siteUrl),
+                this.getTrendingKeywords(accountId, siteUrl),
+                SearchConsoleService.getSearchAnalytics(accountId, { days: 28, rowLimit: 50 }, siteUrl),
                 prisma.wooProduct.findMany({
                     where: { accountId, stockStatus: 'instock' },
                     select: { name: true, rawData: true },

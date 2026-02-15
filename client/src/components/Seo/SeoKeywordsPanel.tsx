@@ -50,7 +50,7 @@ const ACTION_ICONS = {
     trend: TrendingUp,
 } as const;
 
-export function SeoKeywordsPanel() {
+export function SeoKeywordsPanel({ siteUrl }: { siteUrl?: string }) {
     const status = useSearchConsoleStatus();
     const isConnected = status.data?.connected;
 
@@ -64,13 +64,13 @@ export function SeoKeywordsPanel() {
 
     return (
         <div className="space-y-6">
-            <SummaryBar />
+            <SummaryBar siteUrl={siteUrl} />
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <LowHangingFruitPanel />
-                <TrendingPanel />
+                <LowHangingFruitPanel siteUrl={siteUrl} />
+                <TrendingPanel siteUrl={siteUrl} />
             </div>
-            <KeywordGapsPanel />
-            <AIRecommendationsPanel />
+            <KeywordGapsPanel siteUrl={siteUrl} />
+            <AIRecommendationsPanel siteUrl={siteUrl} />
         </div>
     );
 }
@@ -115,8 +115,8 @@ function ConnectPrompt() {
 }
 
 /** Summary stats bar across the top */
-function SummaryBar() {
-    const { data } = useSearchAnalytics(28);
+function SummaryBar({ siteUrl }: { siteUrl?: string }) {
+    const { data } = useSearchAnalytics(28, siteUrl);
 
     if (!data?.queries?.length) return null;
 
@@ -153,8 +153,8 @@ function SummaryBar() {
 }
 
 /** Low-hanging fruit: keywords position 5-20 with upside potential */
-function LowHangingFruitPanel() {
-    const { data, isLoading } = useKeywordRecommendations();
+function LowHangingFruitPanel({ siteUrl }: { siteUrl?: string }) {
+    const { data, isLoading } = useKeywordRecommendations(siteUrl);
     const items = data?.lowHangingFruit || [];
 
     return (
@@ -208,8 +208,8 @@ function LowHangingFruitPanel() {
 }
 
 /** Trending keywords: rising queries with impression growth */
-function TrendingPanel() {
-    const { data, isLoading } = useKeywordTrends();
+function TrendingPanel({ siteUrl }: { siteUrl?: string }) {
+    const { data, isLoading } = useKeywordTrends(siteUrl);
     const items = data?.trends || [];
 
     return (
@@ -254,8 +254,8 @@ function TrendingPanel() {
 }
 
 /** Keyword gaps: products without organic coverage */
-function KeywordGapsPanel() {
-    const { data, isLoading } = useKeywordRecommendations();
+function KeywordGapsPanel({ siteUrl }: { siteUrl?: string }) {
+    const { data, isLoading } = useKeywordRecommendations(siteUrl);
     const items = data?.keywordGaps || [];
 
     if (!isLoading && items.length === 0) return null;
@@ -294,8 +294,8 @@ function KeywordGapsPanel() {
 }
 
 /** AI-generated strategic recommendations */
-function AIRecommendationsPanel() {
-    const { data, isLoading } = useKeywordRecommendations();
+function AIRecommendationsPanel({ siteUrl }: { siteUrl?: string }) {
+    const { data, isLoading } = useKeywordRecommendations(siteUrl);
     const items = data?.aiRecommendations || [];
 
     if (!isLoading && items.length === 0) return null;

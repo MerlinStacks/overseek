@@ -4,13 +4,18 @@
  * Premium design: gradient header, glass pill tabs, animated tab content.
  * Why a separate page: SEO tracking has enough depth to warrant its own
  * space separate from the Marketing hub.
+ *
+ * Why selectedSiteUrl lives here: both the Overview and Tracker tabs
+ * benefit from a shared domain context so users don't have to re-select
+ * when switching tabs.
  */
 
-import { useState } from 'react';
-import { Target, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Target, TrendingUp, Globe, ChevronDown } from 'lucide-react';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { SeoKeywordsPanel } from '../components/Seo/SeoKeywordsPanel';
 import { KeywordTrackerPanel } from '../components/Seo/KeywordTrackerPanel';
+import { useSearchConsoleStatus } from '../hooks/useSeoKeywords';
 
 type TabId = 'overview' | 'tracker';
 
@@ -19,8 +24,30 @@ const tabs = [
     { id: 'tracker' as TabId, label: 'Keyword Tracker', icon: TrendingUp },
 ];
 
+/**
+ * Extract a human-readable label from a GSC siteUrl.
+ * "sc-domain:example.com" → "example.com"
+ * "https://example.com/" → "example.com"
+ */
+function prettySiteUrl(raw: string): string {
+    return raw
+        .replace(/^sc-domain:/, '')
+        .replace(/^https?:\/\//, '')
+        .replace(/\/$/, '');
+}
+
 export function SeoPage() {
     const [activeTab, setActiveTab] = useState<TabId>('overview');
+    const status = useSearchConsoleStatus();
+    const sites = status.data?.sites ?? [];
+    const [selectedSiteUrl, setSelectedSiteUrl] = useState<string | undefined>();
+
+    /** Default to the first site once loaded */
+    useEffect(() => {
+        if (sites.length > 0 && !selectedSiteUrl) {
+            setSelectedSiteUrl(sites[0].siteUrl);
+        }
+    }, [sites, selectedSiteUrl]);
 
     return (
         <div className="space-y-8">
@@ -30,13 +57,46 @@ export function SeoPage() {
                 <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-400/10 dark:bg-blue-500/5 rounded-full blur-3xl" />
                 <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-violet-400/10 dark:bg-violet-500/5 rounded-full blur-3xl" />
 
-                <div className="relative z-10 flex flex-col gap-2">
-                    <h1 className="text-3xl font-bold tracking-tight text-gradient">
-                        SEO & Organic Search
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 max-w-lg">
-                        Monitor organic search performance, track keyword rankings, and discover growth opportunities.
-                    </p>
+                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex flex-col gap-2">
+                        <h1 className="text-3xl font-bold tracking-tight text-gradient">
+                            SEO & Organic Search
+                        </h1>
+                        <p className="text-slate-500 dark:text-slate-400 max-w-lg">
+                            Monitor organic search performance, track keyword rankings, and discover growth opportunities.
+                        </p>
+                    </div>
+
+                    {/* Domain selector — only visible when GSC is connected */}
+                    {sites.length > 0 && (
+                        <div className="shrink-0">
+                            {sites.length === 1 ? (
+                                /* Single site: static badge */
+                                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    <Globe size={14} className="text-blue-500" />
+                                    {prettySiteUrl(sites[0].siteUrl)}
+                                </div>
+                            ) : (
+                                /* Multiple sites: dropdown selector */
+                                <div className="relative inline-flex items-center">
+                                    <Globe size={14} className="absolute left-3 text-blue-500 pointer-events-none z-10" />
+                                    <select
+                                        id="seo-domain-selector"
+                                        value={selectedSiteUrl ?? ''}
+                                        onChange={e => setSelectedSiteUrl(e.target.value)}
+                                        className="appearance-none pl-8 pr-8 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                    >
+                                        {sites.map(site => (
+                                            <option key={site.id} value={site.siteUrl}>
+                                                {prettySiteUrl(site.siteUrl)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-2.5 text-slate-400 pointer-events-none" />
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -65,7 +125,7 @@ export function SeoPage() {
             <div key={activeTab} className="animate-fade-slide-up">
                 {activeTab === 'overview' && (
                     <ErrorBoundary>
-                        <SeoKeywordsPanel />
+                        <SeoKeywordsPanel siteUrl={selectedSiteUrl} />
                     </ErrorBoundary>
                 )}
 

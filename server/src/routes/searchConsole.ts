@@ -41,10 +41,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const query = request.query as { days?: string };
+            const query = request.query as { days?: string; siteUrl?: string };
             const days = parseDays(query.days);
 
-            const analytics = await SearchConsoleService.getSearchAnalytics(accountId, { days });
+            const analytics = await SearchConsoleService.getSearchAnalytics(accountId, { days }, query.siteUrl);
 
             return { queries: analytics, count: analytics.length };
         } catch (error: any) {
@@ -62,10 +62,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const query = request.query as { days?: string };
+            const query = request.query as { days?: string; siteUrl?: string };
             const days = parseDays(query.days);
 
-            const pages = await SearchConsoleService.getTopPages(accountId, days);
+            const pages = await SearchConsoleService.getTopPages(accountId, days, query.siteUrl);
 
             return { pages, count: pages.length };
         } catch (error: any) {
@@ -82,7 +82,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const trends = await KeywordRecommendationService.getTrendingKeywords(accountId);
+            const query = request.query as { siteUrl?: string };
+            const trends = await KeywordRecommendationService.getTrendingKeywords(accountId, query.siteUrl);
 
             return { trends, count: trends.length };
         } catch (error: any) {
@@ -99,10 +100,11 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
+            const query = request.query as { siteUrl?: string };
             const [lowHanging, gaps, aiRecs] = await Promise.all([
-                KeywordRecommendationService.getLowHangingFruit(accountId),
-                KeywordRecommendationService.getKeywordGaps(accountId),
-                KeywordRecommendationService.getAIRecommendations(accountId)
+                KeywordRecommendationService.getLowHangingFruit(accountId, query.siteUrl),
+                KeywordRecommendationService.getKeywordGaps(accountId, query.siteUrl),
+                KeywordRecommendationService.getAIRecommendations(accountId, query.siteUrl)
             ]);
 
             return {
@@ -124,7 +126,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const opportunities = await KeywordRecommendationService.getLowHangingFruit(accountId);
+            const query = request.query as { siteUrl?: string };
+            const opportunities = await KeywordRecommendationService.getLowHangingFruit(accountId, query.siteUrl);
 
             return { opportunities, count: opportunities.length };
         } catch (error: any) {
@@ -141,7 +144,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const gaps = await KeywordRecommendationService.getKeywordGaps(accountId);
+            const query = request.query as { siteUrl?: string };
+            const gaps = await KeywordRecommendationService.getKeywordGaps(accountId, query.siteUrl);
 
             return { gaps, count: gaps.length };
         } catch (error: any) {
