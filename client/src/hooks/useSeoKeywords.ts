@@ -12,6 +12,7 @@ import { useApi } from './useApi';
 interface SearchConsoleStatus {
     connected: boolean;
     sites: Array<{ id: string; siteUrl: string; createdAt: string }>;
+    defaultSiteUrl?: string | null;
 }
 
 /** Query-level analytics row */
@@ -83,6 +84,20 @@ export function useSearchConsoleStatus() {
         queryFn: () => api.get<SearchConsoleStatus>('/api/oauth/search-console/status'),
         enabled: api.isReady,
         staleTime: 5 * 60 * 1000,
+    });
+}
+
+/** Hook: Persist the selected default GSC site for the account */
+export function useSetDefaultSite() {
+    const api = useApi();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (siteUrl: string) =>
+            api.put('/api/oauth/search-console/default-site', { siteUrl }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['search-console', 'status'] });
+        },
     });
 }
 

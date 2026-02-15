@@ -225,17 +225,54 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const accounts = await prisma.searchConsoleAccount.findMany({
-                where: { accountId },
-                select: { id: true, siteUrl: true, createdAt: true }
-            });
+            const [accounts, account] = await Promise.all([
+                prisma.searchConsoleAccount.findMany({
+                    where: { accountId },
+                    select: { id: true, siteUrl: true, createdAt: true }
+                }),
+                prisma.account.findUnique({
+                    where: { id: accountId },
+                    select: { defaultSearchConsoleSiteUrl: true }
+                })
+            ]);
 
             return {
                 connected: accounts.length > 0,
-                sites: accounts
+                sites: accounts,
+                defaultSiteUrl: account?.defaultSearchConsoleSiteUrl ?? null
             };
         } catch (error: any) {
             Logger.error('Failed to get Search Console status', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * PUT /search-console/default-site — Persist which GSC property the account uses by default.
+     * Validates that the siteUrl is actually connected before persisting.
+     */
+    fastify.put('/search-console/default-site', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { siteUrl } = request.body as { siteUrl: string };
+            if (!siteUrl) return reply.code(400).send({ error: 'siteUrl is required' });
+
+            // Validate the siteUrl belongs to this account
+            const exists = await prisma.searchConsoleAccount.findFirst({
+                where: { accountId, siteUrl }
+            });
+            if (!exists) return reply.code(404).send({ error: 'Site not connected to this account' });
+
+            await prisma.account.update({
+                where: { id: accountId },
+                data: { defaultSearchConsoleSiteUrl: siteUrl }
+            });
+
+            return { success: true, defaultSiteUrl: siteUrl };
+        } catch (error: any) {
+            Logger.error('Failed to set default Search Console site', { error });
             return reply.code(500).send({ error: error.message });
         }
     });

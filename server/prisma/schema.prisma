@@ -198,7 +198,8 @@ model Account {
   storedBackups       StoredBackup[]
 
   // Google Search Console
-  searchConsoleAccounts SearchConsoleAccount[]
+  searchConsoleAccounts      SearchConsoleAccount[]
+  defaultSearchConsoleSiteUrl String?  // Persisted domain selection for SEO page
   trackedKeywords       TrackedKeyword[]
   keywordGroups         KeywordGroup[]
   competitorDomains     CompetitorDomain[]
