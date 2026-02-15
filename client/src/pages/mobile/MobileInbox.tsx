@@ -208,7 +208,7 @@ export function MobileInbox() {
                         triggerHaptic();
                         setShowSearch(!showSearch);
                     }}
-                    className="p-2.5 rounded-xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:bg-slate-700/50 transition-colors"
+                    className="p-2.5 rounded-xl bg-slate-700/40 border border-white/10 active:bg-slate-700/50 transition-colors"
                 >
                     <Search size={20} className="text-slate-300" />
                 </button>
@@ -226,7 +226,7 @@ export function MobileInbox() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         autoFocus
-                        className="w-full pl-14 pr-4 py-3.5 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                        className="w-full pl-14 pr-4 py-3.5 pwa-card text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                     />
                 </div>
             )}
@@ -246,7 +246,7 @@ export function MobileInbox() {
                                 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all active:scale-95
                                 ${isActive
                                     ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
-                                    : 'bg-slate-800/50 backdrop-blur-sm border border-white/10 text-slate-300'
+                                    : 'bg-slate-700/40 border border-white/10 text-slate-300'
                                 }
                             `}
                         >
@@ -272,7 +272,7 @@ export function MobileInbox() {
             <div className="flex-1 space-y-2">
                 {filteredConversations.length === 0 ? (
                     <div className="text-center py-16">
-                        <div className="w-20 h-20 mx-auto mb-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl flex items-center justify-center">
+                        <div className="w-20 h-20 mx-auto mb-4 pwa-card flex items-center justify-center">
                             <MessageSquare className="text-slate-500" size={36} />
                         </div>
                         <p className="text-white font-semibold mb-1">No conversations</p>
@@ -302,8 +302,8 @@ export function MobileInbox() {
                                         triggerHaptic();
                                         navigate(`/m/inbox/${convo.id}`);
                                     }}
-                                    className="w-full flex items-center gap-4 p-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl active:bg-slate-700/50 transition-all animate-fade-slide-up"
-                                    style={{ animationDelay: `${index * 30}ms` }}
+                                    className="w-full flex items-center gap-4 p-4 pwa-card active:bg-slate-700/50 transition-all animate-fade-slide-up"
+                                    style={{ animationDelay: `${index * 15}ms` }}
                                 >
                                     {/* Avatar */}
                                     <div className="relative flex-shrink-0">

@@ -71,9 +71,9 @@ export function MobileLiveVisitors() {
     useVisibilityPolling(fetchVisitors, 30000, [fetchVisitors]);
 
     const getDeviceIcon = (deviceType: string | null) => {
-        if (deviceType === 'mobile') return <Smartphone size={14} className="text-gray-500" />;
-        if (deviceType === 'tablet') return <Tablet size={14} className="text-gray-500" />;
-        return <Monitor size={14} className="text-gray-500" />;
+        if (deviceType === 'mobile') return <Smartphone size={14} className="text-slate-400" />;
+        if (deviceType === 'tablet') return <Tablet size={14} className="text-slate-400" />;
+        return <Monitor size={14} className="text-slate-400" />;
     };
 
 
@@ -88,35 +88,35 @@ export function MobileLiveVisitors() {
     if (loading) {
         return (
             <div className="space-y-4 animate-pulse">
-                <div className="h-8 bg-gray-200 rounded w-1/3" />
-                {[...Array(8)].map((_, i) => <div key={i} className="h-20 bg-gray-200 rounded-xl" />)}
+                <div className="h-8 pwa-skeleton w-1/3" />
+                {[...Array(8)].map((_, i) => <div key={i} className="h-20 pwa-card" />)}
             </div>
         );
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-slide-up">
             {/* Header */}
             <div className="flex items-center gap-3">
-                <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100">
-                    <ArrowLeft size={22} className="text-gray-700" />
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors">
+                    <ArrowLeft size={22} className="text-white" />
                 </button>
                 <div className="flex-1">
-                    <h1 className="text-xl font-bold text-gray-900">Recent Visitors</h1>
-                    <p className="text-sm text-gray-500">{liveCount} online now</p>
+                    <h1 className="text-xl font-bold text-white">Recent Visitors</h1>
+                    <p className="text-sm text-slate-400">{liveCount} online now</p>
                 </div>
-                <button onClick={fetchVisitors} className="p-2 rounded-full hover:bg-gray-100">
-                    <RefreshCw size={20} className="text-gray-600" />
+                <button onClick={fetchVisitors} className="p-2 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors">
+                    <RefreshCw size={20} className="text-slate-400" />
                 </button>
             </div>
 
             {/* Live Indicator */}
-            <div className="flex items-center gap-2 px-4 py-3 bg-green-50 rounded-xl border border-green-100">
+            <div className="flex items-center gap-2 px-4 py-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
                 <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
                 </span>
-                <span className="text-sm font-medium text-green-700">
+                <span className="text-sm font-medium text-emerald-400">
                     {liveCount} {liveCount === 1 ? 'visitor' : 'visitors'} active in last 3 minutes
                 </span>
             </div>
@@ -125,18 +125,19 @@ export function MobileLiveVisitors() {
             <div className="space-y-3">
                 {visitors.length === 0 ? (
                     <div className="text-center py-16">
-                        <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                            <Users className="text-gray-400" size={36} />
+                        <div className="w-20 h-20 mx-auto mb-4 pwa-card flex items-center justify-center">
+                            <Users className="text-slate-500" size={36} />
                         </div>
-                        <p className="text-gray-900 font-semibold mb-1">No live visitors</p>
-                        <p className="text-gray-500 text-sm">Visitors will appear when they're active</p>
+                        <p className="text-white font-semibold mb-1">No live visitors</p>
+                        <p className="text-slate-400 text-sm">Visitors will appear when they're active</p>
                     </div>
                 ) : (
-                    visitors.map((visitor) => (
+                    visitors.map((visitor, index) => (
                         <button
                             key={visitor.id}
                             onClick={() => navigate(`/m/visitor/${visitor.visitorId}`)}
-                            className="w-full bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-left hover:border-indigo-200 hover:shadow-md transition-all active:scale-[0.98]"
+                            className="w-full pwa-card-interactive p-4 text-left animate-fade-slide-up"
+                            style={{ animationDelay: `${index * 15}ms` }}
                         >
                             <div className="flex items-start justify-between mb-2">
                                 <div className="flex items-center gap-2">
@@ -144,10 +145,10 @@ export function MobileLiveVisitors() {
                                         {getVisitorName(visitor).charAt(0).toUpperCase()}
                                     </div>
                                     <div>
-                                        <p className="font-semibold text-gray-900 text-sm">
+                                        <p className="font-semibold text-white text-sm">
                                             {getVisitorName(visitor)}
                                         </p>
-                                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                                        <div className="flex items-center gap-2 text-xs text-slate-400">
                                             {visitor.country && (
                                                 <span className="flex items-center gap-1">
                                                     <MapPin size={12} />
@@ -158,14 +159,14 @@ export function MobileLiveVisitors() {
                                         </div>
                                     </div>
                                 </div>
-                                <span className="text-xs text-gray-500">{formatTimeAgo(visitor.lastActiveAt)}</span>
+                                <span className="text-xs text-slate-500">{formatTimeAgo(visitor.lastActiveAt)}</span>
                             </div>
 
                             {/* Current Page */}
                             {visitor.currentPath && (
-                                <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-gray-50 rounded-lg">
-                                    <Eye size={14} className="text-indigo-600" />
-                                    <span className="text-sm text-gray-700 truncate flex-1">
+                                <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-indigo-500/10 rounded-lg">
+                                    <Eye size={14} className="text-indigo-400" />
+                                    <span className="text-sm text-slate-300 truncate flex-1">
                                         {visitor.currentPath}
                                     </span>
                                 </div>
@@ -174,8 +175,8 @@ export function MobileLiveVisitors() {
                             {/* UTM Source */}
                             {visitor.utmSource && (
                                 <div className="flex items-center gap-2 mt-2">
-                                    <Globe size={12} className="text-gray-400" />
-                                    <span className="text-xs text-gray-500">
+                                    <Globe size={12} className="text-slate-500" />
+                                    <span className="text-xs text-slate-400">
                                         via {visitor.utmSource}
                                         {visitor.utmCampaign && ` • ${visitor.utmCampaign}`}
                                     </span>
@@ -184,20 +185,20 @@ export function MobileLiveVisitors() {
 
                             {/* Recent Events */}
                             {visitor.events && visitor.events.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+                                <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-white/5">
                                     {visitor.events.slice(0, 5).map((event, idx) => {
                                         const eventConfig: Record<string, { label: string; color: string }> = {
-                                            'add_to_cart': { label: '🛒 Added to Cart', color: 'bg-blue-100 text-blue-700' },
-                                            'remove_from_cart': { label: '❌ Removed', color: 'bg-gray-100 text-gray-600' },
-                                            'cart_view': { label: '🛒 Viewing Cart', color: 'bg-blue-50 text-blue-600' },
-                                            'checkout_view': { label: '💳 At Checkout', color: 'bg-purple-100 text-purple-700' },
-                                            'checkout_start': { label: '💳 Started Checkout', color: 'bg-purple-100 text-purple-700' },
-                                            'checkout_success': { label: '✅ Completed Checkout', color: 'bg-green-100 text-green-700' },
-                                            'purchase': { label: '💰 Purchased', color: 'bg-green-100 text-green-700' },
-                                            'page_view': { label: '👁️ ' + (event.pageTitle || 'Page View'), color: 'bg-gray-50 text-gray-600' },
-                                            'search': { label: '🔍 Searched', color: 'bg-amber-50 text-amber-700' },
+                                            'add_to_cart': { label: '🛒 Added to Cart', color: 'bg-blue-500/20 text-blue-400' },
+                                            'remove_from_cart': { label: '❌ Removed', color: 'bg-slate-500/20 text-slate-400' },
+                                            'cart_view': { label: '🛒 Viewing Cart', color: 'bg-blue-500/15 text-blue-400' },
+                                            'checkout_view': { label: '💳 At Checkout', color: 'bg-purple-500/20 text-purple-400' },
+                                            'checkout_start': { label: '💳 Started Checkout', color: 'bg-purple-500/20 text-purple-400' },
+                                            'checkout_success': { label: '✅ Completed Checkout', color: 'bg-emerald-500/20 text-emerald-400' },
+                                            'purchase': { label: '💰 Purchased', color: 'bg-emerald-500/20 text-emerald-400' },
+                                            'page_view': { label: '👁️ ' + (event.pageTitle || 'Page View'), color: 'bg-slate-500/15 text-slate-400' },
+                                            'search': { label: '🔍 Searched', color: 'bg-amber-500/20 text-amber-400' },
                                         };
-                                        const config = eventConfig[event.type] || { label: event.type, color: 'bg-gray-50 text-gray-600' };
+                                        const config = eventConfig[event.type] || { label: event.type, color: 'bg-slate-500/15 text-slate-400' };
 
                                         // Skip page_view if there are more interesting events
                                         if (event.type === 'page_view' && visitor.events.some(e => e.type !== 'page_view')) {

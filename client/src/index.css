@@ -298,6 +298,76 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   PWA MOBILE UTILITIES - Master styles for the mobile PWA interface
+   All mobile pages should use these utilities for visual consistency.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Dark glass card — the primary mobile container
+   No backdrop-blur: saves GPU compositing on mobile; root bg is solid anyway */
+@utility pwa-card {
+  background: rgba(51, 65, 85, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+}
+
+/* Dark glass card with press feedback for tappable elements */
+@utility pwa-card-interactive {
+  background: rgba(51, 65, 85, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  cursor: pointer;
+  transition: transform 150ms ease;
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+/* Filter chip — inactive state (e.g. period selectors, status filters) */
+@utility pwa-chip {
+  background: rgba(51, 65, 85, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  color: rgb(203, 213, 225);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  white-space: nowrap;
+  transition: all 200ms ease;
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+/* Filter chip — active/selected state */
+@utility pwa-chip-active {
+  background: linear-gradient(to right, rgb(99, 102, 241), rgb(147, 51, 234));
+  color: white;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  white-space: nowrap;
+  box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.25);
+}
+
+/* Frosted glass header for sub-pages (nav bar, sticky headers)
+   Keeps backdrop-blur: content scrolls underneath, blur is visible here */
+@utility pwa-header {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Skeleton placeholder block */
+@utility pwa-skeleton {
+  background: rgba(71, 85, 105, 0.4);
+  border-radius: 0.5rem;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    RESPONSIVE UTILITIES
    ───────────────────────────────────────────────────────────────────────────── */
 /* Force hide desktop sidebar on mobile screens */
@@ -447,7 +517,7 @@
    ANIMATION CLASSES
    ───────────────────────────────────────────────────────────────────────────── */
 .animate-fade-slide-up {
-  animation: fade-slide-up 0.3s ease-out forwards;
+  animation: fade-slide-up 0.2s ease-out forwards;
 }
 
 .animate-fade-slide-down {

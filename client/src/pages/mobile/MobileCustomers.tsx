@@ -151,7 +151,7 @@ export function MobileCustomers() {
                         triggerHaptic();
                         navigate(-1);
                     }}
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:scale-95 transition-transform"
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-700/40 border border-white/10 active:scale-95 transition-transform"
                     aria-label="Go back"
                 >
                     <ChevronLeft size={22} className="text-slate-300" />
@@ -173,7 +173,7 @@ export function MobileCustomers() {
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search customers..."
-                        className="w-full pl-14 pr-4 py-3.5 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                        className="w-full pl-14 pr-4 py-3.5 pwa-card text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                     />
                 </div>
                 <button
@@ -187,14 +187,14 @@ export function MobileCustomers() {
             {/* Stats Summary */}
             {customers.length > 0 && (
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4">
+                    <div className="pwa-card p-4">
                         <div className="flex items-center gap-2 text-indigo-400 mb-1">
                             <Users size={16} />
                             <span className="text-xs font-medium">Total</span>
                         </div>
                         <p className="text-xl font-bold text-white">{customers.length}</p>
                     </div>
-                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4">
+                    <div className="pwa-card p-4">
                         <div className="flex items-center gap-2 text-emerald-400 mb-1">
                             <ShoppingBag size={16} />
                             <span className="text-xs font-medium">Total Spent</span>
@@ -209,7 +209,7 @@ export function MobileCustomers() {
             {/* Customer List */}
             {customers.length === 0 ? (
                 <div className="text-center py-16">
-                    <div className="w-20 h-20 mx-auto mb-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl flex items-center justify-center">
+                    <div className="w-20 h-20 mx-auto mb-4 pwa-card flex items-center justify-center">
                         <Users className="text-slate-500" size={36} />
                     </div>
                     <p className="text-white font-semibold mb-1">No customers found</p>
@@ -224,8 +224,8 @@ export function MobileCustomers() {
                                 triggerHaptic();
                                 navigate(`/m/customers/${customer.id}`);
                             }}
-                            className="w-full bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex items-center gap-4 text-left active:bg-slate-700/50 transition-all animate-fade-slide-up"
-                            style={{ animationDelay: `${index * 30}ms` }}
+                            className="w-full pwa-card p-4 flex items-center gap-4 text-left active:bg-slate-700/50 transition-all animate-fade-slide-up"
+                            style={{ animationDelay: `${index * 15}ms` }}
                         >
                             {/* Avatar */}
                             {customer.avatarUrl ? (
@@ -269,7 +269,7 @@ export function MobileCustomers() {
                         <button
                             onClick={loadMore}
                             disabled={loading}
-                            className="w-full py-4 text-indigo-400 font-semibold bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl active:bg-slate-700/50 transition-all flex items-center justify-center gap-2"
+                            className="w-full py-4 text-indigo-400 font-semibold pwa-card active:bg-slate-700/50 transition-all flex items-center justify-center gap-2"
                         >
                             {loading ? (
                                 <>

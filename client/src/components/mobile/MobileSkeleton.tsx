@@ -48,7 +48,7 @@ export function DashboardSkeleton() {
                 {[...Array(4)].map((_, i) => (
                     <div
                         key={i}
-                        className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 space-y-3"
+                        className="pwa-card p-4 space-y-3"
                     >
                         <Skeleton variant="circle" width={32} height={32} />
                         <Skeleton className="h-8 w-20" />
@@ -74,7 +74,7 @@ export function DashboardSkeleton() {
             {/* Activity List */}
             <div className="space-y-3">
                 <Skeleton className="h-4 w-32" />
-                <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5">
+                <div className="pwa-card divide-y divide-white/5">
                     {[...Array(4)].map((_, i) => (
                         <div key={i} className="p-4 flex items-center gap-3">
                             <Skeleton variant="circle" width={40} height={40} />
@@ -97,7 +97,7 @@ export function ListSkeleton({ count = 5 }: { count?: number }) {
             {[...Array(count)].map((_, i) => (
                 <div
                     key={i}
-                    className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex items-center gap-3"
+                    className="pwa-card p-4 flex items-center gap-3"
                 >
                     <Skeleton variant="circle" width={44} height={44} />
                     <div className="flex-1 space-y-2">
@@ -119,7 +119,7 @@ export function OrdersSkeleton() {
     return (
         <div className="space-y-4 animate-fade-in">
             {/* Search Bar */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-3">
+            <div className="pwa-card p-3">
                 <Skeleton className="h-10 w-full rounded-xl" />
             </div>
 
@@ -139,7 +139,7 @@ export function OrdersSkeleton() {
                 {[...Array(5)].map((_, i) => (
                     <div
                         key={i}
-                        className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4"
+                        className="pwa-card p-4"
                         style={{ animationDelay: `${i * 50}ms` }}
                     >
                         <div className="flex items-start justify-between mb-3">
@@ -183,7 +183,7 @@ export function InboxSkeleton() {
                 {[...Array(6)].map((_, i) => (
                     <div
                         key={i}
-                        className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex items-center gap-3"
+                        className="pwa-card p-4 flex items-center gap-3"
                     >
                         <Skeleton variant="circle" width={48} height={48} />
                         <div className="flex-1 space-y-2">

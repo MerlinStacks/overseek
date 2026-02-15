@@ -130,7 +130,7 @@ export function MobileMore() {
                             {section.title}
                         </h3>
                     )}
-                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
+                    <div className="pwa-card divide-y divide-white/5 overflow-hidden">
                         {section.items.map((item) => {
                             const Icon = item.icon;
                             return (

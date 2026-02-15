@@ -226,7 +226,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     return (
         <div
-            className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col"
+            className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800/90 to-slate-800 flex flex-col"
             style={{
                 paddingTop: 'env(safe-area-inset-top)',
                 paddingBottom: 'calc(env(safe-area-inset-bottom) + 64px)'

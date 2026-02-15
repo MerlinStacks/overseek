@@ -147,7 +147,7 @@ export function MobileProfile() {
                         triggerHaptic();
                         navigate(-1);
                     }}
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:scale-95 transition-transform"
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-700/40 border border-white/10 active:scale-95 transition-transform"
                     aria-label="Go back"
                 >
                     <ChevronLeft size={22} className="text-slate-300" />
@@ -202,7 +202,7 @@ export function MobileProfile() {
             </div>
 
             {/* Profile Form */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-5 space-y-5">
+            <div className="pwa-card p-5 space-y-5">
                 <div>
                     <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Full Name</label>
                     <div className="relative">
@@ -260,7 +260,7 @@ export function MobileProfile() {
             </div>
 
             {/* Account Info Cards */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
+            <div className="pwa-card divide-y divide-white/5 overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
                     <div className="w-11 h-11 rounded-xl bg-emerald-500/20 flex items-center justify-center">
                         <Shield size={20} className="text-emerald-400" />

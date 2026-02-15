@@ -200,6 +200,8 @@ model Account {
   // Google Search Console
   searchConsoleAccounts SearchConsoleAccount[]
   trackedKeywords       TrackedKeyword[]
+  keywordGroups         KeywordGroup[]
+  competitorDomains     CompetitorDomain[]
 }
 
 // --------------------------------------
@@ -2301,6 +2303,19 @@ model TrackedKeyword {
   /// Whether tracking is active
   isActive  Boolean @default(true)
 
+  /// Keyword group for organizing related keywords
+  groupId   String?
+  group     KeywordGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  /// Estimated monthly revenue attributed to this keyword
+  estimatedRevenue      Float?  @default(0)
+  /// Estimated monthly search volume from Google Keyword Planner
+  estimatedSearchVolume Int?
+  /// Pages competing for this keyword (cannibalization detection)
+  cannibalizationPages  Json?
+  /// Lightweight tags for categorization
+  tags                  String[] @default([])
+
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   history   KeywordRankHistory[]
 
@@ -2309,6 +2324,7 @@ model TrackedKeyword {
 
   @@unique([accountId, keyword])
   @@index([accountId, isActive])
+  @@index([groupId])
 }
 
 /// Daily rank snapshots for tracked keywords.
@@ -2317,6 +2333,8 @@ model KeywordRankHistory {
   keywordId String
   /// Average position on this date
   position  Float
+  /// Previous day's position (for delta / alert calculation)
+  previousPosition Float?
   clicks    Int    @default(0)
   impressions Int  @default(0)
   ctr       Float  @default(0)
@@ -2329,4 +2347,35 @@ model KeywordRankHistory {
 
   @@unique([keywordId, date])
   @@index([keywordId, date(sort: Desc)])
+}
+
+/// Keyword groups for organizing tracked keywords.
+model KeywordGroup {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+  color     String @default("#6366f1")
+
+  account  Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  keywords TrackedKeyword[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId])
+}
+
+/// Competitor domains for SERP overlap analysis.
+model CompetitorDomain {
+  id        String @id @default(uuid())
+  accountId String
+  domain    String
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, domain])
+  @@index([accountId])
 }

@@ -147,7 +147,7 @@ export function MobileSettings() {
                         triggerHaptic();
                         navigate(-1);
                     }}
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 active:scale-95 transition-transform"
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-700/40 border border-white/10 active:scale-95 transition-transform"
                     aria-label="Go back"
                 >
                     <ChevronLeft size={22} className="text-slate-300" />
@@ -184,7 +184,7 @@ export function MobileSettings() {
                     <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-1">
                         {section.title}
                     </h3>
-                    <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
+                    <div className="pwa-card divide-y divide-white/5 overflow-hidden">
                         {section.items.map((item) => {
                             const Icon = item.icon;
                             return (

@@ -218,7 +218,7 @@ export function MobileOrders() {
                     placeholder="Search by order # or customer..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-14 pr-4 py-3.5 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    className="w-full pl-14 pr-4 py-3.5 pwa-card text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                 />
             </form>
 
@@ -235,7 +235,7 @@ export function MobileOrders() {
                                 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 active:scale-95
                                 ${isActive
                                     ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
-                                    : 'bg-slate-800/50 backdrop-blur-sm border border-white/10 text-slate-300'
+                                    : 'bg-slate-700/40 border border-white/10 text-slate-300'
                                 }
                             `}
                         >
@@ -257,7 +257,7 @@ export function MobileOrders() {
             <div className="space-y-3">
                 {orders.length === 0 ? (
                     <div className="text-center py-16">
-                        <div className="w-20 h-20 mx-auto mb-4 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl flex items-center justify-center">
+                        <div className="w-20 h-20 mx-auto mb-4 pwa-card flex items-center justify-center">
                             <ShoppingBag className="text-slate-500" size={36} />
                         </div>
                         <p className="text-white font-semibold mb-1">No orders found</p>
@@ -284,8 +284,8 @@ export function MobileOrders() {
                                         triggerHaptic();
                                         navigate(`/m/orders/${order.id}`);
                                     }}
-                                    className="w-full bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 active:bg-slate-700/50 transition-all animate-fade-slide-up"
-                                    style={{ animationDelay: `${index * 30}ms` }}
+                                    className="w-full pwa-card p-4 active:bg-slate-700/50 transition-all animate-fade-slide-up"
+                                    style={{ animationDelay: `${index * 15}ms` }}
                                 >
                                     <div className="flex items-start justify-between mb-3">
                                         <div className="flex items-center gap-3">
@@ -323,7 +323,7 @@ export function MobileOrders() {
                     <button
                         onClick={() => fetchOrders()}
                         disabled={loading}
-                        className="w-full py-4 text-indigo-400 font-semibold disabled:opacity-50 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl active:bg-slate-700/50 transition-all"
+                        className="w-full py-4 text-indigo-400 font-semibold disabled:opacity-50 pwa-card active:bg-slate-700/50 transition-all"
                     >
                         {loading ? 'Loading...' : 'Load More Orders'}
                     </button>

@@ -157,6 +157,12 @@ interface TrackedKeywordSummary {
     currentCtr: number | null;
     currentImpressions: number | null;
     currentClicks: number | null;
+    previousPosition: number | null;
+    estimatedRevenue: number | null;
+    estimatedSearchVolume: number | null;
+    groupId: string | null;
+    groupName?: string | null;
+    tags: string[];
     isActive: boolean;
     createdAt: string;
 }
@@ -237,3 +243,271 @@ export function useRefreshKeywords() {
 }
 
 export type { TrackedKeywordSummary, RankHistoryPoint };
+
+/* ─────────────────────────────────────────────────────
+   Keyword Groups
+   ───────────────────────────────────────────────────── */
+
+/** Keyword group with aggregate metrics */
+export interface KeywordGroup {
+    id: string;
+    name: string;
+    color: string;
+    keywordCount: number;
+    avgPosition: number | null;
+    totalClicks: number;
+    avgCtr: number | null;
+}
+
+/** Hook: List all keyword groups */
+export function useKeywordGroups() {
+    const api = useApi();
+    return useQuery<{ groups: KeywordGroup[]; count: number }>({
+        queryKey: ['search-console', 'keyword-groups'],
+        queryFn: () => api.get('/api/search-console/keyword-groups'),
+        enabled: api.isReady,
+        staleTime: 2 * 60 * 1000,
+    });
+}
+
+/** Hook: Create a keyword group */
+export function useCreateGroup() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (data: { name: string; color?: string }) =>
+            api.post('/api/search-console/keyword-groups', data),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'keyword-groups'] });
+        },
+    });
+}
+
+/** Hook: Delete a keyword group */
+export function useDeleteGroup() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (groupId: string) =>
+            api.delete(`/api/search-console/keyword-groups/${groupId}`),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'keyword-groups'] });
+            qc.invalidateQueries({ queryKey: ['search-console', 'tracked-keywords'] });
+        },
+    });
+}
+
+/** Hook: Assign keywords to a group */
+export function useAssignKeywordsToGroup() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (data: { keywordIds: string[]; groupId: string | null }) =>
+            api.post('/api/search-console/keyword-groups/assign', data),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'keyword-groups'] });
+            qc.invalidateQueries({ queryKey: ['search-console', 'tracked-keywords'] });
+        },
+    });
+}
+
+/* ─────────────────────────────────────────────────────
+   Competitor Analysis
+   ───────────────────────────────────────────────────── */
+
+/** Competitor domain */
+export interface CompetitorDomain {
+    id: string;
+    domain: string;
+    createdAt: string;
+}
+
+/** Gap analysis result */
+export interface CompetitorAnalysis {
+    competitor: string;
+    sharedKeywords: Array<{ keyword: string; yourPosition: number; theirEstimate: string }>;
+    yourOnlyKeywords: string[];
+    theirOnlyKeywords: string[];
+    overlapPct: number;
+}
+
+/** Hook: List competitor domains */
+export function useCompetitors() {
+    const api = useApi();
+    return useQuery<{ competitors: CompetitorDomain[]; count: number }>({
+        queryKey: ['search-console', 'competitors'],
+        queryFn: () => api.get('/api/search-console/competitors'),
+        enabled: api.isReady,
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+/** Hook: Add a competitor domain */
+export function useAddCompetitor() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (data: { domain: string }) =>
+            api.post('/api/search-console/competitors', data),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'competitors'] });
+        },
+    });
+}
+
+/** Hook: Remove a competitor domain */
+export function useRemoveCompetitor() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (competitorId: string) =>
+            api.delete(`/api/search-console/competitors/${competitorId}`),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'competitors'] });
+        },
+    });
+}
+
+/** Hook: Run competitor gap analysis */
+export function useCompetitorAnalysis(domain?: string) {
+    const api = useApi();
+    return useQuery<CompetitorAnalysis>({
+        queryKey: ['search-console', 'competitor-analysis', domain],
+        queryFn: () => api.get(`/api/search-console/competitor-analysis${domain ? `?domain=${domain}` : ''}`),
+        enabled: api.isReady && !!domain,
+        staleTime: 10 * 60 * 1000,
+    });
+}
+
+/* ─────────────────────────────────────────────────────
+   Revenue Attribution
+   ───────────────────────────────────────────────────── */
+
+/** Keyword revenue entry */
+export interface KeywordRevenue {
+    keyword: string;
+    clicks: number;
+    sessions: number;
+    conversions: number;
+    estimatedRevenue: number;
+    revenuePerClick: number;
+}
+
+/** Hook: Fetch keyword revenue report */
+export function useKeywordRevenue() {
+    const api = useApi();
+    return useQuery<{ keywords: KeywordRevenue[]; count: number }>({
+        queryKey: ['search-console', 'keyword-revenue'],
+        queryFn: () => api.get('/api/search-console/keyword-revenue'),
+        enabled: api.isReady,
+        staleTime: 10 * 60 * 1000,
+    });
+}
+
+/* ─────────────────────────────────────────────────────
+   Cannibalization Detection
+   ───────────────────────────────────────────────────── */
+
+/** Cannibalization result */
+export interface CannibalizationResult {
+    keyword: string;
+    pages: Array<{ url: string; clicks: number; impressions: number; position: number }>;
+    severity: 'high' | 'medium' | 'low';
+    recommendation: string;
+}
+
+/** Hook: Detect keyword cannibalization */
+export function useCannibalization() {
+    const api = useApi();
+    return useQuery<{ keywords: CannibalizationResult[]; count: number }>({
+        queryKey: ['search-console', 'cannibalization'],
+        queryFn: () => api.get('/api/search-console/cannibalization'),
+        enabled: api.isReady,
+        staleTime: 15 * 60 * 1000,
+    });
+}
+
+/* ─────────────────────────────────────────────────────
+   AI Content Briefs
+   ───────────────────────────────────────────────────── */
+
+/** Content brief */
+export interface ContentBrief {
+    keyword: string;
+    currentPosition: number | null;
+    currentClicks: number;
+    currentImpressions: number;
+    brief: {
+        suggestedTitle: string;
+        metaDescription: string;
+        wordCount: number;
+        headingOutline: string[];
+        keyTopics: string[];
+        internalLinkSuggestions: string[];
+        contentType: string;
+        tone: string;
+    };
+    generatedAt: string;
+}
+
+/** Hook: Generate AI content brief */
+export function useContentBrief() {
+    const api = useApi();
+    return useMutation<ContentBrief, Error, { keyword: string; keywordId?: string }>({
+        mutationFn: (data: { keyword: string; keywordId?: string }) =>
+            api.post('/api/search-console/content-brief', data),
+    });
+}
+
+/* ─────────────────────────────────────────────────────
+   Bulk Import
+   ───────────────────────────────────────────────────── */
+
+/** Hook: Bulk import keywords */
+export function useBulkImportKeywords() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (data: { keywords: string[]; targetUrl?: string }) =>
+            api.post('/api/search-console/tracked-keywords/bulk', data),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'tracked-keywords'] });
+        },
+    });
+}
+
+/* ─────────────────────────────────────────────────────
+   SEO Digest
+   ───────────────────────────────────────────────────── */
+
+/** SEO digest */
+export interface SeoDigest {
+    generatedAt: string;
+    period: { start: string; end: string };
+    summary: {
+        totalClicks: number;
+        totalImpressions: number;
+        avgPosition: number;
+        clicksChange: number;
+        impressionsChange: number;
+        positionChange: number;
+    };
+    topMovers: {
+        improved: Array<{ keyword: string; oldPosition: number; newPosition: number; delta: number }>;
+        declined: Array<{ keyword: string; oldPosition: number; newPosition: number; delta: number }>;
+    };
+    topKeywords: Array<{ keyword: string; clicks: number; impressions: number; position: number; estimatedRevenue: number }>;
+    newKeywords: Array<{ keyword: string; position: number; impressions: number }>;
+    alerts: string[];
+}
+
+/** Hook: Fetch SEO digest preview */
+export function useSeoDigest() {
+    const api = useApi();
+    return useQuery<SeoDigest>({
+        queryKey: ['search-console', 'seo-digest'],
+        queryFn: () => api.get('/api/search-console/seo-digest/preview'),
+        enabled: api.isReady,
+        staleTime: 15 * 60 * 1000,
+    });
+}

@@ -12,9 +12,16 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { SearchConsoleService } from './SearchConsoleService';
+import { EventBus, EVENTS } from '../events';
 
 /** Max tracked keywords per account to prevent unbounded growth */
 const MAX_KEYWORDS_PER_ACCOUNT = 100;
+
+/** Rank movement threshold to trigger an alert (positions) */
+const RANK_ALERT_THRESHOLD = 5;
+
+/** Page boundary positions — crossing these triggers alerts */
+const PAGE_BOUNDARIES = [10, 20, 30];
 
 /** Shape returned when listing tracked keywords */
 export interface TrackedKeywordSummary {
@@ -27,15 +34,28 @@ export interface TrackedKeywordSummary {
     currentClicks: number | null;
     isActive: boolean;
     createdAt: Date;
+    groupId: string | null;
+    estimatedRevenue: number | null;
+    estimatedSearchVolume: number | null;
+    tags: string[];
 }
 
 /** Shape of a single history data point for charts */
 export interface RankHistoryPoint {
     date: string;
     position: number;
+    previousPosition: number | null;
     clicks: number;
     impressions: number;
     ctr: number;
+}
+
+/** Result from bulk keyword import */
+export interface BulkImportResult {
+    added: number;
+    skipped: number;
+    failed: number;
+    errors: string[];
 }
 
 export class KeywordTrackingService {
@@ -83,6 +103,68 @@ export class KeywordTrackingService {
         });
 
         return mapToSummary(created);
+    }
+
+    /**
+     * Add multiple keywords in bulk. Returns summary of results.
+     */
+    static async addKeywordsBulk(accountId: string, keywords: string[], targetUrl?: string): Promise<BulkImportResult> {
+        const result: BulkImportResult = { added: 0, skipped: 0, failed: 0, errors: [] };
+
+        for (const kw of keywords) {
+            const normalized = kw.toLowerCase().trim();
+            if (!normalized || normalized.length > 200) {
+                result.failed++;
+                result.errors.push(`Invalid keyword: "${kw.substring(0, 50)}"`);
+                continue;
+            }
+
+            try {
+                const existing = await prisma.trackedKeyword.findUnique({
+                    where: { accountId_keyword: { accountId, keyword: normalized } }
+                });
+
+                if (existing && existing.isActive) {
+                    result.skipped++;
+                    continue;
+                }
+
+                if (existing && !existing.isActive) {
+                    await prisma.trackedKeyword.update({
+                        where: { id: existing.id },
+                        data: { isActive: true, targetUrl }
+                    });
+                    result.added++;
+                    continue;
+                }
+
+                // Check limit before each add
+                const activeCount = await prisma.trackedKeyword.count({
+                    where: { accountId, isActive: true }
+                });
+                if (activeCount >= MAX_KEYWORDS_PER_ACCOUNT) {
+                    result.failed++;
+                    result.errors.push(`Limit reached (${MAX_KEYWORDS_PER_ACCOUNT}). "${normalized}" not added.`);
+                    continue;
+                }
+
+                await prisma.trackedKeyword.create({
+                    data: {
+                        accountId,
+                        keyword: normalized,
+                        targetUrl: targetUrl || null,
+                        isActive: true,
+                    }
+                });
+                result.added++;
+            } catch (error: any) {
+                result.failed++;
+                result.errors.push(`"${normalized}": ${error.message}`);
+            }
+        }
+
+        Logger.info('Bulk keyword import completed', { accountId, ...result });
+        return result;
     }
 
     /**
@@ -138,6 +220,7 @@ export class KeywordTrackingService {
         return history.map(h => ({
             date: h.date.toISOString().split('T')[0],
             position: h.position,
+            previousPosition: h.previousPosition,
             clicks: h.clicks,
             impressions: h.impressions,
             ctr: h.ctr,
@@ -149,6 +232,7 @@ export class KeywordTrackingService {
      * Called by the scheduled job or manually triggered.
      *
      * Fetches Search Console data and creates/updates history entries.
+     * Emits rank change events when significant position shifts are detected.
      */
     static async refreshPositions(accountId: string): Promise<number> {
         const keywords = await prisma.trackedKeyword.findMany({
@@ -174,6 +258,17 @@ export class KeywordTrackingService {
         today.setHours(0, 0, 0, 0);
         let updated = 0;
 
+        // Collect rank change alerts to emit after transaction completes
+        const rankChanges: Array<{
+            keyword: string;
+            keywordId: string;
+            oldPosition: number;
+            newPosition: number;
+            direction: 'up' | 'down';
+            delta: number;
+            crossedPageBoundary: boolean;
+        }> = [];
+
         // Batch all writes into a single transaction to avoid N+1 DB round-trips
         const ops: any[] = [];
 
@@ -181,6 +276,29 @@ export class KeywordTrackingService {
             const data = queryMap.get(kw.keyword);
 
             if (data) {
+                const oldPosition = kw.currentPosition ?? 0;
+                const newPosition = data.position;
+                const delta = Math.abs(newPosition - oldPosition);
+
+                // Detect significant rank changes for alerts
+                if (oldPosition > 0 && delta >= RANK_ALERT_THRESHOLD) {
+                    const direction = newPosition < oldPosition ? 'up' : 'down';
+                    const crossedPageBoundary = PAGE_BOUNDARIES.some(
+                        boundary => (oldPosition <= boundary && newPosition > boundary) ||
+                            (oldPosition > boundary && newPosition <= boundary)
+                    );
+
+                    rankChanges.push({
+                        keyword: kw.keyword,
+                        keywordId: kw.id,
+                        oldPosition,
+                        newPosition,
+                        direction,
+                        delta,
+                        crossedPageBoundary,
+                    });
+                }
+
                 // Update denormalized current metrics
                 ops.push(prisma.trackedKeyword.update({
                     where: { id: kw.id },
@@ -192,13 +310,14 @@ export class KeywordTrackingService {
                     }
                 }));
 
-                // Upsert today's history entry
+                // Upsert today's history entry (with previousPosition tracking)
                 ops.push(prisma.keywordRankHistory.upsert({
                     where: {
                         keywordId_date: { keywordId: kw.id, date: today }
                     },
                     update: {
                         position: data.position,
+                        previousPosition: oldPosition || null,
                         clicks: data.clicks,
                         impressions: data.impressions,
                         ctr: data.ctr,
@@ -207,6 +326,7 @@ export class KeywordTrackingService {
                         keywordId: kw.id,
                         date: today,
                         position: data.position,
+                        previousPosition: oldPosition || null,
                         clicks: data.clicks,
                         impressions: data.impressions,
                         ctr: data.ctr,
@@ -221,7 +341,15 @@ export class KeywordTrackingService {
             await prisma.$transaction(ops);
         }
 
-        Logger.info('Keyword positions refreshed', { accountId, tracked: keywords.length, updated });
+        // Emit rank change events after successful DB writes
+        for (const change of rankChanges) {
+            EventBus.emit(EVENTS.SEO.RANK_CHANGE, {
+                accountId,
+                ...change,
+            });
+        }
+
+        Logger.info('Keyword positions refreshed', { accountId, tracked: keywords.length, updated, alerts: rankChanges.length });
         return updated;
     }
 
@@ -260,5 +388,9 @@ function mapToSummary(kw: any): TrackedKeywordSummary {
         currentClicks: kw.currentClicks,
         isActive: kw.isActive,
         createdAt: kw.createdAt,
+        groupId: kw.groupId ?? null,
+        estimatedRevenue: kw.estimatedRevenue ?? null,
+        estimatedSearchVolume: kw.estimatedSearchVolume ?? null,
+        tags: kw.tags ?? [],
     };
 }

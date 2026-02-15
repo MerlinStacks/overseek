@@ -183,34 +183,34 @@ export function MobileAnalytics() {
     if (loading) {
         return (
             <div className="space-y-4 animate-pulse">
-                <div className="h-8 bg-gray-200 rounded w-1/3" />
+                <div className="h-8 bg-slate-700/50 rounded w-1/3" />
                 <div className="flex gap-2">
-                    {[...Array(3)].map((_, i) => <div key={i} className="h-10 w-24 bg-gray-200 rounded-full" />)}
+                    {[...Array(3)].map((_, i) => <div key={i} className="h-10 w-24 bg-slate-700/50 rounded-full" />)}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                    {[...Array(6)].map((_, i) => <div key={i} className="h-32 bg-gray-200 rounded-xl" />)}
+                    {[...Array(6)].map((_, i) => <div key={i} className="h-32 bg-slate-800/50 border border-white/10 rounded-2xl" />)}
                 </div>
             </div>
         );
     }
 
     const metrics = [
-        { key: 'revenue', label: 'Revenue', value: formatAccountCurrency(data?.revenue.value || 0), change: data?.revenue.change || 0, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
-        { key: 'orders', label: 'Orders', value: formatCompact(data?.orders.value || 0), change: data?.orders.change || 0, icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { key: 'visitors', label: 'Visitors', value: formatCompact(data?.visitors.value || 0), change: data?.visitors.change || 0, icon: Eye, color: 'text-purple-600', bg: 'bg-purple-50' },
-        { key: 'customers', label: 'New Customers', value: formatCompact(data?.customers.value || 0), change: data?.customers.change || 0, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-        { key: 'conversion', label: 'Conversion', value: `${(data?.conversionRate.value || 0).toFixed(1)}%`, change: data?.conversionRate.change || 0, icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
-        { key: 'aov', label: 'Avg Order', value: formatAccountCurrency(data?.avgOrderValue.value || 0), change: data?.avgOrderValue.change || 0, icon: DollarSign, color: 'text-teal-600', bg: 'bg-teal-50' }
+        { key: 'revenue', label: 'Revenue', value: formatAccountCurrency(data?.revenue.value || 0), change: data?.revenue.change || 0, icon: DollarSign, color: 'text-emerald-400', iconBg: 'bg-emerald-500/20' },
+        { key: 'orders', label: 'Orders', value: formatCompact(data?.orders.value || 0), change: data?.orders.change || 0, icon: ShoppingCart, color: 'text-blue-400', iconBg: 'bg-blue-500/20' },
+        { key: 'visitors', label: 'Visitors', value: formatCompact(data?.visitors.value || 0), change: data?.visitors.change || 0, icon: Eye, color: 'text-purple-400', iconBg: 'bg-purple-500/20' },
+        { key: 'customers', label: 'New Customers', value: formatCompact(data?.customers.value || 0), change: data?.customers.change || 0, icon: Users, color: 'text-indigo-400', iconBg: 'bg-indigo-500/20' },
+        { key: 'conversion', label: 'Conversion', value: `${(data?.conversionRate.value || 0).toFixed(1)}%`, change: data?.conversionRate.change || 0, icon: TrendingUp, color: 'text-orange-400', iconBg: 'bg-orange-500/20' },
+        { key: 'aov', label: 'Avg Order', value: formatAccountCurrency(data?.avgOrderValue.value || 0), change: data?.avgOrderValue.change || 0, icon: DollarSign, color: 'text-teal-400', iconBg: 'bg-teal-500/20' }
     ];
 
     return (
-        <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+        <div className="space-y-4 animate-fade-slide-up">
+            <h1 className="text-2xl font-bold text-white">Analytics</h1>
 
             {/* Live Visitors Banner */}
             <button
                 onClick={() => navigate('/m/live-visitors')}
-                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white shadow-lg shadow-green-200 active:scale-[0.98] transition-transform"
+                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl text-white shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-transform"
             >
                 <div className="flex items-center gap-3">
                     <span className="relative flex h-3 w-3">
@@ -225,32 +225,41 @@ export function MobileAnalytics() {
                 <ChevronRight size={24} className="text-green-200" />
             </button>
 
-            <div className="flex gap-2 overflow-x-auto">
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
                 {(['today', 'yesterday', 'week', 'month'] as const).map((p) => (
                     <button
                         key={p}
                         onClick={() => setPeriod(p)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${period === p ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap active:scale-95 ${period === p
+                            ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
+                            : 'bg-slate-700/40 border border-white/10 text-slate-300'
+                            }`}
                     >
                         {periodLabels[p]}
                     </button>
                 ))}
             </div>
             <div className="grid grid-cols-2 gap-3">
-                {metrics.map((metric) => {
+                {metrics.map((metric, index) => {
                     const Icon = metric.icon;
                     const isPositive = metric.change >= 0;
                     const TrendIcon = isPositive ? ArrowUpRight : ArrowDownRight;
                     return (
-                        <div key={metric.key} className={`${metric.bg} rounded-xl p-4`}>
+                        <div
+                            key={metric.key}
+                            className="pwa-card p-4 animate-fade-slide-up"
+                            style={{ animationDelay: `${50 + index * 25}ms` }}
+                        >
                             <div className="flex items-center justify-between mb-3">
-                                <Icon size={20} className={metric.color} />
-                                <div className={`flex items-center text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                                <div className={`p-2 rounded-xl ${metric.iconBg}`}>
+                                    <Icon size={18} className={metric.color} />
+                                </div>
+                                <div className={`flex items-center text-xs font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     <TrendIcon size={14} />{Math.abs(metric.change).toFixed(1)}%
                                 </div>
                             </div>
-                            <p className={`text-2xl font-bold ${metric.color}`}>{metric.value}</p>
-                            <p className="text-xs text-gray-600 mt-1">{metric.label}</p>
+                            <p className="text-2xl font-bold text-white">{metric.value}</p>
+                            <p className="text-xs text-slate-400 mt-1">{metric.label}</p>
                         </div>
                     );
                 })}

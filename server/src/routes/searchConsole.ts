@@ -12,6 +12,12 @@ import { Logger } from '../utils/logger';
 import { SearchConsoleService } from '../services/search-console/SearchConsoleService';
 import { KeywordRecommendationService } from '../services/search-console/KeywordRecommendationService';
 import { KeywordTrackingService } from '../services/search-console/KeywordTrackingService';
+import { KeywordGroupService } from '../services/search-console/KeywordGroupService';
+import { CompetitorAnalysisService } from '../services/search-console/CompetitorAnalysisService';
+import { KeywordRevenueService } from '../services/search-console/KeywordRevenueService';
+import { CannibalizationService } from '../services/search-console/CannibalizationService';
+import { ContentBriefService } from '../services/search-console/ContentBriefService';
+import { SeoDigestService } from '../services/search-console/SeoDigestService';
 
 /**
  * Clamp and validate days query param. Prevents abuse and NaN injection.
@@ -192,6 +198,28 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
+     * POST /api/search-console/tracked-keywords/bulk — Bulk import keywords
+     * Body: { keywords: string[], targetUrl?: string }
+     */
+    fastify.post('/tracked-keywords/bulk', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { keywords, targetUrl } = request.body as { keywords: string[]; targetUrl?: string };
+            if (!keywords?.length) return reply.code(400).send({ error: 'Keywords array is required' });
+            if (keywords.length > 500) return reply.code(400).send({ error: 'Maximum 500 keywords per import' });
+
+            const result = await KeywordTrackingService.addKeywordsBulk(accountId, keywords, targetUrl);
+
+            return result;
+        } catch (error: any) {
+            Logger.error('Failed to bulk import keywords', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
      * DELETE /api/search-console/tracked-keywords/:id — Remove a keyword
      */
     fastify.delete('/tracked-keywords/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
@@ -244,6 +272,264 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true, updated };
         } catch (error: any) {
             Logger.error('Failed to refresh keyword positions', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Keyword Groups
+    // ─────────────────────────────────────────────────────
+
+    /**
+     * GET /api/search-console/keyword-groups — List all groups with metrics
+     */
+    fastify.get('/keyword-groups', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const groups = await KeywordGroupService.listGroups(accountId);
+            return { groups, count: groups.length };
+        } catch (error: any) {
+            Logger.error('Failed to list keyword groups', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * POST /api/search-console/keyword-groups — Create a group
+     * Body: { name: string, color?: string }
+     */
+    fastify.post('/keyword-groups', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { name, color } = request.body as { name: string; color?: string };
+            if (!name?.trim()) return reply.code(400).send({ error: 'Group name is required' });
+
+            const group = await KeywordGroupService.createGroup(accountId, name, color);
+            return reply.code(201).send(group);
+        } catch (error: any) {
+            const isBizError = error.message?.includes('Maximum') || error.message?.includes('must be');
+            if (isBizError) return reply.code(400).send({ error: error.message });
+            Logger.error('Failed to create keyword group', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * PUT /api/search-console/keyword-groups/:id — Update a group
+     * Body: { name?: string, color?: string }
+     */
+    fastify.put('/keyword-groups/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { id } = request.params as { id: string };
+            const body = request.body as { name?: string; color?: string };
+            const group = await KeywordGroupService.updateGroup(accountId, id, body);
+            return group;
+        } catch (error: any) {
+            Logger.error('Failed to update keyword group', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * DELETE /api/search-console/keyword-groups/:id — Delete a group
+     */
+    fastify.delete('/keyword-groups/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { id } = request.params as { id: string };
+            await KeywordGroupService.deleteGroup(accountId, id);
+            return { success: true };
+        } catch (error: any) {
+            Logger.error('Failed to delete keyword group', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * POST /api/search-console/keyword-groups/assign — Assign keyword(s) to a group
+     * Body: { keywordIds: string[], groupId: string | null }
+     */
+    fastify.post('/keyword-groups/assign', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { keywordIds, groupId } = request.body as { keywordIds: string[]; groupId: string | null };
+            if (!keywordIds?.length) return reply.code(400).send({ error: 'keywordIds array is required' });
+
+            const updated = await KeywordGroupService.bulkAssign(accountId, keywordIds, groupId);
+            return { success: true, updated };
+        } catch (error: any) {
+            Logger.error('Failed to assign keywords to group', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Competitor Analysis
+    // ─────────────────────────────────────────────────────
+
+    /**
+     * GET /api/search-console/competitors — List competitor domains
+     */
+    fastify.get('/competitors', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const competitors = await CompetitorAnalysisService.listCompetitors(accountId);
+            return { competitors, count: competitors.length };
+        } catch (error: any) {
+            Logger.error('Failed to list competitors', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * POST /api/search-console/competitors — Add a competitor domain
+     * Body: { domain: string }
+     */
+    fastify.post('/competitors', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { domain } = request.body as { domain: string };
+            if (!domain?.trim()) return reply.code(400).send({ error: 'Domain is required' });
+
+            const competitor = await CompetitorAnalysisService.addCompetitor(accountId, domain);
+            return reply.code(201).send(competitor);
+        } catch (error: any) {
+            const isBizError = error.message?.includes('Maximum') || error.message?.includes('Invalid');
+            if (isBizError) return reply.code(400).send({ error: error.message });
+            Logger.error('Failed to add competitor', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * DELETE /api/search-console/competitors/:id — Remove a competitor domain
+     */
+    fastify.delete('/competitors/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { id } = request.params as { id: string };
+            await CompetitorAnalysisService.removeCompetitor(accountId, id);
+            return { success: true };
+        } catch (error: any) {
+            Logger.error('Failed to remove competitor', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /api/search-console/competitor-analysis — Run gap analysis
+     */
+    fastify.get('/competitor-analysis', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const query = request.query as { domain?: string };
+            const analysis = await CompetitorAnalysisService.analyzeCompetitor(accountId, query.domain);
+            return analysis;
+        } catch (error: any) {
+            Logger.error('Failed to run competitor analysis', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Revenue Attribution
+    // ─────────────────────────────────────────────────────
+
+    /**
+     * GET /api/search-console/keyword-revenue — Revenue attribution report
+     */
+    fastify.get('/keyword-revenue', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const report = await KeywordRevenueService.getRevenueReport(accountId);
+            return { keywords: report, count: report.length };
+        } catch (error: any) {
+            Logger.error('Failed to fetch keyword revenue', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Cannibalization Detection (Tier 3)
+    // ─────────────────────────────────────────────────────
+
+    /**
+     * GET /api/search-console/cannibalization — Detect keyword cannibalization
+     */
+    fastify.get('/cannibalization', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const results = await CannibalizationService.detectCannibalization(accountId);
+            return { keywords: results, count: results.length };
+        } catch (error: any) {
+            Logger.error('Failed to detect cannibalization', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────
+    // AI Content Briefs (Tier 3)
+    // ─────────────────────────────────────────────────────
+
+    /**
+     * POST /api/search-console/content-brief — Generate AI content brief for a keyword
+     * Body: { keyword: string, keywordId?: string }
+     */
+    fastify.post('/content-brief', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const { keyword, keywordId } = request.body as { keyword: string; keywordId?: string };
+            if (!keyword?.trim()) return reply.code(400).send({ error: 'Keyword is required' });
+
+            const brief = await ContentBriefService.generateBrief(accountId, keyword, keywordId);
+            return brief;
+        } catch (error: any) {
+            Logger.error('Failed to generate content brief', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────
+    // SEO Digest (Tier 3)
+    // ─────────────────────────────────────────────────────
+
+    /**
+     * GET /api/search-console/seo-digest/preview — Preview the next SEO digest
+     */
+    fastify.get('/seo-digest/preview', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const digest = await SeoDigestService.generateDigest(accountId);
+            return digest;
+        } catch (error: any) {
+            Logger.error('Failed to generate SEO digest preview', { error });
             return reply.code(500).send({ error: error.message });
         }
     });

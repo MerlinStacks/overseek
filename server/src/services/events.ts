@@ -38,6 +38,10 @@ export const EVENTS = {
     },
     SYNC: {
         FAILURE_THRESHOLD: 'sync:failure_threshold'
+    },
+    SEO: {
+        RANK_CHANGE: 'seo:rank_change',
+        KEYWORD_ALERT: 'seo:keyword_alert',
     }
 };
 

@@ -267,7 +267,7 @@ export function MobileDashboard() {
                 </div>
                 <button
                     onClick={() => navigate('/m/notifications')}
-                    className="p-3 rounded-2xl bg-slate-800/50 backdrop-blur-sm border border-white/10 hover:bg-slate-700/50 active:scale-95 transition-all"
+                    className="p-3 rounded-2xl bg-slate-700/40 border border-white/10 hover:bg-slate-700/50 active:scale-95 transition-all"
                 >
                     <Bell size={20} className="text-slate-300" />
                 </button>
@@ -277,8 +277,8 @@ export function MobileDashboard() {
             <div className="grid grid-cols-2 gap-3">
                 {/* Orders Card */}
                 <div
-                    className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 animate-fade-slide-up cursor-pointer active:scale-[0.98] transition-transform"
-                    style={{ animationDelay: '50ms' }}
+                    className="pwa-card-interactive p-4 animate-fade-slide-up"
+                    style={{ animationDelay: '25ms' }}
                     onClick={() => navigate('/m/orders')}
                 >
                     <div className="flex items-center justify-between mb-2">
@@ -295,8 +295,8 @@ export function MobileDashboard() {
                 {/* Revenue Card - only show if user has finance permission */}
                 {hasPermission('view_finance') && (
                     <div
-                        className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 animate-fade-slide-up cursor-pointer active:scale-[0.98] transition-transform"
-                        style={{ animationDelay: '100ms' }}
+                        className="pwa-card-interactive p-4 animate-fade-slide-up"
+                        style={{ animationDelay: '50ms' }}
                         onClick={() => navigate('/m/analytics')}
                     >
                         <div className="flex items-center justify-between mb-2">
@@ -313,8 +313,8 @@ export function MobileDashboard() {
 
                 {/* Messages Card */}
                 <div
-                    className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 animate-fade-slide-up cursor-pointer active:scale-[0.98] transition-transform"
-                    style={{ animationDelay: '150ms' }}
+                    className="pwa-card-interactive p-4 animate-fade-slide-up"
+                    style={{ animationDelay: '75ms' }}
                     onClick={() => navigate('/m/inbox')}
                 >
                     <div className="flex items-center justify-between mb-2">
@@ -333,8 +333,8 @@ export function MobileDashboard() {
 
                 {/* Low Stock Card */}
                 <div
-                    className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl p-4 animate-fade-slide-up cursor-pointer active:scale-[0.98] transition-transform"
-                    style={{ animationDelay: '200ms' }}
+                    className="pwa-card-interactive p-4 animate-fade-slide-up"
+                    style={{ animationDelay: '100ms' }}
                     onClick={() => navigate('/m/inventory')}
                 >
                     <div className="flex items-center justify-between mb-2">
@@ -360,8 +360,8 @@ export function MobileDashboard() {
                         <button
                             key={action.label}
                             onClick={() => navigate(action.path)}
-                            className="flex flex-col items-center p-3 bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl active:scale-95 transition-all animate-fade-slide-up"
-                            style={{ animationDelay: `${250 + index * 50}ms` }}
+                            className="flex flex-col items-center p-3 pwa-card-interactive active:scale-95 animate-fade-slide-up"
+                            style={{ animationDelay: `${125 + index * 25}ms` }}
                         >
                             <div className={`p-2.5 rounded-xl bg-gradient-to-br ${action.color} mb-2 shadow-lg`}>
                                 <action.icon size={18} className="text-white" />
@@ -383,7 +383,7 @@ export function MobileDashboard() {
                         View All <ArrowRight size={14} />
                     </button>
                 </div>
-                <div className="bg-slate-800/50 backdrop-blur-sm border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
+                <div className="pwa-card divide-y divide-white/5 overflow-hidden">
                     {activities.length === 0 ? (
                         <div className="p-6 text-center">
                             <Users size={32} className="text-slate-600 mx-auto mb-2" />
@@ -395,7 +395,7 @@ export function MobileDashboard() {
                                 key={activity.id}
                                 onClick={() => navigate(`/m/orders/${activity.id}`)}
                                 className="w-full flex items-center p-4 text-left hover:bg-white/5 active:bg-white/10 transition-colors animate-fade-slide-up"
-                                style={{ animationDelay: `${450 + index * 50}ms` }}
+                                style={{ animationDelay: `${225 + index * 25}ms` }}
                             >
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mr-3 shadow-lg">
                                     <ShoppingCart size={18} className="text-white" />

@@ -77,8 +77,11 @@ export class NotificationEngine {
         // Sync Failure Alerts
         EventBus.on(EVENTS.SYNC.FAILURE_THRESHOLD, this.handleSyncFailureThreshold.bind(this));
 
+        // SEO Rank Change Alerts (Keyword Tracker)
+        EventBus.on(EVENTS.SEO.RANK_CHANGE, this.handleRankChange.bind(this));
+
         this.initialized = true;
-        Logger.info('[NotificationEngine] Initialized - listening for 9 event types');
+        Logger.info('[NotificationEngine] Initialized - listening for 10 event types');
     }
 
     /**
@@ -373,6 +376,56 @@ export class NotificationEngine {
             },
             pushType: 'order',
             payload: { entityType, failureCount, lastError }
+        });
+    }
+
+    /**
+     * Handle SEO keyword rank change alert
+     */
+    private static async handleRankChange(data: {
+        accountId: string;
+        keyword: string;
+        keywordId: string;
+        oldPosition: number;
+        newPosition: number;
+        direction: 'up' | 'down';
+        delta: number;
+        crossedPageBoundary: boolean;
+    }): Promise<void> {
+        const { accountId, keyword, oldPosition, newPosition, direction, delta, crossedPageBoundary } = data;
+
+        const emoji = direction === 'up' ? '📈' : '📉';
+        const verb = direction === 'up' ? 'improved' : 'dropped';
+        const oldRound = Math.round(oldPosition * 10) / 10;
+        const newRound = Math.round(newPosition * 10) / 10;
+
+        let message = `"${keyword}" ${verb} from #${oldRound} → #${newRound}`;
+        if (crossedPageBoundary) {
+            const page = Math.ceil(newPosition / 10);
+            message += direction === 'down'
+                ? ` (now on page ${page})`
+                : ` (now on page ${page}!)`;
+        }
+
+        const severity = crossedPageBoundary ? 'WARNING' : 'INFO';
+
+        await this.sendNotification({
+            accountId,
+            eventType: 'SEO_RANK_CHANGE',
+            channels: ['in_app', 'push'],
+            inApp: {
+                title: `${emoji} Keyword Rank ${direction === 'up' ? 'Improved' : 'Dropped'}`,
+                message,
+                type: severity,
+                link: '/seo/keywords'
+            },
+            push: {
+                title: `${emoji} Rank ${direction === 'up' ? 'Improved' : 'Dropped'}`,
+                body: message,
+                data: { url: '/seo/keywords' }
+            },
+            pushType: 'order',
+            payload: { keyword, oldPosition: oldRound, newPosition: newRound, delta, direction }
         });
     }
 
