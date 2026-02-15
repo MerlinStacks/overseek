@@ -85,17 +85,41 @@ export class NotificationEngine {
     }
 
     /**
-     * Handle new order created event
+     * Handle new order created event.
+     * Builds a product list summary from line_items so the notification
+     * shows exactly what was ordered, not just a count.
      */
     private static async handleOrderCreated(data: { accountId: string; order: any }): Promise<void> {
         const { accountId, order } = data;
 
-        // Calculate item count
-        const lineItems = order.line_items as Array<unknown> | undefined;
+        const lineItems = order.line_items as Array<{ name?: string; quantity?: number }> | undefined;
         const itemCount = lineItems?.length || 0;
         const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
         const orderNumber = order.number || order.id;
         const total = parseFloat(String(order.total)) || 0;
+
+        // Build a concise product list (cap at 5 to keep notifications readable)
+        const MAX_VISIBLE = 5;
+        const productLines = (lineItems || [])
+            .slice(0, MAX_VISIBLE)
+            .map(li => {
+                const name = li.name || 'Unnamed product';
+                const qty = li.quantity ?? 1;
+                return `• ${name} ×${qty}`;
+            });
+        if (itemCount > MAX_VISIBLE) {
+            productLines.push(`  …and ${itemCount - MAX_VISIBLE} more`);
+        }
+        const productListText = productLines.join('\n');
+
+        // Single-line summary for push body (newlines don't render well on all platforms)
+        const productSummary = (lineItems || [])
+            .slice(0, MAX_VISIBLE)
+            .map(li => `${li.name || 'Unnamed'} ×${li.quantity ?? 1}`)
+            .join(', ')
+            + (itemCount > MAX_VISIBLE ? `, +${itemCount - MAX_VISIBLE} more` : '');
+
+        const headline = `Order #${orderNumber} - $${total} (${itemText})`;
 
         await this.sendNotification({
             accountId,
@@ -103,13 +127,17 @@ export class NotificationEngine {
             channels: ['in_app', 'push', 'socket'],
             inApp: {
                 title: 'New Order Received',
-                message: `Order #${orderNumber} - $${total} (${itemText})`,
+                message: productListText
+                    ? `${headline}\n${productListText}`
+                    : headline,
                 type: 'SUCCESS',
                 link: '/orders'
             },
             push: {
                 title: '🛒 New Order!',
-                body: `Order #${orderNumber} - $${total} (${itemText})`,
+                body: productSummary
+                    ? `${headline}\n${productSummary}`
+                    : headline,
                 data: { url: '/orders' }
             },
             pushType: 'order',
@@ -120,6 +148,10 @@ export class NotificationEngine {
                     orderNumber,
                     total,
                     itemCount,
+                    products: (lineItems || []).map(li => ({
+                        name: li.name || 'Unnamed product',
+                        quantity: li.quantity ?? 1
+                    })),
                     customerName: order.billing?.first_name
                         ? `${order.billing.first_name} ${order.billing.last_name || ''}`.trim()
                         : 'Guest'

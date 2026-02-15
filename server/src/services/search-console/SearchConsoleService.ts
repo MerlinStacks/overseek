@@ -231,6 +231,58 @@ export class SearchConsoleService {
     }
 
     /**
+     * Fetch queries driving traffic to a specific page URL.
+     * Why dimensionFilterGroups: the Search Console API supports filtering
+     * by page dimension, letting us scope queries to a single product URL.
+     */
+    static async getPageAnalytics(
+        accountId: string,
+        pageUrl: string,
+        days: number = 28,
+        siteUrl?: string
+    ): Promise<QueryAnalytics[]> {
+        const scAccount = await this.getActiveAccount(accountId, siteUrl);
+        if (!scAccount) return [];
+
+        const endDate = formatDate(daysAgo(3));
+        const startDate = formatDate(daysAgo(days + 3));
+        const encodedSiteUrl = encodeURIComponent(scAccount.siteUrl);
+        const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSiteUrl}/searchAnalytics/query`;
+
+        const body = {
+            startDate,
+            endDate,
+            dimensions: ['query'],
+            dimensionFilterGroups: [{
+                filters: [{
+                    dimension: 'page',
+                    operator: 'contains',
+                    expression: pageUrl
+                }]
+            }],
+            rowLimit: 100,
+            dataState: 'final'
+        };
+
+        try {
+            const data = await this.apiRequest<{ rows?: SearchAnalyticsRow[] }>(
+                scAccount.id, scAccount.accessToken, url, { method: 'POST', body }
+            );
+
+            return (data.rows || []).map(row => ({
+                query: row.keys[0],
+                clicks: row.clicks,
+                impressions: row.impressions,
+                ctr: Math.round(row.ctr * 10000) / 100,
+                position: Math.round(row.position * 10) / 10
+            }));
+        } catch (error) {
+            Logger.error('Failed to fetch page analytics', { error, accountId, pageUrl });
+            return [];
+        }
+    }
+
+    /**
      * Fetch top pages by organic clicks.
      */
     static async getTopPages(

@@ -65,13 +65,16 @@ describe('NotificationEngine', () => {
     });
 
     describe('handleOrderCreated', () => {
-        it('should create in-app notification and send push', async () => {
+        it('should create in-app notification with product list and send push', async () => {
             const mockOrder = {
                 id: 'order_1',
                 number: '1234',
                 total: '150.00',
                 currency: 'AUD',
-                line_items: [{ name: 'Widget' }],
+                line_items: [
+                    { name: 'Widget', quantity: 2 },
+                    { name: 'Gadget', quantity: 1 }
+                ],
                 billing: { first_name: 'John', last_name: 'Doe' }
             };
 
@@ -93,6 +96,7 @@ describe('NotificationEngine', () => {
                     accountId: 'acc_123',
                     type: 'SUCCESS',
                     title: 'New Order Received',
+                    message: expect.stringContaining('Widget ×2')
                 })
             });
         });

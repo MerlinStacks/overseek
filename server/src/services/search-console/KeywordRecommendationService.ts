@@ -206,7 +206,7 @@ export class KeywordRecommendationService {
                         { role: 'user', content: prompt }
                     ],
                     temperature: 0.3,
-                    max_tokens: 2000,
+                    max_tokens: 4000,
                     response_format: { type: 'json_object' }
                 })
             });
@@ -219,7 +219,12 @@ export class KeywordRecommendationService {
                 return [];
             }
 
-            const parsed = JSON.parse(content);
+            const parsed = safeParseAIJson(content);
+            if (!parsed) {
+                Logger.warn('Could not parse AI response for keyword recommendations', { accountId });
+                return [];
+            }
+
             const raw = parsed.recommendations || [];
 
             // Validate shape: AI can return anything, don't let malformed data reach the client
@@ -235,6 +240,65 @@ export class KeywordRecommendationService {
             Logger.error('Failed to generate AI keyword recommendations', { error, accountId });
             return [];
         }
+    }
+}
+
+/**
+ * Safely parse AI-generated JSON, which may be truncated or wrapped in markdown fences.
+ * Attempts basic repair: strips code fences, closes unterminated strings/arrays/objects.
+ * Returns null if the response is unrecoverable.
+ */
+function safeParseAIJson(raw: string): any | null {
+    let text = raw.trim();
+
+    // Strip markdown code fences (```json ... ```)
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+    // First attempt: parse as-is
+    try {
+        return JSON.parse(text);
+    } catch {
+        // Fall through to repair
+    }
+
+    // Repair attempt: close unterminated strings, arrays, and objects.
+    // Why: the AI response is often truncated mid-token by the max_tokens limit,
+    // leaving valid JSON up to some cut-off point that just needs closing brackets.
+    let repaired = text;
+
+    // Close any unterminated string (odd number of unescaped quotes)
+    const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) {
+        repaired += '"';
+    }
+
+    // Close unclosed brackets/braces from innermost out
+    const opens: string[] = [];
+    let inString = false;
+    for (let i = 0; i < repaired.length; i++) {
+        const ch = repaired[i];
+        if (ch === '\\' && inString) { i++; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{' || ch === '[') opens.push(ch);
+        if (ch === '}' || ch === ']') opens.pop();
+    }
+    while (opens.length > 0) {
+        const open = opens.pop();
+        repaired += open === '{' ? '}' : ']';
+    }
+
+    try {
+        return JSON.parse(repaired);
+    } catch {
+        // Last resort: try to extract the first valid JSON object
+        const objStart = repaired.indexOf('{');
+        if (objStart >= 0) {
+            try {
+                return JSON.parse(repaired.slice(objStart));
+            } catch { /* unrecoverable */ }
+        }
+        return null;
     }
 }
 

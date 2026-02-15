@@ -10,6 +10,7 @@ import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, D
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { SeoAnalysisPanel } from '../components/Seo/SeoAnalysisPanel';
 import { MerchantCenterPanel } from '../components/Seo/MerchantCenterPanel';
+import { ProductSearchInsightsPanel } from '../components/Seo/ProductSearchInsightsPanel';
 import { MerchantCenterScoreBadge } from '../components/Seo/MerchantCenterScoreBadge';
 import { GeneralInfoPanel } from '../components/products/GeneralInfoPanel';
 import { LogisticsPanel } from '../components/products/LogisticsPanel';
@@ -185,29 +186,35 @@ export function ProductEditPage() {
             label: 'SEO & Discovery',
             icon: <Search size={16} />,
             content: (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="space-y-6">
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">SEO Health</h3>
-                                <SeoScoreBadge score={seoResult.score || 0} size="md" tests={seoResult.tests} />
-                            </div>
-                            <SeoAnalysisPanel score={seoResult.score} tests={seoResult.tests} focusKeyword={formData.focusKeyword} />
-                            <div className="mt-6 pt-6 border-t border-gray-100/50">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Focus Keyword</label>
-                                <input
-                                    type="text"
-                                    value={formData.focusKeyword}
-                                    onChange={(e) => updateFormData({ focusKeyword: e.target.value })}
-                                    className="w-full px-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
-                                />
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Search Console Insights — full width hero */}
+                    <ProductSearchInsightsPanel permalink={product.permalink} />
+
+                    {/* SEO Health + Merchant Center — two-column grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="space-y-6">
+                            <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide">SEO Health</h3>
+                                    <SeoScoreBadge score={seoResult.score || 0} size="md" tests={seoResult.tests} />
+                                </div>
+                                <SeoAnalysisPanel score={seoResult.score} tests={seoResult.tests} focusKeyword={formData.focusKeyword} />
+                                <div className="mt-6 pt-6 border-t border-gray-100/50 dark:border-slate-700/40">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Focus Keyword</label>
+                                    <input
+                                        type="text"
+                                        value={formData.focusKeyword}
+                                        onChange={(e) => updateFormData({ focusKeyword: e.target.value })}
+                                        className="w-full px-4 py-2 bg-white/50 dark:bg-slate-700/40 border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all dark:text-slate-200"
+                                    />
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="space-y-6">
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
-                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Merchant Center Status</h3>
-                            <MerchantCenterPanel score={product.merchantCenterScore || 0} issues={product.merchantCenterIssues || []} />
+                        <div className="space-y-6">
+                            <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide mb-4">Merchant Center Status</h3>
+                                <MerchantCenterPanel score={product.merchantCenterScore || 0} issues={product.merchantCenterIssues || []} />
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -31,6 +31,8 @@ const PRECACHE_ASSETS = [
     '/manifest.json',
     '/icons/icon-192.png',
     '/icons/icon-512.png',
+    '/icons/notification-icon.png',
+    '/icons/notification-badge.png',
     '/offline.html'
 ];
 
@@ -259,8 +261,8 @@ self.addEventListener('push', (event) => {
 
     const options = {
         body: data.body || 'You have a new notification',
-        icon: '/icons/icon-192.png',
-        badge: '/icons/icon-72.png',
+        icon: '/icons/notification-icon.png',
+        badge: '/icons/notification-badge.png',
         data: data.data || {},
         requireInteraction: false, // Allow auto-dismiss
         tag: tag,

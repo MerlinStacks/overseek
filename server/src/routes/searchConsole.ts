@@ -54,6 +54,28 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
+     * GET /api/search-console/page-analytics — Queries driving traffic to a specific URL
+     * Query params: pageUrl (required), days (default 28), siteUrl (optional)
+     */
+    fastify.get('/page-analytics', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const query = request.query as { pageUrl?: string; days?: string; siteUrl?: string };
+            if (!query.pageUrl) return reply.code(400).send({ error: 'pageUrl is required' });
+
+            const days = parseDays(query.days);
+            const queries = await SearchConsoleService.getPageAnalytics(accountId, query.pageUrl, days, query.siteUrl);
+
+            return { queries, count: queries.length };
+        } catch (error: any) {
+            Logger.error('Failed to fetch page analytics', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
      * GET /api/search-console/pages — Top pages by organic clicks
      * Query params: days (default 28)
      */

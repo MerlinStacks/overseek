@@ -19,6 +19,7 @@ const InventoryRiskWidget = lazy(() => import('./InventoryRiskWidget').then(m =>
 const VisitorCountWidget = lazy(() => import('./VisitorCountWidget').then(m => ({ default: m.VisitorCountWidget })));
 const OpenInboxWidget = lazy(() => import('./OpenInboxWidget').then(m => ({ default: m.OpenInboxWidget })));
 const GoldPriceMarginWidget = lazy(() => import('./GoldPriceMarginWidget').then(m => ({ default: m.GoldPriceMarginWidget })));
+const SeoKeywordsWidget = lazy(() => import('./SeoKeywordsWidget').then(m => ({ default: m.SeoKeywordsWidget })));
 
 // Medium widgets (moderate bundle impact)
 const LiveCartsWidget = lazy(() => import('./LiveCartsWidget'));
@@ -88,7 +89,8 @@ export const WidgetRegistry: Record<string, {
     'open-inbox': { component: OpenInboxWidget, label: 'Open Inbox', defaultW: 3, defaultH: 2 },
     'ad-suggestions': { component: AdSuggestionsWidget, label: 'Ad Suggestions', defaultW: 4, defaultH: 5, requiredPermission: 'view_marketing' },
     'cart-abandonment': { component: CartAbandonmentWidget, label: 'Cart Abandonment', defaultW: 4, defaultH: 6, requiredPermission: 'view_finance' },
-    'gold-price-margin': { component: GoldPriceMarginWidget, label: 'Gold Price Margins', defaultW: 4, defaultH: 5, requiredPermission: 'view_finance' }
+    'gold-price-margin': { component: GoldPriceMarginWidget, label: 'Gold Price Margins', defaultW: 4, defaultH: 5, requiredPermission: 'view_finance' },
+    'seo-keywords': { component: SeoKeywordsWidget, label: 'SEO Keywords', defaultW: 4, defaultH: 6 }
 };
 
 /**
