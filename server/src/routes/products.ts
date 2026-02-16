@@ -11,6 +11,7 @@ import { Logger } from '../utils/logger';
 import { SeoScoringService } from '../services/SeoScoringService';
 import { MerchantCenterService } from '../services/MerchantCenterService';
 import { IndexingService } from '../services/search/IndexingService';
+import { SearchConsoleService } from '../services/search-console/SearchConsoleService';
 import { esClient } from '../utils/elastic';
 import { marked } from 'marked';
 import { z } from 'zod';
@@ -58,7 +59,8 @@ const rewriteDescriptionBodySchema = z.object({
     currentDescription: z.string().optional(),
     productName: z.string().optional(),
     categories: z.string().optional(),
-    shortDescription: z.string().optional()
+    shortDescription: z.string().optional(),
+    focusKeyword: z.string().optional()
 });
 
 const stockUpdateBodySchema = z.object({
@@ -559,12 +561,12 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // POST /:id/rewrite-description - AI rewrite
+    // POST /:id/rewrite-description - AI rewrite enhanced with GSC keyword data
     fastify.post<{ Params: { id: string } }>('/:id/rewrite-description', async (request, reply) => {
         try {
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
-            const { currentDescription, productName, categories, shortDescription } = rewriteDescriptionBodySchema.parse(request.body);
+            const { currentDescription, productName, categories, shortDescription, focusKeyword } = rewriteDescriptionBodySchema.parse(request.body);
 
             const account = await prisma.account.findUnique({
                 where: { id: accountId },
@@ -577,28 +579,73 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
+            // Fetch GSC keyword data for this product's permalink
+            // Why best-effort: GSC may not be connected; we degrade gracefully to the original behaviour
+            let searchKeywordsBlock = '';
+            try {
+                const product = await prisma.wooProduct.findUnique({
+                    where: { accountId_wooId: { accountId, wooId } },
+                    select: { permalink: true, seoData: true }
+                });
+
+                if (product?.permalink) {
+                    const gscQueries = await SearchConsoleService.getPageAnalytics(accountId, product.permalink);
+
+                    if (gscQueries.length > 0) {
+                        const topKeywords = gscQueries
+                            .sort((a, b) => b.clicks - a.clicks)
+                            .slice(0, 15);
+
+                        const keywordLines = topKeywords.map((kw, i) =>
+                            `${i + 1}. "${kw.query}" — ${kw.clicks} clicks, ${kw.impressions} impressions, avg position ${kw.position}`
+                        ).join('\n');
+
+                        searchKeywordsBlock = [
+                            'Top Search Queries from Google Search Console (real data from the last 28 days):',
+                            keywordLines,
+                            '',
+                            'Naturally weave the highest-performing keywords above into the rewritten description. Do NOT keyword-stuff.',
+                        ].join('\n');
+
+                        Logger.info('GSC keywords injected into rewrite prompt', {
+                            accountId, wooId, keywordCount: topKeywords.length
+                        });
+                    }
+                }
+            } catch (gscErr) {
+                // Non-fatal: GSC data is supplementary
+                Logger.warn('Failed to fetch GSC data for product rewrite, continuing without', {
+                    error: gscErr, accountId, wooId
+                });
+            }
+
             const promptConfig = await prisma.aIPrompt.findUnique({
                 where: { promptId: 'product_description' }
             });
 
+            const defaultPrompt = `{{search_keywords}}
+Rewrite the following product description to be more engaging, SEO-friendly, and persuasive.
+Product Name: {{product_name}}
+Focus Keyword: {{focus_keyword}}
+Current Categories: {{category}}
+Short Description: {{short_description}}
 
-            const defaultPrompt = `Rewrite the following product description to be more engaging, SEO-friendly, and persuasive. 
-            Product Name: {{product_name}}
-            Current Categories: {{category}}
-            Short Description: {{short_description}}
-            
-            Current Description:
-            {{current_description}}
-            
-            Return ONLY the rewritten description in Markdown format. Do not include any conversational preamble.`;
+Current Description:
+{{current_description}}
+
+Return ONLY the rewritten description in Markdown format. Do not include any conversational preamble.`;
 
             let promptContent = promptConfig?.content || defaultPrompt;
+
+            const resolvedFocusKeyword = focusKeyword || '';
 
             let prompt = promptContent
                 .replace(/\{\{product_name\}\}/g, productName || '')
                 .replace(/\{\{current_description\}\}/g, currentDescription || '')
                 .replace(/\{\{short_description\}\}/g, shortDescription || '')
-                .replace(/\{\{category\}\}/g, categories || '');
+                .replace(/\{\{category\}\}/g, categories || '')
+                .replace(/\{\{focus_keyword\}\}/g, resolvedFocusKeyword)
+                .replace(/\{\{search_keywords\}\}/g, searchKeywordsBlock);
 
             const model = account.aiModel || 'openai/gpt-4o';
 
