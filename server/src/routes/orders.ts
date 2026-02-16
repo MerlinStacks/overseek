@@ -8,6 +8,7 @@ import { Logger } from '../utils/logger';
 import { requireAuthFastify } from '../middleware/auth';
 import { z } from 'zod';
 import { cacheAside, CacheTTL } from '../utils/cache';
+import { extractOrderTracking } from '../utils/orderTracking';
 
 const orderIdParamSchema = z.object({
     id: z.union([
@@ -151,9 +152,15 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             const manualTags = rawData.tags || [];
             const allTags = [...new Set([...computedTags, ...manualTags])];
 
+            // Extract shipment tracking from rawData meta_data
+            const trackingItems = extractOrderTracking(order.rawData);
+
             // Return the raw data which contains all the nice Woo fields
             return {
                 ...order.rawData as object,
+                tracking_items: trackingItems,
+                tracking_number: trackingItems[0]?.trackingNumber ?? null,
+                tracking_url: trackingItems[0]?.trackingUrl ?? null,
                 tags: allTags,
                 internal_id: order.id,
                 internal_status: order.status,

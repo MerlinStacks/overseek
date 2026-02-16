@@ -43,6 +43,13 @@ interface OrderLineItem {
     meta_data?: OrderMetaData[];
 }
 
+interface TrackingItem {
+    provider: string;
+    trackingNumber: string;
+    trackingUrl: string | null;
+    dateShipped: string | null;
+}
+
 interface OrderDetail {
     id: string;
     orderNumber: string;
@@ -57,8 +64,7 @@ interface OrderDetail {
     billing: { address1: string; city: string; state: string; postcode: string; country: string };
     shipping: { address1: string; city: string; state: string; postcode: string; country: string };
     lineItems: OrderLineItem[];
-    trackingNumber?: string;
-    trackingUrl?: string;
+    trackingItems: TrackingItem[];
     currency?: string;
 }
 
@@ -127,8 +133,7 @@ export function MobileOrderDetail() {
                     sku: item.sku,
                     meta_data: item.meta_data
                 })),
-                trackingNumber: o.tracking_number,
-                trackingUrl: o.tracking_url,
+                trackingItems: o.tracking_items || [],
                 currency: o.currency
             });
 
@@ -196,10 +201,41 @@ export function MobileOrderDetail() {
                 <div className="p-3 bg-white rounded-lg shadow-sm"><StatusIcon size={24} className={statusConfig.color} /></div>
                 <div className="flex-1">
                     <p className={`font-semibold ${statusConfig.color}`}>{statusConfig.text}</p>
-                    {order.trackingNumber && <button onClick={() => copyToClipboard(order.trackingNumber!)} className="flex items-center gap-1 text-sm text-gray-600 mt-1"><span>Tracking: {order.trackingNumber}</span><Copy size={14} /></button>}
+                    {order.trackingItems.length > 0 && (
+                        <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="flex items-center gap-1 text-sm text-gray-600 mt-1">
+                            <span>Tracking: {order.trackingItems[0].trackingNumber}</span><Copy size={14} />
+                        </button>
+                    )}
                 </div>
-                {order.trackingUrl && <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
+                {order.trackingItems[0]?.trackingUrl && <a href={order.trackingItems[0].trackingUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
             </div>
+
+            {/* Shipment Tracking Details */}
+            {order.trackingItems.length > 0 && (
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Truck size={18} className="text-indigo-600" />
+                        <h2 className="font-semibold text-gray-900">Shipment Tracking</h2>
+                    </div>
+                    <div className="space-y-3">
+                        {order.trackingItems.map((item, idx) => (
+                            <div key={idx} className={`space-y-1.5 ${idx > 0 ? 'pt-3 border-t border-gray-100' : ''}`}>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
+                                    {item.dateShipped && <span className="text-xs text-gray-400">Shipped {item.dateShipped}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">{item.trackingNumber}</code>
+                                    <button onClick={() => copyToClipboard(item.trackingNumber)} className="p-1.5 active:bg-gray-100 rounded text-gray-400"><Copy size={14} /></button>
+                                    {item.trackingUrl && (
+                                        <a href={item.trackingUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 active:bg-blue-50 rounded text-blue-500"><ExternalLink size={14} /></a>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-900 mb-3">Customer</h2>

@@ -8,11 +8,22 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { cacheAside, CacheTTL } from '../utils/cache';
+import { extractOrderTracking, TrackingItem } from '../utils/orderTracking';
 
 interface DraftResult {
     draft: string;
     error?: string;
     warning?: string;  // Informational warning (e.g., no policies configured)
+}
+
+interface OrderContext {
+    orderNumber: string;
+    status: string;
+    total: string;
+    currency: string;
+    dateCreated: string;
+    trackingItems: TrackingItem[];
+    lineItems: { name: string; quantity: number }[];
 }
 
 interface ConversationContext {
@@ -21,6 +32,7 @@ interface ConversationContext {
     customerEmail: string;
     totalSpent?: string;
     ordersCount?: number;
+    recentOrders: OrderContext[];
 }
 
 export class InboxAIService {
@@ -61,10 +73,13 @@ export class InboxAIService {
                 return { draft: '', error: 'Conversation not found' };
             }
 
-            // 3. Build conversation context
-            const context = this.buildConversationContext(conversation);
+            // 3. Look up customer's recent orders for context
+            const recentOrders = await this.fetchCustomerOrders(accountId, conversation);
 
-            // 4. Fetch published policies for the account
+            // 4. Build conversation context (includes orders)
+            const context = this.buildConversationContext(conversation, recentOrders);
+
+            // 5. Fetch published policies for the account
             const policies = await cacheAside(
                 `policies:${accountId}`,
                 async () => prisma.policy.findMany({
@@ -81,7 +96,7 @@ export class InboxAIService {
                 Logger.debug('[InboxAI] No store policies configured - AI responses may be generic', { accountId });
             }
 
-            // 5. Fetch the inbox_draft_reply prompt template
+            // 6. Fetch the inbox_draft_reply prompt template
             const promptTemplate = await prisma.aIPrompt.findUnique({
                 where: { promptId: 'inbox_draft_reply' }
             });
@@ -89,14 +104,14 @@ export class InboxAIService {
             // Use default prompt if none configured
             const basePrompt = promptTemplate?.content || this.getDefaultPrompt();
 
-            // 6. Build the full prompt with context
+            // 7. Build the full prompt with context
             const fullPrompt = this.injectVariables(basePrompt, context, policies);
 
-            // 7. Call OpenRouter API
+            // 8. Call OpenRouter API
             const apiKey = account.openRouterApiKey;
             const model = account.aiModel || 'openai/gpt-4o';
 
-            // 7. Build user message - include current draft if available
+            // 9. Build user message - include current draft if available
             let userMessage = 'Generate a draft reply for this customer conversation.';
             if (currentDraft?.trim()) {
                 userMessage = `The agent has already started drafting a reply. Continue, expand, or refine this draft while maintaining the same tone and intent:
@@ -262,9 +277,57 @@ Generate a complete, improved version of this email.`;
     }
 
     /**
+     * Fetches the customer's recent orders with tracking data.
+     * Why: Gives the AI context about shipment status so it can answer
+     * "where's my order?" style enquiries accurately.
+     */
+    private static async fetchCustomerOrders(accountId: string, conversation: any): Promise<OrderContext[]> {
+        try {
+            const customer = conversation.wooCustomer;
+            const guestEmail = conversation.guestEmail;
+
+            if (!customer?.wooId && !guestEmail) return [];
+
+            // Build query — prefer wooCustomerId, fall back to billing email
+            const where: any = { accountId };
+            if (customer?.wooId) {
+                where.wooCustomerId = customer.wooId;
+            } else {
+                where.billingEmail = guestEmail.toLowerCase().trim();
+            }
+
+            const orders = await prisma.wooOrder.findMany({
+                where,
+                orderBy: { dateCreated: 'desc' },
+                take: 5, // Last 5 orders is sufficient context
+                select: { number: true, status: true, total: true, currency: true, dateCreated: true, rawData: true }
+            });
+
+            return orders.map((o) => {
+                const raw = o.rawData as Record<string, unknown>;
+                const lineItems = Array.isArray(raw.line_items)
+                    ? (raw.line_items as any[]).map((li) => ({ name: String(li.name || 'Unknown'), quantity: Number(li.quantity || 1) }))
+                    : [];
+                return {
+                    orderNumber: o.number,
+                    status: o.status,
+                    total: String(o.total),
+                    currency: o.currency,
+                    dateCreated: o.dateCreated.toISOString(),
+                    trackingItems: extractOrderTracking(raw),
+                    lineItems
+                };
+            });
+        } catch (error) {
+            Logger.warn('Failed to fetch customer orders for AI context', { error });
+            return [];
+        }
+    }
+
+    /**
      * Builds structured conversation context from the conversation data.
      */
-    private static buildConversationContext(conversation: any): ConversationContext {
+    private static buildConversationContext(conversation: any, recentOrders: OrderContext[] = []): ConversationContext {
         const messages = conversation.messages.map((msg: any) => ({
             role: msg.senderType === 'CUSTOMER' ? 'customer' as const :
                 msg.senderType === 'AGENT' ? 'agent' as const : 'system' as const,
@@ -284,7 +347,8 @@ Generate a complete, improved version of this email.`;
             customerName,
             customerEmail,
             totalSpent: customer?.totalSpent ? `$${customer.totalSpent}` : undefined,
-            ordersCount: customer?.ordersCount
+            ordersCount: customer?.ordersCount,
+            recentOrders
         };
     }
 
@@ -316,6 +380,19 @@ Generate a complete, improved version of this email.`;
             context.ordersCount !== undefined ? `Orders: ${context.ordersCount}` : null
         ].filter(Boolean).join('\n');
 
+        // Format order history with tracking info
+        const orderHistory = context.recentOrders.length > 0
+            ? context.recentOrders.map(o => {
+                const items = o.lineItems.map(li => `  - ${li.name} x${li.quantity}`).join('\n');
+                const tracking = o.trackingItems.length > 0
+                    ? o.trackingItems.map(t =>
+                        `  Tracking: ${t.provider} ${t.trackingNumber}${t.trackingUrl ? ` (${t.trackingUrl})` : ''}${t.dateShipped ? ` shipped ${t.dateShipped}` : ''}`
+                    ).join('\n')
+                    : '  No tracking information';
+                return `Order #${o.orderNumber} — ${o.status.toUpperCase()} — ${o.currency} ${o.total} — ${new Date(o.dateCreated).toLocaleDateString()}\n${items}\n${tracking}`;
+            }).join('\n\n')
+            : 'No recent orders found for this customer.';
+
         // Format policies
         const policiesText = policies.length > 0
             ? policies.map(p => `### ${p.title}\n${this.stripHtmlTags(p.content)}`).join('\n\n')
@@ -325,6 +402,7 @@ Generate a complete, improved version of this email.`;
         return template
             .replace(/\{\{conversation_history\}\}/g, conversationHistory)
             .replace(/\{\{customer_details\}\}/g, customerDetails)
+            .replace(/\{\{order_history\}\}/g, orderHistory)
             .replace(/\{\{policies\}\}/g, policiesText);
     }
 
@@ -332,7 +410,7 @@ Generate a complete, improved version of this email.`;
      * Returns the default prompt if none is configured in the database.
      */
     private static getDefaultPrompt(): string {
-        return `You are a helpful customer service agent. Draft a professional reply to the customer based on the conversation history and customer context.
+        return `You are a helpful customer service agent. Draft a professional reply to the customer based on the conversation history, customer context, and their recent orders.
 
 CONVERSATION HISTORY:
 {{conversation_history}}
@@ -340,12 +418,16 @@ CONVERSATION HISTORY:
 CUSTOMER DETAILS:
 {{customer_details}}
 
+RECENT ORDERS & TRACKING:
+{{order_history}}
+
 STORE POLICIES:
 {{policies}}
 
 Guidelines:
 - Be polite, empathetic, and professional
-- Reference specific order details if mentioned in the conversation
+- Reference specific order details and tracking numbers when relevant to the customer's query
+- If the customer is asking about their shipment, include the tracking number and tracking link from their order
 - Follow store policies when applicable
 - Keep response concise but complete
 - Address all customer concerns raised

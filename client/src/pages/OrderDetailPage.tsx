@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate, fixMojibake, formatCurrency } from '../utils/format';
-import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings, Truck, ExternalLink, Copy } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
@@ -362,6 +362,56 @@ export function OrderDetailPage() {
                             )}
                         </div>
                     </div>
+
+                    {/* Shipment Tracking Card */}
+                    {order.tracking_items?.length > 0 && (
+                        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+                            <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                                <Truck size={18} className="text-blue-500" />
+                                Shipment Tracking
+                            </div>
+
+                            <div className="space-y-3">
+                                {order.tracking_items.map((item: any, idx: number) => (
+                                    <div key={idx} className={`space-y-2 ${idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''}`}>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
+                                            {item.dateShipped && (
+                                                <span className="text-xs text-gray-400">
+                                                    • Shipped {formatDate(item.dateShipped)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">
+                                                {item.trackingNumber}
+                                            </code>
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(item.trackingNumber);
+                                                }}
+                                                className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                                                title="Copy tracking number"
+                                            >
+                                                <Copy size={14} />
+                                            </button>
+                                            {item.trackingUrl && (
+                                                <a
+                                                    href={item.trackingUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"
+                                                    title="Track shipment"
+                                                >
+                                                    <ExternalLink size={14} />
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Attribution Card */}
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
