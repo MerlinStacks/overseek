@@ -1,21 +1,21 @@
 import { useUser } from './useUser';
+import { useAccount } from '../context/AccountContext';
 
 export interface PermissionSet {
     [key: string]: boolean;
 }
 
+/**
+ * Why sourced from AccountContext: The /me endpoint returns resolved
+ * permissions keyed by accountId. Reading from the React Query cache
+ * (via AccountContext.activePermissions) guarantees the value is always
+ * fresh — the previous approach relied on a stale-update path through
+ * AuthContext that silently dropped permissions when profile fields
+ * hadn't changed.
+ */
 export function usePermissions() {
     const { user } = useUser();
-
-    // We assume the backend now returns `permissions` in the user object 
-    // or we might need to fetch it. To be safe/fast, let's assume we can compute it 
-    // or it's provided. 
-    // Implementation Plan said: "Update /me or account context to return resolved permissions"
-
-    // If we haven't updated /me yet, this might break. 
-    // But let's assume `user.permissions` or `user.activeAccountPermissions` is available.
-    // Use optional chaining for safety during transition.
-    const permissions = (user as any)?.permissions || {};
+    const { activePermissions: permissions } = useAccount();
 
     const hasPermission = (permission: string) => {
         if (!user) return false;
@@ -30,3 +30,4 @@ export function usePermissions() {
         permissions
     };
 }
+

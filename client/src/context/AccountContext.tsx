@@ -37,6 +37,8 @@ interface AccountContextType {
     isLoading: boolean;
     refreshAccounts: () => Promise<void>;
     setCurrentAccount: (account: Account) => void;
+    /** Resolved permissions for the current user+account, sourced from /me */
+    activePermissions: Record<string, boolean>;
 }
 
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
@@ -106,7 +108,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const userRef = useRef(user);
     userRef.current = user;
 
-    useQuery({
+    const { data: meData } = useQuery({
         queryKey: ['user-permissions', currentAccount?.id],
         queryFn: async () => {
             const res = await fetch('/api/auth/me', {
@@ -148,8 +150,13 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     // isLoading should be true if either auth is loading or accounts are loading
     const effectiveLoading = authLoading || isLoading;
 
+    /** Why derived here: permissions live in the React Query cache, keyed by
+     *  accountId. Reading them directly avoids the stale-update problem where
+     *  updateUser() was skipped when basic profile fields hadn't changed. */
+    const activePermissions: Record<string, boolean> = (meData?.permissions as Record<string, boolean>) ?? {};
+
     return (
-        <AccountContext.Provider value={{ accounts, currentAccount, isLoading: effectiveLoading, refreshAccounts, setCurrentAccount }}>
+        <AccountContext.Provider value={{ accounts, currentAccount, isLoading: effectiveLoading, refreshAccounts, setCurrentAccount, activePermissions }}>
             {children}
         </AccountContext.Provider>
     );
