@@ -24,7 +24,8 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
             .then(resData => setData(Array.isArray(resData) ? resData : []))
             .catch(e => Logger.error('Failed to fetch customer growth', { error: e }))
             .finally(() => setLoading(false));
-    }, [currentAccount, token, dateRange]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token, dateRange]);
 
     const getChartOptions = (): EChartsOption => {
         const dates = data.map(d => {

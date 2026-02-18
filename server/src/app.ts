@@ -1,5 +1,4 @@
 require('dotenv').config();
-// Force Restart Trigger
 
 import Fastify, { FastifyError } from 'fastify';
 import cors from '@fastify/cors';
@@ -23,7 +22,7 @@ import { RATE_LIMITS, UPLOAD_LIMITS, SCHEDULER_LIMITS } from './config/limits';
 import { verifyToken } from './utils/auth';
 import { registerRoutes } from './config/routes';
 import { setupSocketHandlers } from './config/socketHandlers';
-const { Logger, fastifyLoggerConfig } = require('./utils/logger');
+import { Logger, fastifyLoggerConfig } from './utils/logger';
 
 // Init Queues for Bull Board
 QueueFactory.init();
@@ -262,7 +261,13 @@ async function initializeApp() {
 
             return next();
         } catch (error) {
-            Logger.warn('[Socket.IO] Auth failed', { error });
+            // Expired tokens are routine on WebSocket reconnects — no action needed
+            const isExpired = error instanceof Error && error.name === 'TokenExpiredError';
+            if (isExpired) {
+                Logger.debug('[Socket.IO] Token expired on socket auth', { socketId: socket.id });
+            } else {
+                Logger.warn('[Socket.IO] Auth failed', { error });
+            }
             return next(new Error('Unauthorized'));
         }
     });

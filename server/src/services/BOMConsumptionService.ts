@@ -161,6 +161,23 @@ export class BOMConsumptionService {
             for (const deduction of deductionPlan) {
                 try {
                     await this.executeDeduction(accountId, deduction, wooService);
+
+                    // Write deterministic ledger entry — recovery uses this instead of heuristic stock checks
+                    await prisma.bOMDeductionLedger.create({
+                        data: {
+                            accountId,
+                            orderId,
+                            componentType: deduction.componentType,
+                            componentId: deduction.componentId,
+                            componentName: deduction.componentName,
+                            wooId: deduction.wooId,
+                            parentWooId: deduction.parentWooId,
+                            quantityDeducted: deduction.quantityDeducted,
+                            previousStock: deduction.previousStock,
+                            newStock: deduction.newStock
+                        }
+                    });
+
                     consumed.push(deduction);
 
                     if (deduction.componentType === 'ProductVariation') {
@@ -177,8 +194,8 @@ export class BOMConsumptionService {
                     // Note: In case of PROCESS CRASH, the Recovery Job will handle this.
                     // This block handles runtime errors (e.g. API 500).
                     Logger.warn(`[BOMConsumption] Triggering immediate rollback due to error`, { accountId, orderId });
-                    await this.rollbackDeductions(accountId, consumed); // Rollback what was done so far
-                    throw err; // Re-throw to stop processing
+                    await this.rollbackDeductions(accountId, consumed);
+                    throw err;
                 }
             }
 
@@ -197,6 +214,12 @@ export class BOMConsumptionService {
             await redisClient.setex(consumedKey, this.CONSUMED_TTL_SECONDS, new Date().toISOString());
             await this.clearPendingDeduction(accountId, orderId);
 
+            // Close ledger lifecycle: EXECUTED → COMPLETED
+            await prisma.bOMDeductionLedger.updateMany({
+                where: { accountId, orderId, status: 'EXECUTED' },
+                data: { status: 'COMPLETED' }
+            });
+
             Logger.info(`[BOMConsumption] Order ${order.id} complete: ${consumed.length} components consumed`, { accountId });
 
         } catch (error: any) {
@@ -212,12 +235,13 @@ export class BOMConsumptionService {
     // --- ROLLBACK & RECOVERY MECHANISMS ---
 
     /**
-     * Save intended deductions to Redis before execution.
-     * TTL is short (30m) because if it takes longer, it's definitely stuck.
+     * Flag this order as having pending deductions.
+     * The DB ledger is the source of truth for actual deductions — this flag
+     * only exists so the recovery job can find stalled orders quickly.
      */
-    private static async trackPendingDeduction(accountId: string, orderId: number, plan: ComponentDeduction[]) {
+    private static async trackPendingDeduction(accountId: string, orderId: number, _plan: ComponentDeduction[]) {
         const key = `${this.PENDING_KEY_PREFIX}${accountId}:${orderId}`;
-        await redisClient.setex(key, 1800, JSON.stringify(plan)); // 30 mins TTL
+        await redisClient.setex(key, 1800, '1');
     }
 
     private static async clearPendingDeduction(accountId: string, orderId: number) {
@@ -251,24 +275,36 @@ export class BOMConsumptionService {
                         where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
                         data: { stockQuantity: { increment: rollbackQty } }
                     });
-                    // Update Woo
+                    // Update Woo — fetch fresh stock to avoid stale-value race conditions
+                    let freshStock = deduction.newStock;
+                    try {
+                        const variations = await wooService.getProductVariations(deduction.parentWooId!);
+                        const target = variations?.find((v: any) => v.id === deduction.wooId);
+                        if (target?.stock_quantity != null) freshStock = target.stock_quantity;
+                    } catch {
+                        Logger.warn(`[BOMConsumption] Could not fetch fresh variation stock for rollback, using stale value`, { wooId: deduction.wooId });
+                    }
                     await withRetry(() => wooService.updateProductVariation(
                         deduction.parentWooId!,
                         deduction.wooId!,
-                        { stock_quantity: deduction.newStock + rollbackQty } // Best guess or increment?
-                        // Woo API doesn't support "increment", need absolute value.
-                        // We use (newStock + rollback) which assumes newStock was the result of deduction.
-                        // Ideally we should fetch fresh stock, but for rollback, using data relative to the deduction is often safer against race conditions.
-                        // Actually, safer to FETCH fresh stock and add.
+                        { stock_quantity: freshStock + rollbackQty, manage_stock: true }
                     ));
                 } else if (deduction.componentType === 'WooProduct') {
                     await prisma.wooProduct.update({
                         where: { id: deduction.componentId },
                         data: { stockQuantity: { increment: rollbackQty } }
                     });
+                    // Fetch fresh stock to avoid stale-value race conditions
+                    let freshStock = deduction.newStock;
+                    try {
+                        const wooProduct = await wooService.getProduct(deduction.wooId!);
+                        if (wooProduct?.stock_quantity != null) freshStock = wooProduct.stock_quantity;
+                    } catch {
+                        Logger.warn(`[BOMConsumption] Could not fetch fresh product stock for rollback, using stale value`, { wooId: deduction.wooId });
+                    }
                     await withRetry(() => wooService.updateProduct(
                         deduction.wooId!,
-                        { stock_quantity: deduction.newStock + rollbackQty }
+                        { stock_quantity: freshStock + rollbackQty, manage_stock: true }
                     ));
                 }
 
@@ -281,107 +317,100 @@ export class BOMConsumptionService {
     }
 
     /**
-     * RECOVERY JOB: Find stalled pending deductions and check if they need rollback.
-     * Called by MaintenanceScheduler.
+     * RECOVERY JOB: Find stalled deductions using the DB ledger.
+     * Queries for EXECUTED ledger entries whose orderId doesn't have a
+     * consumed key in Redis — indicating the process crashed mid-deduction.
+     * Deterministic: ledger entries prove deductions happened, no stock guessing.
      */
     static async recoverStalledDeductions() {
-        // Scan for keys matching bom_pending:*
+        // Phase 1: Check Redis pending keys for backward compat (old-format recovery)
         const keys = await redisClient.keys(`${this.PENDING_KEY_PREFIX}*`);
-        if (keys.length === 0) return;
-
-        Logger.info(`[BOMConsumption] Found ${keys.length} pending deduction records`);
 
         for (const key of keys) {
             try {
-                // Parse Key: bom_pending:{accountId}:{orderId}
                 const parts = key.split(':');
                 if (parts.length < 3) continue;
                 const accountId = parts[1];
                 const orderId = parseInt(parts[2], 10);
 
-                // Get stored plan
-                const data = await redisClient.get(key);
-                if (!data) continue;
-                const plan: ComponentDeduction[] = JSON.parse(data);
-
-                // Check if order is actually Done (consumed key exists)
                 const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
                 const isConsumed = await redisClient.get(consumedKey);
 
                 if (isConsumed) {
-                    // It finished successfully, just the pending key wasn't deleted (rare race condition)
                     await redisClient.del(key);
                     continue;
                 }
 
-                // If not consumed and pending key exists -> potentially crashed.
-                // We don't know EXACTLY how far it got.
-                // Optimistic approach: Check stock of first item. If matches "newStock", assume it ran?
-                // Safe approach: Rollback EVERYTHING? 
-                // Issue: If we rollback something that didn't happen, we increase stock incorrectly.
-
-                // INTELLIGENT RECOVERY:
-                // Check the first item in the plan.
-                // If its current stock matches 'newStock', we assume consistency and maybe just finish the rest?
-                // Or rollback?
-                // Given "partial deduction" is the issue, Rollback is usually standard for "Atomic" failure.
-                // BUT we can't blindly add back. We must verify if deduction happened.
-
-                Logger.warn(`[BOMConsumption] Recovering stalled deduction for Order ${orderId}`, { accountId });
-
-                /* 
-                   Strategy: For each planned deduction, check current stock.
-                   If CurrentStock == PlannedNewStock (approx), then deduction happened -> Rollback it.
-                   If CurrentStock == PreviousStock, deduction didn't happen -> Do nothing.
-                   If CurrentStock is something else -> Manual intervention needed? Or safe default?
-                   Safe default: If Stock <= PlannedNewStock, assume deducted.
-                */
-
-                // For now, simpler implementation: Alert and clean up, or attempt safe rollback
-                // Implementation constraint: Complexity. 
-                // Let's implement a Verified Rollback.
-
-                await this.verifiedRollback(accountId, plan);
+                // Use ledger for deterministic recovery
+                await this.ledgerBasedRollback(accountId, orderId);
                 await redisClient.del(key);
-
             } catch (err) {
                 Logger.error(`[BOMConsumption] Recovery failed for key ${key}`, { err });
+            }
+        }
+
+        // Phase 2: Ledger-only recovery — find orphaned EXECUTED entries
+        // (entries older than 30 min without a consumed key)
+        const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+        const orphanedEntries = await prisma.bOMDeductionLedger.findMany({
+            where: {
+                status: 'EXECUTED',
+                createdAt: { lt: cutoff }
+            },
+            distinct: ['accountId', 'orderId'],
+            select: { accountId: true, orderId: true }
+        });
+
+        for (const { accountId, orderId } of orphanedEntries) {
+            const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
+            const isConsumed = await redisClient.get(consumedKey);
+            if (isConsumed) {
+                // Mark ledger entries as completed (no rollback needed)
+                continue;
+            }
+
+            try {
+                Logger.warn(`[BOMConsumption] Ledger-based recovery for stalled Order ${orderId}`, { accountId });
+                await this.ledgerBasedRollback(accountId, orderId);
+            } catch (err) {
+                Logger.error(`[BOMConsumption] Ledger recovery failed`, { accountId, orderId, err });
             }
         }
     }
 
     /**
-     * Checks current stock vs planned stock to decide if rollback is needed.
-     * Uses a heuristic: if current stock <= post-deduction stock, the deduction
-     * likely occurred and should be rolled back.
+     * Deterministic rollback using the deduction ledger.
+     * Queries all EXECUTED entries for the order and rolls each one back.
+     * No stock-comparison heuristic needed — if it's in the ledger, it happened.
      */
-    private static async verifiedRollback(accountId: string, plan: ComponentDeduction[]) {
-        const itemsToRollback: ComponentDeduction[] = [];
+    private static async ledgerBasedRollback(accountId: string, orderId: number) {
+        const entries = await prisma.bOMDeductionLedger.findMany({
+            where: { accountId, orderId, status: 'EXECUTED' }
+        });
 
-        for (const item of plan) {
-            let currentStock = 0;
-            if (item.componentType === 'InternalProduct') {
-                const p = await prisma.internalProduct.findUnique({ where: { id: item.componentId } });
-                currentStock = p?.stockQuantity ?? 0;
-            } else if (item.componentType === 'WooProduct') {
-                const p = await prisma.wooProduct.findUnique({ where: { id: item.componentId } });
-                currentStock = p?.stockQuantity ?? 0;
-            } else if (item.componentType === 'ProductVariation') {
-                const p = await prisma.productVariation.findFirst({
-                    where: { productId: item.componentId, wooId: item.wooId }
-                });
-                currentStock = p?.stockQuantity ?? 0;
-            }
+        if (entries.length === 0) return;
 
-            if (currentStock <= item.newStock) {
-                Logger.info(`[BOMConsumption] Verified Rollback: Will restore ${item.quantityDeducted} to ${item.componentName}`, { accountId });
-                itemsToRollback.push(item);
-            }
-        }
+        Logger.info(`[BOMConsumption] Ledger rollback: ${entries.length} deductions for Order ${orderId}`, { accountId });
 
-        if (itemsToRollback.length > 0) {
-            await this.rollbackDeductions(accountId, itemsToRollback);
-        }
+        // Convert ledger entries to ComponentDeduction format for rollback
+        const deductions: ComponentDeduction[] = entries.map(e => ({
+            componentType: e.componentType as ComponentDeduction['componentType'],
+            componentId: e.componentId,
+            componentName: e.componentName,
+            wooId: e.wooId ?? undefined,
+            parentWooId: e.parentWooId ?? undefined,
+            quantityDeducted: e.quantityDeducted,
+            previousStock: e.previousStock,
+            newStock: e.newStock
+        }));
+
+        await this.rollbackDeductions(accountId, deductions);
+
+        // Mark all entries as rolled back
+        await prisma.bOMDeductionLedger.updateMany({
+            where: { accountId, orderId, status: 'EXECUTED' },
+            data: { status: 'ROLLED_BACK', rolledBackAt: new Date() }
+        });
     }
 
     // --- REFACTORED HELPERS ---
@@ -407,6 +436,7 @@ export class BOMConsumptionService {
             where: { productId_variationId: { productId: product.id, variationId } },
             include: {
                 items: {
+                    where: { isActive: true },
                     include: {
                         childProduct: { select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true } },
                         childVariation: { select: { productId: true, wooId: true, sku: true, stockQuantity: true, rawData: true } },
@@ -445,8 +475,17 @@ export class BOMConsumptionService {
                     newStock: Math.max(0, prev - quantityToDeduct)
                 });
             } else if (bomItem.childProduct) {
-                const rawData = bomItem.childProduct.rawData as any;
-                const prev = bomItem.childProduct.stockQuantity ?? rawData?.stock_quantity ?? 0;
+                // Guard: skip variable parent products — BOM should link to a specific variation
+                const childRaw = bomItem.childProduct.rawData as any;
+                const isVariable = childRaw?.type?.includes('variable') || childRaw?.variations?.length > 0;
+                if (isVariable) {
+                    Logger.warn(`[BOMConsumption] Skipping deduction on variable parent product — BOM should link to a specific variation`, {
+                        componentName: bomItem.childProduct.name,
+                        wooId: bomItem.childProduct.wooId
+                    });
+                    continue;
+                }
+                const prev = bomItem.childProduct.stockQuantity ?? childRaw?.stock_quantity ?? 0;
                 deductions.push({
                     componentType: 'WooProduct',
                     componentId: bomItem.childProduct.id,
@@ -477,7 +516,7 @@ export class BOMConsumptionService {
                 data: { stockQuantity: deduction.newStock }
             });
             await withRetry(
-                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: deduction.newStock }),
+                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: deduction.newStock, manage_stock: true }),
                 { context: `Update variation ${deduction.wooId}` }
             );
         } else if (deduction.componentType === 'WooProduct') {
@@ -486,7 +525,7 @@ export class BOMConsumptionService {
                 data: { stockQuantity: deduction.newStock }
             });
             await withRetry(
-                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: deduction.newStock }),
+                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: deduction.newStock, manage_stock: true }),
                 { context: `Update product ${deduction.wooId}` }
             );
         }
@@ -619,7 +658,10 @@ export class BOMConsumptionService {
             };
 
         const affectedBomItems = await prisma.bOMItem.findMany({
-            where: whereClause,
+            where: {
+                isActive: true,
+                ...whereClause
+            },
             include: {
                 bom: {
                     include: {

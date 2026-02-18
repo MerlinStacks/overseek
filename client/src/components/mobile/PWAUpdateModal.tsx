@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, AlertTriangle, Download, X, Sparkles } from 'lucide-react';
+import { Logger } from '../../utils/logger';
 
 /**
  * PWAUpdateModal - Prominent update notification for PWA users.
@@ -156,7 +157,7 @@ export function usePWAUpdate() {
         // Listen for service worker updates
         const handleSWUpdate = (event: MessageEvent) => {
             if (event.data?.type === 'SW_UPDATED') {
-                console.log('[PWA] Service worker updated');
+                Logger.info('[PWA] Service worker updated');
                 setUpdateAvailable(true);
 
                 // Check if this is a major update
@@ -232,7 +233,7 @@ export function usePWAUpdate() {
                 }
             }
         } catch (err) {
-            console.warn('[PWA] Version check failed:', err);
+            Logger.warn('[PWA] Version check failed', { error: err });
         }
 
         // Store current version

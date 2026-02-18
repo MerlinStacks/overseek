@@ -9,6 +9,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Logger } from '../utils/logger';
+import type { DeactivatedItem } from '../components/bom/DeactivatedItemsBanner';
 
 // Types
 export interface BOMComponent {
@@ -75,6 +76,7 @@ export interface UseBOMSyncReturn {
     pendingChanges: PendingChange[];
     syncHistory: SyncLogEntry[];
     consumptionHistory: ConsumptionEntry[];
+    deactivatedItems: DeactivatedItem[];
     stats: SyncStats;
 
     // Loading states
@@ -97,6 +99,7 @@ export interface UseBOMSyncReturn {
     handleCancelSync: () => Promise<void>;
     handleTogglePause: () => void;
     handleRefresh: () => void;
+    handleReactivateItem: (itemId: string) => Promise<void>;
     fetchPendingChanges: () => Promise<void>;
     fetchSyncHistory: () => Promise<void>;
 }
@@ -109,6 +112,7 @@ export function useBOMSync(): UseBOMSyncReturn {
     const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
     const [syncHistory, setSyncHistory] = useState<SyncLogEntry[]>([]);
     const [consumptionHistory, setConsumptionHistory] = useState<ConsumptionEntry[]>([]);
+    const [deactivatedItems, setDeactivatedItems] = useState<DeactivatedItem[]>([]);
 
     // UI state
     const [isLoadingPending, setIsLoadingPending] = useState(true);
@@ -336,13 +340,54 @@ export function useBOMSync(): UseBOMSyncReturn {
     const handleRefresh = useCallback(() => {
         fetchPendingChanges();
         fetchSyncHistory();
+        fetchDeactivatedItems();
     }, [fetchPendingChanges, fetchSyncHistory]);
+
+    /** Fetch deactivated BOM items for the banner */
+    const fetchDeactivatedItems = useCallback(async () => {
+        if (!currentAccount || !token) return;
+        try {
+            const res = await fetch('/api/inventory/bom/deactivated-items', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setDeactivatedItems(data.items || []);
+            }
+        } catch (err) {
+            Logger.error('Failed to fetch deactivated items', { error: err });
+        }
+    }, [currentAccount, token]);
+
+    /** Reactivate a single deactivated item, then refresh the list */
+    const handleReactivateItem = useCallback(async (itemId: string) => {
+        if (!currentAccount || !token) return;
+        try {
+            const res = await fetch(`/api/inventory/bom/items/${itemId}/reactivate`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                await fetchDeactivatedItems();
+                await fetchPendingChanges();
+            }
+        } catch (err) {
+            Logger.error('Failed to reactivate BOM item', { error: err });
+        }
+    }, [currentAccount, token, fetchDeactivatedItems, fetchPendingChanges]);
 
     // Initial fetch
     useEffect(() => {
         if (currentAccount && token) {
             fetchPendingChanges();
             fetchSyncHistory();
+            fetchDeactivatedItems();
             checkSyncStatus();
 
             // Calculate next sync time (assuming hourly)
@@ -352,12 +397,13 @@ export function useBOMSync(): UseBOMSyncReturn {
             const minutesUntil = Math.round((nextHour.getTime() - now.getTime()) / 60000);
             setNextSyncIn(`${minutesUntil} min`);
         }
-    }, [currentAccount, token, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
+    }, [currentAccount, token, fetchPendingChanges, fetchSyncHistory, fetchDeactivatedItems, checkSyncStatus]);
 
     return {
         pendingChanges,
         syncHistory,
         consumptionHistory,
+        deactivatedItems,
         stats,
         isLoadingPending,
         isLoadingHistory,
@@ -374,6 +420,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         handleCancelSync,
         handleTogglePause,
         handleRefresh,
+        handleReactivateItem,
         fetchPendingChanges,
         fetchSyncHistory,
     };

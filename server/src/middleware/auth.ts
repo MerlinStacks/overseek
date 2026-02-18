@@ -113,7 +113,7 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
         const crypto = await import('crypto');
         const secret = process.env.JWT_SECRET || '';
         const fingerprint = crypto.createHash('sha256').update(secret.substring(0, 8)).digest('hex').substring(0, 12);
-        Logger.warn('Auth failed', { error: err.message, url: request.url, jwtFingerprint: fingerprint });
+        Logger.info('[Auth] Token verification failed', { error: err.message, url: request.url, jwtFingerprint: fingerprint });
         return reply.code(401).send({ error: 'Invalid token' });
     }
 };

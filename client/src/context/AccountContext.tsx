@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Logger } from '../utils/logger';
 import { useAuth } from './AuthContext';
 
@@ -41,7 +42,7 @@ interface AccountContextType {
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-    const { token, isLoading: authLoading, logout, updateUser } = useAuth();
+    const { token, user, isLoading: authLoading, logout, updateUser } = useAuth();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -96,24 +97,44 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (currentAccount?.id) {
             localStorage.setItem('selectedAccountId', currentAccount.id);
+        }
+    }, [currentAccount?.id]);
 
-            // Fetch updated user permissions for this account context
-            fetch('/api/auth/me', {
+    /** Why React Query: The raw fetch('/api/auth/me') on account switch was
+     *  unmanaged — no abort, no dedup, no cache. RQ gives all three for free,
+     *  keyed by accountId so switching back to a previous account is instant. */
+    const userRef = useRef(user);
+    userRef.current = user;
+
+    useQuery({
+        queryKey: ['user-permissions', currentAccount?.id],
+        queryFn: async () => {
+            const res = await fetch('/api/auth/me', {
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': currentAccount!.id
                 }
-            })
-                .then(res => res.ok ? res.json() : null)
-                .then(userData => {
-                    if (userData) {
-                        updateUser(userData);
-                    }
-                })
-                .catch(e => Logger.error('Failed to fetch user permissions', { error: e }));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+            });
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!currentAccount?.id && !!token,
+        staleTime: 5 * 60 * 1000,
+        select: (userData) => {
+            if (userData) {
+                const currentUser = userRef.current;
+                const changed = !currentUser ||
+                    currentUser.isSuperAdmin !== userData.isSuperAdmin ||
+                    currentUser.fullName !== userData.fullName ||
+                    currentUser.avatarUrl !== userData.avatarUrl ||
+                    currentUser.email !== userData.email;
+                if (changed) {
+                    updateUser(userData);
+                }
+            }
+            return userData;
+        },
+    });
 
     useEffect(() => {
         // Don't fetch accounts until auth has finished loading

@@ -25,10 +25,12 @@ import {
 import { useBOMSync } from '../hooks/useBOMSync';
 import { SyncStatsCards } from '../components/bom/SyncStatsCards';
 import { SyncProductRow } from '../components/bom/SyncProductRow';
+import { DeactivatedItemsBanner } from '../components/bom/DeactivatedItemsBanner';
 
 export function BOMSyncPage() {
     const {
         pendingChanges,
+        deactivatedItems,
         stats,
         isLoadingPending,
         isSyncing,
@@ -44,6 +46,7 @@ export function BOMSyncPage() {
         handleCancelSync,
         handleTogglePause,
         handleRefresh,
+        handleReactivateItem,
     } = useBOMSync();
 
     // Local UI state
@@ -164,6 +167,12 @@ export function BOMSyncPage() {
                     onCancelSync={handleCancelSync}
                 />
             )}
+
+            {/* Deactivated Items Banner */}
+            <DeactivatedItemsBanner
+                items={deactivatedItems}
+                onReactivate={handleReactivateItem}
+            />
 
             {/* Stats Cards */}
             <SyncStatsCards

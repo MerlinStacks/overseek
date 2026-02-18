@@ -24,24 +24,38 @@ export class StockValidationService {
      * Compares the expected stock (from local calculation) with actual WooCommerce stock.
      * 
      * @param accountId - Account context
-     * @param wooProductId - WooCommerce product ID
+     * @param wooProductId - WooCommerce product ID (parent product ID)
      * @param expectedCurrentStock - What we expect current stock to be before our change
+     * @param variationId - Optional variation ID to validate variant-level stock
      * @returns Validation result with mismatch details
      */
     static async validateBeforeWrite(
         accountId: string,
         wooProductId: number,
-        expectedCurrentStock: number
+        expectedCurrentStock: number,
+        variationId?: number
     ): Promise<StockValidationResult> {
         try {
             const wooService = await WooService.forAccount(accountId);
-            const wooProduct = await wooService.getProduct(wooProductId);
-            const wooStock = wooProduct.stock_quantity;
-            const productName = wooProduct.name;
+
+            let wooStock: number | null = null;
+            let productName: string | undefined;
+
+            if (variationId && variationId > 0) {
+                // Fetch variation-level stock via the variations endpoint
+                const variations = await wooService.getProductVariations(wooProductId);
+                const target = variations?.find((v: any) => v.id === variationId);
+                wooStock = target?.stock_quantity ?? null;
+                productName = target?.name || `Variation #${variationId}`;
+            } else {
+                const wooProduct = await wooService.getProduct(wooProductId);
+                wooStock = wooProduct.stock_quantity;
+                productName = wooProduct.name;
+            }
 
             // If WooCommerce doesn't manage stock, we can't validate
             if (typeof wooStock !== 'number') {
-                Logger.debug(`[StockValidation] Product ${wooProductId} does not have managed stock, skipping validation`);
+                Logger.debug(`[StockValidation] Product ${wooProductId}${variationId ? ` variation ${variationId}` : ''} does not have managed stock, skipping validation`);
                 return {
                     valid: true,
                     wooStock: null,
@@ -55,7 +69,7 @@ export class StockValidationService {
             const valid = diff === 0;
 
             if (!valid) {
-                Logger.warn(`[StockValidation] Stock mismatch for product ${wooProductId}: Woo=${wooStock}, Expected=${expectedCurrentStock}, Diff=${diff}`, { accountId });
+                Logger.warn(`[StockValidation] Stock mismatch for product ${wooProductId}${variationId ? ` variation ${variationId}` : ''}: Woo=${wooStock}, Expected=${expectedCurrentStock}, Diff=${diff}`, { accountId });
             }
 
             return {
@@ -66,7 +80,7 @@ export class StockValidationService {
                 productName
             };
         } catch (error: any) {
-            Logger.error(`[StockValidation] Failed to validate stock for product ${wooProductId}`, { error: error.message, accountId });
+            Logger.error(`[StockValidation] Failed to validate stock for product ${wooProductId}${variationId ? ` variation ${variationId}` : ''}`, { error: error.message, accountId });
             // On error, allow the operation but mark as skipped
             return {
                 valid: true, // Allow to proceed

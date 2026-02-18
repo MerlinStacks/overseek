@@ -65,7 +65,8 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
 
         fetchData();
 
-    }, [currentAccount, token, dateRange, comparison]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token, dateRange, comparison]);
 
     const getChartOptions = (): EChartsOption => {
         const dates = data.map(d => {

@@ -54,7 +54,8 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchSuggestions, 300000, [fetchSuggestions], 'ad-suggestions');

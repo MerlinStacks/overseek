@@ -41,7 +41,8 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
         } catch (error) {
             Logger.error('Notification poll failed', { error: error });
         }
-    }, [token, currentAccount]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, currentAccount?.id]);
 
     useVisibilityPolling(fetchNotifications, 30000, [fetchNotifications], 'notifications');
 

@@ -48,11 +48,11 @@ export class PicklistService {
         // 2. Pre-fetch Products
         const allProductIds = new Set<number>();
         for (const order of orders) {
-             const raw = order.rawData as any;
-             const lineItems = raw.line_items || [];
-             for (const item of lineItems) {
-                 if (item.product_id) allProductIds.add(item.product_id);
-             }
+            const raw = order.rawData as any;
+            const lineItems = raw.line_items || [];
+            for (const item of lineItems) {
+                if (item.product_id) allProductIds.add(item.product_id);
+            }
         }
 
         const productCache = await this.prefetchProducts(accountId, Array.from(allProductIds));
@@ -286,27 +286,31 @@ export class PicklistService {
 
             // Resolve Variation Logic
             let finalBinLocation = product.binLocation;
+            let manageStock = raw?.manage_stock === true;
+
             // If we have a variation ID and we fetched variations, check if we have a match
             if (variationId !== 0 && product.variations && product.variations.length > 0) {
-                // If fetching from cache, product.variations contains ALL variations. Need to filter.
-                // If fetching from fallback findFirst, it might contain only the specific one.
-                // Safest to find by ID.
                 const variant = product.variations.find((v: any) => v.wooId === variationId);
 
-                if (variant && variant.binLocation) {
-                    finalBinLocation = variant.binLocation;
+                if (variant) {
+                    if (variant.binLocation) {
+                        finalBinLocation = variant.binLocation;
+                    }
+                    // Use variant's manage_stock flag — parent may not manage stock on variable products
+                    const variantRaw = variant.rawData as any;
+                    manageStock = variant.manageStock || variantRaw?.manage_stock === true;
                 }
             }
 
             callback({
                 productId: variationId !== 0 ? variationId : product.wooId,
-                sku: (variationId !== 0) ? (product.variations?.find((v:any) => v.wooId === variationId)?.sku || product.sku || '') : (product.sku || ''),
+                sku: (variationId !== 0) ? (product.variations?.find((v: any) => v.wooId === variationId)?.sku || product.sku || '') : (product.sku || ''),
                 name: product.name,
                 quantity,
                 binLocation: finalBinLocation,
                 stockStatus: product.stockStatus,
                 image: product.images ? (product.images as any)[0] : null,
-                manageStock: raw?.manage_stock === true
+                manageStock
             });
         }
     }

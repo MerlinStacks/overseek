@@ -192,6 +192,9 @@ model Account {
 
   // Internal Products (component-only, not synced to WooCommerce)
   internalProducts    InternalProduct[]
+  
+  // BOM Deduction Ledger (crash-recovery audit trail)
+  bomDeductionLedger  BOMDeductionLedger[]
 
   // Backup System
   backupSettings      AccountBackupSettings?
@@ -719,6 +722,11 @@ model BOMItem {
   quantity    Decimal @db.Decimal(10, 4) // e.g. 1.5 meters, 0.05 kg
   wasteFactor Decimal @default(0) @db.Decimal(5, 4) // e.g. 0.10 for 10% waste
 
+  /// Soft-deactivation: false when the referenced product/variation no longer exists in WooCommerce.
+  /// Deactivated items are skipped during sync and consumption but retained for auditing.
+  isActive          Boolean  @default(true)
+  deactivatedReason String?  // e.g. "VARIATION_DELETED_IN_WOO", "PRODUCT_404"
+
   bom              BOM              @relation(fields: [bomId], references: [id], onDelete: Cascade)
   supplierItem     SupplierItem?    @relation(fields: [supplierItemId], references: [id])
   childProduct     WooProduct?      @relation("ProductAsBOMComponent", fields: [childProductId], references: [id])
@@ -726,6 +734,32 @@ model BOMItem {
   internalProduct  InternalProduct? @relation("InternalProductAsBOMComponent", fields: [internalProductId], references: [id])
 
   // @@unique([bomId, supplierItemId]) // Removed as it conflicts with optional fields
+}
+
+/// Tracks individual BOM stock deductions for deterministic crash recovery.
+/// Each row represents one component deduction from an order. Recovery logic
+/// queries EXECUTED entries without a corresponding order-completion record
+/// to decide what needs rollback — no heuristic stock comparison required.
+model BOMDeductionLedger {
+  id             String   @id @default(uuid())
+  accountId      String
+  orderId        Int
+  componentType  String   // 'WooProduct' | 'ProductVariation' | 'InternalProduct'
+  componentId    String
+  componentName  String
+  wooId          Int?
+  parentWooId    Int?     // For variations
+  quantityDeducted Float
+  previousStock  Float
+  newStock       Float
+  status         String   @default("EXECUTED") // EXECUTED | ROLLED_BACK
+  createdAt      DateTime @default(now())
+  rolledBackAt   DateTime?
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, orderId])
+  @@index([status])
 }
 
 model PurchaseOrder {

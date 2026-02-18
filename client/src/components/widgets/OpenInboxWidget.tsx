@@ -38,7 +38,8 @@ export function OpenInboxWidget(_props: WidgetProps) {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchCount, 60000, [fetchCount], 'open-inbox');

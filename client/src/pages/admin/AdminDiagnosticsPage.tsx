@@ -1,227 +1,38 @@
-import { useState, useEffect } from 'react';
-import { Logger } from '../../utils/logger';
-import { useAuth } from '../../context/AuthContext';
 import {
     Bell, Trash2, RefreshCw, Send, AlertTriangle, CheckCircle, XCircle,
-    ChevronDown, ChevronRight, Activity, Database, Server, Zap, Webhook,
-    Clock, HardDrive
+    ChevronDown, ChevronRight, Activity, Database, Zap, Webhook,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
-
-interface SystemHealthData {
-    status: 'healthy' | 'degraded' | 'unhealthy';
-    timestamp: string;
-    version: {
-        app: string;
-        node: string;
-        uptime: number;
-        uptimeFormatted: string;
-    };
-    services: Record<string, { status: 'healthy' | 'degraded' | 'unhealthy'; latencyMs?: number; details?: string }>;
-    queues: Record<string, { waiting: number; active: number; completed: number; failed: number }>;
-    sync: {
-        totalAccounts: number;
-        entityTypes: Array<{
-            type: string;
-            accountsTracked: number;
-            accountsSynced: number;
-            oldestSync: string | null;
-            newestSync: string | null;
-        }>;
-    };
-    webhooks: {
-        failed24h: number;
-        processed24h: number;
-        received24h: number;
-    };
-}
-
-interface PushSubscriptionData {
-    totalSubscriptions: number;
-    uniqueAccounts: number;
-    byAccount: Record<string, Array<{
-        id: string;
-        userId: string;
-        userEmail: string;
-        userName: string | null;
-        accountId: string;
-        accountName: string;
-        notifyOrders: boolean;
-        notifyMessages: boolean;
-        endpointShort: string;
-        updatedAt: string;
-    }>>;
-}
-
-interface TestPushResult {
-    success: boolean;
-    accountId: string;
-    accountName: string;
-    sent: number;
-    failed: number;
-    eligibleSubscriptions: number;
-    subscriptionIds: Array<{ id: string; userId: string; endpointShort: string }>;
-}
-
-interface Account {
-    id: string;
-    name: string;
-}
+import { useDiagnostics } from './useDiagnostics';
 
 /**
- * Super Admin diagnostics page for debugging notification issues.
- * 
- * Provides tools to:
- * - View all push subscriptions grouped by account
- * - Send test notifications to specific accounts
- * - Delete individual or all push subscriptions
+ * AdminDiagnosticsPage — presentational shell.
+ *
+ * All state management and data-fetching live in the `useDiagnostics` hook.
+ * This component only renders UI.
  */
 export function AdminDiagnosticsPage() {
-    const { token } = useAuth();
-    const [loading, setLoading] = useState(false);
-    const [subscriptions, setSubscriptions] = useState<PushSubscriptionData | null>(null);
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [selectedAccountId, setSelectedAccountId] = useState('');
-    const [testType, setTestType] = useState<'order' | 'message'>('order');
-    const [testResult, setTestResult] = useState<TestPushResult | null>(null);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
-
-    // System Health State
-    const [systemHealth, setSystemHealth] = useState<SystemHealthData | null>(null);
-    const [healthLoading, setHealthLoading] = useState(false);
-
-    // Fetch system health on mount
-    useEffect(() => {
-        fetchSystemHealth();
-    }, [token]);
-
-    const fetchSystemHealth = async () => {
-        setHealthLoading(true);
-        try {
-            const res = await fetch('/api/admin/system-health', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setSystemHealth(data);
-            }
-        } catch (e) {
-            Logger.error('Failed to fetch system health', { error: e });
-        } finally {
-            setHealthLoading(false);
-        }
-    };
-
-    const fetchSubscriptions = async () => {
-        setLoading(true);
-        setMessage(null);
-        try {
-            const res = await fetch('/api/admin/diagnostics/push-subscriptions', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error('Failed to fetch subscriptions');
-            const data = await res.json();
-            setSubscriptions(data);
-            // Auto-expand all accounts
-            setExpandedAccounts(new Set(Object.keys(data.byAccount)));
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchAccounts = async () => {
-        try {
-            const res = await fetch('/api/admin/accounts', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setAccounts(data.map((a: any) => ({ id: a.id, name: a.name })));
-            }
-        } catch (e) {
-            Logger.error('Failed to fetch accounts', { error: e });
-        }
-    };
-
-    const sendTestPush = async () => {
-        if (!selectedAccountId) return;
-        setLoading(true);
-        setMessage(null);
-        setTestResult(null);
-        try {
-            const res = await fetch(`/api/admin/diagnostics/test-push/${selectedAccountId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ type: testType })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Test failed');
-            setTestResult(data);
-            setMessage({
-                type: data.sent > 0 ? 'success' : 'error',
-                text: data.sent > 0
-                    ? `Sent ${data.sent} notifications to ${data.accountName}`
-                    : `No notifications sent. ${data.eligibleSubscriptions} eligible subscriptions found.`
-            });
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const deleteSubscription = async (subscriptionId: string) => {
-        if (!confirm('Delete this push subscription?')) return;
-        try {
-            const res = await fetch(`/api/admin/diagnostics/push-subscriptions/${subscriptionId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                setMessage({ type: 'success', text: 'Subscription deleted' });
-                fetchSubscriptions();
-            }
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
-        }
-    };
-
-    const deleteAllSubscriptions = async () => {
-        if (!confirm('⚠️ DELETE ALL push subscriptions? This cannot be undone!')) return;
-        if (!confirm('Are you ABSOLUTELY sure? All users will need to re-enable notifications.')) return;
-
-        setLoading(true);
-        try {
-            const res = await fetch('/api/admin/diagnostics/push-subscriptions', {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setMessage({ type: 'success', text: `Deleted ${data.deleted} subscriptions` });
-                setSubscriptions(null);
-            }
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const toggleAccount = (accountKey: string) => {
-        setExpandedAccounts(prev => {
-            const next = new Set(prev);
-            if (next.has(accountKey)) next.delete(accountKey);
-            else next.add(accountKey);
-            return next;
-        });
-    };
+    const {
+        loading,
+        subscriptions,
+        accounts,
+        selectedAccountId,
+        setSelectedAccountId,
+        testType,
+        setTestType,
+        testResult,
+        message,
+        expandedAccounts,
+        systemHealth,
+        healthLoading,
+        fetchSystemHealth,
+        fetchSubscriptions,
+        fetchAccounts,
+        sendTestPush,
+        deleteSubscription,
+        deleteAllSubscriptions,
+        toggleAccount,
+    } = useDiagnostics();
 
     return (
         <div className="space-y-6">
@@ -314,7 +125,7 @@ export function AdminDiagnosticsPage() {
                             </div>
                         </div>
 
-                        {/* Sync Summary */}
+                        {/* Sync Summary + Webhook Health */}
                         <div className="flex gap-6">
                             <div>
                                 <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
@@ -329,8 +140,6 @@ export function AdminDiagnosticsPage() {
                                     ))}
                                 </div>
                             </div>
-
-                            {/* Webhook Health */}
                             <div>
                                 <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
                                     <Webhook size={14} /> Webhooks (24h)

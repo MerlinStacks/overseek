@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
+import { Logger } from '../utils/logger';
 
 /**
  * PWA Hook for OverSeek Companion
@@ -43,10 +44,10 @@ export function usePWA() {
                     const granted = await navigator.storage.persist();
                     setState(prev => ({ ...prev, isPersistentStorage: granted }));
                     if (granted) {
-                        console.log('[PWA] Persistent storage granted');
+                        Logger.info('[PWA] Persistent storage granted');
                     }
                 } catch (err) {
-                    console.warn('[PWA] Failed to request persistent storage:', err);
+                    Logger.warn('[PWA] Failed to request persistent storage', { error: err });
                 }
             }
         };
@@ -87,7 +88,7 @@ export function usePWA() {
 
             if (data?.type === 'DASHBOARD_REFRESHED') {
                 // Could trigger a state refresh here
-                console.log('[PWA] Dashboard data refreshed in background');
+                Logger.info('[PWA] Dashboard data refreshed in background');
             }
 
             if (data?.type === 'VERSION') {
@@ -145,7 +146,7 @@ export function usePWA() {
 
             return false;
         } catch (err) {
-            console.error('[PWA] Failed to queue offline action:', err);
+            Logger.error('[PWA] Failed to queue offline action', { error: err });
             return false;
         }
     }, [checkPendingActions]);
@@ -157,7 +158,7 @@ export function usePWA() {
             registration?.active?.postMessage({ type: 'SKIP_WAITING' });
             window.location.reload();
         } catch (err) {
-            console.error('[PWA] Failed to update service worker:', err);
+            Logger.error('[PWA] Failed to update service worker', { error: err });
         }
     }, []);
 
@@ -172,13 +173,13 @@ export function usePWA() {
                 await registration.periodicSync.register(tag, {
                     minInterval
                 });
-                console.log('[PWA] Periodic sync registered:', tag);
+                Logger.info('[PWA] Periodic sync registered', { tag });
                 return true;
             }
 
             return false;
         } catch (err) {
-            console.warn('[PWA] Periodic sync not supported:', err);
+            Logger.warn('[PWA] Periodic sync not supported', { error: err });
             return false;
         }
     }, []);

@@ -372,6 +372,15 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
+            // Block stock management on variable parent products — stock should be on variants only
+            const productRaw = product.rawData as any;
+            const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
+            if (isVariable) {
+                return reply.code(400).send({
+                    error: 'Cannot set stock on a variable product parent. Update stock on individual variants instead.'
+                });
+            }
+
             // Update local stock
             await prisma.wooProduct.update({
                 where: { id: product.id },

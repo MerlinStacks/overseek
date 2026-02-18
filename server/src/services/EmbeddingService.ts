@@ -38,7 +38,7 @@ export class EmbeddingService {
             `;
             this.columnExists = result[0]?.exists ?? false;
             if (!this.columnExists) {
-                Logger.warn('WooProduct.embedding column not found — skipping all embedding operations. Run the pgvector migration to enable semantic search.');
+                Logger.info('[EmbeddingService] Embedding column not found — semantic search disabled. Run pgvector migration to enable.');
             }
             return this.columnExists;
         } catch {

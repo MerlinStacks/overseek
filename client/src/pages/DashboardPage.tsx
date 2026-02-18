@@ -87,7 +87,8 @@ export function DashboardPage() {
 
     useEffect(() => {
         fetchLayout();
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     async function fetchLayout() {
         if (!currentAccount) return;

@@ -50,8 +50,13 @@ vi.mock('../utils/logger', () => ({
 }));
 
 vi.mock('./SegmentService', () => {
+    // Must return an object with a SegmentService property that is constructable
     return {
-        SegmentService: vi.fn().mockImplementation(() => mocks.segmentService)
+        SegmentService: class {
+            getCustomerIdsInSegment = mocks.segmentService.getCustomerIdsInSegment;
+            getSegmentCount = mocks.segmentService.getSegmentCount;
+            iterateCustomersInSegment = mocks.segmentService.iterateCustomersInSegment;
+        }
     };
 });
 
@@ -61,6 +66,8 @@ describe('MarketingService Optimization', () => {
     beforeEach(() => {
         marketingService = new MarketingService();
         vi.clearAllMocks();
+        // Default: campaign.update resolves (called twice: SENDING + SENT)
+        mocks.prisma.marketingCampaign.update.mockResolvedValue({});
     });
 
     it('should fetch customers in batches using pagination (Optimized)', async () => {

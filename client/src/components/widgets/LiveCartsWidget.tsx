@@ -70,7 +70,8 @@ const LiveCartsWidget = ({ className }: WidgetProps) => {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchCarts, 30000, [fetchCarts], 'live-carts');

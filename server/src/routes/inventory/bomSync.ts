@@ -113,8 +113,10 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             // Step 3: Categorize items
-            const wooItems = bom.items.filter(i => i.childProductId);
-            const internalItems = bom.items.filter(i => i.internalProductId);
+            const activeItems = bom.items.filter(i => i.isActive);
+            const deactivatedItems = bom.items.filter(i => !i.isActive);
+            const wooItems = activeItems.filter(i => i.childProductId);
+            const internalItems = activeItems.filter(i => i.internalProductId);
 
             // Step 4: Try the calculation
             const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(productId, variationId);
@@ -128,12 +130,16 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                 bomId: bom.id,
                 itemBreakdown: {
                     total: bom.items.length,
+                    active: activeItems.length,
+                    deactivated: deactivatedItems.length,
                     wooCommerceProducts: wooItems.length,
                     internalProducts: internalItems.length
                 },
                 items: bom.items.map(item => ({
                     type: item.internalProductId ? 'internal' : 'woocommerce',
                     quantity: item.quantity,
+                    isActive: item.isActive,
+                    deactivatedReason: item.deactivatedReason || null,
                     childName: item.childProduct?.name || item.internalProduct?.name || 'Unknown',
                     childStock: item.childVariation?.stockQuantity ??
                         item.internalProduct?.stockQuantity ??
@@ -367,6 +373,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                     product: { accountId },
                     items: {
                         some: {
+                            isActive: true,
                             OR: [
                                 { childProductId: { not: null } },
                                 { internalProductId: { not: null } }

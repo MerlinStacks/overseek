@@ -1,35 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, X, Mail, Instagram, Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
-import { useAccount } from '../../context/AccountContext';
-import { useCannedResponses } from '../../hooks/useCannedResponses';
+import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, Mail, Instagram, Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
 import DOMPurify from 'dompurify';
-
-interface MessageApiResponse {
-    id: string;
-    content?: string;
-    senderType?: 'AGENT' | 'CUSTOMER';
-    createdAt?: string;
-    sender?: { fullName?: string };
-}
-
-interface Message {
-    id: string;
-    body: string;
-    direction: 'inbound' | 'outbound';
-    createdAt: string;
-    senderName?: string;
-}
-
-interface Conversation {
-    id: string;
-    customerName: string;
-    customerEmail?: string;
-    channel: string;
-    status: string;
-}
+import { useMobileChat, type MobileChatMessage } from './useMobileChat';
 
 const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: string; label: string }> = {
     email: { icon: Mail, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Email' },
@@ -38,309 +10,85 @@ const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: str
     tiktok: { icon: Music2, color: 'text-gray-900', bg: 'bg-gray-100', label: 'TikTok' },
 };
 
+// -------------------------------------------------------
+// Formatting helpers (pure functions, no state needed)
+// -------------------------------------------------------
+
+function formatTime(date: string) {
+    return new Date(date).toLocaleTimeString('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
+function formatDate(date: string) {
+    const d = new Date(date);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const isYesterday = new Date(now.getTime() - 86400000).toDateString() === d.toDateString();
+
+    if (isToday) return 'Today';
+    if (isYesterday) return 'Yesterday';
+    return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function groupMessagesByDate(msgs: MobileChatMessage[]) {
+    const groups: { date: string; messages: MobileChatMessage[] }[] = [];
+    let currentDate = '';
+
+    msgs.forEach(msg => {
+        const msgDate = new Date(msg.createdAt).toDateString();
+        if (msgDate !== currentDate) {
+            currentDate = msgDate;
+            groups.push({ date: msg.createdAt, messages: [msg] });
+        } else {
+            groups[groups.length - 1].messages.push(msg);
+        }
+    });
+
+    return groups;
+}
+
+// -------------------------------------------------------
+// Component
+// -------------------------------------------------------
+
+/**
+ * MobileChat — presentational shell for the mobile chat view.
+ *
+ * All state management and data-fetching live in the `useMobileChat` hook.
+ * This component only renders UI and handles navigation.
+ */
 export function MobileChat() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { token, user } = useAuth();
-    const { currentAccount } = useAccount();
 
-    const [conversation, setConversation] = useState<Conversation | null>(null);
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [newMessage, setNewMessage] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [sending, setSending] = useState(false);
-    const [showMenu, setShowMenu] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
-
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Canned responses
     const {
-        cannedResponses,
+        conversation,
+        messages,
+        newMessage,
+        loading,
+        sending,
+        showMenu,
+        setShowMenu,
+        isUploading,
+        isGeneratingDraft,
+        messagesEndRef,
+        inputRef,
+        fileInputRef,
         filteredCanned,
+        cannedResponses,
         showCanned,
-        handleInputForCanned,
-        selectCanned,
-        setShowCanned
-    } = useCannedResponses();
-
-    // Build customer context for canned response placeholders
-    const customerContext = conversation ? {
-        firstName: conversation.customerName.split(' ')[0],
-        lastName: conversation.customerName.split(' ').slice(1).join(' '),
-        email: conversation.customerEmail,
-        agentFirstName: user?.fullName?.split(' ')[0],
-        agentFullName: user?.fullName ?? undefined
-    } : undefined;
-
-    useEffect(() => {
-        fetchConversation();
-        // Listen for refresh events from pull-to-refresh
-        const handleRefresh = () => fetchConversation();
-        window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [id, currentAccount, token]);
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    const fetchConversation = async () => {
-        if (!currentAccount || !token || !id) {
-            setLoading(false);
-            return;
-        }
-
-        try {
-            setLoading(true);
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount.id
-            };
-
-            // Fetch conversation details - use /api/chat/:id which returns conversation with messages
-            const convRes = await fetch(`/api/chat/${id}`, { headers });
-            if (convRes.ok) {
-                const conv = await convRes.json();
-                // Build customer name from wooCustomer or guest fields
-                const customerName = conv.wooCustomer
-                    ? `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim() || conv.wooCustomer.email
-                    : conv.guestName || conv.guestEmail || 'Unknown';
-
-                setConversation({
-                    id: conv.id,
-                    customerName,
-                    customerEmail: conv.wooCustomer?.email || conv.guestEmail,
-                    channel: conv.channel || 'CHAT',
-                    status: conv.status
-                });
-
-                // Messages are included in the conversation response
-                if (conv.messages && Array.isArray(conv.messages)) {
-                    setMessages(conv.messages.map((m: MessageApiResponse) => ({
-                        id: m.id,
-                        body: m.content || '',
-                        direction: m.senderType === 'AGENT' ? 'outbound' : 'inbound',
-                        createdAt: m.createdAt || '',
-                        senderName: m.sender?.fullName || (m.senderType === 'AGENT' ? 'Agent' : 'Customer')
-                    })));
-                }
-            }
-        } catch (error) {
-            Logger.error('[MobileChat] Error:', { error: error });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSend = async () => {
-        if (!newMessage.trim() || sending || !currentAccount || !token) return;
-
-        setSending(true);
-        // Haptic feedback
-        if ('vibrate' in navigator) {
-            navigator.vibrate(10);
-        }
-
-        try {
-            const res = await fetch(`/api/chat/${id}/messages`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ content: newMessage.trim() })
-            });
-
-            if (res.ok) {
-                const sent = await res.json();
-                setMessages(prev => [...prev, {
-                    id: sent.id || Date.now().toString(),
-                    body: newMessage.trim(),
-                    direction: 'outbound',
-                    createdAt: new Date().toISOString()
-                }]);
-                setNewMessage('');
-                inputRef.current?.focus();
-            }
-        } catch (error) {
-            Logger.error('[MobileChat] Send error:', { error: error });
-        } finally {
-            setSending(false);
-        }
-    };
-
-    /** Mark conversation as resolved/closed */
-    const handleResolve = async () => {
-        setShowMenu(false);
-        if (!currentAccount || !token) return;
-        try {
-            await fetch(`/api/chat/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ status: 'CLOSED' })
-            });
-            navigate('/m/inbox');
-        } catch (error) {
-            Logger.error('[MobileChat] Resolve error:', { error: error });
-        }
-    };
-
-    /** Block the contact by conversation ID */
-    const handleBlock = async () => {
-        setShowMenu(false);
-        if (!currentAccount || !token || !id) return;
-        try {
-            // Block by conversation ID - server will resolve the contact
-            await fetch(`/api/chat/${id}/block`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ reason: 'Blocked from mobile' })
-            });
-            navigate('/m/inbox');
-        } catch (error) {
-            Logger.error('[MobileChat] Block error:', { error: error });
-        }
-    };
-
-    /** Handle input change and detect canned response trigger */
-    const handleInputChange = (value: string) => {
-        setNewMessage(value);
-        handleInputForCanned(value);
-    };
-
-    /** Handle canned response selection */
-    const handleSelectCanned = (response: typeof cannedResponses[0]) => {
-        const content = selectCanned(response, customerContext);
-        setNewMessage(content);
-        setShowCanned(false);
-        inputRef.current?.focus();
-    };
-
-    /** Handle file upload */
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !currentAccount || !token) return;
-
-        setIsUploading(true);
-        if ('vibrate' in navigator) navigator.vibrate(10);
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const res = await fetch(`/api/chat/${id}/attachments`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                },
-                body: formData
-            });
-
-            if (res.ok) {
-                const { url, filename } = await res.json();
-                // Add attachment as a message with file link
-                const attachmentMsg = `📎 [${filename}](${url})`;
-                setNewMessage(prev => prev ? `${prev}\n${attachmentMsg}` : attachmentMsg);
-                inputRef.current?.focus();
-            }
-        } catch (error) {
-            Logger.error('[MobileChat] Upload error:', { error });
-        } finally {
-            setIsUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
-    /** Generate AI draft reply */
-    const handleGenerateAIDraft = async () => {
-        if (!currentAccount || !token || isGeneratingDraft) return;
-
-        setIsGeneratingDraft(true);
-        if ('vibrate' in navigator) navigator.vibrate(10);
-
-        try {
-            const res = await fetch(`/api/chat/${id}/ai-draft`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ currentDraft: newMessage || '' })
-            });
-
-            if (res.ok) {
-                const { draft } = await res.json();
-                setNewMessage(draft);
-                inputRef.current?.focus();
-            }
-        } catch (error) {
-            Logger.error('[MobileChat] AI draft error:', { error });
-        } finally {
-            setIsGeneratingDraft(false);
-        }
-    };
-
-    const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey && !showCanned) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
-
-    const formatTime = (date: string) => {
-        return new Date(date).toLocaleTimeString('en-AU', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
-    };
-
-    const formatDate = (date: string) => {
-        const d = new Date(date);
-        const now = new Date();
-        const isToday = d.toDateString() === now.toDateString();
-        const isYesterday = new Date(now.getTime() - 86400000).toDateString() === d.toDateString();
-
-        if (isToday) return 'Today';
-        if (isYesterday) return 'Yesterday';
-        return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
-    };
-
-    const groupMessagesByDate = (msgs: Message[]) => {
-        const groups: { date: string; messages: Message[] }[] = [];
-        let currentDate = '';
-
-        msgs.forEach(msg => {
-            const msgDate = new Date(msg.createdAt).toDateString();
-            if (msgDate !== currentDate) {
-                currentDate = msgDate;
-                groups.push({ date: msg.createdAt, messages: [msg] });
-            } else {
-                groups[groups.length - 1].messages.push(msg);
-            }
-        });
-
-        return groups;
-    };
+        handleSend,
+        handleResolve,
+        handleBlock,
+        handleFileUpload,
+        handleGenerateAIDraft,
+        handleInputChange,
+        handleSelectCanned,
+        handleKeyPress,
+    } = useMobileChat(id);
 
     const channelConfig = conversation ? CHANNEL_CONFIG[conversation.channel] || CHANNEL_CONFIG.email : CHANNEL_CONFIG.email;
     const ChannelIcon = channelConfig.icon;
@@ -389,22 +137,26 @@ export function MobileChat() {
                     {/* Dropdown Menu */}
                     {showMenu && (
                         <>
-                            {/* Backdrop - z-[65] to be above parent z-[60] */}
                             <div
                                 className="fixed inset-0 z-[65]"
                                 onClick={() => setShowMenu(false)}
                             />
-                            {/* Menu - z-[70] to be above backdrop */}
                             <div className="absolute right-0 top-full mt-1 w-48 bg-slate-800 rounded-xl shadow-xl border border-white/10 py-1 z-[70] animate-in fade-in slide-in-from-top-2 duration-150">
                                 <button
-                                    onClick={handleResolve}
+                                    onClick={async () => {
+                                        const ok = await handleResolve();
+                                        if (ok) navigate('/m/inbox');
+                                    }}
                                     className="w-full flex items-center gap-3 px-4 py-3 text-left text-slate-200 hover:bg-slate-700 active:bg-slate-600"
                                 >
                                     <CheckCircle2 size={18} className="text-emerald-400" />
                                     <span>Mark Resolved</span>
                                 </button>
                                 <button
-                                    onClick={handleBlock}
+                                    onClick={async () => {
+                                        const ok = await handleBlock();
+                                        if (ok) navigate('/m/inbox');
+                                    }}
                                     className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-400 hover:bg-red-500/20 active:bg-red-500/30"
                                 >
                                     <Ban size={18} />
@@ -425,14 +177,11 @@ export function MobileChat() {
                 ) : (
                     groupMessagesByDate(messages).map((group, gi) => (
                         <div key={gi}>
-                            {/* Date separator */}
                             <div className="flex items-center justify-center my-4">
                                 <span className="px-3 py-1 bg-slate-700/80 text-slate-300 text-xs font-medium rounded-full">
                                     {formatDate(group.date)}
                                 </span>
                             </div>
-
-                            {/* Messages */}
                             {group.messages.map((msg) => (
                                 <div
                                     key={msg.id}
@@ -444,22 +193,20 @@ export function MobileChat() {
                                             : 'bg-slate-800/80 backdrop-blur-sm border border-white/10 text-white rounded-bl-md shadow-sm'
                                             }`}
                                     >
-                                        {/* Render HTML content or plain text */}
-                                        {/<[a-z][\s\S]*>/i.test(msg.body) ? (
+                                        {/\<[a-z][\s\S]*\>/i.test(msg.body) ? (
                                             <div
                                                 className="text-sm [&_a]:text-indigo-300 [&_a]:underline [&_img]:max-w-full [&_img]:rounded"
                                                 dangerouslySetInnerHTML={{
                                                     __html: DOMPurify.sanitize(msg.body, {
                                                         ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'div', 'span'],
-                                                        ALLOWED_ATTR: ['href', 'target', 'rel']
-                                                    })
+                                                        ALLOWED_ATTR: ['href', 'target', 'rel'],
+                                                    }),
                                                 }}
                                             />
                                         ) : (
                                             <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
                                         )}
-                                        <p className={`text-xs mt-1 ${msg.direction === 'outbound' ? 'text-indigo-200' : 'text-slate-400'
-                                            }`}>
+                                        <p className={`text-xs mt-1 ${msg.direction === 'outbound' ? 'text-indigo-200' : 'text-slate-400'}`}>
                                             {formatTime(msg.createdAt)}
                                         </p>
                                     </div>
@@ -555,7 +302,6 @@ export function MobileChat() {
                             value={newMessage}
                             onChange={(e) => {
                                 handleInputChange(e.target.value);
-                                // Auto-expand textarea based on content
                                 e.target.style.height = 'auto';
                                 e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`;
                             }}

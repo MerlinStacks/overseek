@@ -43,7 +43,9 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-    <QueryClientProvider client={queryClient}>
-        <App />
-    </QueryClientProvider>,
+    <React.StrictMode>
+        <QueryClientProvider client={queryClient}>
+            <App />
+        </QueryClientProvider>
+    </React.StrictMode>,
 )

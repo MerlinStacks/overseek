@@ -136,44 +136,41 @@ export async function clearAccountCache(accountId: string): Promise<void> {
 }
 
 /**
- * Search products locally with relevance-based ranking
+ * Search products locally with relevance-based ranking.
+ * Uses cursor-based filtering to avoid loading all products into JS memory.
  */
 export async function searchProductsLocal(accountId: string, query: string): Promise<CachedProduct[]> {
     const lowerQuery = query.toLowerCase();
 
-    const allProducts = await hotTierDB.products
-        .where('accountId').equals(accountId)
-        .toArray();
+    /** Why: Scoring requires comparing each product, but we filter via Dexie's
+     *  indexed `accountId` query first, then apply the JS filter in a single pass
+     *  without materializing the entire table into an Array. */
+    const scored: { product: CachedProduct; score: number }[] = [];
 
-    // Score and filter products based on match quality
-    const scored = allProducts
-        .map((p: CachedProduct) => {
+    await hotTierDB.products
+        .where('accountId').equals(accountId)
+        .each((p: CachedProduct) => {
             const nameLower = p.name.toLowerCase();
             const skuLower = (p.sku || '').toLowerCase();
 
             let score = 0;
 
-            // Exact name match - highest priority
             if (nameLower === lowerQuery) score = 100;
-            // Name starts with query - high priority
             else if (nameLower.startsWith(lowerQuery)) score = 80;
-            // SKU exact match - high priority
             else if (skuLower === lowerQuery) score = 75;
-            // SKU starts with query
             else if (skuLower.startsWith(lowerQuery)) score = 60;
-            // Name contains query
             else if (nameLower.includes(lowerQuery)) score = 40;
-            // SKU contains query
             else if (skuLower.includes(lowerQuery)) score = 20;
 
-            return { product: p, score };
-        })
-        .filter(item => item.score > 0)
+            if (score > 0) {
+                scored.push({ product: p, score });
+            }
+        });
+
+    return scored
         .sort((a, b) => b.score - a.score)
         .slice(0, 50)
         .map(item => item.product);
-
-    return scored;
 }
 
 /**

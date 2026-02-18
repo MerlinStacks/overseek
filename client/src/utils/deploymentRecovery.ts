@@ -6,6 +6,8 @@
  * 
  */
 
+import { Logger } from './logger';
+
 /** Cooldown tracking to prevent infinite reload loops */
 const RELOAD_TIMESTAMP_KEY = 'deployment-reload-timestamp';
 const RELOAD_COOLDOWN_MS = 30000; // 30 seconds between reload attempts
@@ -71,7 +73,7 @@ async function clearCachesAndReload(): Promise<void> {
             const cacheNames = await caches.keys();
             await Promise.all(cacheNames.map(name => caches.delete(name)));
         } catch (e) {
-            console.warn('[DeploymentRecovery] Cache clear failed:', e);
+            Logger.warn('[DeploymentRecovery] Cache clear failed', { error: e });
         }
     }
 
@@ -81,7 +83,7 @@ async function clearCachesAndReload(): Promise<void> {
             const registration = await navigator.serviceWorker.ready;
             await registration.update();
         } catch (e) {
-            console.warn('[DeploymentRecovery] SW update failed:', e);
+            Logger.warn('[DeploymentRecovery] SW update failed', { error: e });
         }
     }
 
@@ -136,11 +138,11 @@ export function handleChunkLoadError(error?: Error | string): boolean {
 
     // Check cooldown
     if (!canAttemptReload()) {
-        console.warn('[DeploymentRecovery] Reload attempted too recently, skipping');
+        Logger.warn('[DeploymentRecovery] Reload attempted too recently, skipping');
         return false;
     }
 
-    console.log('[DeploymentRecovery] Chunk load error detected, reloading...');
+    Logger.info('[DeploymentRecovery] Chunk load error detected, reloading...');
     markReloadAttempted();
     showReloadToast();
 
@@ -178,7 +180,7 @@ export function installDeploymentRecovery(): void {
 
     // Handle Vite HMR disconnection (dev server restart)
     window.addEventListener('vite:ws-disconnect', () => {
-        console.log('[DeploymentRecovery] Vite WebSocket disconnected');
+        Logger.info('[DeploymentRecovery] Vite WebSocket disconnected');
         if (canAttemptReload()) {
             showReloadToast();
             setTimeout(() => {
@@ -187,5 +189,5 @@ export function installDeploymentRecovery(): void {
         }
     });
 
-    console.log('[DeploymentRecovery] Installed');
+    Logger.info('[DeploymentRecovery] Installed');
 }

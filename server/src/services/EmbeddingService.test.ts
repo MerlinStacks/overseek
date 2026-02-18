@@ -17,6 +17,14 @@ vi.mock('../utils/prisma', () => ({
     }
 }));
 
+vi.mock('../utils/logger', () => ({
+    Logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+    }
+}));
+
 // Mock fetch
 const fetchMock = vi.fn();
 global.fetch = fetchMock;
@@ -64,7 +72,11 @@ describe('EmbeddingService Benchmark', () => {
             }
         }));
 
-        (prisma.$queryRaw as any).mockResolvedValue(products);
+        // First $queryRaw call: hasEmbeddingColumn check → column exists
+        // Second $queryRaw call: fetch products without embeddings
+        (prisma.$queryRaw as any)
+            .mockResolvedValueOnce([{ exists: true }])
+            .mockResolvedValueOnce(products);
 
         console.time('batchUpdateEmbeddings');
         const updated = await EmbeddingService.batchUpdateEmbeddings('test-account', productCount);

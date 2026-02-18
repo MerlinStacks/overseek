@@ -42,7 +42,8 @@ export function LiveAnalyticsWidget() {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchLiveStats, 10000, [fetchLiveStats], 'live-analytics');

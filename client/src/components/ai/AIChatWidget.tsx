@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { Bot, Send, Loader2, Sparkles, ChevronDown, BarChart2, TrendingUp, ShoppingCart, Target, Users, Search, DollarSign } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -14,7 +14,9 @@ interface Message {
 }
 
 
-export function AIChatWidget() {
+/** Why memo: AIChatWidget lives in DashboardLayout and has no page-specific props.
+ *  Without memo, every route change re-renders it unnecessarily. */
+function AIChatWidgetInner() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const location = useLocation();
@@ -220,3 +222,5 @@ export function AIChatWidget() {
         </>
     );
 }
+
+export const AIChatWidget = memo(AIChatWidgetInner);

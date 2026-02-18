@@ -53,7 +53,8 @@ export function VisitorCountWidget(_props: WidgetProps) {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     // Visibility-aware polling with tab coordination: only leader tab polls
     useVisibilityPolling(fetchData, 10000, [fetchData], 'visitor-count');

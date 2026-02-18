@@ -43,7 +43,8 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token, dateRange, comparison]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token, dateRange, comparison]);
 
     useEffect(() => {
         fetchSales();

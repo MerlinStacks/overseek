@@ -56,20 +56,21 @@ export async function checkInventoryHealth(accountId: string): Promise<AtRiskPro
         }
     }
 
-    // Analyze Products
+    // Analyze Products (parent-level stock)
     const products = await prisma.wooProduct.findMany({
         where: { accountId },
-        select: { id: true, wooId: true, name: true, mainImage: true, rawData: true }
+        select: { id: true, wooId: true, name: true, mainImage: true, rawData: true, manageStock: true, stockQuantity: true }
     });
 
     const atRisk: AtRiskProduct[] = [];
 
     for (const p of products) {
         const raw = p.rawData as any;
-        // Only check managed stock
-        if (!raw.manage_stock || typeof raw.stock_quantity !== 'number') continue;
+        // Prioritize materialized DB field, fall back to rawData
+        const managesStock = p.manageStock || raw?.manage_stock;
+        const stock = p.stockQuantity ?? raw?.stock_quantity;
+        if (!managesStock || typeof stock !== 'number') continue;
 
-        const stock = raw.stock_quantity;
         const sold30 = salesMap.get(p.wooId) || 0;
 
         if (sold30 <= 0) continue; // No velocity
@@ -83,6 +84,43 @@ export async function checkInventoryHealth(accountId: string): Promise<AtRiskPro
                 wooId: p.wooId,
                 name: p.name,
                 image: p.mainImage,
+                stock,
+                velocity: dailyVelocity.toFixed(2),
+                daysRemaining: Math.round(daysRemaining)
+            });
+        }
+    }
+
+    // Analyze Variants — variable products often only manage stock at the variant level
+    const variations = await prisma.productVariation.findMany({
+        where: {
+            product: { accountId },
+            manageStock: true,
+            stockQuantity: { not: null }
+        },
+        select: {
+            wooId: true,
+            stockQuantity: true,
+            sku: true,
+            product: { select: { id: true, wooId: true, name: true, mainImage: true } }
+        }
+    });
+
+    for (const v of variations) {
+        const stock = v.stockQuantity ?? 0;
+        // Variant sales are tracked under the parent product_id in WooCommerce orders
+        const sold30 = salesMap.get(v.product.wooId) || 0;
+        if (sold30 <= 0) continue;
+
+        const dailyVelocity = sold30 / 30;
+        const daysRemaining = stock / dailyVelocity;
+
+        if (daysRemaining < thresholdDays) {
+            atRisk.push({
+                id: v.product.id,
+                wooId: v.wooId,
+                name: v.sku ? `${v.product.name} (${v.sku})` : v.product.name,
+                image: v.product.mainImage,
                 stock,
                 velocity: dailyVelocity.toFixed(2),
                 daysRemaining: Math.round(daysRemaining)

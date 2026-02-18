@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import {
     Download, HardDrive, Loader2, RefreshCw, Database, FileJson,
-    Clock, Trash2, RotateCcw, Save, Calendar, AlertTriangle, X, Settings
+    Trash2, RotateCcw, Save, AlertTriangle, Settings
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+
+// ─── Types ──────────────────────────────────────────────────────────
 
 interface Account {
     id: string;
@@ -39,104 +41,106 @@ interface StoredBackup {
     createdAt: string;
 }
 
-const FREQUENCY_LABELS: Record<string, string> = {
-    DAILY: 'Daily',
-    EVERY_3_DAYS: 'Every 3 Days',
-    WEEKLY: 'Weekly',
-};
+// ─── Utilities ──────────────────────────────────────────────────────
 
-export function AdminBackupsPage() {
+/**
+ * Trigger a browser file-download from a fetch Response.
+ * Why extracted: the same blob→anchor→click→revoke dance was duplicated
+ * in handleDownloadBackup and handleDownloadStored.
+ */
+function downloadBlob(blob: Blob, filename: string) {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+}
+
+/** Parse Content-Disposition header for a filename, with fallback. */
+function parseFilename(response: Response, fallback: string): string {
+    const header = response.headers.get('Content-Disposition');
+    if (!header) return fallback;
+    const match = header.match(/filename="(.+)"/);
+    return match ? match[1] : fallback;
+}
+
+// ─── useBackups Hook ────────────────────────────────────────────────
+
+/** Encapsulates all state + data-fetching for the backups page. */
+function useBackups() {
     const { token } = useAuth();
+
     const [accounts, setAccounts] = useState<Account[]>([]);
-    const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+    const [selectedAccountId, setSelectedAccountId] = useState('');
     const [preview, setPreview] = useState<BackupPreview | null>(null);
     const [settings, setSettings] = useState<BackupSettings | null>(null);
     const [storedBackups, setStoredBackups] = useState<StoredBackup[]>([]);
+
     const [loading, setLoading] = useState(true);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [savingBackup, setSavingBackup] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [savingSettings, setSavingSettings] = useState(false);
 
-    // Restore modal state
-    const [restoreTarget, setRestoreTarget] = useState<StoredBackup | null>(null);
-    const [confirmName, setConfirmName] = useState('');
-    const [restoring, setRestoring] = useState(false);
-
-    // Options
     const [includeAuditLogs, setIncludeAuditLogs] = useState(false);
     const [includeAnalytics, setIncludeAnalytics] = useState(false);
 
-    useEffect(() => {
-        fetchAccounts();
-    }, [token]);
+    /** Shared auth headers to avoid repeating `Bearer ${token}` everywhere. */
+    const authHeaders = { Authorization: `Bearer ${token}` };
 
-    const fetchAccounts = async () => {
+    // ── Fetchers ──
+
+    const fetchAccounts = useCallback(async () => {
         try {
-            const res = await fetch('/api/admin/accounts', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await fetch('/api/admin/accounts', { headers: authHeaders });
             if (!res.ok) throw new Error('Failed to fetch accounts');
-            const data = await res.json();
-            setAccounts(data);
+            setAccounts(await res.json());
         } catch (err) {
             Logger.error('AdminBackupsPage fetch error:', { error: err });
         } finally {
             setLoading(false);
         }
-    };
+    }, [token]);
 
-    const fetchPreview = async (accountId: string) => {
-        if (!accountId) {
-            setPreview(null);
-            return;
-        }
-
+    const fetchPreview = useCallback(async (accountId: string) => {
+        if (!accountId) { setPreview(null); return; }
         setPreviewLoading(true);
         try {
-            const res = await fetch(`/api/admin/accounts/${accountId}/backup/preview`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await fetch(`/api/admin/accounts/${accountId}/backup/preview`, { headers: authHeaders });
             if (!res.ok) throw new Error('Failed to fetch preview');
-            const data = await res.json();
-            setPreview(data);
+            setPreview(await res.json());
         } catch (err) {
             Logger.error('Backup preview error:', { error: err });
             setPreview(null);
         } finally {
             setPreviewLoading(false);
         }
-    };
+    }, [token]);
 
-    const fetchSettings = async (accountId: string) => {
+    const fetchSettings = useCallback(async (accountId: string) => {
         try {
-            const res = await fetch(`/api/admin/accounts/${accountId}/backup/settings`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setSettings(data);
-            }
+            const res = await fetch(`/api/admin/accounts/${accountId}/backup/settings`, { headers: authHeaders });
+            if (res.ok) setSettings(await res.json());
         } catch (err) {
             Logger.error('Settings fetch error:', { error: err });
         }
-    };
+    }, [token]);
 
-    const fetchStoredBackups = async (accountId: string) => {
+    const fetchStoredBackups = useCallback(async (accountId: string) => {
         try {
-            const res = await fetch(`/api/admin/accounts/${accountId}/backups`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setStoredBackups(data);
-            }
+            const res = await fetch(`/api/admin/accounts/${accountId}/backups`, { headers: authHeaders });
+            if (res.ok) setStoredBackups(await res.json());
         } catch (err) {
             Logger.error('Stored backups fetch error:', { error: err });
         }
-    };
+    }, [token]);
 
-    const handleAccountChange = (accountId: string) => {
+    // ── Actions ──
+
+    const handleAccountChange = useCallback((accountId: string) => {
         setSelectedAccountId(accountId);
         setStoredBackups([]);
         setSettings(null);
@@ -147,25 +151,18 @@ export function AdminBackupsPage() {
         } else {
             setPreview(null);
         }
-    };
+    }, [fetchPreview, fetchSettings, fetchStoredBackups]);
 
-    const handleSaveBackup = async () => {
+    const handleSaveBackup = useCallback(async () => {
         if (!selectedAccountId) return;
-
         setSavingBackup(true);
         try {
             const res = await fetch(`/api/admin/accounts/${selectedAccountId}/backup/save`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({ includeAuditLogs, includeAnalytics })
             });
-
             if (!res.ok) throw new Error('Failed to save backup');
-
-            // Refresh stored backups
             await fetchStoredBackups(selectedAccountId);
         } catch (err: any) {
             Logger.error('Backup save error:', { error: err });
@@ -173,140 +170,183 @@ export function AdminBackupsPage() {
         } finally {
             setSavingBackup(false);
         }
-    };
+    }, [selectedAccountId, includeAuditLogs, includeAnalytics, token, fetchStoredBackups]);
 
-    const handleDownloadBackup = async () => {
+    const handleDownloadBackup = useCallback(async () => {
         if (!selectedAccountId) return;
-
         setDownloading(true);
         try {
             const res = await fetch(`/api/admin/accounts/${selectedAccountId}/backup`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({ includeAuditLogs, includeAnalytics })
             });
-
             if (!res.ok) throw new Error('Failed to generate backup');
-
-            const contentDisposition = res.headers.get('Content-Disposition');
-            let filename = `backup_${new Date().toISOString().split('T')[0]}.json`;
-            if (contentDisposition) {
-                const match = contentDisposition.match(/filename="(.+)"/);
-                if (match) filename = match[1];
-            }
-
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+            const fallback = `backup_${new Date().toISOString().split('T')[0]}.json`;
+            downloadBlob(await res.blob(), parseFilename(res, fallback));
         } catch (err: any) {
             Logger.error('Backup download error:', { error: err });
             alert('Backup failed: ' + err.message);
         } finally {
             setDownloading(false);
         }
-    };
+    }, [selectedAccountId, includeAuditLogs, includeAnalytics, token]);
 
-    const handleUpdateSettings = async (updates: Partial<BackupSettings>) => {
+    const handleDownloadStored = useCallback(async (backupId: string, filename: string) => {
+        try {
+            const res = await fetch(`/api/admin/backups/${backupId}/download`, { headers: authHeaders });
+            if (!res.ok) throw new Error('Failed to download');
+            downloadBlob(await res.blob(), filename);
+        } catch (err) {
+            Logger.error('Download error:', { error: err });
+        }
+    }, [token]);
+
+    const handleDeleteBackup = useCallback(async (backupId: string) => {
+        if (!confirm('Delete this backup?')) return;
+        try {
+            const res = await fetch(`/api/admin/backups/${backupId}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            if (res.ok) setStoredBackups(prev => prev.filter(b => b.id !== backupId));
+        } catch (err) {
+            Logger.error('Delete backup error:', { error: err });
+        }
+    }, [token]);
+
+    const handleUpdateSettings = useCallback(async (updates: Partial<BackupSettings>) => {
         if (!selectedAccountId) return;
-
         setSavingSettings(true);
         try {
             const res = await fetch(`/api/admin/accounts/${selectedAccountId}/backup/settings`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify(updates)
             });
-
-            if (res.ok) {
-                const data = await res.json();
-                setSettings(data);
-            }
+            if (res.ok) setSettings(await res.json());
         } catch (err) {
             Logger.error('Settings update error:', { error: err });
         } finally {
             setSavingSettings(false);
         }
-    };
+    }, [selectedAccountId, token]);
 
-    const handleDeleteBackup = async (backupId: string) => {
-        if (!confirm('Delete this backup?')) return;
-
+    const handleRestore = useCallback(async (backupId: string, confirmName: string) => {
         try {
-            const res = await fetch(`/api/admin/backups/${backupId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (res.ok) {
-                setStoredBackups(prev => prev.filter(b => b.id !== backupId));
-            }
-        } catch (err) {
-            Logger.error('Delete backup error:', { error: err });
-        }
-    };
-
-    const handleDownloadStored = async (backupId: string, filename: string) => {
-        try {
-            const res = await fetch(`/api/admin/backups/${backupId}/download`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (!res.ok) throw new Error('Failed to download');
-
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-        } catch (err) {
-            Logger.error('Download error:', { error: err });
-        }
-    };
-
-    const handleRestore = async () => {
-        if (!restoreTarget || confirmName !== preview?.accountName) return;
-
-        setRestoring(true);
-        try {
-            const res = await fetch(`/api/admin/backups/${restoreTarget.id}/restore`, {
+            const res = await fetch(`/api/admin/backups/${backupId}/restore`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({ confirmAccountName: confirmName })
             });
-
             const data = await res.json();
             if (res.ok) {
                 alert(`Restored: ${data.restoredTables.join(', ')}`);
-                setRestoreTarget(null);
-                setConfirmName('');
-            } else {
-                alert('Restore failed: ' + data.error);
+                return true;
             }
+            alert('Restore failed: ' + data.error);
+            return false;
         } catch (err: any) {
             alert('Restore failed: ' + err.message);
-        } finally {
-            setRestoring(false);
+            return false;
         }
+    }, [token]);
+
+    useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+
+    return {
+        accounts, selectedAccountId, preview, settings, storedBackups,
+        loading, previewLoading, savingBackup, downloading, savingSettings,
+        includeAuditLogs, setIncludeAuditLogs, includeAnalytics, setIncludeAnalytics,
+        handleAccountChange, handleSaveBackup, handleDownloadBackup,
+        handleDownloadStored, handleDeleteBackup, handleUpdateSettings, handleRestore,
+        fetchPreview,
     };
+}
+
+// ─── RestoreModal ───────────────────────────────────────────────────
+
+interface RestoreModalProps {
+    backup: StoredBackup;
+    accountName: string;
+    onClose: () => void;
+    onRestore: (backupId: string, confirmName: string) => Promise<boolean>;
+}
+
+/** Dangerous-action confirmation modal for restoring a backup. */
+function RestoreModal({ backup, accountName, onClose, onRestore }: RestoreModalProps) {
+    const [confirmName, setConfirmName] = useState('');
+    const [restoring, setRestoring] = useState(false);
+
+    const handleConfirm = async () => {
+        setRestoring(true);
+        const ok = await onRestore(backup.id, confirmName);
+        setRestoring(false);
+        if (ok) onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md mx-4">
+                <div className="flex items-center gap-3 text-amber-600 mb-4">
+                    <AlertTriangle className="w-6 h-6" />
+                    <h2 className="text-lg font-bold text-slate-900">Restore Backup</h2>
+                </div>
+                <p className="text-sm text-slate-600 mb-3">
+                    This will <strong className="text-red-600">replace existing data</strong> with the backup from:
+                </p>
+                <p className="text-sm font-mono bg-slate-100 rounded px-3 py-2 mb-4">
+                    {new Date(backup.createdAt).toLocaleString()}
+                </p>
+                <p className="text-sm text-slate-700 mb-4">
+                    Type the account name to confirm: <strong>{accountName}</strong>
+                </p>
+                <input
+                    type="text"
+                    value={confirmName}
+                    onChange={(e) => setConfirmName(e.target.value)}
+                    placeholder="Type account name"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 mb-4"
+                    autoFocus
+                />
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleConfirm}
+                        disabled={confirmName !== accountName || restoring}
+                        className={cn(
+                            "px-4 py-2 text-sm font-medium rounded-lg",
+                            confirmName === accountName && !restoring
+                                ? "bg-amber-600 text-white hover:bg-amber-700"
+                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                        )}
+                    >
+                        {restoring ? 'Restoring...' : 'Confirm Restore'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Page Component ─────────────────────────────────────────────────
+
+export function AdminBackupsPage() {
+    const {
+        accounts, selectedAccountId, preview, settings, storedBackups,
+        loading, previewLoading, savingBackup, downloading, savingSettings,
+        includeAuditLogs, setIncludeAuditLogs, includeAnalytics, setIncludeAnalytics,
+        handleAccountChange, handleSaveBackup, handleDownloadBackup,
+        handleDownloadStored, handleDeleteBackup, handleUpdateSettings, handleRestore,
+        fetchPreview,
+    } = useBackups();
+
+    const [restoreTarget, setRestoreTarget] = useState<StoredBackup | null>(null);
 
     if (loading) {
         return (
@@ -473,7 +513,7 @@ export function AdminBackupsPage() {
                                                                 <Download className="w-4 h-4" />
                                                             </button>
                                                             <button
-                                                                onClick={() => { setRestoreTarget(backup); setConfirmName(''); }}
+                                                                onClick={() => setRestoreTarget(backup)}
                                                                 className="p-1.5 hover:bg-amber-50 rounded text-slate-500 hover:text-amber-600"
                                                                 title="Restore"
                                                             >
@@ -605,51 +645,12 @@ export function AdminBackupsPage() {
 
             {/* Restore Confirmation Modal */}
             {restoreTarget && preview && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
-                    <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md mx-4">
-                        <div className="flex items-center gap-3 text-amber-600 mb-4">
-                            <AlertTriangle className="w-6 h-6" />
-                            <h2 className="text-lg font-bold text-slate-900">Restore Backup</h2>
-                        </div>
-                        <p className="text-sm text-slate-600 mb-3">
-                            This will <strong className="text-red-600">replace existing data</strong> with the backup from:
-                        </p>
-                        <p className="text-sm font-mono bg-slate-100 rounded px-3 py-2 mb-4">
-                            {new Date(restoreTarget.createdAt).toLocaleString()}
-                        </p>
-                        <p className="text-sm text-slate-700 mb-4">
-                            Type the account name to confirm: <strong>{preview.accountName}</strong>
-                        </p>
-                        <input
-                            type="text"
-                            value={confirmName}
-                            onChange={(e) => setConfirmName(e.target.value)}
-                            placeholder="Type account name"
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 mb-4"
-                            autoFocus
-                        />
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => { setRestoreTarget(null); setConfirmName(''); }}
-                                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleRestore}
-                                disabled={confirmName !== preview.accountName || restoring}
-                                className={cn(
-                                    "px-4 py-2 text-sm font-medium rounded-lg",
-                                    confirmName === preview.accountName && !restoring
-                                        ? "bg-amber-600 text-white hover:bg-amber-700"
-                                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                                )}
-                            >
-                                {restoring ? 'Restoring...' : 'Confirm Restore'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <RestoreModal
+                    backup={restoreTarget}
+                    accountName={preview.accountName}
+                    onClose={() => setRestoreTarget(null)}
+                    onRestore={handleRestore}
+                />
             )}
         </div>
     );

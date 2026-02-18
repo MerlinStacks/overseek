@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
+import { Logger } from '../utils/logger';
 
 interface User {
     id: string;
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const silentRefresh = useCallback(async () => {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
-            console.warn('[Auth] No refresh token available for silent refresh');
+            Logger.warn('[Auth] No refresh token available for silent refresh');
             return false;
         }
 
@@ -54,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
 
             if (!response.ok) {
-                console.warn('[Auth] Silent refresh failed, logging out');
+                Logger.warn('[Auth] Silent refresh failed, logging out');
                 // Token is invalid/expired - force logout
                 localStorage.removeItem('token');
                 localStorage.removeItem('refreshToken');
@@ -68,10 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem('token', data.accessToken);
             localStorage.setItem('refreshToken', data.refreshToken);
             setToken(data.accessToken);
-            console.info('[Auth] Silent refresh successful');
+            Logger.info('[Auth] Silent refresh successful');
             return true;
         } catch (error) {
-            console.error('[Auth] Silent refresh error:', error);
+            Logger.error('[Auth] Silent refresh error', { error });
             return false;
         }
     }, []);
@@ -89,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Refresh 1 minute before expiry (or immediately if less than 1 min left)
         const refreshIn = Math.max(expiry - Date.now() - 60000, 0);
 
-        console.info(`[Auth] Token expires in ${Math.round((expiry - Date.now()) / 1000)}s, scheduling refresh in ${Math.round(refreshIn / 1000)}s`);
+        Logger.info(`[Auth] Token expires in ${Math.round((expiry - Date.now()) / 1000)}s, scheduling refresh in ${Math.round(refreshIn / 1000)}s`);
 
         refreshTimeoutRef.current = setTimeout(async () => {
             const success = await silentRefresh();

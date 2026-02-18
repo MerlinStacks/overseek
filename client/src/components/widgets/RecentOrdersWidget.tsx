@@ -25,7 +25,8 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
             .then(data => setOrders(Array.isArray(data) ? data : []))
             .catch(e => Logger.error('Failed to fetch orders', { error: e }))
             .finally(() => setLoading(false));
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     useEffect(() => {
         fetchOrders();

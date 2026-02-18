@@ -16,6 +16,7 @@ import { invalidateCache } from '../utils/cache';
 // Modular sub-routes (extracted for maintainability)
 import { supplierRoutes } from './inventory/suppliers';
 import { bomSyncRoutes } from './inventory/bomSync';
+import { bomManagementRoutes } from './inventory/bomManagement';
 
 const poService = new PurchaseOrderService();
 const picklistService = new PicklistService();
@@ -26,6 +27,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     // Register modular sub-routes
     await fastify.register(supplierRoutes);
     await fastify.register(bomSyncRoutes);
+    await fastify.register(bomManagementRoutes);
 
 
     // GET /settings

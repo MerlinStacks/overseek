@@ -1,7 +1,7 @@
 import { WidgetProps } from './WidgetRegistry';
 import { Logger } from '../../utils/logger';
 import { Package, Loader2 } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
@@ -11,6 +11,7 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
     const { currentAccount } = useAccount();
     const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const socketDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const fetchTopProducts = useCallback(() => {
         if (!currentAccount || !token) return;
@@ -24,15 +25,17 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
             .then(data => setProducts(Array.isArray(data) ? data : []))
             .catch(e => Logger.error('Failed to fetch top products', { error: e }))
             .finally(() => setLoading(false));
-    }, [currentAccount, token, dateRange]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token, dateRange]);
 
     useEffect(() => {
         fetchTopProducts();
     }, [fetchTopProducts]);
 
-    // Real-time: Refetch when new orders arrive
+    // Real-time: Debounced refetch when new orders arrive (batches rapid events)
     useWidgetSocket<{ orderId: string }>('order:new', () => {
-        fetchTopProducts();
+        if (socketDebounceRef.current) clearTimeout(socketDebounceRef.current);
+        socketDebounceRef.current = setTimeout(() => fetchTopProducts(), 3000);
     });
 
     return (

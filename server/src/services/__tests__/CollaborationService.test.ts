@@ -63,7 +63,7 @@ describe('CollaborationService', () => {
                 'socket-abc',
                 expect.stringContaining('"userId":"user-123"')
             );
-            expect(mockRedis.expire).toHaveBeenCalledWith('presence:doc-1', 120);
+            expect(mockRedis.expire).toHaveBeenCalledWith('presence:doc-1', 60);
         });
 
         it('should add lastHeartbeat timestamp to user info', async () => {

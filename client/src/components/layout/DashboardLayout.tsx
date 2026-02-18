@@ -25,8 +25,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <ChatNotifications />
 
 
-                {/* Desktop Sidebar - CSS hides on mobile via hidden lg:flex */}
-                <Sidebar />
+                {/* Desktop Sidebar - conditionally rendered to prevent hooks running on mobile */}
+                {!isMobile && <Sidebar />}
 
                 {/* Mobile Sidebar Drawer - only renders on mobile */}
                 {isMobile && (

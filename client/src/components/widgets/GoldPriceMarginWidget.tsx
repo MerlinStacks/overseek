@@ -57,7 +57,8 @@ export function GoldPriceMarginWidget() {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     useEffect(() => {
         fetchSummary();
@@ -136,8 +137,8 @@ export function GoldPriceMarginWidget() {
                                 {item.name}
                             </span>
                             <span className={`text-xs font-mono font-bold ${item.margin < MARGIN_THRESHOLD_LOW ? 'text-red-600' :
-                                    item.margin < MARGIN_THRESHOLD_MEDIUM ? 'text-amber-600' :
-                                        'text-green-600'
+                                item.margin < MARGIN_THRESHOLD_MEDIUM ? 'text-amber-600' :
+                                    'text-green-600'
                                 }`}>
                                 {item.margin.toFixed(1)}%
                             </span>

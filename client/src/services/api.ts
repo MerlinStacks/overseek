@@ -1,4 +1,7 @@
 
+/** Why: Timezone never changes during a session; computing it per-request was wasteful. */
+const USER_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Sydney';
+
 export interface RequestOptions extends RequestInit {
     token?: string;
     accountId?: string;
@@ -66,9 +69,6 @@ function handleAuthError(message: string) {
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { token, accountId, headers, body, ...customConfig } = options;
 
-    // Detect user's timezone for timezone-aware analytics
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Sydney';
-
     const config: RequestInit = {
         ...customConfig,
         body,
@@ -77,7 +77,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             ...(body ? { 'Content-Type': 'application/json' } : {}),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(accountId ? { 'X-Account-ID': accountId } : {}),
-            'x-timezone': userTimezone,
+            'x-timezone': USER_TIMEZONE,
             ...headers,
         },
     };

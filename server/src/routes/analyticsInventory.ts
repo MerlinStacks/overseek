@@ -39,7 +39,18 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 AND COALESCE("stockQuantity", CAST("rawData"->>'stock_quantity' AS INTEGER)) IS NOT NULL
             `;
 
-            if (!products.length) return [];
+            // Also fetch variants with managed stock — variable products often only track stock at variant level
+            const variantRows: any[] = await prisma.$queryRaw`
+                SELECT pv.id, pv."wooId", pv.sku, pv."stockQuantity" as stock_quantity,
+                       wp.name, wp."mainImage", wp."wooId" as "parentWooId"
+                FROM "ProductVariation" pv
+                JOIN "WooProduct" wp ON pv."productId" = wp.id
+                WHERE wp."accountId" = ${accountId}
+                AND pv."manageStock" = true
+                AND pv."stockQuantity" IS NOT NULL
+            `;
+
+            if (!products.length && !variantRows.length) return [];
 
             const endDate = new Date();
             const startDate = new Date();
@@ -69,9 +80,8 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
             const buckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
             buckets.forEach((b: any) => { if (b.key) salesMap.set(b.key, b.total_qty.value); });
 
-            const report = products.map(p => {
-                const stock = p.stock_quantity || 0;
-                const sold30d = salesMap.get(p.wooId) || 0;
+            const buildReportEntry = (id: string, name: string, sku: string | null, image: string | null, stock: number, wooId: number, salesWooId: number) => {
+                const sold30d = salesMap.get(salesWooId) || 0;
                 const dailyRate = sold30d / 30;
 
                 let daysRemaining = 999;
@@ -81,8 +91,13 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
                     daysRemaining = Math.max(0, Math.round(stock / dailyRate));
                 }
 
-                return { id: p.id, name: p.name, sku: p.sku, image: p.mainImage, stock, soldLast30d: sold30d, dailyVelocity: parseFloat(dailyRate.toFixed(2)), daysRemaining };
-            });
+                return { id, name, sku, image, stock, soldLast30d: sold30d, dailyVelocity: parseFloat(dailyRate.toFixed(2)), daysRemaining };
+            };
+
+            const report = [
+                ...products.map(p => buildReportEntry(p.id, p.name, p.sku, p.mainImage, p.stock_quantity || 0, p.wooId, p.wooId)),
+                ...variantRows.map(v => buildReportEntry(v.id, v.sku ? `${v.name} (${v.sku})` : v.name, v.sku, v.mainImage, v.stock_quantity || 0, v.wooId, v.parentWooId))
+            ];
 
             report.sort((a, b) => {
                 if (a.daysRemaining === 999 && b.daysRemaining !== 999) return 1;

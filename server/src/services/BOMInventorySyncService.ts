@@ -112,6 +112,7 @@ export class BOMInventorySyncService {
                 include: {
                     items: {
                         where: {
+                            isActive: true,
                             OR: [
                                 { childProductId: { not: null } },
                                 { internalProductId: { not: null } }
@@ -180,7 +181,8 @@ export class BOMInventorySyncService {
                     currentWooStock = targetVariation?.stock_quantity ?? null;
 
                     if (!targetVariation) {
-                        Logger.warn(`[BOMInventorySync] Variation ${variationId} not found on parent product`, {
+                        // Variation was deleted in WooCommerce — log at info (hidden in production)
+                        Logger.info(`[BOMInventorySync] Target variation ${variationId} no longer exists on parent ${product.wooId}`, {
                             productId,
                             parentWooId: product.wooId,
                             variationId
@@ -253,8 +255,21 @@ export class BOMInventorySyncService {
                             childStock = targetVariation?.stock_quantity ?? bomItem.childVariation.stockQuantity ?? 0;
 
                             if (!targetVariation) {
-                                // API succeeded but variation genuinely absent from parent
-                                Logger.warn(`[BOMInventorySync] Variation ${childWooId} not found in parent ${parentWooId}`, { accountId });
+                                // Variation deleted in WooCommerce — deactivate BOM item to stop recurring errors
+                                await prisma.bOMItem.update({
+                                    where: { id: bomItem.id },
+                                    data: {
+                                        isActive: false,
+                                        deactivatedReason: 'VARIATION_DELETED_IN_WOO'
+                                    }
+                                });
+                                Logger.info(`[BOMInventorySync] Deactivated BOM item — variation ${childWooId} no longer exists on parent ${parentWooId}`, {
+                                    accountId,
+                                    bomItemId: bomItem.id,
+                                    childWooId,
+                                    parentWooId
+                                });
+                                continue;
                             } else {
                                 // Update local DB with live stock so UI calculations match
                                 const liveStock = targetVariation.stock_quantity;
@@ -294,8 +309,25 @@ export class BOMInventorySyncService {
                                     data: { stockQuantity: liveStock }
                                 });
                             }
-                        } catch {
-                            // Fallback to local stockQuantity from DB if WooCommerce API fails
+                        } catch (fetchErr: any) {
+                            // Detect 404 — product was deleted in WooCommerce
+                            const status = fetchErr?.response?.status ?? fetchErr?.status;
+                            if (status === 404) {
+                                await prisma.bOMItem.update({
+                                    where: { id: bomItem.id },
+                                    data: {
+                                        isActive: false,
+                                        deactivatedReason: 'PRODUCT_404'
+                                    }
+                                });
+                                Logger.info(`[BOMInventorySync] Deactivated BOM item — child product ${childWooId} returned 404`, {
+                                    accountId,
+                                    bomItemId: bomItem.id,
+                                    childWooId
+                                });
+                                continue;
+                            }
+                            // Non-404 failure — fall back to local stock
                             const localProduct = await prisma.wooProduct.findUnique({
                                 where: { id: bomItem.childProduct.id },
                                 select: { stockQuantity: true }
@@ -409,6 +441,7 @@ export class BOMInventorySyncService {
             include: {
                 items: {
                     where: {
+                        isActive: true,
                         OR: [
                             { childProductId: { not: null } },
                             { internalProductId: { not: null } }
@@ -609,6 +642,28 @@ export class BOMInventorySyncService {
                     stock_status: calculation.effectiveStock > 0 ? 'instock' : 'outofstock'
                 });
             } else {
+                // Guard: do not set manage_stock on variable parent products
+                const productRecord = await prisma.wooProduct.findUnique({
+                    where: { id: productId },
+                    select: { rawData: true }
+                });
+                const productRaw = productRecord?.rawData as any;
+                const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
+
+                if (isVariable) {
+                    Logger.warn(`[BOMInventorySync] Refusing to set manage_stock on variable parent product`, {
+                        accountId, productId, wooId: calculation.wooId
+                    });
+                    return {
+                        success: false,
+                        productId: calculation.productId,
+                        wooId: calculation.wooId,
+                        previousStock: calculation.currentWooStock,
+                        newStock: calculation.effectiveStock,
+                        error: 'Cannot set manage_stock on variable parent — use a variation BOM instead'
+                    };
+                }
+
                 // Update main product stock
                 await wooService.updateProduct(calculation.wooId, {
                     stock_quantity: calculation.effectiveStock,
@@ -648,12 +703,24 @@ export class BOMInventorySyncService {
             };
 
         } catch (err: any) {
-            Logger.error(`[BOMInventorySync] Failed to sync product to WooCommerce`, {
-                accountId,
-                productId,
-                wooId: calculation.wooId,
-                error: err.message
-            });
+            // Distinguish 404 (deleted product) from transient failures
+            const status = err?.response?.status ?? err?.status;
+            const is404 = status === 404 || err.message?.includes('404');
+
+            if (is404) {
+                Logger.warn(`[BOMInventorySync] Product ${productId} (wooId ${calculation.wooId}) no longer exists in WooCommerce — skipping sync`, {
+                    accountId,
+                    productId,
+                    wooId: calculation.wooId
+                });
+            } else {
+                Logger.error(`[BOMInventorySync] Failed to sync product to WooCommerce`, {
+                    accountId,
+                    productId,
+                    wooId: calculation.wooId,
+                    error: err.message
+                });
+            }
 
             return {
                 success: false,
@@ -684,6 +751,7 @@ export class BOMInventorySyncService {
                     product: { accountId },
                     items: {
                         some: {
+                            isActive: true,
                             OR: [
                                 { childProductId: { not: null } },
                                 { internalProductId: { not: null } }

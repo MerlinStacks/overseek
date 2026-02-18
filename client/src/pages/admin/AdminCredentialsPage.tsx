@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import {
-    Key, Save, Trash2, Loader2, Check, AlertCircle, Zap, Mail, Globe,
-    Facebook, Bell, Copy, Link, ExternalLink, Shield, Eye, EyeOff, Info,
-    CheckCircle
+    Key, Save, Trash2, Loader2, Zap, Copy, Link, ExternalLink,
+    Shield, Eye, EyeOff, Info, CheckCircle, AlertCircle
 } from 'lucide-react';
+import { PLATFORMS, type PlatformId, type FieldConfig } from './credentialsConfig';
+
+// ─── Types ──────────────────────────────────────────────────────────
 
 interface PlatformCredential {
     id: string;
@@ -15,143 +17,12 @@ interface PlatformCredential {
     updatedAt: string;
 }
 
-interface FieldConfig {
-    key: string;
-    label: string;
-    placeholder: string;
-    /** Brief help text shown below the field */
-    helpText?: string;
-    /** Whether this field is required for the integration to work */
-    required?: boolean;
-    /** Whether to treat this as a sensitive field (masked by default) */
-    sensitive?: boolean;
-}
+// ─── useCredentials Hook ────────────────────────────────────────────
 
-interface PlatformConfig {
-    id: string;
-    name: string;
-    description: string;
-    icon: React.ElementType;
-    /** Brand colour class for the icon badge */
-    iconColor: string;
-    fields: FieldConfig[];
-    testable?: boolean;
-    /** OAuth callback path for platforms that need it */
-    callbackPath?: string;
-    /** Webhook URL path for platforms that need it */
-    webhookPath?: string;
-    /** Link to the provider's developer console */
-    docsUrl?: string;
-    /** Short label for the docs link */
-    docsLabel?: string;
-}
-
-const PLATFORMS: PlatformConfig[] = [
-    {
-        id: 'PLATFORM_SMTP',
-        name: 'Email (SMTP)',
-        description: 'Send system emails — password resets, MFA codes, and notifications.',
-        icon: Mail,
-        iconColor: 'bg-sky-500',
-        fields: [
-            { key: 'host', label: 'SMTP Host', placeholder: 'smtp.example.com', required: true },
-            { key: 'port', label: 'Port', placeholder: '587', required: true, helpText: 'Use 587 for STARTTLS or 465 for implicit TLS.' },
-            { key: 'username', label: 'Username', placeholder: 'your-email@example.com', required: true },
-            { key: 'password', label: 'Password', placeholder: '••••••••', required: true, sensitive: true },
-            { key: 'fromEmail', label: 'From Email', placeholder: 'noreply@example.com', helpText: 'The sender address shown to recipients.' },
-            { key: 'fromName', label: 'From Name', placeholder: 'OverSeek' },
-            { key: 'secure', label: 'Use TLS/SSL', placeholder: 'true', helpText: 'Set to "true" for port 465 (implicit TLS).' }
-        ],
-        testable: true
-    },
-    {
-        id: 'GOOGLE_ADS',
-        name: 'Google Ads',
-        description: 'Let users connect their Google Ads accounts via OAuth.',
-        icon: Globe,
-        iconColor: 'bg-red-500',
-        docsUrl: 'https://console.cloud.google.com/apis/credentials',
-        docsLabel: 'Google Cloud Console',
-        fields: [
-            { key: 'clientId', label: 'Client ID', placeholder: 'xxx.apps.googleusercontent.com', required: true, helpText: 'From your Google Cloud OAuth 2.0 credential.' },
-            { key: 'clientSecret', label: 'Client Secret', placeholder: 'GOCSPX-xxx', required: true, sensitive: true },
-            { key: 'developerToken', label: 'Developer Token', placeholder: '22-character alphanumeric token', required: true, helpText: 'Found in Google Ads → Tools & Settings → API Center. Required for all Ads API calls.' },
-            { key: 'loginCustomerId', label: 'Manager Account ID (MCC)', placeholder: '123-456-7890', helpText: 'Only needed if you manage ads through an MCC (Manager) account. Format: 123-456-7890.' }
-        ],
-        callbackPath: '/api/oauth/google/callback'
-    },
-    {
-        id: 'META_ADS',
-        name: 'Meta Ads',
-        description: 'Let users connect Facebook & Instagram Ads via OAuth.',
-        icon: Facebook,
-        iconColor: 'bg-blue-600',
-        docsUrl: 'https://developers.facebook.com/apps',
-        docsLabel: 'Meta Developer Console',
-        fields: [
-            { key: 'appId', label: 'App ID', placeholder: '123456789', required: true },
-            { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...', required: true, sensitive: true }
-        ],
-        callbackPath: '/api/oauth/meta/ads/callback'
-    },
-    {
-        id: 'META_MESSAGING',
-        name: 'Meta Messaging',
-        description: 'Facebook Messenger & Instagram DM integration.',
-        icon: Facebook,
-        iconColor: 'bg-indigo-500',
-        docsUrl: 'https://developers.facebook.com/apps',
-        docsLabel: 'Meta Developer Console',
-        fields: [
-            { key: 'appId', label: 'App ID', placeholder: '123456789', required: true },
-            { key: 'appSecret', label: 'App Secret', placeholder: 'abc123...', required: true, sensitive: true },
-            { key: 'webhookVerifyToken', label: 'Webhook Verify Token', placeholder: 'your_secret_token', required: true, helpText: "Must match the Verify Token in your Facebook App's webhook settings." }
-        ],
-        callbackPath: '/api/oauth/meta/messaging/callback',
-        webhookPath: '/api/meta-webhook'
-    },
-    {
-        id: 'WEB_PUSH_VAPID',
-        name: 'Push Notifications',
-        description: 'VAPID keys for browser push notifications.',
-        icon: Bell,
-        iconColor: 'bg-violet-500',
-        fields: [
-            { key: 'publicKey', label: 'Public Key', placeholder: 'Base64-encoded public key', required: true },
-            { key: 'privateKey', label: 'Private Key', placeholder: 'Base64-encoded private key', required: true, sensitive: true }
-        ]
-    }
-];
-
-type PlatformId = 'PLATFORM_SMTP' | 'GOOGLE_ADS' | 'META_ADS' | 'META_MESSAGING' | 'WEB_PUSH_VAPID';
-
-/**
- * Copyable URL row — displays a URL with a one-click copy button.
- */
-function CopyableUrl({ label, url, onCopied }: { label: string; url: string; onCopied: () => void }) {
-    return (
-        <div className="flex items-center gap-3 group">
-            <span className="text-xs font-medium text-slate-500 w-32 shrink-0">{label}</span>
-            <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono text-xs text-slate-700 overflow-x-auto">
-                {url}
-            </div>
-            <button
-                onClick={() => { navigator.clipboard.writeText(url); onCopied(); }}
-                className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                title="Copy to clipboard"
-            >
-                <Copy size={14} />
-            </button>
-        </div>
-    );
-}
-
-/**
- * Super Admin page for managing platform API credentials.
- * Credentials are stored encrypted in the database.
- */
-export function AdminCredentialsPage() {
+/** Encapsulates all state + data-fetching for the credentials page. */
+function useCredentials() {
     const { token } = useAuth();
+
     const [credentials, setCredentials] = useState<PlatformCredential[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
@@ -159,7 +30,6 @@ export function AdminCredentialsPage() {
     const [formData, setFormData] = useState<Record<string, Record<string, string>>>({});
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [activeTab, setActiveTab] = useState<PlatformId>('PLATFORM_SMTP');
     const [generating, setGenerating] = useState(false);
     const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({});
 
@@ -169,47 +39,11 @@ export function AdminCredentialsPage() {
      */
     const [serverUrls, setServerUrls] = useState<Record<string, string>>({});
 
-    useEffect(() => {
-        fetchCredentials();
-    }, [token]);
+    const authHeaders = { Authorization: `Bearer ${token}` };
 
-    /** Auto-dismiss success messages after 4 seconds */
-    useEffect(() => {
-        if (message?.type === 'success') {
-            const timer = setTimeout(() => setMessage(null), 4000);
-            return () => clearTimeout(timer);
-        }
-    }, [message]);
-
-    /** Fetch canonical callback URLs from the server so displayed URLs match. */
-    useEffect(() => {
-        async function fetchCallbackUrls() {
-            try {
-                const res = await fetch('/api/oauth/callback-urls', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                /* Map callbackPath → server URL for easy lookup */
-                const map: Record<string, string> = {};
-                if (data.google) map['/api/oauth/google/callback'] = data.google;
-                if (data.metaAds) map['/api/oauth/meta/ads/callback'] = data.metaAds;
-                if (data.metaMessaging) map['/api/oauth/meta/messaging/callback'] = data.metaMessaging;
-                if (data.tiktok) map['/api/oauth/tiktok/callback'] = data.tiktok;
-                if (data.metaWebhook) map['/api/meta-webhook'] = data.metaWebhook;
-                setServerUrls(map);
-            } catch {
-                /* Fallback to window.location.origin via default empty map */
-            }
-        }
-        if (token) fetchCallbackUrls();
-    }, [token]);
-
-    async function fetchCredentials() {
+    const fetchCredentials = useCallback(async () => {
         try {
-            const res = await fetch('/api/admin/platform-credentials', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await fetch('/api/admin/platform-credentials', { headers: authHeaders });
             const data = await res.json();
             setCredentials(data);
 
@@ -244,18 +78,32 @@ export function AdminCredentialsPage() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [token]);
 
-    async function handleSave(platformId: string) {
+    const fetchCallbackUrls = useCallback(async () => {
+        try {
+            const res = await fetch('/api/oauth/callback-urls', { headers: authHeaders });
+            if (!res.ok) return;
+            const data = await res.json();
+            const map: Record<string, string> = {};
+            if (data.google) map['/api/oauth/google/callback'] = data.google;
+            if (data.metaAds) map['/api/oauth/meta/ads/callback'] = data.metaAds;
+            if (data.metaMessaging) map['/api/oauth/meta/messaging/callback'] = data.metaMessaging;
+            if (data.tiktok) map['/api/oauth/tiktok/callback'] = data.tiktok;
+            if (data.metaWebhook) map['/api/meta-webhook'] = data.metaWebhook;
+            setServerUrls(map);
+        } catch {
+            /* Fallback to window.location.origin via default empty map */
+        }
+    }, [token]);
+
+    const handleSave = useCallback(async (platformId: string) => {
         setSaving(platformId);
         setMessage(null);
-
         try {
             const creds: Record<string, string> = {};
             Object.entries(formData[platformId] || {}).forEach(([key, value]) => {
-                if (value.trim()) {
-                    creds[key] = value.trim();
-                }
+                if (value.trim()) creds[key] = value.trim();
             });
 
             if (Object.keys(creds).length === 0) {
@@ -265,10 +113,7 @@ export function AdminCredentialsPage() {
 
             const res = await fetch(`/api/admin/platform-credentials/${platformId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({ credentials: creds, notes: notes[platformId] })
             });
 
@@ -284,17 +129,15 @@ export function AdminCredentialsPage() {
         } finally {
             setSaving(null);
         }
-    }
+    }, [formData, notes, token, fetchCredentials]);
 
-    async function handleDelete(platformId: string) {
+    const handleDelete = useCallback(async (platformId: string) => {
         if (!confirm(`Delete all ${PLATFORMS.find(p => p.id === platformId)?.name} credentials? This cannot be undone.`)) return;
-
         try {
             const res = await fetch(`/api/admin/platform-credentials/${platformId}`, {
                 method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
+                headers: authHeaders
             });
-
             if (res.ok) {
                 setMessage({ type: 'success', text: 'Credentials deleted.' });
                 fetchCredentials();
@@ -302,18 +145,14 @@ export function AdminCredentialsPage() {
         } catch {
             setMessage({ type: 'error', text: 'Failed to delete.' });
         }
-    }
+    }, [token, fetchCredentials]);
 
-    /**
-     * Tests SMTP connection with the saved credentials.
-     */
-    async function handleTestSmtp() {
+    /** Tests SMTP connection with the saved credentials. */
+    const handleTestSmtp = useCallback(async () => {
         setTesting('PLATFORM_SMTP');
         setMessage(null);
-
         try {
             const smtpData = formData['PLATFORM_SMTP'] || {};
-
             if (!smtpData.host || !smtpData.port || !smtpData.username || !smtpData.password) {
                 setMessage({ type: 'error', text: 'Host, port, username, and password are required to test.' });
                 return;
@@ -321,10 +160,7 @@ export function AdminCredentialsPage() {
 
             const res = await fetch('/api/admin/platform-smtp/test', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({
                     host: smtpData.host,
                     port: parseInt(smtpData.port),
@@ -335,7 +171,6 @@ export function AdminCredentialsPage() {
             });
 
             const result = await res.json();
-
             if (res.ok && result.success) {
                 setMessage({ type: 'success', text: 'SMTP connection successful!' });
             } else {
@@ -346,28 +181,16 @@ export function AdminCredentialsPage() {
         } finally {
             setTesting(null);
         }
-    }
+    }, [formData, token]);
 
-    const isConfigured = (platformId: string) =>
-        credentials.some(c => c.platform === platformId);
-
-    const getLastUpdated = (platformId: string) => {
-        const cred = credentials.find(c => c.platform === platformId);
-        if (!cred?.updatedAt) return null;
-        return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(cred.updatedAt));
-    };
-
-    /**
-     * Generates VAPID keys via the backend.
-     */
-    async function handleGenerateVapidKeys() {
+    /** Generates VAPID keys via the backend. */
+    const handleGenerateVapidKeys = useCallback(async () => {
         setGenerating(true);
         setMessage(null);
-
         try {
             const res = await fetch('/api/admin/generate-vapid-keys', {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
+                headers: authHeaders
             });
 
             if (!res.ok) {
@@ -384,27 +207,19 @@ export function AdminCredentialsPage() {
             }
 
             const result = await res.json();
-
             if (result.alreadyExists) {
                 setFormData(prev => ({
                     ...prev,
-                    'WEB_PUSH_VAPID': {
-                        publicKey: result.publicKey,
-                        privateKey: '••••••••'
-                    }
+                    'WEB_PUSH_VAPID': { publicKey: result.publicKey, privateKey: '••••••••' }
                 }));
                 setMessage({ type: 'success', text: result.message || 'VAPID keys already configured.' });
             } else {
                 setFormData(prev => ({
                     ...prev,
-                    'WEB_PUSH_VAPID': {
-                        publicKey: result.publicKey,
-                        privateKey: '(saved securely)'
-                    }
+                    'WEB_PUSH_VAPID': { publicKey: result.publicKey, privateKey: '(saved securely)' }
                 }));
                 setMessage({ type: 'success', text: result.message || 'VAPID keys generated and saved!' });
             }
-
             fetchCredentials();
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : 'Network error generating keys';
@@ -412,12 +227,196 @@ export function AdminCredentialsPage() {
         } finally {
             setGenerating(false);
         }
-    }
+    }, [token, fetchCredentials]);
 
-    /** Toggle visibility of a sensitive field */
-    function toggleReveal(fieldKey: string) {
+    const toggleReveal = useCallback((fieldKey: string) => {
         setRevealedFields(prev => ({ ...prev, [fieldKey]: !prev[fieldKey] }));
-    }
+    }, []);
+
+    const isConfigured = useCallback((platformId: string) =>
+        credentials.some(c => c.platform === platformId),
+        [credentials]);
+
+    const getLastUpdated = useCallback((platformId: string) => {
+        const cred = credentials.find(c => c.platform === platformId);
+        if (!cred?.updatedAt) return null;
+        return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+            .format(new Date(cred.updatedAt));
+    }, [credentials]);
+
+    useEffect(() => { fetchCredentials(); }, [fetchCredentials]);
+    useEffect(() => { if (token) fetchCallbackUrls(); }, [fetchCallbackUrls]);
+
+    /** Auto-dismiss success messages after 4 seconds */
+    useEffect(() => {
+        if (message?.type === 'success') {
+            const timer = setTimeout(() => setMessage(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
+
+    return {
+        loading, saving, testing, generating, message, setMessage,
+        formData, setFormData, notes, setNotes,
+        revealedFields, serverUrls,
+        handleSave, handleDelete, handleTestSmtp, handleGenerateVapidKeys,
+        toggleReveal, isConfigured, getLastUpdated,
+    };
+}
+
+// ─── CredentialField ────────────────────────────────────────────────
+
+interface CredentialFieldProps {
+    field: FieldConfig;
+    platformId: string;
+    value: string;
+    onChange: (value: string) => void;
+    isRevealed: boolean;
+    onToggleReveal: () => void;
+    configured: boolean;
+    /** Whether to style as a required field (red asterisk, solid border) */
+    isRequired?: boolean;
+}
+
+/**
+ * Single credential input field with optional sensitivity toggle.
+ * Why extracted: the required-fields and optional-fields sections were
+ * ~110 lines of copy-pasted JSX that only differed by filter predicate
+ * and minor border styling.
+ */
+function CredentialField({
+    field, value, onChange, isRevealed, onToggleReveal, configured, isRequired = false
+}: CredentialFieldProps) {
+    const borderClass = isRequired
+        ? 'border-slate-300'
+        : 'border-slate-200 bg-slate-50 focus:bg-white';
+
+    return (
+        <div>
+            <label className={`flex items-center gap-1.5 text-sm font-medium mb-1.5 ${isRequired ? 'text-slate-700' : 'text-slate-600'}`}>
+                {field.label}
+                {isRequired && <span className="text-red-400 text-xs">*</span>}
+            </label>
+            <div className="relative">
+                <input
+                    type={field.sensitive && !isRevealed ? 'password' : 'text'}
+                    className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400 ${borderClass}`}
+                    placeholder={configured ? '••••••••' : field.placeholder}
+                    value={value}
+                    onChange={e => onChange(e.target.value)}
+                />
+                {field.sensitive && (
+                    <button
+                        type="button"
+                        onClick={onToggleReveal}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                        title={isRevealed ? 'Hide' : 'Show'}
+                    >
+                        {isRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                )}
+            </div>
+            {field.helpText && (
+                <p className="mt-1 text-xs text-slate-400 flex items-start gap-1">
+                    <Info size={11} className="mt-0.5 shrink-0" />
+                    {field.helpText}
+                </p>
+            )}
+        </div>
+    );
+}
+
+// ─── CopyableUrl ────────────────────────────────────────────────────
+
+/** Copyable URL row — displays a URL with a one-click copy button. */
+function CopyableUrl({ label, url, onCopied }: { label: string; url: string; onCopied: () => void }) {
+    return (
+        <div className="flex items-center gap-3 group">
+            <span className="text-xs font-medium text-slate-500 w-32 shrink-0">{label}</span>
+            <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono text-xs text-slate-700 overflow-x-auto">
+                {url}
+            </div>
+            <button
+                onClick={() => { navigator.clipboard.writeText(url); onCopied(); }}
+                className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                title="Copy to clipboard"
+            >
+                <Copy size={14} />
+            </button>
+        </div>
+    );
+}
+
+// ─── FieldSection ───────────────────────────────────────────────────
+
+interface FieldSectionProps {
+    fields: FieldConfig[];
+    platformId: string;
+    formData: Record<string, Record<string, string>>;
+    setFormData: React.Dispatch<React.SetStateAction<Record<string, Record<string, string>>>>;
+    revealedFields: Record<string, boolean>;
+    toggleReveal: (fieldKey: string) => void;
+    configured: boolean;
+    isRequired: boolean;
+}
+
+/**
+ * Renders a group of credential fields (required or optional).
+ * Why extracted: eliminates the duplicated filter-then-map JSX block.
+ */
+function FieldSection({
+    fields, platformId, formData, setFormData, revealedFields, toggleReveal, configured, isRequired
+}: FieldSectionProps) {
+    const filtered = fields.filter(f => isRequired ? f.required : !f.required);
+    if (filtered.length === 0) return null;
+
+    return (
+        <div>
+            <h3 className={`text-xs font-semibold uppercase tracking-wide mb-4 flex items-center gap-2 ${isRequired ? 'text-slate-500' : 'text-slate-400'}`}>
+                {isRequired && <Key size={12} />}
+                {isRequired ? 'Required Credentials' : 'Optional'}
+            </h3>
+            <div className="space-y-4">
+                {filtered.map(field => {
+                    const fieldId = `${platformId}.${field.key}`;
+                    return (
+                        <CredentialField
+                            key={field.key}
+                            field={field}
+                            platformId={platformId}
+                            value={formData[platformId]?.[field.key] || ''}
+                            onChange={val => setFormData(prev => ({
+                                ...prev,
+                                [platformId]: { ...prev[platformId], [field.key]: val }
+                            }))}
+                            isRevealed={!!revealedFields[fieldId]}
+                            onToggleReveal={() => toggleReveal(fieldId)}
+                            configured={configured}
+                            isRequired={isRequired}
+                        />
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ─── Page Component ─────────────────────────────────────────────────
+
+/**
+ * Super Admin page for managing platform API credentials.
+ * Credentials are stored encrypted in the database.
+ */
+export function AdminCredentialsPage() {
+    const {
+        loading, saving, testing, generating, message, setMessage,
+        formData, setFormData, notes, setNotes,
+        revealedFields, serverUrls,
+        handleSave, handleDelete, handleTestSmtp, handleGenerateVapidKeys,
+        toggleReveal, isConfigured, getLastUpdated,
+    } = useCredentials();
+
+    const [activeTab, setActiveTab] = useState<PlatformId>('PLATFORM_SMTP');
 
     if (loading) {
         return (
@@ -572,117 +571,26 @@ export function AdminCredentialsPage() {
 
                         {/* ── Credential Fields ── */}
                         <div className="px-6 py-5 space-y-5">
-                            {/* Required fields section */}
-                            {currentPlatform.fields.some(f => f.required) && (
-                                <div>
-                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
-                                        <Key size={12} />
-                                        Required Credentials
-                                    </h3>
-                                    <div className="space-y-4">
-                                        {currentPlatform.fields.filter(f => f.required).map(field => {
-                                            const fieldId = `${currentPlatform.id}.${field.key}`;
-                                            const isSensitive = field.sensitive;
-                                            const isRevealed = revealedFields[fieldId];
-
-                                            return (
-                                                <div key={field.key}>
-                                                    <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
-                                                        {field.label}
-                                                        <span className="text-red-400 text-xs">*</span>
-                                                    </label>
-                                                    <div className="relative">
-                                                        <input
-                                                            type={isSensitive && !isRevealed ? 'password' : 'text'}
-                                                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400"
-                                                            placeholder={configured ? '••••••••' : field.placeholder}
-                                                            value={formData[currentPlatform.id]?.[field.key] || ''}
-                                                            onChange={e => setFormData(prev => ({
-                                                                ...prev,
-                                                                [currentPlatform.id]: {
-                                                                    ...prev[currentPlatform.id],
-                                                                    [field.key]: e.target.value
-                                                                }
-                                                            }))}
-                                                        />
-                                                        {isSensitive && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => toggleReveal(fieldId)}
-                                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
-                                                                title={isRevealed ? 'Hide' : 'Show'}
-                                                            >
-                                                                {isRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    {field.helpText && (
-                                                        <p className="mt-1 text-xs text-slate-400 flex items-start gap-1">
-                                                            <Info size={11} className="mt-0.5 shrink-0" />
-                                                            {field.helpText}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Optional fields section */}
-                            {currentPlatform.fields.some(f => !f.required) && (
-                                <div>
-                                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4 flex items-center gap-2">
-                                        Optional
-                                    </h3>
-                                    <div className="space-y-4">
-                                        {currentPlatform.fields.filter(f => !f.required).map(field => {
-                                            const fieldId = `${currentPlatform.id}.${field.key}`;
-                                            const isSensitive = field.sensitive;
-                                            const isRevealed = revealedFields[fieldId];
-
-                                            return (
-                                                <div key={field.key}>
-                                                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">
-                                                        {field.label}
-                                                    </label>
-                                                    <div className="relative">
-                                                        <input
-                                                            type={isSensitive && !isRevealed ? 'password' : 'text'}
-                                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow placeholder:text-slate-400 bg-slate-50 focus:bg-white"
-                                                            placeholder={configured ? '••••••••' : field.placeholder}
-                                                            value={formData[currentPlatform.id]?.[field.key] || ''}
-                                                            onChange={e => setFormData(prev => ({
-                                                                ...prev,
-                                                                [currentPlatform.id]: {
-                                                                    ...prev[currentPlatform.id],
-                                                                    [field.key]: e.target.value
-                                                                }
-                                                            }))}
-                                                        />
-                                                        {isSensitive && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => toggleReveal(fieldId)}
-                                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
-                                                                title={isRevealed ? 'Hide' : 'Show'}
-                                                            >
-                                                                {isRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    {field.helpText && (
-                                                        <p className="mt-1 text-xs text-slate-400 flex items-start gap-1">
-                                                            <Info size={11} className="mt-0.5 shrink-0" />
-                                                            {field.helpText}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
+                            <FieldSection
+                                fields={currentPlatform.fields}
+                                platformId={currentPlatform.id}
+                                formData={formData}
+                                setFormData={setFormData}
+                                revealedFields={revealedFields}
+                                toggleReveal={toggleReveal}
+                                configured={configured}
+                                isRequired={true}
+                            />
+                            <FieldSection
+                                fields={currentPlatform.fields}
+                                platformId={currentPlatform.id}
+                                formData={formData}
+                                setFormData={setFormData}
+                                revealedFields={revealedFields}
+                                toggleReveal={toggleReveal}
+                                configured={configured}
+                                isRequired={false}
+                            />
 
                             {/* Notes */}
                             <div className="pt-2 border-t border-slate-100">

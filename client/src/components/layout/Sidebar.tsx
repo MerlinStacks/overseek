@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePrefetch } from '../../hooks/usePrefetch';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -99,7 +99,10 @@ const navItems = [
     { type: 'link', icon: HelpCircle, label: 'Help Center', path: '/help' },
 ];
 
-export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
+/** Why memo: Sidebar subscribes to many contexts; wrapping in memo ensures
+ *  it only re-renders when its own props (`isOpen`, `onClose`, `isMobile`) change
+ *  rather than on every parent re-render from DashboardLayout. */
+export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const { currentAccount } = useAccount();
     const { user, token } = useAuth();
@@ -108,37 +111,40 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
 
-    // Filter Navigation Items based on permissions
-    const filteredNavItems = navItems.filter(item => {
-        if (item.label === 'Commerce') {
-            const hasChild = item.children?.some(child => {
-                if (child.path === '/orders') return hasPermission('view_orders');
-                if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
-                if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                return true;
-            });
-            return hasChild;
-        }
-        if (item.label === 'Analytics') return hasPermission('view_finance');
-        if (item.label === 'Growth') return hasPermission('view_marketing');
-        if (item.label === 'Team') return hasPermission('view_orders');
-        return true;
-    }).map(item => {
-        if (item.children) {
-            return {
-                ...item,
-                children: item.children.filter(child => {
+    /** Why useMemo: Permission filtering was running on every render (every route change).
+     *  Permissions and nav items rarely change — only when user role or account changes. */
+    const filteredNavItems = useMemo(() => {
+        return navItems.filter(item => {
+            if (item.label === 'Commerce') {
+                const hasChild = item.children?.some(child => {
                     if (child.path === '/orders') return hasPermission('view_orders');
                     if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                     if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                    if (item.label === 'Analytics') return hasPermission('view_finance');
-                    if (item.label === 'Growth') return hasPermission('view_marketing');
                     return true;
-                })
-            };
-        }
-        return item;
-    });
+                });
+                return hasChild;
+            }
+            if (item.label === 'Analytics') return hasPermission('view_finance');
+            if (item.label === 'Growth') return hasPermission('view_marketing');
+            if (item.label === 'Team') return hasPermission('view_orders');
+            return true;
+        }).map(item => {
+            if (item.children) {
+                return {
+                    ...item,
+                    children: item.children.filter(child => {
+                        if (child.path === '/orders') return hasPermission('view_orders');
+                        if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
+                        if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
+                        if (item.label === 'Analytics') return hasPermission('view_finance');
+                        if (item.label === 'Growth') return hasPermission('view_marketing');
+                        return true;
+                    })
+                };
+            }
+            return item;
+        });
+    }, [hasPermission]);
 
     // State for expanded groups
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -194,7 +200,8 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
                 socket.off('conversation:read', handleConversationRead);
             };
         }
-    }, [currentAccount, token, socket, location.pathname]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token, socket]);
 
     // Clear unread when on inbox page
     useEffect(() => {
@@ -508,4 +515,4 @@ export function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarPro
             {sidebarContent}
         </aside>
     );
-}
+});

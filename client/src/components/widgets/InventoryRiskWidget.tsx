@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -49,6 +49,7 @@ export function InventoryRiskWidget() {
     const { currentAccount } = useAccount();
     const [products, setProducts] = useState<RiskProduct[]>([]);
     const [loading, setLoading] = useState(true);
+    const socketDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const fetchRisk = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -80,15 +81,17 @@ export function InventoryRiskWidget() {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     useEffect(() => {
         fetchRisk();
     }, [fetchRisk]);
 
-    // Real-time: Refresh on inventory updates
+    // Real-time: Debounced refresh on inventory updates (batches rapid events)
     useWidgetSocket('inventory:updated', () => {
-        fetchRisk();
+        if (socketDebounceRef.current) clearTimeout(socketDebounceRef.current);
+        socketDebounceRef.current = setTimeout(() => fetchRisk(), 3000);
     });
 
 

@@ -302,27 +302,24 @@ export class PurchaseOrderService {
                             }
                         }
                     } else {
-                        Logger.warn('Variation not found locally, falling back to parent product', {
+                        // Variation not found locally — this is an error, not safe to fall through to parent
+                        Logger.error('Variation not found locally for stock receive', {
                             productId: product.id,
                             variationWooId: item.variationWooId
                         });
-                        // Fall through to parent product update below
-                        const currentStock = product.stockQuantity ?? 0;
-                        const newStock = currentStock + item.quantity;
-                        await prisma.wooProduct.update({
-                            where: { id: product.id },
-                            data: { stockQuantity: newStock, manageStock: true, stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
-                        });
-                        if (wooService) {
-                            try {
-                                await wooService.updateProduct(product.wooId, { manage_stock: true, stock_quantity: newStock });
-                            } catch (wooErr) {
-                                errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
-                            }
-                        }
+                        errors.push(`${item.name}: Variation ${item.variationWooId} not found locally — sync products first`);
+                        continue;
                     }
                 } else {
-                    // Simple/parent product — existing behavior
+                    // Simple product stock update
+                    // Variable products must have variationWooId specified — skip with error
+                    const productRaw = product.rawData as any;
+                    const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
+                    if (isVariable) {
+                        errors.push(`${product.name}: Cannot set stock on variable parent — specify a variation`);
+                        continue;
+                    }
+
                     const currentStock = product.stockQuantity ?? 0;
                     const newStock = currentStock + item.quantity;
 
@@ -476,7 +473,15 @@ export class PurchaseOrderService {
                         }
                     }
                 } else {
-                    // Reverse parent product stock
+                    // Simple product stock reversal
+                    // Variable products must have variationWooId specified — skip
+                    const productRaw = product.rawData as any;
+                    const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
+                    if (isVariable) {
+                        errors.push(`${product.name}: Cannot reverse stock on variable parent — specify a variation`);
+                        continue;
+                    }
+
                     const currentStock = product.stockQuantity ?? 0;
                     const newStock = Math.max(0, currentStock - item.quantity);
 

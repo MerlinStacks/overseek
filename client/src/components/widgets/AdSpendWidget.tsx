@@ -22,7 +22,8 @@ export function AdSpendWidget({ className }: WidgetProps) {
             .then(resData => setData(resData))
             .catch(e => Logger.error('Failed to fetch ad spend data', { error: e }))
             .finally(() => setLoading(false));
-    }, [currentAccount, token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     return (
         <div className={`bg-white h-full w-full p-6 flex flex-col justify-between rounded-xl shadow-xs border border-gray-200 ${className}`}>

@@ -7,7 +7,7 @@
 
 import { Server, Socket } from 'socket.io';
 import { prisma } from '../utils/prisma';
-const { Logger } = require('../utils/logger');
+import { Logger } from '../utils/logger';
 
 /**
  * Registers all Socket.IO event handlers
@@ -22,7 +22,7 @@ export function setupSocketHandlers(io: Server): void {
                 socket.emit('auth:error', { message: 'Forbidden' });
                 return;
             }
-            Logger.warn(`[Socket] Client joined account room: account:${accountId}`, { socketId: socket.id });
+            Logger.debug(`[Socket] Client joined account room: account:${accountId}`, { socketId: socket.id });
             socket.join(`account:${accountId}`);
         });
 
