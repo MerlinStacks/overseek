@@ -10,6 +10,19 @@ import { Logger } from '../../utils/logger';
 import { GoogleAdsApi } from 'google-ads-api';
 import { getCredentials } from './types';
 
+/**
+ * Circuit-breaker for accounts with expired OAuth tokens (invalid_grant).
+ * Prevents repeated API round-trips and object allocation for accounts
+ * that will fail until the user re-authenticates.
+ */
+const AUTH_BREAKER_TTL_MS = 60 * 60 * 1000; // 60 minutes
+const authBreakerMap = new Map<string, number>();
+
+/** Mark an ad account as auth-broken. Called from parseGoogleAdsError. */
+export function tripAuthBreaker(adAccountId: string): void {
+    authBreakerMap.set(adAccountId, Date.now());
+}
+
 export interface GoogleAdsClientConfig {
     customer: any;
     currency: string;
@@ -19,6 +32,12 @@ export interface GoogleAdsClientConfig {
  * Create a Google Ads API customer client from an ad account ID.
  */
 export async function createGoogleAdsClient(adAccountId: string): Promise<GoogleAdsClientConfig> {
+    // Circuit-breaker: skip accounts with recent invalid_grant errors
+    const breakerTs = authBreakerMap.get(adAccountId);
+    if (breakerTs && Date.now() - breakerTs < AUTH_BREAKER_TTL_MS) {
+        throw new Error('Auth circuit-breaker active — invalid_grant within last 60 min. Re-authenticate to restore.');
+    }
+
     const adAccount = await prisma.adAccount.findUnique({
         where: { id: adAccountId }
     });
@@ -47,8 +66,8 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
         refresh_token: adAccount.refreshToken
     };
 
-    // Debug: Log credential state to diagnose permission issues
-    Logger.info('Google Ads client config', {
+    // Log credential state at debug level (previously info — too noisy in production)
+    Logger.debug('Google Ads client config', {
         customerId: adAccount.externalId,
         hasLoginCustomerId: !!loginCustomerId,
         loginCustomerId: loginCustomerId ? `${loginCustomerId.substring(0, 4)}...` : null
@@ -87,6 +106,8 @@ export function parseGoogleAdsError(error: any, customerId: string): string {
     }
     // GRPC error code 16 = UNAUTHENTICATED
     if (errorCode === 16 || errorMessage.includes('UNAUTHENTICATED') || errorMessage.includes('invalid_grant')) {
+        // Trip circuit-breaker so scheduled jobs skip this account for 60 min
+        tripAuthBreaker(customerId);
         return 'Authentication expired. Please disconnect and reconnect your Google Ads account to refresh the OAuth tokens.';
     }
     // Invalid customer ID format

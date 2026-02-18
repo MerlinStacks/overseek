@@ -5,6 +5,7 @@
  */
 
 import { prisma } from '../utils/prisma';
+import { Logger } from '../utils/logger';
 
 // Account validation cache
 const accountCache = new Map<string, number>();
@@ -73,6 +74,6 @@ export async function cleanupRateLimits() {
 }
 
 setInterval(() => {
-    cleanupRateLimits().catch(err => console.error('Rate limit cleanup failed', err));
+    cleanupRateLimits().catch(err => Logger.error('Rate limit cleanup failed', { error: err }));
 }, 5 * 60 * 1000);
 

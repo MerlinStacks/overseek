@@ -708,11 +708,30 @@ export class BOMInventorySyncService {
             const is404 = status === 404 || err.message?.includes('404');
 
             if (is404) {
-                Logger.warn(`[BOMInventorySync] Product ${productId} (wooId ${calculation.wooId}) no longer exists in WooCommerce — skipping sync`, {
+                Logger.warn(`[BOMInventorySync] Product ${productId} (wooId ${calculation.wooId}) no longer exists in WooCommerce — deactivating BOM items`, {
                     accountId,
                     productId,
                     wooId: calculation.wooId
                 });
+
+                // Deactivate all active BOM items for this product so the hourly
+                // sync stops retrying a product that no longer exists in Woo.
+                try {
+                    await prisma.bOMItem.updateMany({
+                        where: {
+                            bom: { productId, variationId },
+                            isActive: true
+                        },
+                        data: {
+                            isActive: false,
+                            deactivatedReason: 'PARENT_PRODUCT_404'
+                        }
+                    });
+                } catch (deactivateErr) {
+                    Logger.error('[BOMInventorySync] Failed to deactivate BOM items after 404', {
+                        productId, error: deactivateErr
+                    });
+                }
             } else {
                 Logger.error(`[BOMInventorySync] Failed to sync product to WooCommerce`, {
                     accountId,
@@ -769,7 +788,8 @@ export class BOMInventorySyncService {
 
         Logger.info(`[BOMInventorySync] Starting bulk sync for ${bomsWithChildProducts.length} products`, { accountId });
 
-        const results: SyncResult[] = [];
+        // Only track counters — accumulating full SyncResult[] caused unbounded
+        // heap growth on every hourly run, contributing to OOM (exit 137).
         let synced = 0;
         let skipped = 0;
         let failed = 0;
@@ -778,7 +798,6 @@ export class BOMInventorySyncService {
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
             try {
                 const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId);
-                results.push(result);
 
                 if (result.success) {
                     if (result.previousStock === result.newStock) {
@@ -797,14 +816,6 @@ export class BOMInventorySyncService {
                     error: err.message
                 });
                 failed++;
-                results.push({
-                    success: false,
-                    productId: bom.productId,
-                    wooId: 0,
-                    previousStock: null,
-                    newStock: 0,
-                    error: err.message
-                });
             }
         }
 
@@ -821,7 +832,7 @@ export class BOMInventorySyncService {
             synced,
             skipped,
             failed,
-            results
+            results: []
         };
     }
 }
