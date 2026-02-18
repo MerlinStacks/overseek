@@ -8,7 +8,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512m
+          memory: 1g
     env_file:
       - stack.env
     environment:
