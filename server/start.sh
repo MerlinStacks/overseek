@@ -73,8 +73,8 @@ fi
 
 echo "[Startup] Database ready."
 
-# Start the application with capped heap (1.5GB) to stay under the 2GB container limit
+# Start the application with capped heap (3GB) to stay under the 4GB container limit
 echo "[Startup] Starting Node.js application..."
-export NODE_OPTIONS="--max-old-space-size=1536"
+export NODE_OPTIONS="--max-old-space-size=3072"
 exec npm start
 

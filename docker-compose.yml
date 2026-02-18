@@ -85,7 +85,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 4g
     pull_policy: build
     ports:
       - "3000:3000"
@@ -101,6 +101,7 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
+      NODE_OPTIONS: "--max-old-space-size=3072"
     volumes:
       - uploads_data:/app/server/uploads
       - geoip_data:/app/server/data
