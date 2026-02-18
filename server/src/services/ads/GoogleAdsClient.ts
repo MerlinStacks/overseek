@@ -71,7 +71,7 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
  * Parse Google Ads API errors into user-friendly messages.
  */
 export function parseGoogleAdsError(error: any, customerId: string): string {
-    const errorMessage = error.message || '';
+    const errorMessage = error.message || error.details || '';
     const errorCode = error.code;
 
     // GRPC error code 12 = UNIMPLEMENTED
