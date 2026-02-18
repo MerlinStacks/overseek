@@ -5,10 +5,6 @@ services:
     # PostgreSQL major versions are NOT compatible — you cannot use a pg17
     # image to read data created by pg16 (or vice versa) without a migration.
     image: pgvector/pgvector:pg17
-    deploy:
-      resources:
-        limits:
-          memory: 1g
     env_file:
       - stack.env
     environment:
@@ -37,13 +33,9 @@ services:
   # Do NOT downgrade to 8.x without also changing the client library in server/package.json
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.2.4
-    deploy:
-      resources:
-        limits:
-          memory: 768m
     environment:
       - discovery.type=single-node
-      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+      - "ES_JAVA_OPTS=-Xms${ES_HEAP_MIN:-256m} -Xmx${ES_HEAP_MAX:-512m}"
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
     # Ports removed to prevent external access
@@ -67,10 +59,6 @@ services:
   # Redis (Queue & Cache)
   redis:
     image: redis:alpine
-    deploy:
-      resources:
-        limits:
-          memory: 128m
     # Ports removed to prevent external access
     # ports:
     #   - "6379:6379"
@@ -94,10 +82,6 @@ services:
       dockerfile: server/Dockerfile
       args:
         DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
     pull_policy: build
     ports:
       - "3000:3000"
@@ -113,7 +97,7 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
-      NODE_OPTIONS: "--max-old-space-size=1536"
+      NODE_OPTIONS: "--max-old-space-size=3072"
     volumes:
       - uploads_data:/app/server/uploads
       - geoip_data:/app/server/data
@@ -145,10 +129,6 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    deploy:
-      resources:
-        limits:
-          memory: 64m
     pull_policy: build
     ports:
       - "5173:80" # External 5173 -> Internal Nginx 80
