@@ -587,8 +587,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         // Background processing (detached from request lifecycle)
-        setImmediate(async () => {
-            try {
+        // Why the outer .catch(): setImmediate ignores the promise returned by
+        // an async callback, so any rejection would be silently swallowed.
+        setImmediate(() => {
+            (async () => {
                 Logger.info('[Reprocess] Starting background PO reprocessing', { accountId, poCount });
 
                 const receivedPOs = await prisma.purchaseOrder.findMany({
@@ -698,9 +700,9 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                     reindexed,
                     receiveErrors: receiveErrors.length
                 });
-            } catch (error) {
+            })().catch(error => {
                 Logger.error('[Reprocess] Background reprocessing failed', { accountId, error });
-            }
+            });
         });
     });
 };
