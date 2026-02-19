@@ -69,39 +69,6 @@ async function fetchVariantsForProducts(productIds: string[]): Promise<Map<strin
         });
     }
 
-    // FALLBACK: For products with no ProductVariation records, check rawData.variationsData
-    const productsNeedingFallback = productIdsForVariants.filter(id => !variantMap.has(id));
-    if (productsNeedingFallback.length > 0) {
-        const fallbackVariations = await prisma.productVariation.findMany({
-            where: { productId: { in: productsNeedingFallback } },
-            select: { productId: true, wooId: true, cogs: true }
-        });
-        const cogsLookup = new Map<string, number>();
-        for (const fv of fallbackVariations) {
-            cogsLookup.set(`${fv.productId}:${fv.wooId}`, fv.cogs ? Number(fv.cogs) : 0);
-        }
-
-        for (const p of dbProducts.filter(db => productsNeedingFallback.includes(db.id))) {
-            const raw = p.rawData as any || {};
-            const variationsData: any[] = raw.variationsData || [];
-            if (variationsData.length > 0) {
-                variantMap.set(p.id, variationsData.map((v: any) => ({
-                    id: `${p.id}:${v.id}`,
-                    productId: p.id,
-                    wooId: v.id,
-                    sku: v.sku || '',
-                    stockQuantity: v.stock_quantity ?? null,
-                    stockStatus: v.stock_status || 'instock',
-                    cogs: cogsLookup.get(`${p.id}:${v.id}`) || 0,
-                    attributes: v.attributes || [],
-                    attributeString: (v.attributes || [])
-                        .map((a: any) => a.option || a.value)
-                        .filter(Boolean)
-                        .join(' / ')
-                })));
-            }
-        }
-    }
 
     return variantMap;
 }

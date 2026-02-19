@@ -202,33 +202,15 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         return { ...item, childVariation: dbVariation };
                     }
 
+                    // No ProductVariation record found for this BOM item's childVariationId.
+                    // This can happen if the variation was never synced. Log it so we know.
                     const parentProduct = parentMap.get(item.childProductId);
-                    if (!parentProduct) return item;
-
-                    const rawData = parentProduct.rawData as any || {};
-                    const variationsData: any[] = rawData.variationsData || [];
-
-                    const matchingVariation = variationsData.find(
-                        (v: any) => v.id === item.childVariationId
-                    );
-
-                    if (matchingVariation) {
-                        const syntheticVariation = {
-                            id: `synthetic:${item.childProductId}:${item.childVariationId}`,
-                            productId: item.childProductId,
-                            wooId: item.childVariationId,
-                            sku: matchingVariation.sku || null,
-                            price: matchingVariation.price ? parseFloat(matchingVariation.price) : null,
-                            salePrice: matchingVariation.sale_price ? parseFloat(matchingVariation.sale_price) : null,
-                            stockStatus: matchingVariation.stock_status || 'instock',
-                            stockQuantity: matchingVariation.stock_quantity ?? null,
-                            cogs: null,
-                            rawData: matchingVariation,
-                            _parentProductName: parentProduct.name
-                        };
-                        return { ...item, childVariation: syntheticVariation };
-                    }
-
+                    Logger.warn('BOM item references a variation with no ProductVariation record', {
+                        bomItemId: item.id,
+                        childProductId: item.childProductId,
+                        childVariationId: item.childVariationId,
+                        parentProductName: parentProduct?.name
+                    });
                     return item;
                 });
             }
