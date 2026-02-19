@@ -30,44 +30,41 @@ export class ProductsService {
         if (!product) return null;
 
         const raw = product.rawData as any;
-        Logger.debug('rawData keys', { keys: Object.keys(raw || {}) });
 
-        const variationIds: number[] = raw?.variations || [];
-        const variationsData: any[] = raw?.variationsData || [];
-
-        // Fetch local variation overrides (COGS, binLocation, miscCosts)
+        // Why ProductVariation table is primary: rawData.variationsData is no longer
+        // populated by auto-sync (removed for OOM mitigation). The DB table is the
+        // authoritative source for stock, COGS, and other locally-managed fields.
         const localVariations = await prisma.productVariation.findMany({
             where: { productId: product.id }
         });
 
-        const mergedVariations = variationIds.map((vId: number) => {
-            const fullData = variationsData.find((v: any) => v.id === vId);
-            const localVariant = localVariations.find(lv => lv.wooId === vId);
+        const mergedVariations = localVariations.map(lv => {
+            const varRaw = lv.rawData as any || {};
 
-            const weight = localVariant?.weight?.toString() || fullData?.weight || '';
-            const length = localVariant?.length?.toString() || fullData?.dimensions?.length || '';
-            const width = localVariant?.width?.toString() || fullData?.dimensions?.width || '';
-            const height = localVariant?.height?.toString() || fullData?.dimensions?.height || '';
+            const weight = lv.weight?.toString() || varRaw.weight || '';
+            const length = lv.length?.toString() || varRaw.dimensions?.length || '';
+            const width = lv.width?.toString() || varRaw.dimensions?.width || '';
+            const height = lv.height?.toString() || varRaw.dimensions?.height || '';
 
             return {
-                id: vId,
-                sku: fullData?.sku || '',
-                price: fullData?.price || '',
-                salePrice: fullData?.sale_price || '',
-                stockStatus: fullData?.stock_status || 'instock',
-                stockQuantity: fullData?.stock_quantity ?? null,
-                manageStock: fullData?.manage_stock ?? false,
-                backorders: fullData?.backorders || 'no',
+                id: lv.wooId,
+                sku: lv.sku || varRaw.sku || '',
+                price: lv.price?.toString() || varRaw.price || '',
+                salePrice: lv.salePrice?.toString() || varRaw.sale_price || '',
+                stockStatus: lv.stockStatus || varRaw.stock_status || 'instock',
+                stockQuantity: lv.stockQuantity ?? varRaw.stock_quantity ?? null,
+                manageStock: lv.manageStock ?? varRaw.manage_stock ?? false,
+                backorders: varRaw.backorders || 'no',
                 weight,
                 dimensions: { length, width, height },
-                cogs: localVariant?.cogs?.toString() || '',
-                miscCosts: localVariant?.miscCosts || [],
-                binLocation: localVariant?.binLocation || '',
-                isGoldPriceApplied: localVariant?.isGoldPriceApplied || false,
-                goldPriceType: localVariant?.goldPriceType || null,
-                image: fullData?.image || null,
-                images: fullData?.image ? [fullData.image] : [],
-                attributes: fullData?.attributes || []
+                cogs: lv.cogs?.toString() || '',
+                miscCosts: lv.miscCosts || [],
+                binLocation: lv.binLocation || '',
+                isGoldPriceApplied: lv.isGoldPriceApplied || false,
+                goldPriceType: lv.goldPriceType || null,
+                image: varRaw.image || null,
+                images: varRaw.image ? [varRaw.image] : [],
+                attributes: varRaw.attributes || []
             };
         });
 

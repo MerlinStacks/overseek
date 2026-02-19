@@ -5,8 +5,8 @@
  * BOM order processing is handled by BOMConsumptionService via workers.
  */
 
-import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { BOMInventorySyncService } from './BOMInventorySyncService';
 import {
     checkInventoryHealth as checkHealth,
     sendLowStockAlerts as sendAlerts
@@ -34,39 +34,14 @@ export class InventoryService {
 
     /**
      * Calculate available stock for a product that has a BOM.
-     * Returns the maximum buildable quantity based on component stock levels.
-     * 
+     * Delegates to BOMInventorySyncService which handles all component types
+     * (WooProduct, ProductVariation, InternalProduct).
+     *
      * @returns number of buildable units, or null if product has no BOM
      */
-    static async calculateBOMStock(accountId: string, productId: string, variationId: number = 0): Promise<number | null> {
-        const bom = await prisma.bOM.findFirst({
-            where: {
-                productId,
-                variationId: { in: [variationId, 0] }
-            },
-            include: { items: { include: { childProduct: true } } },
-            orderBy: { variationId: 'desc' }
-        });
-
-        if (!bom || bom.items.length === 0) return null;
-
-        let minBuildable = Infinity;
-
-        for (const item of bom.items) {
-            if (!item.childProductId || !item.childProduct) continue;
-
-            const qtyPerUnit = Number(item.quantity) || 1;
-            if (qtyPerUnit <= 0) continue;
-
-            const componentStock = await this.getEffectiveStock(item.childProduct);
-
-            if (componentStock === null) continue;
-
-            const buildableFromThis = Math.floor(componentStock / qtyPerUnit);
-            minBuildable = Math.min(minBuildable, buildableFromThis);
-        }
-
-        return minBuildable === Infinity ? null : minBuildable;
+    static async calculateBOMStock(_accountId: string, productId: string, variationId: number = 0): Promise<number | null> {
+        const result = await BOMInventorySyncService.calculateEffectiveStockLocal(productId, variationId);
+        return result?.effectiveStock ?? null;
     }
 
     /**
@@ -107,7 +82,12 @@ export class InventoryService {
                     select: {
                         id: true,
                         items: {
-                            where: { childProductId: { not: null } },
+                            where: {
+                                OR: [
+                                    { childProductId: { not: null } },
+                                    { internalProductId: { not: null } }
+                                ]
+                            },
                             select: { id: true }
                         }
                     }
