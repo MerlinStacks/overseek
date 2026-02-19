@@ -134,6 +134,7 @@ export class InvoiceService {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
             const stream = fs.createWriteStream(filePath);
 
+            doc.on('error', reject);
             doc.pipe(stream);
 
             // Parse template layout

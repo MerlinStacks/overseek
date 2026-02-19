@@ -17,8 +17,8 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId!;
 
             const query = request.query as { page?: string; limit?: string; q?: string };
-            const page = parseInt(query.page || '1');
-            const limit = parseInt(query.limit || '20');
+            const page = parseInt(query.page || '1', 10);
+            const limit = parseInt(query.limit || '20', 10);
             const q = query.q || '';
 
             const result = await CustomersService.searchCustomers(accountId, q, page, limit);

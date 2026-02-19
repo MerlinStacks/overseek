@@ -149,7 +149,7 @@ async function isLoginAllowed(ip: string): Promise<boolean> {
     try {
         const count = await redisClient.get(key);
         if (!count) return true; // No record = allowed
-        return parseInt(count) < MAX_FAILED_ATTEMPTS;
+        return parseInt(count, 10) < MAX_FAILED_ATTEMPTS;
     } catch (error) {
         Logger.warn('Rate limit check fallback to memory', { error });
         return isLoginAllowedFallback(ip);
@@ -353,9 +353,17 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const userId = request.user!.id;
             const { fullName, shiftStart, shiftEnd, emailSignature } = request.body as any;
+
+            // Why: explicit whitelist prevents mass-assignment if new sensitive fields are added to User model
+            const data: Record<string, unknown> = {};
+            if (fullName !== undefined) data.fullName = fullName;
+            if (shiftStart !== undefined) data.shiftStart = shiftStart;
+            if (shiftEnd !== undefined) data.shiftEnd = shiftEnd;
+            if (emailSignature !== undefined) data.emailSignature = emailSignature;
+
             const updatedUser = await prisma.user.update({
                 where: { id: userId },
-                data: { fullName, shiftStart, shiftEnd, emailSignature }
+                data
             });
             const { passwordHash, ...safeUser } = updatedUser;
             return safeUser;
@@ -418,7 +426,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 const nodemailer = require('nodemailer');
                 const transporter = nodemailer.createTransport({
                     host: process.env.SMTP_HOST,
-                    port: parseInt(process.env.SMTP_PORT || '587'),
+                    port: parseInt(process.env.SMTP_PORT || '587', 10),
                     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
                 });
 
@@ -428,6 +436,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     subject: 'Password Reset Request',
                     html: `<p>You requested a password reset. Click <a href="${resetLink}">here</a> to reset your password.</p>`
                 });
+                transporter.close();
             } else {
                 Logger.debug(`Password Reset Link generated`, { email, resetLink });
             }
@@ -552,8 +561,16 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { refreshToken } = request.body as { refreshToken?: string };
             if (refreshToken) {
+                // Why: verify the token belongs to the requesting user to prevent cross-user session revocation
+                const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+                const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: hashedToken } });
+
+                if (!tokenRecord || tokenRecord.userId !== request.user!.id) {
+                    return reply.code(403).send({ error: 'Token does not belong to this user' });
+                }
+
                 await prisma.refreshToken.update({
-                    where: { token: refreshToken },
+                    where: { id: tokenRecord.id },
                     data: { revokedAt: new Date() }
                 });
             }

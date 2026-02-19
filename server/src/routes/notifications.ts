@@ -26,7 +26,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const query = request.query as { limit?: string };
-            const limit = parseInt(query.limit || '20');
+            const limit = parseInt(query.limit || '20', 10);
 
             const notifications = await prisma.notification.findMany({
                 where: { accountId },

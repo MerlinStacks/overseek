@@ -22,7 +22,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const { productId } = request.params;
         const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0');
+        const variationId = parseInt(query.variationId || '0', 10);
 
         try {
             const result = await BOMInventorySyncService.syncProductToWoo(accountId, productId, variationId);
@@ -49,7 +49,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const { productId } = request.params;
         const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0');
+        const variationId = parseInt(query.variationId || '0', 10);
 
         try {
             // Step 1: Check if product exists
@@ -507,7 +507,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/bom/sync-history', async (request, reply) => {
         const accountId = request.accountId!;
         const query = request.query as { limit?: string };
-        const limit = Math.min(parseInt(query.limit || '50'), 100);
+        const limit = Math.min(parseInt(query.limit || '50', 10), 100);
 
         try {
             const logs = await prisma.auditLog.findMany({

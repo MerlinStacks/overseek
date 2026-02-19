@@ -45,9 +45,9 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
                     email,
                     phone,
                     currency: currency || 'USD',
-                    leadTimeDefault: leadTimeDefault ? parseInt(leadTimeDefault) : null,
-                    leadTimeMin: leadTimeMin ? parseInt(leadTimeMin) : null,
-                    leadTimeMax: leadTimeMax ? parseInt(leadTimeMax) : null,
+                    leadTimeDefault: leadTimeDefault ? parseInt(leadTimeDefault, 10) : null,
+                    leadTimeMin: leadTimeMin ? parseInt(leadTimeMin, 10) : null,
+                    leadTimeMax: leadTimeMax ? parseInt(leadTimeMax, 10) : null,
                     paymentTerms
                 }
             });
@@ -78,9 +78,9 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
                     email,
                     phone,
                     currency: currency || 'USD',
-                    leadTimeDefault: leadTimeDefault ? parseInt(leadTimeDefault) : null,
-                    leadTimeMin: leadTimeMin ? parseInt(leadTimeMin) : null,
-                    leadTimeMax: leadTimeMax ? parseInt(leadTimeMax) : null,
+                    leadTimeDefault: leadTimeDefault ? parseInt(leadTimeDefault, 10) : null,
+                    leadTimeMin: leadTimeMin ? parseInt(leadTimeMin, 10) : null,
+                    leadTimeMax: leadTimeMax ? parseInt(leadTimeMax, 10) : null,
                     paymentTerms
                 }
             });
@@ -114,16 +114,24 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /suppliers/:id/items
     fastify.post<{ Params: { id: string } }>('/suppliers/:id/items', async (request, reply) => {
         const { id } = request.params;
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'No account' });
+
+        // Why: prevent cross-account supplier item injection
+        const supplier = await prisma.supplier.findFirst({ where: { id, accountId } });
+        if (!supplier) return reply.code(404).send({ error: 'Supplier not found' });
+
         try {
             const { name, sku, cost, leadTime, moq } = request.body as any;
+            const parsedCost = parseFloat(cost);
             const item = await prisma.supplierItem.create({
                 data: {
                     supplierId: id,
                     name,
                     sku,
-                    cost: parseFloat(cost),
-                    leadTime: leadTime ? parseInt(leadTime) : null,
-                    moq: moq ? parseInt(moq) : 1
+                    cost: isNaN(parsedCost) ? 0 : parsedCost,
+                    leadTime: leadTime ? parseInt(leadTime, 10) : null,
+                    moq: moq ? parseInt(moq, 10) : 1
                 }
             });
             return item;

@@ -38,7 +38,7 @@ const searchRoutes: FastifyPluginAsync = async (fastify) => {
             const results = await EmbeddingService.semanticSearch(
                 accountId,
                 q,
-                parseInt(limit || '10')
+                parseInt(limit || '10', 10)
             );
 
             return results;
@@ -60,7 +60,7 @@ const searchRoutes: FastifyPluginAsync = async (fastify) => {
             const results = await EmbeddingService.findSimilarProducts(
                 productId,
                 accountId,
-                parseInt(limit || '5')
+                parseInt(limit || '5', 10)
             );
 
             return results;

@@ -48,6 +48,17 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // DELETE /:id/notes/:noteId - Delete a note
     fastify.delete<{ Params: { id: string; noteId: string } }>('/:id/notes/:noteId', async (request, reply) => {
+        // Why: verify ownership chain (note → conversation → account) to prevent cross-account deletion
+        const note = await prisma.conversationNote.findUnique({
+            where: { id: request.params.noteId },
+            include: { conversation: { select: { accountId: true } } }
+        });
+        if (!note || note.conversationId !== request.params.id) {
+            return reply.code(404).send({ error: 'Note not found' });
+        }
+        if (note.conversation.accountId !== request.accountId) {
+            return reply.code(403).send({ error: 'Forbidden' });
+        }
         await prisma.conversationNote.delete({ where: { id: request.params.noteId } });
         return { success: true };
     });

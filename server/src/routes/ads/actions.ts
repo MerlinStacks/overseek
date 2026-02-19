@@ -291,7 +291,7 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
 
         try {
             const { CoPilotROIService } = await import('../../services/CoPilotROIService');
-            const days = parseInt(request.query.days || '30');
+            const days = parseInt(request.query.days || '30', 10);
             const summary = await CoPilotROIService.getROISummary(accountId, days);
             return { success: true, data: summary };
         } catch (error: any) {
@@ -325,8 +325,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
         try {
-            const page = parseInt(request.query.page || '1');
-            const limit = Math.min(parseInt(request.query.limit || '20'), 100);
+            const page = parseInt(request.query.page || '1', 10);
+            const limit = Math.min(parseInt(request.query.limit || '20', 10), 100);
             const skip = (page - 1) * limit;
 
             const [actions, total] = await Promise.all([

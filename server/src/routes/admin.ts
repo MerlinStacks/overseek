@@ -209,7 +209,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/sync-status', async (request, reply) => {
         try {
             const query = request.query as { accountId?: string; limit?: string };
-            const limit = parseInt(query.limit || '20');
+            const limit = parseInt(query.limit || '20', 10);
 
             const whereClause = query.accountId ? { accountId: query.accountId } : {};
 
@@ -362,8 +362,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/logs', async (request, reply) => {
         try {
             const query = request.query as { page?: string; limit?: string };
-            const page = parseInt(query.page || '1');
-            const limit = parseInt(query.limit || '20');
+            const page = parseInt(query.page || '1', 10);
+            const limit = parseInt(query.limit || '20', 10);
             const skip = (page - 1) * limit;
 
             const logs = await prisma.syncLog.findMany({

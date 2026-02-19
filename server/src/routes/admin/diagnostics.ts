@@ -62,7 +62,7 @@ export const diagnosticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/diagnostics/notification-deliveries', async (request, reply) => {
         try {
             const query = request.query as { limit?: string };
-            const limit = parseInt(query.limit || '50');
+            const limit = parseInt(query.limit || '50', 10);
 
             const deliveries = await prisma.notificationDelivery.findMany({
                 orderBy: { createdAt: 'desc' },

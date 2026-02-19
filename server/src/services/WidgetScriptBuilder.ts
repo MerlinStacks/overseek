@@ -250,6 +250,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
     let visitorEmail = localStorage.getItem('os_email_' + accountId) || '';
     let selectedFile = null;
     let agentAvatar = null;
+    let pollTimeout = null;
 
     if (visitorName && visitorEmail) {
         prechatForm.style.display = 'none';
@@ -272,6 +273,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
         widget.classList.remove('open');
         windowEl.classList.remove('open');
         emojiPicker.classList.remove('open');
+        if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; }
     }
 
     toggle.addEventListener('click', () => isOpen ? closeChat() : openChat());
@@ -449,7 +451,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
                 }
             }
         } catch (err) { console.error('Poll error', err); }
-        setTimeout(pollMessages, 3000);
+        pollTimeout = setTimeout(pollMessages, 3000);
     }
 
     function addMessageUI(text, type, imageUrl, avatarUrl) {

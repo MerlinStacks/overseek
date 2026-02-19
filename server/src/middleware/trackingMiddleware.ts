@@ -53,7 +53,8 @@ export function isRateLimited(accountId: string): boolean {
         return false;
     }
 
-    return ++window.count >= MAX_EVENTS_PER_MINUTE;
+    // Why: >= would block the Nth event itself, making the effective limit N-1
+    return ++window.count > MAX_EVENTS_PER_MINUTE;
 }
 
 // Cleanup stale entries every 5 minutes

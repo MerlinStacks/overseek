@@ -55,7 +55,9 @@ class SystemEventBus extends EventEmitter {
 
     // Typed emit wrapper could be added here for stricter types
     emit(event: string, ...args: any[]): boolean {
-        Logger.debug(`Event Emitted: ${event}`, { args });
+        // Why no args: serializing full event payloads (orders, products) on
+        // every emit caused significant GC pressure from repeated JSON.stringify.
+        Logger.debug(`Event Emitted: ${event}`);
         return super.emit(event, ...args);
     }
 }

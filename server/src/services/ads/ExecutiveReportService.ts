@@ -405,6 +405,7 @@ Return a JSON object with:
 
             stream.on('finish', resolve);
             stream.on('error', reject);
+            doc.on('error', reject);
 
             doc.pipe(stream);
 

@@ -206,6 +206,9 @@ async function build() {
     // Graceful Shutdown Hook
     fastify.addHook('onClose', async (_instance) => {
         Logger.info('Graceful shutdown initiated...');
+        const { WooService } = await import('./services/woo');
+        WooService.destroyAgents();
+        Logger.info('HTTP agent pools destroyed.');
         await prisma.$disconnect();
         Logger.info('Prisma disconnected.');
     });

@@ -97,7 +97,7 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
-      NODE_OPTIONS: "--max-old-space-size=3072"
+      NODE_OPTIONS: "--max-old-space-size=4096"
     volumes:
       - uploads_data:/app/server/uploads
       - geoip_data:/app/server/data

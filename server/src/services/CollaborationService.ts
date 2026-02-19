@@ -29,10 +29,14 @@ const STALE_PRUNE_ON_JOIN_MS = 30000;
  * Wraps a promise with a timeout to prevent indefinite blocking.
  */
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+    let timer: NodeJS.Timeout;
     const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs);
+        timer = setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs);
     });
-    return Promise.race([promise, timeoutPromise]);
+    // Why .finally: if the real promise wins the race the setTimeout handle
+    // would otherwise leak until natural expiry — thousands of orphaned timers
+    // under concurrent load.
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer!));
 }
 
 export class CollaborationService {

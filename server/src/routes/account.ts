@@ -328,6 +328,13 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     // Tag Mappings - Get
     fastify.get<{ Params: { accountId: string } }>('/:accountId/tag-mappings', async (request, reply) => {
         try {
+            // Why: URL param accountId is not validated by auth middleware — must verify membership
+            const userId = request.user!.id;
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId, accountId: request.params.accountId } }
+            });
+            if (!membership) return reply.code(403).send({ error: 'Forbidden' });
+
             const mappings = await OrderTaggingService.getTagMappings(request.params.accountId);
             return { mappings };
         } catch (error) {
@@ -338,6 +345,14 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     // Tag Mappings - Save
     fastify.put<{ Params: { accountId: string }; Body: { mappings: any[] } }>('/:accountId/tag-mappings', async (request, reply) => {
         try {
+            const userId = request.user!.id;
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId, accountId: request.params.accountId } }
+            });
+            if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
+                return reply.code(403).send({ error: 'Forbidden' });
+            }
+
             const { mappings } = request.body;
             if (!Array.isArray(mappings)) return reply.code(400).send({ error: 'mappings must be an array' });
             await OrderTaggingService.saveTagMappings(request.params.accountId, mappings);
@@ -350,6 +365,12 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     // Product Tags
     fastify.get<{ Params: { accountId: string } }>('/:accountId/product-tags', async (request, reply) => {
         try {
+            const userId = request.user!.id;
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId, accountId: request.params.accountId } }
+            });
+            if (!membership) return reply.code(403).send({ error: 'Forbidden' });
+
             const tags = await OrderTaggingService.getAllProductTags(request.params.accountId);
             return { tags };
         } catch (error) {

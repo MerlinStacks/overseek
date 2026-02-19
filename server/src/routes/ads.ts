@@ -241,7 +241,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { adAccountId } = request.params;
             const { days } = request.query as { days?: string };
-            const daysNum = parseInt(days || '30');
+            const daysNum = parseInt(days || '30', 10);
             const accountId = request.accountId!;
 
             const accounts = await AdsService.getAdAccounts(accountId);
@@ -272,7 +272,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { adAccountId } = request.params;
             const { days } = request.query as { days?: string };
-            const daysNum = parseInt(days || '30');
+            const daysNum = parseInt(days || '30', 10);
             const accountId = request.accountId!;
 
             const accounts = await AdsService.getAdAccounts(accountId);
@@ -303,8 +303,8 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { adAccountId } = request.params;
             const { days, limit } = request.query as { days?: string; limit?: string };
-            const daysNum = parseInt(days || '30');
-            const limitNum = Math.min(parseInt(limit || '200'), 500);
+            const daysNum = parseInt(days || '30', 10);
+            const limitNum = Math.min(parseInt(limit || '200', 10), 500);
             const accountId = request.accountId!;
 
             const accounts = await AdsService.getAdAccounts(accountId);
@@ -359,7 +359,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { adAccountId, campaignId } = request.params;
             const { days } = request.query as { days?: string };
-            const daysNum = parseInt(days || '30');
+            const daysNum = parseInt(days || '30', 10);
             const accountId = request.accountId!;
 
             const accounts = await AdsService.getAdAccounts(accountId);

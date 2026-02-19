@@ -15,6 +15,21 @@ export class MessageScheduler {
     private static snoozeCheckInterval: NodeJS.Timeout | null = null;
 
     /**
+     * Why lazy singleton: creating new EmailService() every 2-min poll cycle
+     * leaked IMAP/SMTP transport handles that weren't fully GC'd.
+     */
+    private static emailServiceInstance: InstanceType<typeof import('../EmailService').EmailService> | null = null;
+
+    /** Returns a shared EmailService, creating it lazily on first use. */
+    private static async getEmailService() {
+        if (!this.emailServiceInstance) {
+            const { EmailService } = await import('../EmailService');
+            this.emailServiceInstance = new EmailService();
+        }
+        return this.emailServiceInstance;
+    }
+
+    /**
      * Start all message-related tickers
      */
     static start() {
@@ -45,8 +60,7 @@ export class MessageScheduler {
             Logger.info(`[Email Polling] Starting check - found ${accounts.length} IMAP-enabled account(s)`);
 
             if (accounts.length > 0) {
-                const { EmailService } = await import('../EmailService');
-                const emailService = new EmailService();
+                const emailService = await this.getEmailService();
 
                 const results = await Promise.allSettled(
                     accounts.map(async (acc) => {
@@ -98,8 +112,7 @@ export class MessageScheduler {
         for (const message of dueMessages) {
             try {
                 if (message.conversation.channel === 'EMAIL') {
-                    const { EmailService } = await import('../EmailService');
-                    const emailService = new EmailService();
+                    const emailService = await this.getEmailService();
 
                     const recipientEmail = message.conversation.wooCustomer?.email
                         || message.conversation.guestEmail;

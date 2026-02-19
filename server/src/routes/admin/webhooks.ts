@@ -34,8 +34,8 @@ export const webhookAdminRoutes: FastifyPluginAsync = async (fastify) => {
                     source: source as 'WOOCOMMERCE' | 'META' | 'TIKTOK',
                 },
                 {
-                    page: page ? parseInt(page) : 1,
-                    limit: limit ? parseInt(limit) : 20,
+                    page: page ? parseInt(page, 10) : 1,
+                    limit: limit ? parseInt(limit, 10) : 20,
                 }
             );
 

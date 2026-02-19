@@ -36,7 +36,7 @@ const auditsRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account context provided' });
             const query = request.query as { limit?: string };
-            const limit = query.limit ? parseInt(query.limit) : 50;
+            const limit = query.limit ? parseInt(query.limit, 10) : 50;
 
             const logs = await AuditService.getRecentLogs(accountId, limit);
             return logs;

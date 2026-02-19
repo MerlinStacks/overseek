@@ -65,11 +65,16 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const message = await prisma.message.findUnique({
                 where: { id: request.params.id },
-                select: { scheduledFor: true, scheduledBy: true },
+                select: { scheduledFor: true, scheduledBy: true, conversation: { select: { accountId: true } } },
             });
 
             if (!message) {
                 return reply.code(404).send({ error: 'Message not found' });
+            }
+
+            // Why: prevent cross-account deletion of scheduled messages
+            if (message.conversation?.accountId !== request.accountId) {
+                return reply.code(403).send({ error: 'Forbidden' });
             }
 
             if (!message.scheduledFor) {

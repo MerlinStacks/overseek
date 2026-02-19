@@ -103,6 +103,8 @@ export function PurchaseOrderEditPage() {
                     supplierItemId: i.supplierItemId,
                     name: i.name,
                     sku: i.sku,
+                    wooId: i.product?.wooId ?? i.wooId,
+                    variationWooId: i.variationWooId ?? undefined,
                     quantity: i.quantity,
                     unitCost: Number(i.unitCost),
                     totalCost: Number(i.totalCost)

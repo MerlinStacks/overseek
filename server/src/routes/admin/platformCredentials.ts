@@ -95,7 +95,7 @@ export const platformCredentialsRoutes: FastifyPluginAsync = async (fastify) => 
             if (!host || !port || !username || !password) {
                 return reply.code(400).send({ success: false, error: 'Missing required fields' });
             }
-            const result = await platformEmailService.testConnection({ host, port: parseInt(String(port)), username, password, secure: Boolean(secure) });
+            const result = await platformEmailService.testConnection({ host, port: parseInt(String(port), 10), username, password, secure: Boolean(secure) });
             if (result.success) return { success: true };
             return reply.code(400).send({ success: false, error: result.error });
         } catch (e: any) {

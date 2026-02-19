@@ -248,8 +248,8 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/orders/search', async (request, reply) => {
         const query = request.query as any;
         const accountId = request.accountId;
-        const page = parseInt(query.page) || 1;
-        const limit = parseInt(query.limit) || 50;
+        const page = parseInt(query.page, 10) || 1;
+        const limit = parseInt(query.limit, 10) || 50;
         const { q, tags: tagsParam, status } = query;
 
         let tags: string[] | undefined;

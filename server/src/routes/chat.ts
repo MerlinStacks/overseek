@@ -58,7 +58,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
-                const limit = Math.min(parseInt(query.limit || '50'), 100);
+                const limit = Math.min(parseInt(query.limit || '50', 10), 100);
                 // Fetch one extra to determine if there are more results
                 const conversations = await chatService.listConversations(
                     accountId,
@@ -91,7 +91,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 if (!q || q.trim().length < 2) return reply.code(400).send({ error: 'Search query must be at least 2 characters' });
 
                 const searchTerm = q.trim().toLowerCase();
-                const maxResults = Math.min(parseInt(limit), 50);
+                const maxResults = Math.min(parseInt(limit, 10), 50);
 
                 const conversations = await prisma.conversation.findMany({
                     where: {

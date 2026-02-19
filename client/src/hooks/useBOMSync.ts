@@ -5,7 +5,7 @@
  * Extracted from BOMSyncPage.tsx for reusability and maintainability.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Logger } from '../utils/logger';
@@ -122,6 +122,9 @@ export function useBOMSync(): UseBOMSyncReturn {
     const [syncingProductId, setSyncingProductId] = useState<string | null>(null);
     const [syncResult, setSyncResult] = useState<{ synced: number; failed: number } | null>(null);
     const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
+    /** Ref to break the fetchPendingChanges → syncErrors → useEffect loop */
+    const syncErrorsRef = useRef(syncErrors);
+    syncErrorsRef.current = syncErrors;
 
     // Stats and progress
     const [stats, setStats] = useState<SyncStats>({ total: 0, needsSync: 0, inSync: 0, errors: 0 });
@@ -143,7 +146,8 @@ export function useBOMSync(): UseBOMSyncReturn {
                 const products = data.products || [];
                 setPendingChanges(products);
 
-                const errorCount = Object.values(syncErrors).filter(e => e).length;
+                // Read from ref to avoid adding syncErrors to deps (prevents infinite loop)
+                const errorCount = Object.values(syncErrorsRef.current).filter(e => e).length;
                 setStats({
                     total: data.total,
                     needsSync: data.needsSync,
@@ -156,7 +160,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         } finally {
             setIsLoadingPending(false);
         }
-    }, [currentAccount, token, syncErrors]);
+    }, [currentAccount?.id, token]);
 
     const fetchSyncHistory = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -177,7 +181,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         } finally {
             setIsLoadingHistory(false);
         }
-    }, [currentAccount, token]);
+    }, [currentAccount?.id, token]);
 
     const checkSyncStatus = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -201,7 +205,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to check sync status', { error: err });
         }
-    }, [currentAccount, token]);
+    }, [currentAccount?.id, token]);
 
     const handleSyncSingle = useCallback(async (productId: string, variationId: number) => {
         if (!currentAccount || !token) return;
@@ -337,12 +341,6 @@ export function useBOMSync(): UseBOMSyncReturn {
         setIsPaused(prev => !prev);
     }, []);
 
-    const handleRefresh = useCallback(() => {
-        fetchPendingChanges();
-        fetchSyncHistory();
-        fetchDeactivatedItems();
-    }, [fetchPendingChanges, fetchSyncHistory]);
-
     /** Fetch deactivated BOM items for the banner */
     const fetchDeactivatedItems = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -360,7 +358,13 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to fetch deactivated items', { error: err });
         }
-    }, [currentAccount, token]);
+    }, [currentAccount?.id, token]);
+
+    const handleRefresh = useCallback(() => {
+        fetchPendingChanges();
+        fetchSyncHistory();
+        fetchDeactivatedItems();
+    }, [fetchPendingChanges, fetchSyncHistory, fetchDeactivatedItems]);
 
     /** Reactivate a single deactivated item, then refresh the list */
     const handleReactivateItem = useCallback(async (itemId: string) => {
@@ -382,7 +386,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         }
     }, [currentAccount, token, fetchDeactivatedItems, fetchPendingChanges]);
 
-    // Initial fetch
+    // Initial fetch — only run when account or token changes
     useEffect(() => {
         if (currentAccount && token) {
             fetchPendingChanges();
@@ -397,7 +401,8 @@ export function useBOMSync(): UseBOMSyncReturn {
             const minutesUntil = Math.round((nextHour.getTime() - now.getTime()) / 60000);
             setNextSyncIn(`${minutesUntil} min`);
         }
-    }, [currentAccount, token, fetchPendingChanges, fetchSyncHistory, fetchDeactivatedItems, checkSyncStatus]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount?.id, token]);
 
     return {
         pendingChanges,

@@ -430,8 +430,8 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.user?.accountId || request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
-            const limit = Math.min(parseInt(request.query.limit || '50'), 100);
-            const offset = parseInt(request.query.offset || '0');
+            const limit = Math.min(parseInt(request.query.limit || '50', 10), 100);
+            const offset = parseInt(request.query.offset || '0', 10);
 
             const [logs, total] = await Promise.all([
                 prisma.emailLog.findMany({

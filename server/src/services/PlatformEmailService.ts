@@ -94,6 +94,7 @@ export class PlatformEmailService {
             });
 
             await transporter.verify();
+            transporter.close();
             return { success: true };
         } catch (error: any) {
             Logger.error('SMTP test connection failed', { error: error.message });
@@ -142,6 +143,7 @@ export class PlatformEmailService {
                 html,
                 text: options?.textContent
             });
+            transporter.close();
 
             Logger.info('Platform email sent', { messageId: info.messageId, to });
 

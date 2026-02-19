@@ -226,7 +226,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     request.user!.accountId!,
                     {
                         status: request.query.status as any,
-                        limit: request.query.limit ? parseInt(request.query.limit) : 50
+                        limit: request.query.limit ? parseInt(request.query.limit, 10) : 50
                     }
                 );
                 return history;

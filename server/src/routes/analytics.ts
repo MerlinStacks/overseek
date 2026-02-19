@@ -36,8 +36,8 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { page?: string; limit?: string; live?: string; startDate?: string; endDate?: string };
-            const page = parseInt(query.page || '1');
-            const limit = parseInt(query.limit || '50');
+            const page = parseInt(query.page || '1', 10);
+            const limit = parseInt(query.limit || '50', 10);
             const liveMode = query.live === 'true';
             return await AnalyticsService.getVisitorLog(accountId, page, limit, liveMode, query.startDate, query.endDate);
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
@@ -47,8 +47,8 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { page?: string; limit?: string; live?: string };
-            const page = parseInt(query.page || '1');
-            const limit = parseInt(query.limit || '50');
+            const page = parseInt(query.page || '1', 10);
+            const limit = parseInt(query.limit || '50', 10);
             const liveMode = query.live === 'true';
             return await AnalyticsService.getEcommerceLog(accountId, page, limit, liveMode);
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
@@ -142,7 +142,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const query = request.query as { days?: string };
-            const days = parseInt(query.days || '30');
+            const days = parseInt(query.days || '30', 10);
             return await SalesAnalytics.getSalesForecast(accountId, days);
         } catch (e) { Logger.error('Forecast Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });

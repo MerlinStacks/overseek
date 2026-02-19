@@ -177,6 +177,7 @@ export class EmailService {
             }
 
             const info = await transporter.sendMail(mailOptions);
+            transporter.close();
 
             await prisma.emailLog.create({
                 data: {
@@ -397,6 +398,7 @@ export class EmailService {
                     }
                 });
                 await transporter.verify();
+                transporter.close();
                 return true;
             } catch (error) {
                 Logger.error('SMTP Verify Error', { error });

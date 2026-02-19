@@ -74,7 +74,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
         const { productId } = request.params;
         const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0');
+        const variationId = parseInt(query.variationId || '0', 10);
 
         try {
             const bom = await prisma.bOM.findUnique({
@@ -247,7 +247,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/effective-stock', async (request, reply) => {
         const { productId } = request.params;
         const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0');
+        const variationId = parseInt(query.variationId || '0', 10);
 
         try {
             const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(

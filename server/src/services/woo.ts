@@ -44,6 +44,37 @@ export class WooService {
     private consumerSecret: string;
     private axiosConfig: any;
 
+    /**
+     * Why singleton pool: each https.Agent holds an internal TCP socket pool.
+     * Creating one per WooService instantiation leaked sockets that the GC
+     * couldn't reclaim (OOM root cause). Keying by hostname lets multiple
+     * accounts on the same host share a single keepAlive pool.
+     */
+    private static agentCache = new Map<string, https.Agent>();
+
+    /** Returns a shared https.Agent for the given hostname, creating one if needed. */
+    private static getAgent(hostname: string): https.Agent {
+        let agent = WooService.agentCache.get(hostname);
+        if (!agent) {
+            agent = new https.Agent({
+                rejectUnauthorized: false,
+                servername: hostname,
+                keepAlive: true,
+                maxSockets: 10,
+            });
+            WooService.agentCache.set(hostname, agent);
+        }
+        return agent;
+    }
+
+    /** Destroys all pooled agents. Call during graceful shutdown. */
+    static destroyAgents(): void {
+        for (const [hostname, agent] of WooService.agentCache) {
+            agent.destroy();
+        }
+        WooService.agentCache.clear();
+    }
+
     constructor(creds: WooCredentials) {
         this.accountId = creds.accountId;
         this.url = creds.url;
@@ -54,11 +85,7 @@ export class WooService {
         const urlObj = new URL(creds.url);
 
         this.axiosConfig = {
-            // Fixes SSL Alert 112 (Unrecognized Name) by sending SNI
-            httpsAgent: new https.Agent({
-                rejectUnauthorized: false,
-                servername: urlObj.hostname
-            })
+            httpsAgent: WooService.getAgent(urlObj.hostname),
         };
 
         this.api = new WooCommerceRestApi({
