@@ -132,11 +132,10 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 Logger.info(`Fetched ${variationsData.length} variations for product ${wooId} (type: ${p.type})`);
             }
 
-            // Store rawData with variationsData included
-            const rawDataWithVariations = {
-                ...p,
-                variationsData
-            };
+            // No longer embed variationsData on parent rawData — all variation
+            // data is read from the ProductVariation table. The variationsData
+            // array is still fetched above for upserting ProductVariation rows below.
+            const rawDataClean = { ...p };
 
             await prisma.wooProduct.upsert({
                 where: { accountId_wooId: { accountId, wooId: p.id } },
@@ -144,7 +143,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     name: p.name,
                     price: p.price === '' ? null : p.price,
                     stockStatus: p.stock_status,
-                    rawData: rawDataWithVariations as any,
+                    rawData: rawDataClean as any,
                     mainImage: p.images?.[0]?.src,
                     weight: p.weight ? parseFloat(p.weight) : null,
                     length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
@@ -166,7 +165,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
                     height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
                     images: p.images || [],
-                    rawData: rawDataWithVariations as any
+                    rawData: rawDataClean as any
                 }
             });
 
