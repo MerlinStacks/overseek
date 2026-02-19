@@ -212,7 +212,12 @@ export class PurchaseOrderService {
                                     select: {
                                         id: true,
                                         items: {
-                                            where: { childProductId: { not: null } },
+                                            where: {
+                                                OR: [
+                                                    { childProductId: { not: null } },
+                                                    { internalProductId: { not: null } }
+                                                ]
+                                            },
                                             select: { id: true }
                                         }
                                     }
@@ -408,7 +413,12 @@ export class PurchaseOrderService {
                                     select: {
                                         id: true,
                                         items: {
-                                            where: { childProductId: { not: null } },
+                                            where: {
+                                                OR: [
+                                                    { childProductId: { not: null } },
+                                                    { internalProductId: { not: null } }
+                                                ]
+                                            },
                                             select: { id: true }
                                         }
                                     }
