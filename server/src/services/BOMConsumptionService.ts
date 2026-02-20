@@ -90,8 +90,8 @@ export class BOMConsumptionService {
 
     /**
      * Process an order and consume BOM component stock.
-     * Should be called when order status becomes 'processing'.
-     * Uses Redis to prevent duplicate consumption on re-syncs.
+     * Triggered when order status becomes 'processing' or 'completed'.
+     * Uses Redis + DB ledger to prevent duplicate consumption on re-syncs.
      */
     static async consumeOrderComponents(
         accountId: string,
@@ -100,24 +100,38 @@ export class BOMConsumptionService {
         const consumed: ComponentDeduction[] = [];
         const errors: string[] = [];
 
-        // Only process orders in 'processing' status
+        // Why both statuses: some payment gateways skip 'processing' and go
+        // directly to 'completed'. The dedup below prevents double-consumption
+        // when an order transitions processing → completed.
         const status = (order.status || '').toLowerCase();
-        if (status !== 'processing') {
-            Logger.debug(`[BOMConsumption] Skipping order ${order.id} - status is ${status}, not processing`, { accountId });
+        if (status !== 'processing' && status !== 'completed') {
+            Logger.debug(`[BOMConsumption] Skipping order ${order.id} - status is ${status}`, { accountId });
             return { consumed, errors };
         }
 
-        // Check if we've already consumed this order (prevent duplicate processing)
+        // Layer 1: Redis dedup (fast path, 24h TTL)
         const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${order.id}`;
         const alreadyConsumed = await redisClient.get(consumedKey);
         if (alreadyConsumed) {
-            Logger.debug(`[BOMConsumption] Order ${order.id} already consumed, skipping`, { accountId });
+            Logger.debug(`[BOMConsumption] Order ${order.id} already consumed (Redis), skipping`, { accountId });
+            return { consumed, errors, skipped: true };
+        }
+
+        // Layer 2: DB dedup fallback — Redis key may have expired after 24h.
+        // The ledger is the authoritative source of truth for past consumption.
+        const orderId = typeof order.id === 'number' ? order.id : parseInt(order.id, 10);
+        const ledgerEntry = await prisma.bOMDeductionLedger.findFirst({
+            where: { accountId, orderId, status: { in: ['COMPLETED', 'EXECUTED'] } }
+        });
+        if (ledgerEntry) {
+            // Re-set the Redis key so subsequent sync cycles don't hit DB again
+            await redisClient.setex(consumedKey, this.CONSUMED_TTL_SECONDS, 'recovered');
+            Logger.debug(`[BOMConsumption] Order ${order.id} already consumed (DB ledger), skipping`, { accountId });
             return { consumed, errors, skipped: true };
         }
 
         // Acquire lock to prevent concurrent processing of same order
         const lockKey = `${this.ORDER_LOCK_PREFIX}${accountId}:${order.id}`;
-        const orderId = typeof order.id === 'number' ? order.id : parseInt(order.id, 10);
         const lockInfo = await this.acquireLock(lockKey, accountId, orderId);
         if (!lockInfo.acquired) {
             Logger.warn(`[BOMConsumption] Order ${order.id} is being processed by another worker, skipping`, { accountId });
@@ -239,6 +253,105 @@ export class BOMConsumptionService {
         }
 
         return { consumed, errors };
+    }
+
+    // --- REVERSAL FOR CANCELLED / REFUNDED ORDERS ---
+
+    /**
+     * Reverse BOM component consumption when an order is cancelled or refunded.
+     * Uses the `BOMDeductionLedger` (COMPLETED entries) to deterministically
+     * reverse each deduction — no stock-guessing heuristic needed.
+     *
+     * Idempotent: if entries are already REVERSED, this is a no-op.
+     */
+    static async reverseOrderConsumption(
+        accountId: string,
+        order: any
+    ): Promise<{ reversed: number; errors: string[] }> {
+        const errors: string[] = [];
+        const orderId = typeof order.id === 'number' ? order.id : parseInt(order.id, 10);
+
+        // Find completed deductions for this order
+        const entries = await prisma.bOMDeductionLedger.findMany({
+            where: { accountId, orderId, status: 'COMPLETED' }
+        });
+
+        if (entries.length === 0) {
+            Logger.debug(`[BOMConsumption] No completed deductions to reverse for order ${orderId}`, { accountId });
+            return { reversed: 0, errors };
+        }
+
+        // Acquire lock to prevent concurrent reversal
+        const lockKey = `${this.ORDER_LOCK_PREFIX}reversal:${accountId}:${orderId}`;
+        const lockInfo = await this.acquireLock(lockKey, accountId, orderId);
+        if (!lockInfo.acquired) {
+            Logger.warn(`[BOMConsumption] Order ${orderId} reversal already in progress, skipping`, { accountId });
+            return { reversed: 0, errors: ['Reversal already in progress'] };
+        }
+
+        try {
+            Logger.info(`[BOMConsumption] Reversing ${entries.length} deductions for cancelled/refunded order ${orderId}`, { accountId });
+
+            // Convert ledger entries to ComponentDeduction format
+            const deductions: ComponentDeduction[] = entries.map(e => ({
+                componentType: e.componentType as ComponentDeduction['componentType'],
+                componentId: e.componentId,
+                componentName: e.componentName,
+                wooId: e.wooId ?? undefined,
+                parentWooId: e.parentWooId ?? undefined,
+                quantityDeducted: e.quantityDeducted,
+                previousStock: e.previousStock,
+                newStock: e.newStock
+            }));
+
+            // Reverse the deductions (adds stock back)
+            await this.rollbackDeductions(accountId, deductions);
+
+            // Mark ledger entries as reversed
+            await prisma.bOMDeductionLedger.updateMany({
+                where: { accountId, orderId, status: 'COMPLETED' },
+                data: { status: 'REVERSED', rolledBackAt: new Date() }
+            });
+
+            // Clear the consumed key so the order doesn't look "consumed" if re-processed
+            const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
+            await redisClient.del(consumedKey);
+
+            // Cascade BOM sync for all affected components
+            const modifiedComponents: { productId: string; variationId?: number; isInternal?: boolean }[] = [];
+            for (const d of deductions) {
+                if (d.componentType === 'ProductVariation') {
+                    modifiedComponents.push({ productId: d.componentId, variationId: d.wooId });
+                } else if (d.componentType === 'WooProduct') {
+                    modifiedComponents.push({ productId: d.componentId });
+                } else if (d.componentType === 'InternalProduct') {
+                    modifiedComponents.push({ productId: d.componentId, isInternal: true });
+                }
+            }
+
+            for (const comp of modifiedComponents) {
+                try {
+                    await this.cascadeSyncAffectedProducts(
+                        accountId,
+                        comp.productId,
+                        comp.variationId,
+                        comp.isInternal ? 'internalProduct' : 'wooProduct'
+                    );
+                } catch (err: any) {
+                    Logger.error(`[BOMConsumption] Cascade sync failed during reversal for ${comp.productId}`, { accountId, error: err.message });
+                }
+            }
+
+            Logger.info(`[BOMConsumption] Reversed ${entries.length} deductions for order ${orderId}`, { accountId });
+            return { reversed: entries.length, errors };
+
+        } catch (error: any) {
+            Logger.error(`[BOMConsumption] Order reversal failed`, { accountId, orderId, error: error.message });
+            errors.push(error.message);
+            return { reversed: 0, errors };
+        } finally {
+            await this.releaseLock(lockKey, lockInfo.usedPostgres, accountId, orderId);
+        }
     }
 
     // --- ROLLBACK & RECOVERY MECHANISMS ---

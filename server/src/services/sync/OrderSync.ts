@@ -155,7 +155,11 @@ export class OrderSync extends BaseSync {
                     EventBus.emit('order:completed', { accountId, order });
                 }
 
-                EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order });
+                // Why gated: emitting for every order on every sync cycle causes
+                // redundant BOM consumption checks. Only new/changed orders matter.
+                if (isNew || isStatusChanged) {
+                    EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order });
+                }
 
                 // Resolve tags
                 if (orderTagsMap) {

@@ -62,19 +62,26 @@ export async function startWorkers() {
         Logger.error('[Workers] FAILED to register BOM Inventory Sync worker', { error: err.message, stack: err.stack });
     }
 
-    // consume BOM components when orders hit 'processing' status
+    // Handle BOM consumption/reversal based on order lifecycle status changes
     await import('../services/BOMConsumptionService').then(({ BOMConsumptionService }) => {
         EventBus.on(EVENTS.ORDER.SYNCED, async ({ accountId, order }) => {
             try {
                 const status = (order?.status || '').toLowerCase();
-                if (status === 'processing') {
-                    Logger.info(`[BOMConsumption] Triggering consumption for order ${order.id} (status: processing)`, { accountId });
+
+                if (status === 'processing' || status === 'completed') {
+                    // Consume BOM components (dedup prevents double-consumption)
+                    Logger.info(`[BOMConsumption] Triggering consumption for order ${order.id} (status: ${status})`, { accountId });
                     await BOMConsumptionService.consumeOrderComponents(accountId, order);
+                } else if (status === 'cancelled' || status === 'refunded' || status === 'failed') {
+                    // Reverse prior consumption if order was cancelled/refunded
+                    Logger.info(`[BOMConsumption] Triggering reversal for order ${order.id} (status: ${status})`, { accountId });
+                    await BOMConsumptionService.reverseOrderConsumption(accountId, order);
                 }
             } catch (err: any) {
-                Logger.error('[BOMConsumption] Failed to consume components', {
+                Logger.error('[BOMConsumption] Failed to process order event', {
                     accountId,
                     orderId: order?.id,
+                    status: order?.status,
                     error: err.message
                 });
             }
