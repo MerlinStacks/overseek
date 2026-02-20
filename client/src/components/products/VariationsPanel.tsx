@@ -47,6 +47,8 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     const variantIdsRef = useRef<string>('');
     const [bomCogsMap, setBomCogsMap] = useState<Record<number, number | null>>({});
     const [bomCogsLoading, setBomCogsLoading] = useState(true);
+    /** Tracks which variants have BOM items, independent of COGS visibility */
+    const [bomExistsMap, setBomExistsMap] = useState<Record<number, boolean>>({});
     const lastSyncedVariantsRef = useRef<ProductVariant[]>(variants);
 
     /**
@@ -87,9 +89,9 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         lastSyncedVariantsRef.current = variants;
     }, [variants]);
 
-    // Fetch BOM COGS for all variants
+    // Fetch BOM existence (always) and COGS (when permitted) for all variants
     useEffect(() => {
-        if (!token || !currentAccount || !canViewCogs || variants.length === 0) {
+        if (!token || !currentAccount || variants.length === 0) {
             setBomCogsLoading(false);
             return;
         }
@@ -97,9 +99,10 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         if (currentVariantIds === variantIdsRef.current) return;
         variantIdsRef.current = currentVariantIds;
 
-        const fetchAllBomCogs = async () => {
+        const fetchAllBomData = async () => {
             setBomCogsLoading(true);
             const newBomCogsMap: Record<number, number | null> = {};
+            const newBomExistsMap: Record<number, boolean> = {};
 
             await Promise.all(variants.map(async (v) => {
                 try {
@@ -108,7 +111,9 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        if (data.items?.length > 0) {
+                        const hasItems = data.items?.length > 0;
+                        newBomExistsMap[v.id] = hasItems;
+                        if (hasItems && canViewCogs) {
                             newBomCogsMap[v.id] = calculateTotalBomCost(data.items);
                         } else {
                             newBomCogsMap[v.id] = null;
@@ -117,13 +122,15 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                 } catch (err) {
                     Logger.error('Failed to fetch BOM for variant', { variantId: v.id, error: err });
                     newBomCogsMap[v.id] = null;
+                    newBomExistsMap[v.id] = false;
                 }
             }));
 
             setBomCogsMap(newBomCogsMap);
+            setBomExistsMap(newBomExistsMap);
             setBomCogsLoading(false);
         };
-        fetchAllBomCogs();
+        fetchAllBomData();
     }, [token, currentAccount, product.id, variants, canViewCogs]);
 
     const handleFieldChange = useCallback((id: number, field: keyof ProductVariant, value: any) => {
@@ -138,6 +145,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
 
     const handleBomCogsUpdate = useCallback((variantId: number, cogs: number) => {
         setBomCogsMap(prev => ({ ...prev, [variantId]: cogs }));
+        setBomExistsMap(prev => ({ ...prev, [variantId]: cogs > 0 }));
     }, []);
 
     /** Update local variant stock after a BOM sync pushes new stock to WooCommerce */
@@ -244,7 +252,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                         onStockAdjust={(delta) => handleStockAdjust(v.id, delta)}
                                         onStockSave={() => handleStockSave(v.id)}
                                         isSavingStock={savingStockId === v.id}
-                                        hasBOM={bomCogsMap[v.id] != null && bomCogsMap[v.id]! > 0}
+                                        hasBOM={!!bomExistsMap[v.id]}
                                     />
                                     {expandedId === v.id && (
                                         <VariantExpandedDetails
