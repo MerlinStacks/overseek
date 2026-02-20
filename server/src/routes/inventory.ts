@@ -587,7 +587,12 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                                             select: {
                                                 id: true,
                                                 items: {
-                                                    where: { childProductId: { not: null } },
+                                                    where: {
+                                                        OR: [
+                                                            { childProductId: { not: null } },
+                                                            { internalProductId: { not: null } }
+                                                        ]
+                                                    },
                                                     select: { id: true }
                                                 }
                                             }
@@ -601,32 +606,34 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
                 let variationsBackfilled = 0;
 
-                // 1. UNRECEIVE: Subtract old stock from parent products + backfill variationWooId
+                // 1. UNRECEIVE using proper service method, then backfill variationWooId
                 for (const po of receivedPOs) {
+                    // Properly unreceive — handles variation vs parent stock correctly
+                    try {
+                        await poService.unreceiveStock(accountId, po.id);
+                        Logger.info(`[Reprocess] Unreceived PO ${po.orderNumber || po.id}`, { accountId });
+                    } catch (err) {
+                        Logger.warn(`[Reprocess] Failed to unreceive PO ${po.orderNumber || po.id}`, { error: (err as Error).message });
+                    }
+
+                    // Backfill missing variationWooId by matching SKU → variation
                     for (const item of po.items) {
                         if (!item.productId || !item.product) continue;
+                        if (item.variationWooId) continue; // Already linked
+                        if (!item.sku || item.product.variations.length === 0) continue;
 
-                        const hasBOM = item.product.boms?.some(bom => bom.items.length > 0) ?? false;
-                        if (hasBOM) continue;
-
-                        await prisma.wooProduct.update({
-                            where: { id: item.product.id },
-                            data: { stockQuantity: { decrement: item.quantity } }
-                        });
-
-                        if (!item.variationWooId && item.sku && item.product.variations.length > 0) {
-                            const matchedVariation = item.product.variations.find(v => v.sku === item.sku);
-                            if (matchedVariation) {
-                                await prisma.purchaseOrderItem.update({
-                                    where: { id: item.id },
-                                    data: { variationWooId: matchedVariation.wooId }
-                                });
-                                variationsBackfilled++;
-                                Logger.info(`[Reprocess] Backfilled variationWooId=${matchedVariation.wooId} for SKU="${item.sku}"`);
-                            }
+                        const matchedVariation = item.product.variations.find(v => v.sku === item.sku);
+                        if (matchedVariation) {
+                            await prisma.purchaseOrderItem.update({
+                                where: { id: item.id },
+                                data: { variationWooId: matchedVariation.wooId }
+                            });
+                            variationsBackfilled++;
+                            Logger.info(`[Reprocess] Backfilled variationWooId=${matchedVariation.wooId} for SKU="${item.sku}"`);
                         }
                     }
 
+                    // Set to DRAFT so receiveStock can process it
                     await prisma.purchaseOrder.update({
                         where: { id: po.id },
                         data: { status: 'DRAFT' }
@@ -647,6 +654,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         receiveErrors.push(`Failed to re-receive PO ${po.orderNumber || po.id}: ${(err as Error).message}`);
                     }
 
+                    // Restore RECEIVED status
                     await prisma.purchaseOrder.update({
                         where: { id: po.id },
                         data: { status: 'RECEIVED' }
