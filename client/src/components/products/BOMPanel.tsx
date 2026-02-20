@@ -280,14 +280,12 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         setSyncStatus('idle');
 
         try {
-            const res = await fetch(`/api/inventory/products/${productId}/bom/sync`, {
+            const res = await fetch(`/api/inventory/products/${productId}/bom/sync?variationId=${selectedScope}`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({ variationId: selectedScope })
+                }
             });
 
             if (res.ok) {
