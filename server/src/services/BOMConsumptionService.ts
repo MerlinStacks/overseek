@@ -155,7 +155,7 @@ export class BOMConsumptionService {
 
             // PHASE 3: EXECUTION
             // Execute deductions one by one
-            const modifiedComponents: { productId: string; variationId?: number }[] = [];
+            const modifiedComponents: { productId: string; variationId?: number; isInternal?: boolean }[] = [];
             const wooService = await WooService.forAccount(accountId);
 
             for (const deduction of deductionPlan) {
@@ -184,6 +184,10 @@ export class BOMConsumptionService {
                         modifiedComponents.push({ productId: deduction.componentId, variationId: deduction.wooId });
                     } else if (deduction.componentType === 'WooProduct') {
                         modifiedComponents.push({ productId: deduction.componentId });
+                    } else if (deduction.componentType === 'InternalProduct') {
+                        // Internal products also need cascade — other BOM parents
+                        // using the same internal component need their effective stock recalculated.
+                        modifiedComponents.push({ productId: deduction.componentId, isInternal: true });
                     }
                 } catch (err: any) {
                     const errMsg = `Failed to execute deduction for ${deduction.componentName}: ${err.message}`;
@@ -203,7 +207,12 @@ export class BOMConsumptionService {
             // This is "best effort" - simpler to just log errors if it fails rather than rollback
             for (const comp of modifiedComponents) {
                 try {
-                    await this.cascadeSyncAffectedProducts(accountId, comp.productId, comp.variationId);
+                    await this.cascadeSyncAffectedProducts(
+                        accountId,
+                        comp.productId,
+                        comp.variationId,
+                        comp.isInternal ? 'internalProduct' : 'wooProduct'
+                    );
                 } catch (err: any) {
                     Logger.error(`[BOMConsumption] Cascade sync failed for component ${comp.productId}`, { accountId, error: err.message });
                 }
