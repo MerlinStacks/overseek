@@ -244,6 +244,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                         onStockAdjust={(delta) => handleStockAdjust(v.id, delta)}
                                         onStockSave={() => handleStockSave(v.id)}
                                         isSavingStock={savingStockId === v.id}
+                                        hasBOM={bomCogsMap[v.id] != null && bomCogsMap[v.id]! > 0}
                                     />
                                     {expandedId === v.id && (
                                         <VariantExpandedDetails

@@ -17,6 +17,8 @@ interface VariantTableRowProps {
     onStockAdjust: (delta: number) => void;
     onStockSave: () => void;
     isSavingStock: boolean;
+    /** When true, stock is BOM-managed and cannot be manually edited */
+    hasBOM?: boolean;
 }
 
 export const VariantTableRow = memo(function VariantTableRow({
@@ -28,7 +30,8 @@ export const VariantTableRow = memo(function VariantTableRow({
     onStockEditChange,
     onStockAdjust,
     onStockSave,
-    isSavingStock
+    isSavingStock,
+    hasBOM = false
 }: VariantTableRowProps) {
     const imageUrl = getVariantImage(v);
     const stockUnchanged = stockEditValue === (v.stockQuantity?.toString() ?? '');
@@ -139,7 +142,12 @@ export const VariantTableRow = memo(function VariantTableRow({
                 </div>
             </td>
             <td className="px-4 py-2">
-                {v.manageStock ? (
+                {hasBOM ? (
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <span className="font-mono text-sm font-bold text-gray-900">{v.stockQuantity ?? '—'}</span>
+                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-medium rounded border border-purple-200">BOM</span>
+                    </div>
+                ) : v.manageStock ? (
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         <button
                             type="button"
