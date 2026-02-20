@@ -4,6 +4,37 @@ import { WooService } from './woo';
 import { Logger } from '../utils/logger';
 import { BOMConsumptionService } from './BOMConsumptionService';
 
+/** Max retries for WooCommerce API calls in background sync */
+const WOO_MAX_RETRIES = 3;
+/** Base delay (ms) for exponential backoff — doubles each retry */
+const WOO_BASE_DELAY_MS = 2000;
+
+/**
+ * Retry wrapper for WooCommerce API calls.
+ * Why: WooCommerce may throttle with 429 or return transient 5xx errors.
+ * Uses exponential backoff: 2s → 4s → 8s.
+ */
+async function wooRetry(fn: () => Promise<void>, label: string): Promise<void> {
+    for (let attempt = 1; attempt <= WOO_MAX_RETRIES; attempt++) {
+        try {
+            await fn();
+            return;
+        } catch (err: any) {
+            const status = err?.response?.status ?? err?.status ?? 0;
+            const isRetryable = status === 429 || status >= 500;
+            if (!isRetryable || attempt === WOO_MAX_RETRIES) {
+                Logger.warn(`WooCommerce sync failed after ${attempt} attempt(s): ${label}`, {
+                    error: err?.message ?? err, status
+                });
+                return; // Swallow — background sync must not throw
+            }
+            const delay = WOO_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+            Logger.info(`WooCommerce rate-limited/transient error, retrying in ${delay}ms: ${label}`, { attempt, status });
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+}
+
 export class PurchaseOrderService {
 
     /**
@@ -216,6 +247,16 @@ export class PurchaseOrderService {
      * Increments stockQuantity on linked products/variants and syncs to WooCommerce.
      */
     async receiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
+        // Guard: prevent double-receive which would double stock counts
+        const currentStatus = await prisma.purchaseOrder.findFirst({
+            where: { id: poId, accountId },
+            select: { status: true }
+        });
+        if (currentStatus?.status === 'RECEIVED') {
+            Logger.warn('receiveStock called on already-RECEIVED PO, skipping', { poId });
+            return { updated: 0, errors: ['PO is already RECEIVED — stock not applied again'], updatedProductIds: [] };
+        }
+
         const po = await prisma.purchaseOrder.findFirst({
             where: { id: poId, accountId },
             include: {
@@ -312,24 +353,19 @@ export class PurchaseOrderService {
                             newStock
                         });
 
-                        // Queue WooCommerce sync for background
+                        // Queue WooCommerce sync for background with retry
                         if (wooService) {
                             const woo = wooService;
                             const pWooId = product.wooId;
                             const vWooId = item.variationWooId;
                             const stock = newStock;
-                            wooSyncTasks.push(async () => {
-                                try {
-                                    await woo.updateProductVariation(pWooId, vWooId, {
-                                        manage_stock: true,
-                                        stock_quantity: stock
-                                    });
-                                } catch (wooErr) {
-                                    Logger.warn('Failed to sync variation stock to WooCommerce', {
-                                        error: wooErr, productWooId: pWooId, variationWooId: vWooId
-                                    });
-                                }
-                            });
+                            wooSyncTasks.push(() => wooRetry(
+                                () => woo.updateProductVariation(pWooId, vWooId, {
+                                    manage_stock: true,
+                                    stock_quantity: stock
+                                }),
+                                `receive variation ${vWooId} on product ${pWooId}`
+                            ));
                         }
                     } else {
                         // Variation not found locally — this is an error, not safe to fall through to parent
@@ -377,23 +413,18 @@ export class PurchaseOrderService {
                         newStock
                     });
 
-                    // Queue WooCommerce sync for background
+                    // Queue WooCommerce sync for background with retry
                     if (wooService) {
                         const woo = wooService;
                         const pWooId = product.wooId;
                         const stock = newStock;
-                        wooSyncTasks.push(async () => {
-                            try {
-                                await woo.updateProduct(pWooId, {
-                                    manage_stock: true,
-                                    stock_quantity: stock
-                                });
-                            } catch (wooErr) {
-                                Logger.warn('Failed to sync received stock to WooCommerce', {
-                                    error: wooErr, productWooId: pWooId
-                                });
-                            }
-                        });
+                        wooSyncTasks.push(() => wooRetry(
+                            () => woo.updateProduct(pWooId, {
+                                manage_stock: true,
+                                stock_quantity: stock
+                            }),
+                            `receive product ${pWooId}`
+                        ));
                     }
                 }
 
@@ -451,6 +482,16 @@ export class PurchaseOrderService {
      * Reverses stock changes when a PO transitions away from RECEIVED.
      */
     async unreceiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
+        // Guard: only unreceive POs that are currently RECEIVED
+        const currentStatus = await prisma.purchaseOrder.findFirst({
+            where: { id: poId, accountId },
+            select: { status: true }
+        });
+        if (currentStatus?.status !== 'RECEIVED') {
+            Logger.warn('unreceiveStock called on non-RECEIVED PO, skipping', { poId, status: currentStatus?.status });
+            return { updated: 0, errors: ['PO is not RECEIVED — nothing to unreceive'], updatedProductIds: [] };
+        }
+
         const po = await prisma.purchaseOrder.findFirst({
             where: { id: poId, accountId },
             include: {
@@ -526,23 +567,18 @@ export class PurchaseOrderService {
                             data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                         });
 
-                        // Queue WooCommerce sync for background
+                        // Queue WooCommerce sync for background with retry
                         if (wooService) {
                             const woo = wooService;
                             const pWooId = product.wooId;
                             const vWooId = item.variationWooId;
                             const stock = newStock;
-                            wooSyncTasks.push(async () => {
-                                try {
-                                    await woo.updateProductVariation(pWooId, vWooId, {
-                                        stock_quantity: stock
-                                    });
-                                } catch (wooErr) {
-                                    Logger.warn('Failed to sync variation unreceive to WooCommerce', {
-                                        error: wooErr, productWooId: pWooId, variationWooId: vWooId
-                                    });
-                                }
-                            });
+                            wooSyncTasks.push(() => wooRetry(
+                                () => woo.updateProductVariation(pWooId, vWooId, {
+                                    stock_quantity: stock
+                                }),
+                                `unreceive variation ${vWooId} on product ${pWooId}`
+                            ));
                         }
                     }
                 } else {
@@ -567,22 +603,17 @@ export class PurchaseOrderService {
                         data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                     });
 
-                    // Queue WooCommerce sync for background
+                    // Queue WooCommerce sync for background with retry
                     if (wooService) {
                         const woo = wooService;
                         const pWooId = product.wooId;
                         const stock = newStock;
-                        wooSyncTasks.push(async () => {
-                            try {
-                                await woo.updateProduct(pWooId, {
-                                    stock_quantity: stock
-                                });
-                            } catch (wooErr) {
-                                Logger.warn('Failed to sync unreceive stock to WooCommerce', {
-                                    error: wooErr, productWooId: pWooId
-                                });
-                            }
-                        });
+                        wooSyncTasks.push(() => wooRetry(
+                            () => woo.updateProduct(pWooId, {
+                                stock_quantity: stock
+                            }),
+                            `unreceive product ${pWooId}`
+                        ));
                     }
                 }
 

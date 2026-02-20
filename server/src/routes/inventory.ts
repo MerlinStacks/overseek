@@ -18,6 +18,17 @@ import { supplierRoutes } from './inventory/suppliers';
 import { bomSyncRoutes } from './inventory/bomSync';
 import { bomManagementRoutes } from './inventory/bomManagement';
 
+/** In-memory progress tracker for long-running reprocess operations */
+const reprocessProgress = new Map<string, {
+    status: 'running' | 'completed' | 'failed';
+    startedAt: string;
+    completedAt?: string;
+    totalPOs: number;
+    processed: number;
+    variationsBackfilled: number;
+    errors: string[];
+}>();
+
 const poService = new PurchaseOrderService();
 const picklistService = new PicklistService();
 
@@ -407,31 +418,35 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 const result = await poService.receiveStock(accountId, id);
                 Logger.info('Stock received from PO', { poId: id, ...result });
 
-                // Re-index affected products in Elasticsearch so inventory screen reflects changes
-                for (const productId of result.updatedProductIds) {
-                    try {
-                        const product = await prisma.wooProduct.findUnique({
-                            where: { id: productId },
-                            include: { variations: true }
-                        });
-                        if (product) {
-                            await IndexingService.indexProduct(accountId, {
-                                ...product,
-                                variations: product.variations.map(v => ({
-                                    ...v,
-                                    id: v.wooId, // ES expects numeric WooCommerce ID, not Prisma UUID
-                                }))
-                            });
+                // Fire-and-forget: ES re-indexing runs in background
+                const bgProductIds = [...result.updatedProductIds];
+                const bgAccountId = accountId;
+                setImmediate(() => {
+                    (async () => {
+                        for (const productId of bgProductIds) {
+                            try {
+                                const product = await prisma.wooProduct.findUnique({
+                                    where: { id: productId },
+                                    include: { variations: true }
+                                });
+                                if (product) {
+                                    await IndexingService.indexProduct(bgAccountId, {
+                                        ...product,
+                                        variations: product.variations.map(v => ({
+                                            ...v,
+                                            id: v.wooId,
+                                        }))
+                                    });
+                                }
+                            } catch (indexErr) {
+                                Logger.warn('Failed to re-index product after PO receive', {
+                                    productId, error: (indexErr as Error).message
+                                });
+                            }
                         }
-                    } catch (indexErr) {
-                        Logger.warn('Failed to re-index product after PO receive', {
-                            productId, error: (indexErr as Error).message
-                        });
-                    }
-                }
-
-                // Invalidate product list cache so next fetch returns fresh data
-                await invalidateCache('products', accountId);
+                        await invalidateCache('products', bgAccountId);
+                    })().catch(err => Logger.error('Background ES re-index failed', { error: err }));
+                });
             }
 
             // If status changed FROM RECEIVED to something else, reverse the stock
@@ -439,30 +454,35 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 const result = await poService.unreceiveStock(accountId, id);
                 Logger.info('Stock unreceived from PO', { poId: id, ...result });
 
-                // Re-index affected products
-                for (const productId of result.updatedProductIds) {
-                    try {
-                        const product = await prisma.wooProduct.findUnique({
-                            where: { id: productId },
-                            include: { variations: true }
-                        });
-                        if (product) {
-                            await IndexingService.indexProduct(accountId, {
-                                ...product,
-                                variations: product.variations.map(v => ({
-                                    ...v,
-                                    id: v.wooId,
-                                }))
-                            });
+                // Fire-and-forget: ES re-indexing runs in background
+                const bgProductIds = [...result.updatedProductIds];
+                const bgAccountId = accountId;
+                setImmediate(() => {
+                    (async () => {
+                        for (const productId of bgProductIds) {
+                            try {
+                                const product = await prisma.wooProduct.findUnique({
+                                    where: { id: productId },
+                                    include: { variations: true }
+                                });
+                                if (product) {
+                                    await IndexingService.indexProduct(bgAccountId, {
+                                        ...product,
+                                        variations: product.variations.map(v => ({
+                                            ...v,
+                                            id: v.wooId,
+                                        }))
+                                    });
+                                }
+                            } catch (indexErr) {
+                                Logger.warn('Failed to re-index product after PO unreceive', {
+                                    productId, error: (indexErr as Error).message
+                                });
+                            }
                         }
-                    } catch (indexErr) {
-                        Logger.warn('Failed to re-index product after PO unreceive', {
-                            productId, error: (indexErr as Error).message
-                        });
-                    }
-                }
-
-                await invalidateCache('products', accountId);
+                        await invalidateCache('products', bgAccountId);
+                    })().catch(err => Logger.error('Background ES re-index failed', { error: err }));
+                });
             }
 
             const updated = await poService.getPurchaseOrder(accountId, id);
@@ -545,15 +565,20 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // POST /reprocess-received-pos - One-time fix: unreceive, backfill variationWooId, re-receive
-    // Why fire-and-forget: this operation processes every RECEIVED PO, re-indexes all
-    // products, and triggers BOM syncs. On stores with many POs this exceeds the Nginx
-    // proxy_read_timeout (60s), resulting in a 504 that aborts the HTTP response but
-    // also kills the in-flight async work. Responding with 202 immediately lets the
-    // work complete regardless of gateway timeouts.
+    // Processes each PO atomically with crash recovery — on failure, restores original status
     fastify.post('/reprocess-received-pos', async (request, reply) => {
         const accountId = request.accountId!;
 
-        // Count POs upfront so we can tell the caller what to expect
+        // Prevent concurrent reprocessing for the same account
+        const existing = reprocessProgress.get(accountId);
+        if (existing?.status === 'running') {
+            return reply.code(409).send({
+                success: false,
+                message: 'Reprocessing already in progress',
+                progress: existing
+            });
+        }
+
         const poCount = await prisma.purchaseOrder.count({
             where: { accountId, status: 'RECEIVED' }
         });
@@ -562,18 +587,26 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true, message: 'No RECEIVED POs found', processed: 0 };
         }
 
-        // Respond immediately — work continues in background
+        // Initialize progress tracker
+        reprocessProgress.set(accountId, {
+            status: 'running',
+            startedAt: new Date().toISOString(),
+            totalPOs: poCount,
+            processed: 0,
+            variationsBackfilled: 0,
+            errors: []
+        });
+
         reply.code(202).send({
             success: true,
-            message: `Processing ${poCount} RECEIVED POs in background. Check server logs for "Reprocess completed".`
+            message: `Processing ${poCount} RECEIVED POs in background. Poll GET /reprocess-status for progress.`
         });
 
         // Background processing (detached from request lifecycle)
-        // Why the outer .catch(): setImmediate ignores the promise returned by
-        // an async callback, so any rejection would be silently swallowed.
         setImmediate(() => {
             (async () => {
                 Logger.info('[Reprocess] Starting background PO reprocessing', { accountId, poCount });
+                const progress = reprocessProgress.get(accountId)!;
 
                 const receivedPOs = await prisma.purchaseOrder.findMany({
                     where: { accountId, status: 'RECEIVED' },
@@ -604,64 +637,71 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                     }
                 });
 
-                let variationsBackfilled = 0;
-
-                // 1. UNRECEIVE using proper service method, then backfill variationWooId
+                // Process each PO atomically — unreceive, backfill, re-receive, restore
                 for (const po of receivedPOs) {
-                    // Properly unreceive — handles variation vs parent stock correctly
+                    const poLabel = po.orderNumber || po.id.slice(0, 8);
                     try {
+                        // Step 1: Unreceive stock
                         await poService.unreceiveStock(accountId, po.id);
-                        Logger.info(`[Reprocess] Unreceived PO ${po.orderNumber || po.id}`, { accountId });
-                    } catch (err) {
-                        Logger.warn(`[Reprocess] Failed to unreceive PO ${po.orderNumber || po.id}`, { error: (err as Error).message });
-                    }
+                        Logger.info(`[Reprocess] Unreceived PO ${poLabel}`, { accountId });
 
-                    // Backfill missing variationWooId by matching SKU → variation
-                    for (const item of po.items) {
-                        if (!item.productId || !item.product) continue;
-                        if (item.variationWooId) continue; // Already linked
-                        if (!item.sku || item.product.variations.length === 0) continue;
+                        // Step 2: Backfill missing variationWooId by matching SKU
+                        for (const item of po.items) {
+                            if (!item.productId || !item.product) continue;
+                            if (item.variationWooId) continue;
+                            if (!item.sku || item.product.variations.length === 0) continue;
 
-                        const matchedVariation = item.product.variations.find(v => v.sku === item.sku);
-                        if (matchedVariation) {
-                            await prisma.purchaseOrderItem.update({
-                                where: { id: item.id },
-                                data: { variationWooId: matchedVariation.wooId }
-                            });
-                            variationsBackfilled++;
-                            Logger.info(`[Reprocess] Backfilled variationWooId=${matchedVariation.wooId} for SKU="${item.sku}"`);
+                            const matchedVariation = item.product.variations.find(v => v.sku === item.sku);
+                            if (matchedVariation) {
+                                await prisma.purchaseOrderItem.update({
+                                    where: { id: item.id },
+                                    data: { variationWooId: matchedVariation.wooId }
+                                });
+                                progress.variationsBackfilled++;
+                                Logger.info(`[Reprocess] Backfilled variationWooId=${matchedVariation.wooId} for SKU="${item.sku}"`);
+                            }
                         }
-                    }
 
-                    // Set to DRAFT so receiveStock can process it
-                    await prisma.purchaseOrder.update({
-                        where: { id: po.id },
-                        data: { status: 'DRAFT' }
-                    });
-                }
+                        // Step 3: Set to DRAFT so receiveStock can process it
+                        await prisma.purchaseOrder.update({
+                            where: { id: po.id },
+                            data: { status: 'DRAFT' }
+                        });
 
-                // 2. RE-RECEIVE: Apply stock correctly using variant-aware receiveStock
-                const receiveErrors: string[] = [];
-
-                for (const po of receivedPOs) {
-                    try {
+                        // Step 4: Re-receive stock with backfilled variation links
                         const result = await poService.receiveStock(accountId, po.id);
-                        Logger.info(`[Reprocess] Re-received PO ${po.orderNumber || po.id}: ${result.updated} items`, { accountId });
                         if (result.errors.length > 0) {
-                            receiveErrors.push(...result.errors);
+                            progress.errors.push(...result.errors.map(e => `PO ${poLabel}: ${e}`));
                         }
-                    } catch (err) {
-                        receiveErrors.push(`Failed to re-receive PO ${po.orderNumber || po.id}: ${(err as Error).message}`);
-                    }
 
-                    // Restore RECEIVED status
-                    await prisma.purchaseOrder.update({
-                        where: { id: po.id },
-                        data: { status: 'RECEIVED' }
-                    });
+                        // Step 5: Restore RECEIVED status
+                        await prisma.purchaseOrder.update({
+                            where: { id: po.id },
+                            data: { status: 'RECEIVED' }
+                        });
+
+                        Logger.info(`[Reprocess] Completed PO ${poLabel}: ${result.updated} items`, { accountId });
+                    } catch (err) {
+                        // Crash recovery: restore RECEIVED status so PO isn't stuck in DRAFT
+                        Logger.error(`[Reprocess] Failed processing PO ${poLabel}, restoring status`, {
+                            error: (err as Error).message
+                        });
+                        progress.errors.push(`PO ${poLabel} failed: ${(err as Error).message}`);
+                        try {
+                            await prisma.purchaseOrder.update({
+                                where: { id: po.id },
+                                data: { status: 'RECEIVED' }
+                            });
+                        } catch (restoreErr) {
+                            Logger.error(`[Reprocess] CRITICAL: Could not restore PO ${poLabel} status`, {
+                                error: (restoreErr as Error).message
+                            });
+                        }
+                    }
+                    progress.processed++;
                 }
 
-                // 3. Re-index ALL products in ES
+                // Re-index ALL products in ES
                 const products = await prisma.wooProduct.findMany({
                     where: { accountId },
                     include: { variations: true }
@@ -683,17 +723,40 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
 
                 await invalidateCache('products', accountId);
 
+                // Update progress tracker
+                progress.status = progress.errors.length > 0 ? 'failed' : 'completed';
+                progress.completedAt = new Date().toISOString();
+
                 Logger.info('[Reprocess] Reprocess completed', {
                     accountId,
                     totalPOs: receivedPOs.length,
-                    variationsBackfilled,
+                    variationsBackfilled: progress.variationsBackfilled,
                     reindexed,
-                    receiveErrors: receiveErrors.length
+                    errors: progress.errors.length
                 });
+
+                // Clean up progress after 10 minutes
+                setTimeout(() => reprocessProgress.delete(accountId), 10 * 60 * 1000);
             })().catch(error => {
                 Logger.error('[Reprocess] Background reprocessing failed', { accountId, error });
+                const progress = reprocessProgress.get(accountId);
+                if (progress) {
+                    progress.status = 'failed';
+                    progress.completedAt = new Date().toISOString();
+                    progress.errors.push(`Fatal: ${(error as Error).message}`);
+                }
             });
         });
+    });
+
+    // GET /reprocess-status - Check progress of background PO reprocessing
+    fastify.get('/reprocess-status', async (request) => {
+        const accountId = request.accountId!;
+        const progress = reprocessProgress.get(accountId);
+        if (!progress) {
+            return { status: 'idle', message: 'No reprocess operation running or recently completed' };
+        }
+        return progress;
     });
 };
 

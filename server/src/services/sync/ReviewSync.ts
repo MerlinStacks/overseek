@@ -5,7 +5,24 @@ import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { IndexingService } from '../search/IndexingService';
 import { WooReviewSchema, WooReview } from './wooSchemas';
+import { Prisma } from '@prisma/client';
 
+
+/**
+ * Lightweight order projection for review matching.
+ * Only the fields needed for scoring — excludes the full rawData blob
+ * which is 10-50KB per order and caused the OOM crash.
+ */
+interface LightweightOrder {
+    id: string;
+    number: string;
+    dateCreated: Date;
+    customerId: number | null;
+    billingEmail: string | null;
+    billingFirst: string | null;
+    billingLast: string | null;
+    lineItems: Array<{ product_id: number; variation_id?: number }>;
+}
 
 interface OrderMatchResult {
     orderId: string;
@@ -98,6 +115,67 @@ export class ReviewSync extends BaseSync {
 
             const indexPromises: Promise<any>[] = [];
 
+            // --- OOM FIX: Pre-fetch orders ONCE per batch with lightweight projection ---
+            // Instead of querying all orders per review (N+1), compute the widest
+            // date window across the entire batch and fetch matching orders once.
+            const reviewDates = reviews.map(r => {
+                const rd = r as any;
+                return new Date(rd.date_created_gmt || r.date_created).getTime();
+            });
+            const batchLookback = new Date(Math.min(...reviewDates));
+            batchLookback.setDate(batchLookback.getDate() - 180);
+            const batchLatest = new Date(Math.max(...reviewDates));
+
+            // Extract only matching-relevant fields from JSONB server-side.
+            // This avoids deserializing the full rawData blob (~10-50KB/order).
+            const batchOrders = await prisma.$queryRaw<LightweightOrder[]>`
+                SELECT
+                    id,
+                    number,
+                    "dateCreated",
+                    COALESCE(("rawData"->>'customer_id')::int, 0) AS "customerId",
+                    "rawData"->'billing'->>'email'      AS "billingEmail",
+                    "rawData"->'billing'->>'first_name'  AS "billingFirst",
+                    "rawData"->'billing'->>'last_name'   AS "billingLast",
+                    COALESCE(
+                        (
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'product_id', (li->>'product_id')::int,
+                                'variation_id', (li->>'variation_id')::int
+                            ))
+                            FROM jsonb_array_elements("rawData"->'line_items') AS li
+                        ),
+                        '[]'::jsonb
+                    ) AS "lineItems"
+                FROM "WooOrder"
+                WHERE "accountId" = ${accountId}
+                  AND "dateCreated" >= ${batchLookback}
+                  AND "dateCreated" <= ${batchLatest}
+                ORDER BY "dateCreated" DESC
+            `;
+
+            // Build product → orders index for O(1) lookup per review
+            const productOrderIndex = new Map<number, LightweightOrder[]>();
+            for (const order of batchOrders) {
+                // line_items may come back as a JSON string from $queryRaw
+                const items = typeof order.lineItems === 'string'
+                    ? JSON.parse(order.lineItems)
+                    : (order.lineItems || []);
+                order.lineItems = items;
+                for (const item of items) {
+                    const pid = item.product_id;
+                    if (pid) {
+                        if (!productOrderIndex.has(pid)) productOrderIndex.set(pid, []);
+                        productOrderIndex.get(pid)!.push(order);
+                    }
+                    const vid = item.variation_id;
+                    if (vid && vid !== pid) {
+                        if (!productOrderIndex.has(vid)) productOrderIndex.set(vid, []);
+                        productOrderIndex.get(vid)!.push(order);
+                    }
+                }
+            }
+
             for (const r of reviews) {
                 wooReviewIds.add(r.id);
 
@@ -115,53 +193,33 @@ export class ReviewSync extends BaseSync {
                     if (customerData) wooCustomerId = customerData.id;
                 }
 
-                // 2. Find Order - Improved matching algorithm
+                // 2. Find Order — use pre-fetched batch orders (OOM fix)
                 let wooOrderId: string | null = null;
-                // Use date_created_gmt for accurate UTC timestamp
                 const reviewDate = new Date(reviewData.date_created_gmt || r.date_created);
-                const lookbackDate = new Date(reviewDate);
-                lookbackDate.setDate(lookbackDate.getDate() - 180); // 180-day lookback window
+                const reviewLookback = new Date(reviewDate);
+                reviewLookback.setDate(reviewLookback.getDate() - 180);
 
-                const potentialOrders = await prisma.wooOrder.findMany({
-                    where: {
-                        accountId,
-                        dateCreated: {
-                            gte: lookbackDate,
-                            lte: reviewDate
-                        }
-                    },
-                    orderBy: { dateCreated: 'desc' }
+                // Get candidate orders via product index (O(1) lookup)
+                const candidateOrders = productOrderIndex.get(r.product_id) || [];
+
+                // Filter to the per-review time window
+                const potentialOrders = candidateOrders.filter(o => {
+                    const od = new Date(o.dateCreated).getTime();
+                    return od >= reviewLookback.getTime() && od <= reviewDate.getTime();
                 });
 
                 // Find the best matching order
                 const matches: OrderMatchResult[] = [];
 
                 for (const order of potentialOrders) {
-                    const data = order.rawData as any;
-                    const lineItems = data.line_items || [];
-
-                    // Check if order contains the reviewed product (or its variation)
-                    const hasProduct = lineItems.some((item: any) => {
-                        if (item.product_id === r.product_id) return true;
-                        if (item.variation_id && item.product_id === r.product_id) return true;
-                        if (item.variation_id === r.product_id) return true;
-                        return false;
-                    });
-
-                    if (!hasProduct) continue;
-
                     // Check customer/email/name match with tiered scoring
                     let matchScore = 0;
-                    const normalizedOrderEmail = normalizeEmail(data.billing?.email);
+                    const normalizedOrderEmail = normalizeEmail(order.billingEmail);
                     const normalizedReviewerEmail = normalizeEmail(reviewerEmail);
-                    const orderCustomerId = data.customer_id;
-                    const billingFirst = data.billing?.first_name;
-                    const billingLast = data.billing?.last_name;
 
                     // Priority 1: Exact WooCommerce customer ID match (score 100)
-                    // Use pre-fetched customerData instead of querying again (N+1 fix)
                     if (customerData) {
-                        if (orderCustomerId === customerData.wooId) {
+                        if (order.customerId === customerData.wooId) {
                             matchScore = 100;
                         } else if (normalizedOrderEmail === normalizeEmail(customerData.email)) {
                             matchScore = 90; // Email match via customer record
@@ -174,7 +232,7 @@ export class ReviewSync extends BaseSync {
                     }
 
                     // Priority 3: Name-based match fallback (score 60)
-                    if (matchScore === 0 && r.reviewer && namesMatch(r.reviewer, billingFirst, billingLast)) {
+                    if (matchScore === 0 && r.reviewer && namesMatch(r.reviewer, order.billingFirst || undefined, order.billingLast || undefined)) {
                         matchScore = 60;
                     }
 
