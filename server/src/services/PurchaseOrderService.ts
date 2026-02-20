@@ -252,6 +252,9 @@ export class PurchaseOrderService {
         const updatedProductIds: string[] = [];
         let updated = 0;
 
+        // Collect WooCommerce sync tasks to run in background after response
+        const wooSyncTasks: Array<() => Promise<void>> = [];
+
         // Get WooService for syncing
         let wooService: WooService | null = null;
         try {
@@ -309,21 +312,24 @@ export class PurchaseOrderService {
                             newStock
                         });
 
-                        // Sync variation to WooCommerce
+                        // Queue WooCommerce sync for background
                         if (wooService) {
-                            try {
-                                await wooService.updateProductVariation(product.wooId, item.variationWooId, {
-                                    manage_stock: true,
-                                    stock_quantity: newStock
-                                });
-                            } catch (wooErr) {
-                                Logger.warn('Failed to sync variation stock to WooCommerce', {
-                                    error: wooErr,
-                                    productWooId: product.wooId,
-                                    variationWooId: item.variationWooId
-                                });
-                                errors.push(`WooCommerce variation sync failed for ${item.name}: ${(wooErr as Error).message}`);
-                            }
+                            const woo = wooService;
+                            const pWooId = product.wooId;
+                            const vWooId = item.variationWooId;
+                            const stock = newStock;
+                            wooSyncTasks.push(async () => {
+                                try {
+                                    await woo.updateProductVariation(pWooId, vWooId, {
+                                        manage_stock: true,
+                                        stock_quantity: stock
+                                    });
+                                } catch (wooErr) {
+                                    Logger.warn('Failed to sync variation stock to WooCommerce', {
+                                        error: wooErr, productWooId: pWooId, variationWooId: vWooId
+                                    });
+                                }
+                            });
                         }
                     } else {
                         // Variation not found locally — this is an error, not safe to fall through to parent
@@ -371,20 +377,23 @@ export class PurchaseOrderService {
                         newStock
                     });
 
-                    // Sync to WooCommerce
+                    // Queue WooCommerce sync for background
                     if (wooService) {
-                        try {
-                            await wooService.updateProduct(product.wooId, {
-                                manage_stock: true,
-                                stock_quantity: newStock
-                            });
-                        } catch (wooErr) {
-                            Logger.warn('Failed to sync received stock to WooCommerce', {
-                                error: wooErr,
-                                productWooId: product.wooId
-                            });
-                            errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
-                        }
+                        const woo = wooService;
+                        const pWooId = product.wooId;
+                        const stock = newStock;
+                        wooSyncTasks.push(async () => {
+                            try {
+                                await woo.updateProduct(pWooId, {
+                                    manage_stock: true,
+                                    stock_quantity: stock
+                                });
+                            } catch (wooErr) {
+                                Logger.warn('Failed to sync received stock to WooCommerce', {
+                                    error: wooErr, productWooId: pWooId
+                                });
+                            }
+                        });
                     }
                 }
 
@@ -399,25 +408,39 @@ export class PurchaseOrderService {
             }
         }
 
-        // Cascade sync: Update all BOM parent products that use the received components
-        // This ensures derived stock levels are recalculated immediately
-        if (updatedProductIds.length > 0) {
-            Logger.info('Triggering cascade BOM sync for received components', {
-                poId,
-                componentCount: updatedProductIds.length
-            });
+        // Fire-and-forget: WooCommerce sync + BOM cascade run in background
+        // Why: WooCommerce API calls take ~2s each — with 24 items that exceeds
+        // the Nginx 60s timeout. DB updates (above) are already committed.
+        if (wooSyncTasks.length > 0 || updatedProductIds.length > 0) {
+            const bgAccountId = accountId;
+            const bgPoId = poId;
+            const bgProductIds = [...updatedProductIds];
+            const bgTasks = [...wooSyncTasks];
 
-            for (const productId of updatedProductIds) {
-                try {
-                    await BOMConsumptionService.cascadeSyncAffectedProducts(accountId, productId);
-                } catch (syncErr) {
-                    Logger.warn('Cascade BOM sync failed for component', {
-                        productId,
-                        error: (syncErr as Error).message
+            setImmediate(() => {
+                (async () => {
+                    // Sync stock to WooCommerce sequentially to avoid rate limits
+                    for (const task of bgTasks) {
+                        await task();
+                    }
+                    Logger.info('WooCommerce stock sync completed for PO receive', {
+                        poId: bgPoId, syncedItems: bgTasks.length
                     });
-                    // Non-blocking: don't add to errors array as stock was still received
-                }
-            }
+
+                    // Cascade BOM sync
+                    for (const productId of bgProductIds) {
+                        try {
+                            await BOMConsumptionService.cascadeSyncAffectedProducts(bgAccountId, productId);
+                        } catch (syncErr) {
+                            Logger.warn('Cascade BOM sync failed for component', {
+                                productId, error: (syncErr as Error).message
+                            });
+                        }
+                    }
+                })().catch(err => {
+                    Logger.error('Background WooCommerce sync failed', { poId: bgPoId, error: err });
+                });
+            });
         }
 
         return { updated, errors, updatedProductIds };
@@ -464,6 +487,9 @@ export class PurchaseOrderService {
         const updatedProductIds: string[] = [];
         let updated = 0;
 
+        // Collect WooCommerce sync tasks to run in background after response
+        const wooSyncTasks: Array<() => Promise<void>> = [];
+
         let wooService: WooService | null = null;
         try {
             wooService = await WooService.forAccount(accountId);
@@ -500,14 +526,23 @@ export class PurchaseOrderService {
                             data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                         });
 
+                        // Queue WooCommerce sync for background
                         if (wooService) {
-                            try {
-                                await wooService.updateProductVariation(product.wooId, item.variationWooId, {
-                                    stock_quantity: newStock
-                                });
-                            } catch (wooErr) {
-                                errors.push(`WooCommerce variation sync failed for ${item.name}: ${(wooErr as Error).message}`);
-                            }
+                            const woo = wooService;
+                            const pWooId = product.wooId;
+                            const vWooId = item.variationWooId;
+                            const stock = newStock;
+                            wooSyncTasks.push(async () => {
+                                try {
+                                    await woo.updateProductVariation(pWooId, vWooId, {
+                                        stock_quantity: stock
+                                    });
+                                } catch (wooErr) {
+                                    Logger.warn('Failed to sync variation unreceive to WooCommerce', {
+                                        error: wooErr, productWooId: pWooId, variationWooId: vWooId
+                                    });
+                                }
+                            });
                         }
                     }
                 } else {
@@ -532,14 +567,22 @@ export class PurchaseOrderService {
                         data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                     });
 
+                    // Queue WooCommerce sync for background
                     if (wooService) {
-                        try {
-                            await wooService.updateProduct(product.wooId, {
-                                stock_quantity: newStock
-                            });
-                        } catch (wooErr) {
-                            errors.push(`WooCommerce sync failed for ${product.name}: ${(wooErr as Error).message}`);
-                        }
+                        const woo = wooService;
+                        const pWooId = product.wooId;
+                        const stock = newStock;
+                        wooSyncTasks.push(async () => {
+                            try {
+                                await woo.updateProduct(pWooId, {
+                                    stock_quantity: stock
+                                });
+                            } catch (wooErr) {
+                                Logger.warn('Failed to sync unreceive stock to WooCommerce', {
+                                    error: wooErr, productWooId: pWooId
+                                });
+                            }
+                        });
                     }
                 }
 
@@ -559,17 +602,35 @@ export class PurchaseOrderService {
             }
         }
 
-        // Cascade BOM sync for affected products
-        if (updatedProductIds.length > 0) {
-            for (const productId of updatedProductIds) {
-                try {
-                    await BOMConsumptionService.cascadeSyncAffectedProducts(accountId, productId);
-                } catch (syncErr) {
-                    Logger.warn('Cascade BOM sync failed during unreceive', {
-                        productId, error: (syncErr as Error).message
+        // Fire-and-forget: WooCommerce sync + BOM cascade run in background
+        if (wooSyncTasks.length > 0 || updatedProductIds.length > 0) {
+            const bgAccountId = accountId;
+            const bgPoId = poId;
+            const bgProductIds = [...updatedProductIds];
+            const bgTasks = [...wooSyncTasks];
+
+            setImmediate(() => {
+                (async () => {
+                    for (const task of bgTasks) {
+                        await task();
+                    }
+                    Logger.info('WooCommerce stock sync completed for PO unreceive', {
+                        poId: bgPoId, syncedItems: bgTasks.length
                     });
-                }
-            }
+
+                    for (const productId of bgProductIds) {
+                        try {
+                            await BOMConsumptionService.cascadeSyncAffectedProducts(bgAccountId, productId);
+                        } catch (syncErr) {
+                            Logger.warn('Cascade BOM sync failed during unreceive', {
+                                productId, error: (syncErr as Error).message
+                            });
+                        }
+                    }
+                })().catch(err => {
+                    Logger.error('Background WooCommerce unreceive sync failed', { poId: bgPoId, error: err });
+                });
+            });
         }
 
         return { updated, errors, updatedProductIds };
