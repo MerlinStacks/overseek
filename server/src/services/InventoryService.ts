@@ -105,24 +105,40 @@ export class InventoryService {
         }
 
         if (product.variations.length > 0) {
-            const variants = product.variations.map(v => {
-                const raw = v.rawData as any;
+            const variants = [];
+            for (const v of product.variations) {
+                // Check if this specific variant has its own BOM
+                const variantBOM = await prisma.bOM.findUnique({
+                    where: { productId_variationId: { productId, variationId: v.wooId } },
+                    include: { items: { where: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] }, select: { id: true } } }
+                });
+
                 let stockQty: number | null = null;
-                if (v.manageStock && v.stockQuantity !== null) {
+                const isBOMVariant = variantBOM && variantBOM.items.length > 0;
+
+                if (isBOMVariant) {
+                    // Use BOM-derived effective stock for this variant
+                    stockQty = await this.calculateBOMStock(accountId, productId, v.wooId);
+                } else if (v.manageStock && v.stockQuantity !== null) {
                     stockQty = v.stockQuantity;
-                } else if (raw?.manage_stock && typeof raw.stock_quantity === 'number') {
-                    stockQty = raw.stock_quantity;
+                } else {
+                    const raw = v.rawData as any;
+                    if (raw?.manage_stock && typeof raw.stock_quantity === 'number') {
+                        stockQty = raw.stock_quantity;
+                    }
                 }
+
+                const raw = v.rawData as any;
                 const attributes = raw?.attributes?.map((a: any) => a.option).join(' / ') ?? '';
-                return {
+                variants.push({
                     wooId: v.wooId,
                     sku: v.sku ?? undefined,
                     stockQuantity: stockQty,
                     stockStatus: v.stockStatus ?? raw?.stock_status,
-                    manageStock: v.manageStock,
+                    manageStock: v.manageStock || isBOMVariant,
                     attributes
-                };
-            });
+                });
+            }
 
             const totalStock = variants.reduce((sum, v) => {
                 if (v.stockQuantity !== null) sum += v.stockQuantity;

@@ -218,7 +218,8 @@ export class BOMInventorySyncService {
         let minBuildableUnits = Infinity;
 
         for (const bomItem of bom.items) {
-            const requiredQty = Number(bomItem.quantity);
+            const waste = Number(bomItem.wasteFactor) || 0;
+            const requiredQty = Number(bomItem.quantity) * (1 + waste);
             if (requiredQty <= 0) continue;
 
             let childStock = 0;
@@ -492,7 +493,8 @@ export class BOMInventorySyncService {
         let minBuildableUnits = Infinity;
 
         for (const bomItem of bom.items) {
-            const requiredQty = Number(bomItem.quantity);
+            const waste = Number(bomItem.wasteFactor) || 0;
+            const requiredQty = Number(bomItem.quantity) * (1 + waste);
             if (requiredQty <= 0) continue;
 
             let childStock = 0;

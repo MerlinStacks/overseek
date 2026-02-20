@@ -571,7 +571,9 @@ export class BOMConsumptionService {
         if (!bom || bom.items.length === 0) return [];
 
         for (const bomItem of bom.items) {
-            const quantityToDeduct = Number(bomItem.quantity) * item.quantity;
+            // Why wasteFactor: accounts for material loss during manufacturing (e.g. 0.10 = 10% waste)
+            const waste = Number(bomItem.wasteFactor) || 0;
+            const quantityToDeduct = Number(bomItem.quantity) * (1 + waste) * item.quantity;
 
             if (bomItem.internalProduct) {
                 const prev = bomItem.internalProduct.stockQuantity;
@@ -581,7 +583,7 @@ export class BOMConsumptionService {
                     componentName: bomItem.internalProduct.name,
                     quantityDeducted: quantityToDeduct,
                     previousStock: prev,
-                    newStock: Math.max(0, prev - quantityToDeduct)
+                    newStock: prev - quantityToDeduct
                 });
             } else if (bomItem.childVariation && bomItem.childProduct) {
                 const rawData = bomItem.childVariation.rawData as any;
@@ -594,7 +596,7 @@ export class BOMConsumptionService {
                     parentWooId: bomItem.childProduct.wooId,
                     quantityDeducted: quantityToDeduct,
                     previousStock: prev,
-                    newStock: Math.max(0, prev - quantityToDeduct)
+                    newStock: prev - quantityToDeduct
                 });
             } else if (bomItem.childProduct) {
                 // Guard: skip variable parent products — BOM should link to a specific variation
@@ -615,7 +617,7 @@ export class BOMConsumptionService {
                     wooId: bomItem.childProduct.wooId,
                     quantityDeducted: quantityToDeduct,
                     previousStock: prev,
-                    newStock: Math.max(0, prev - quantityToDeduct)
+                    newStock: prev - quantityToDeduct
                 });
             }
         }
@@ -627,27 +629,33 @@ export class BOMConsumptionService {
         deduction: ComponentDeduction,
         wooService: any
     ) {
+        // Why atomic decrement: using absolute SET races with concurrent PO receives.
+        // The planned newStock is still recorded in the ledger for audit purposes.
+        const qty = deduction.quantityDeducted;
+
         if (deduction.componentType === 'InternalProduct') {
             await prisma.internalProduct.update({
                 where: { id: deduction.componentId },
-                data: { stockQuantity: deduction.newStock }
+                data: { stockQuantity: { decrement: qty } }
             });
         } else if (deduction.componentType === 'ProductVariation') {
-            await prisma.productVariation.update({
+            const updated = await prisma.productVariation.update({
                 where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
-                data: { stockQuantity: deduction.newStock }
+                data: { stockQuantity: { decrement: qty } },
+                select: { stockQuantity: true }
             });
             await withRetry(
-                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: deduction.newStock, manage_stock: true }),
+                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: updated.stockQuantity, manage_stock: true }),
                 { context: `Update variation ${deduction.wooId}` }
             );
         } else if (deduction.componentType === 'WooProduct') {
-            await prisma.wooProduct.update({
+            const updated = await prisma.wooProduct.update({
                 where: { id: deduction.componentId },
-                data: { stockQuantity: deduction.newStock }
+                data: { stockQuantity: { decrement: qty } },
+                select: { stockQuantity: true }
             });
             await withRetry(
-                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: deduction.newStock, manage_stock: true }),
+                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: updated.stockQuantity, manage_stock: true }),
                 { context: `Update product ${deduction.wooId}` }
             );
         }

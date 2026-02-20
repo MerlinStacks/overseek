@@ -117,6 +117,15 @@ export class PurchaseOrderService {
             sku?: string;
         }[];
     }) {
+        // Guard: RECEIVED POs are immutable — revert to DRAFT first
+        const existing = await prisma.purchaseOrder.findFirst({
+            where: { id: poId, accountId },
+            select: { status: true }
+        });
+        if (existing?.status === 'RECEIVED' && data.status !== 'DRAFT' && data.status !== 'ORDERED') {
+            throw new Error('Cannot edit a RECEIVED Purchase Order. Revert to DRAFT or ORDERED first.');
+        }
+
         // Build update payload dynamically
         const updateData: Record<string, unknown> = {};
 
@@ -179,15 +188,21 @@ export class PurchaseOrderService {
      * Calculate Inbound Inventory Quantity for a specific Product
      * Sums quantity from POs with status 'ORDERED'
      */
-    async getInboundInventory(accountId: string, productId: string): Promise<number> {
+    async getInboundInventory(accountId: string, productId: string, variationWooId?: number): Promise<number> {
+        const where: any = {
+            productId,
+            purchaseOrder: {
+                accountId,
+                status: 'ORDERED'
+            }
+        };
+        // When a specific variation is requested, narrow to that variation only
+        if (variationWooId !== undefined) {
+            where.variationWooId = variationWooId;
+        }
+
         const aggregations = await prisma.purchaseOrderItem.aggregate({
-            where: {
-                productId,
-                purchaseOrder: {
-                    accountId,
-                    status: 'ORDERED'
-                }
-            },
+            where,
             _sum: {
                 quantity: true
             }
@@ -269,23 +284,27 @@ export class PurchaseOrderService {
                     });
 
                     if (variation) {
-                        const currentStock = variation.stockQuantity ?? 0;
-                        const newStock = currentStock + item.quantity;
-
-                        // Update local variation stock
-                        await prisma.productVariation.update({
+                        // Atomic increment prevents race with concurrent BOM consumption
+                        const updated = await prisma.productVariation.update({
                             where: { id: variation.id },
                             data: {
-                                stockQuantity: newStock,
-                                manageStock: true,
-                                stockStatus: newStock > 0 ? 'instock' : 'outofstock'
-                            }
+                                stockQuantity: { increment: item.quantity },
+                                manageStock: true
+                            },
+                            select: { stockQuantity: true }
+                        });
+                        const newStock = updated.stockQuantity ?? 0;
+
+                        // Update stockStatus based on resulting stock
+                        await prisma.productVariation.update({
+                            where: { id: variation.id },
+                            data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                         });
 
                         Logger.info('Stock received for variation', {
                             productId: product.id,
                             variationWooId: item.variationWooId,
-                            previousStock: currentStock,
+                            previousStock: (variation.stockQuantity ?? 0),
                             addedQuantity: item.quantity,
                             newStock
                         });
@@ -325,22 +344,29 @@ export class PurchaseOrderService {
                         continue;
                     }
 
-                    const currentStock = product.stockQuantity ?? 0;
-                    const newStock = currentStock + item.quantity;
+                    const previousStock = product.stockQuantity ?? 0;
 
-                    await prisma.wooProduct.update({
+                    // Atomic increment prevents race with concurrent BOM consumption
+                    const updated = await prisma.wooProduct.update({
                         where: { id: product.id },
                         data: {
-                            stockQuantity: newStock,
-                            manageStock: true,
-                            stockStatus: newStock > 0 ? 'instock' : 'outofstock'
-                        }
+                            stockQuantity: { increment: item.quantity },
+                            manageStock: true
+                        },
+                        select: { stockQuantity: true }
+                    });
+                    const newStock = updated.stockQuantity ?? 0;
+
+                    // Update stockStatus based on resulting stock
+                    await prisma.wooProduct.update({
+                        where: { id: product.id },
+                        data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                     });
 
                     Logger.info('Stock received for product', {
                         productId: product.id,
                         wooId: product.wooId,
-                        previousStock: currentStock,
+                        previousStock,
                         addedQuantity: item.quantity,
                         newStock
                     });
@@ -461,15 +487,17 @@ export class PurchaseOrderService {
                     });
 
                     if (variation) {
-                        const currentStock = variation.stockQuantity ?? 0;
-                        const newStock = Math.max(0, currentStock - item.quantity);
+                        // Atomic decrement prevents race with concurrent stock changes
+                        const updated = await prisma.productVariation.update({
+                            where: { id: variation.id },
+                            data: { stockQuantity: { decrement: item.quantity } },
+                            select: { stockQuantity: true }
+                        });
+                        const newStock = Math.max(0, updated.stockQuantity ?? 0);
 
                         await prisma.productVariation.update({
                             where: { id: variation.id },
-                            data: {
-                                stockQuantity: newStock,
-                                stockStatus: newStock > 0 ? 'instock' : 'outofstock'
-                            }
+                            data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                         });
 
                         if (wooService) {
@@ -492,15 +520,16 @@ export class PurchaseOrderService {
                         continue;
                     }
 
-                    const currentStock = product.stockQuantity ?? 0;
-                    const newStock = Math.max(0, currentStock - item.quantity);
+                    const updated = await prisma.wooProduct.update({
+                        where: { id: product.id },
+                        data: { stockQuantity: { decrement: item.quantity } },
+                        select: { stockQuantity: true }
+                    });
+                    const newStock = Math.max(0, updated.stockQuantity ?? 0);
 
                     await prisma.wooProduct.update({
                         where: { id: product.id },
-                        data: {
-                            stockQuantity: newStock,
-                            stockStatus: newStock > 0 ? 'instock' : 'outofstock'
-                        }
+                        data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
                     });
 
                     if (wooService) {
