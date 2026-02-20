@@ -84,6 +84,7 @@ export class ProductSync extends BaseSync {
                         price: parsedPrice,
                         stockStatus: p.stock_status, // Sync from WooCommerce to distinguish states
                         stockQuantity: p.stock_quantity ?? null,
+                        manageStock: p.manage_stock ?? (p as any).manage_stock ?? false,
                         rawData: p as any,
                         mainImage: p.images?.[0]?.src,
                         weight: p.weight ? parseFloat(p.weight) : null,
@@ -100,6 +101,7 @@ export class ProductSync extends BaseSync {
                         price: parsedPrice,
                         stockStatus: p.stock_status,
                         stockQuantity: p.stock_quantity ?? null,
+                        manageStock: p.manage_stock ?? (p as any).manage_stock ?? false,
                         permalink: p.permalink,
                         mainImage: p.images?.[0]?.src,
                         weight: p.weight ? parseFloat(p.weight) : null,
@@ -226,6 +228,7 @@ export class ProductSync extends BaseSync {
                                     salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
                                     stockStatus: v.stock_status,
                                     stockQuantity: v.stock_quantity ?? null,
+                                    manageStock: v.manage_stock ?? (v as any).manage_stock ?? false,
                                     images: (v.image ? [v.image] : []) as any,
                                     rawData: v as any
                                 },
@@ -237,6 +240,7 @@ export class ProductSync extends BaseSync {
                                     salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
                                     stockStatus: v.stock_status,
                                     stockQuantity: v.stock_quantity ?? null,
+                                    manageStock: v.manage_stock ?? (v as any).manage_stock ?? false,
                                     images: (v.image ? [v.image] : []) as any,
                                     rawData: v as any
                                 }
