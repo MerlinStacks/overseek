@@ -140,6 +140,16 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         setBomCogsMap(prev => ({ ...prev, [variantId]: cogs }));
     }, []);
 
+    /** Update local variant stock after a BOM sync pushes new stock to WooCommerce */
+    const handleSyncComplete = useCallback((variantId: number, newStock: number) => {
+        setEditingVariants(prev => {
+            const updated = prev.map(v => v.id === variantId ? { ...v, stockQuantity: newStock } : v);
+            if (onUpdate) onUpdate(updated);
+            return updated;
+        });
+        setStockEditValues(prev => ({ ...prev, [variantId]: newStock.toString() }));
+    }, [onUpdate]);
+
     const hasVariations = product.type?.includes('variable') || (product.variations && product.variations.length > 0);
     if (!hasVariations) return null;
 
@@ -246,6 +256,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                             onFieldChange={(field, value) => handleFieldChange(v.id, field, value)}
                                             onMultiFieldChange={(updates) => handleMultiFieldChange(v.id, updates)}
                                             onBomCogsUpdate={(cogs) => handleBomCogsUpdate(v.id, cogs)}
+                                            onSyncComplete={(newStock) => handleSyncComplete(v.id, newStock)}
                                             canViewCogs={canViewCogs}
                                             isGoldPriceEnabled={isGoldPriceEnabled}
                                             bomCogs={bomCogsMap[v.id] ?? null}

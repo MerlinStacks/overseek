@@ -13,6 +13,7 @@ interface VariantExpandedDetailsProps {
     variant: ProductVariant;
     productId: string;
     bomPanelRef: (ref: BOMPanelRef | null) => void;
+    onSyncComplete?: (newStock: number) => void;
     onFieldChange: (field: keyof ProductVariant, value: any) => void;
     onMultiFieldChange: (updates: Partial<ProductVariant>) => void;
     onBomCogsUpdate: (cogs: number) => void;
@@ -27,6 +28,7 @@ export function VariantExpandedDetails({
     variant: v,
     productId,
     bomPanelRef,
+    onSyncComplete,
     onFieldChange,
     onMultiFieldChange,
     onBomCogsUpdate,
@@ -174,6 +176,7 @@ export function VariantExpandedDetails({
                             productId={productId}
                             fixedVariationId={v.id}
                             onCOGSUpdate={onBomCogsUpdate}
+                            onSyncComplete={onSyncComplete}
                         />
                     </div>
                 </div>

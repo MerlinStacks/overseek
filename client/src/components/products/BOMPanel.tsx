@@ -16,6 +16,7 @@ interface BOMPanelProps {
     fixedVariationId?: number; // If set, locks to this ID
     onSaveComplete?: () => void; // Optional callback after save completes
     onCOGSUpdate?: (cogs: number) => void; // Optional callback to update parent COGS
+    onSyncComplete?: (newStock: number) => void; // Optional callback after sync completes
 }
 
 /**
@@ -25,7 +26,7 @@ export interface BOMPanelRef {
     save: () => Promise<boolean>;
 }
 
-export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete, onCOGSUpdate }, ref) {
+export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete, onCOGSUpdate, onSyncComplete }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { hasPermission } = usePermissions();
@@ -293,6 +294,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 setCurrentWooStock(data.newStock);
                 setSyncStatus('success');
                 await fetchEffectiveStock();
+                onSyncComplete?.(data.newStock);
             } else {
                 setSyncStatus('error');
             }
