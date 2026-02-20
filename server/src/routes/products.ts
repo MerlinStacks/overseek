@@ -141,8 +141,11 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { accountId_wooId: { accountId, wooId: p.id } },
                 update: {
                     name: p.name,
+                    sku: p.sku,
                     price: p.price === '' ? null : p.price,
                     stockStatus: p.stock_status,
+                    stockQuantity: p.stock_quantity ?? null,
+                    manageStock: p.manage_stock ?? false,
                     rawData: rawDataClean as any,
                     mainImage: p.images?.[0]?.src,
                     weight: p.weight ? parseFloat(p.weight) : null,
@@ -158,6 +161,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     sku: p.sku,
                     price: p.price === '' ? null : p.price,
                     stockStatus: p.stock_status,
+                    stockQuantity: p.stock_quantity ?? null,
+                    manageStock: p.manage_stock ?? false,
                     permalink: p.permalink,
                     mainImage: p.images?.[0]?.src,
                     weight: p.weight ? parseFloat(p.weight) : null,
@@ -169,10 +174,52 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 }
             });
 
-
             const upsertedProduct = await prisma.wooProduct.findUnique({
                 where: { accountId_wooId: { accountId, wooId: p.id } }
             });
+
+            // Upsert variations so manageStock / stockQuantity are persisted
+            if (upsertedProduct && variationsData.length > 0) {
+                for (const v of variationsData) {
+                    await prisma.productVariation.upsert({
+                        where: {
+                            productId_wooId: {
+                                productId: upsertedProduct.id,
+                                wooId: v.id
+                            }
+                        },
+                        update: {
+                            sku: v.sku || null,
+                            price: v.price === '' ? null : v.price,
+                            salePrice: v.sale_price === '' ? null : v.sale_price,
+                            stockQuantity: v.stock_quantity ?? null,
+                            stockStatus: v.stock_status || 'instock',
+                            manageStock: v.manage_stock ?? false,
+                            weight: v.weight ? parseFloat(v.weight) : null,
+                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
+                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
+                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
+                            rawData: v as any
+                        },
+                        create: {
+                            productId: upsertedProduct.id,
+                            wooId: v.id,
+                            sku: v.sku || null,
+                            price: v.price === '' ? null : v.price,
+                            salePrice: v.sale_price === '' ? null : v.sale_price,
+                            stockQuantity: v.stock_quantity ?? null,
+                            stockStatus: v.stock_status || 'instock',
+                            manageStock: v.manage_stock ?? false,
+                            weight: v.weight ? parseFloat(v.weight) : null,
+                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
+                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
+                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
+                            rawData: v as any
+                        }
+                    });
+                }
+                Logger.info(`Synced ${variationsData.length} variations for product ${wooId}`);
+            }
 
             if (upsertedProduct) {
                 const currentSeoData = (upsertedProduct.seoData as any) || {};
