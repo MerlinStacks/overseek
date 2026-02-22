@@ -559,4 +559,62 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to fetch sync history' });
         }
     });
+
+    /**
+     * GET /bom/consumption-history
+     * Returns recent BOM component consumption (deduction ledger entries) for this account.
+     * Why: The frontend `useBOMSync` hook exposes `consumptionHistory` state — this endpoint feeds it.
+     */
+    fastify.get('/bom/consumption-history', async (request, reply) => {
+        const accountId = request.accountId!;
+        const query = request.query as { limit?: string };
+        const limit = Math.min(parseInt(query.limit || '50', 10), 100);
+
+        try {
+            const entries = await prisma.bOMDeductionLedger.findMany({
+                where: {
+                    accountId,
+                    status: { in: ['COMPLETED', 'REVERSED'] }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                select: {
+                    id: true,
+                    orderId: true,
+                    componentName: true,
+                    componentType: true,
+                    quantityDeducted: true,
+                    previousStock: true,
+                    newStock: true,
+                    status: true,
+                    createdAt: true
+                }
+            });
+
+            // Enrich with order numbers via a single batch lookup
+            const orderIds = [...new Set(entries.map(e => e.orderId))];
+            const orders = await prisma.wooOrder.findMany({
+                where: { accountId, wooId: { in: orderIds } },
+                select: { wooId: true, number: true }
+            });
+            const orderMap = new Map(orders.map(o => [o.wooId, o.number]));
+
+            const enriched = entries.map(e => ({
+                id: e.id,
+                orderId: e.orderId,
+                orderNumber: orderMap.get(e.orderId) || `#${e.orderId}`,
+                productName: e.componentName,
+                componentName: e.componentName,
+                quantityDeducted: e.quantityDeducted,
+                previousStock: e.previousStock,
+                newStock: e.newStock,
+                createdAt: e.createdAt
+            }));
+
+            return { entries: enriched };
+        } catch (error) {
+            Logger.error('Error fetching consumption history', { error, accountId });
+            return reply.code(500).send({ error: 'Failed to fetch consumption history' });
+        }
+    });
 };

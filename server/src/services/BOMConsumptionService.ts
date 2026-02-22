@@ -392,41 +392,32 @@ export class BOMConsumptionService {
                         data: { stockQuantity: { increment: rollbackQty } }
                     });
                 } else if (deduction.componentType === 'ProductVariation') {
-                    // Update Local
-                    await prisma.productVariation.update({
+                    // Update Local — increment first so local DB is the source of truth
+                    const localVar = await prisma.productVariation.update({
                         where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
-                        data: { stockQuantity: { increment: rollbackQty } }
+                        data: { stockQuantity: { increment: rollbackQty } },
+                        select: { stockQuantity: true }
                     });
-                    // Update Woo — fetch fresh stock to avoid stale-value race conditions
-                    let freshStock = deduction.newStock;
-                    try {
-                        const variations = await wooService.getProductVariations(deduction.parentWooId!);
-                        const target = variations?.find((v: any) => v.id === deduction.wooId);
-                        if (target?.stock_quantity != null) freshStock = target.stock_quantity;
-                    } catch {
-                        Logger.warn(`[BOMConsumption] Could not fetch fresh variation stock for rollback, using stale value`, { wooId: deduction.wooId });
-                    }
+                    // Why local DB as authority: if executeDeduction's WooCommerce write failed
+                    // (e.g. network timeout), Woo still has the old pre-deduction stock. Using
+                    // `freshWooStock + rollbackQty` would inflate stock beyond the true value.
+                    // The local DB always reflects the correct state after the atomic increment.
                     await withRetry(() => wooService.updateProductVariation(
                         deduction.parentWooId!,
                         deduction.wooId!,
-                        { stock_quantity: freshStock + rollbackQty, manage_stock: true }
+                        { stock_quantity: localVar.stockQuantity ?? 0, manage_stock: true }
                     ));
                 } else if (deduction.componentType === 'WooProduct') {
-                    await prisma.wooProduct.update({
+                    // Update Local — increment first so local DB is the source of truth
+                    const localProd = await prisma.wooProduct.update({
                         where: { id: deduction.componentId },
-                        data: { stockQuantity: { increment: rollbackQty } }
+                        data: { stockQuantity: { increment: rollbackQty } },
+                        select: { stockQuantity: true }
                     });
-                    // Fetch fresh stock to avoid stale-value race conditions
-                    let freshStock = deduction.newStock;
-                    try {
-                        const wooProduct = await wooService.getProduct(deduction.wooId!);
-                        if (wooProduct?.stock_quantity != null) freshStock = wooProduct.stock_quantity;
-                    } catch {
-                        Logger.warn(`[BOMConsumption] Could not fetch fresh product stock for rollback, using stale value`, { wooId: deduction.wooId });
-                    }
+                    // Why local DB as authority: same rationale as the ProductVariation path above.
                     await withRetry(() => wooService.updateProduct(
                         deduction.wooId!,
-                        { stock_quantity: freshStock + rollbackQty, manage_stock: true }
+                        { stock_quantity: localProd.stockQuantity ?? 0, manage_stock: true }
                     ));
                 }
 
@@ -487,7 +478,11 @@ export class BOMConsumptionService {
             const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
             const isConsumed = await redisClient.get(consumedKey);
             if (isConsumed) {
-                // Mark ledger entries as completed (no rollback needed)
+                // Promote orphaned EXECUTED → COMPLETED so they're not re-processed
+                await prisma.bOMDeductionLedger.updateMany({
+                    where: { accountId, orderId, status: 'EXECUTED' },
+                    data: { status: 'COMPLETED' }
+                });
                 continue;
             }
 

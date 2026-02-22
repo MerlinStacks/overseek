@@ -404,53 +404,27 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.put<{ Params: { id: string } }>('/purchase-orders/:id', async (request, reply) => {
         const accountId = request.accountId!;
         const { id } = request.params;
-        const { status } = request.body as { status?: string };
+        const body = request.body as { status?: string; items?: any[] };
+        const { status } = body;
 
         try {
-            // Check if transitioning to RECEIVED
             const existingPO = await poService.getPurchaseOrder(accountId, id);
-            const wasNotReceived = existingPO?.status !== 'RECEIVED';
+            const wasReceived = existingPO?.status === 'RECEIVED';
+            const isTransitioningToReceived = status === 'RECEIVED' && !wasReceived;
+            const isTransitioningFromReceived = wasReceived && status != null && status !== 'RECEIVED';
 
-            await poService.updatePurchaseOrder(accountId, id, request.body as any);
-
-            // If status changed to RECEIVED, increment stock for linked products
-            if (status === 'RECEIVED' && wasNotReceived) {
-                const result = await poService.receiveStock(accountId, id);
-                Logger.info('Stock received from PO', { poId: id, ...result });
-
-                // Fire-and-forget: ES re-indexing runs in background
-                const bgProductIds = [...result.updatedProductIds];
-                const bgAccountId = accountId;
-                setImmediate(() => {
-                    (async () => {
-                        for (const productId of bgProductIds) {
-                            try {
-                                const product = await prisma.wooProduct.findUnique({
-                                    where: { id: productId },
-                                    include: { variations: true }
-                                });
-                                if (product) {
-                                    await IndexingService.indexProduct(bgAccountId, {
-                                        ...product,
-                                        variations: product.variations.map(v => ({
-                                            ...v,
-                                            id: v.wooId,
-                                        }))
-                                    });
-                                }
-                            } catch (indexErr) {
-                                Logger.warn('Failed to re-index product after PO receive', {
-                                    productId, error: (indexErr as Error).message
-                                });
-                            }
-                        }
-                        await invalidateCache('products', bgAccountId);
-                    })().catch(err => Logger.error('Background ES re-index failed', { error: err }));
+            // Guard: block item edits on RECEIVED POs.
+            // Why before update: if items change while stock is applied from the old items,
+            // any subsequent unreceive would reverse stock for the NEW items — wrong products.
+            if (wasReceived && body.items && !isTransitioningFromReceived) {
+                return reply.code(400).send({
+                    error: 'Cannot edit items on a RECEIVED PO. Change status to DRAFT or ORDERED first.'
                 });
             }
 
-            // If status changed FROM RECEIVED to something else, reverse the stock
-            if (status && status !== 'RECEIVED' && !wasNotReceived) {
+            // CRITICAL ORDER: unreceive BEFORE updatePurchaseOrder so the stock reversal
+            // reads the ORIGINAL items, not the replacement items from the update.
+            if (isTransitioningFromReceived) {
                 const result = await poService.unreceiveStock(accountId, id);
                 Logger.info('Stock unreceived from PO', { poId: id, ...result });
 
@@ -476,6 +450,44 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                                 }
                             } catch (indexErr) {
                                 Logger.warn('Failed to re-index product after PO unreceive', {
+                                    productId, error: (indexErr as Error).message
+                                });
+                            }
+                        }
+                        await invalidateCache('products', bgAccountId);
+                    })().catch(err => Logger.error('Background ES re-index failed', { error: err }));
+                });
+            }
+
+            await poService.updatePurchaseOrder(accountId, id, body as any);
+
+            // If status changed to RECEIVED, increment stock for linked products
+            if (isTransitioningToReceived) {
+                const result = await poService.receiveStock(accountId, id);
+                Logger.info('Stock received from PO', { poId: id, ...result });
+
+                // Fire-and-forget: ES re-indexing runs in background
+                const bgProductIds = [...result.updatedProductIds];
+                const bgAccountId = accountId;
+                setImmediate(() => {
+                    (async () => {
+                        for (const productId of bgProductIds) {
+                            try {
+                                const product = await prisma.wooProduct.findUnique({
+                                    where: { id: productId },
+                                    include: { variations: true }
+                                });
+                                if (product) {
+                                    await IndexingService.indexProduct(bgAccountId, {
+                                        ...product,
+                                        variations: product.variations.map(v => ({
+                                            ...v,
+                                            id: v.wooId,
+                                        }))
+                                    });
+                                }
+                            } catch (indexErr) {
+                                Logger.warn('Failed to re-index product after PO receive', {
                                     productId, error: (indexErr as Error).message
                                 });
                             }

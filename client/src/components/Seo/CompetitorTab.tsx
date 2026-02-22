@@ -1,232 +1,434 @@
 /**
- * CompetitorTab — Manage competitor domains and view gap analysis.
+ * Competitor Intelligence Tab
  *
- * Shows a list of tracked competitors, an add-domain form,
- * and a gap analysis comparison panel.
+ * Full competitor SEO tracking dashboard with:
+ * - Competitor domain management (add/remove)
+ * - SERP position tracking table per competitor
+ * - Movement feed showing recent significant rank changes
+ * - Head-to-head comparison (your position vs theirs)
+ * - Manual refresh trigger for SERP checks
+ *
+ * Why one component: keeps all competitor intelligence in a single
+ * tab view. Sub-sections are collapsible to avoid overwhelming the user.
  */
 
 import { useState } from 'react';
 import {
-    Users, Plus, Trash2, Loader2, X, BarChart3, Globe
-} from 'lucide-react';
-import {
     useCompetitors,
     useAddCompetitor,
     useRemoveCompetitor,
-    useCompetitorAnalysis,
+    useCompetitorKeywords,
+    useCompetitorMovement,
+    useCompetitorHeadToHead,
+    useRefreshCompetitorPositions,
+    type CompetitorDomain,
+    type CompetitorKeywordPosition,
+    type CompetitorMovement,
+    type HeadToHeadRow,
 } from '../../hooks/useSeoKeywords';
-import type { CompetitorDomain } from '../../hooks/useSeoKeywords';
+
+/** Format a SERP position for display */
+function formatPosition(pos: number | null): string {
+    if (pos === null) return '—';
+    return `#${Math.round(pos)}`;
+}
+
+/** Get color class for a position value */
+function positionColorClass(pos: number | null): string {
+    if (pos === null) return 'text-slate-400';
+    if (pos <= 3) return 'text-emerald-500';
+    if (pos <= 10) return 'text-sky-500';
+    if (pos <= 20) return 'text-amber-500';
+    return 'text-red-400';
+}
+
+/** Get color class for a position change */
+function changeColorClass(change: number | null): string {
+    if (change === null) return 'text-slate-400';
+    if (change > 0) return 'text-emerald-500';
+    if (change < 0) return 'text-red-400';
+    return 'text-slate-400';
+}
+
+/** Direction icon for movement events */
+function directionIcon(dir: CompetitorMovement['direction']): string {
+    switch (dir) {
+        case 'improved': return '🔺';
+        case 'declined': return '🔻';
+        case 'entered': return '🆕';
+        case 'dropped': return '❌';
+    }
+}
 
 export function CompetitorTab() {
-    const { data: competitorsData, isLoading } = useCompetitors();
+    const [newDomain, setNewDomain] = useState('');
+    const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
+    const [activeView, setActiveView] = useState<'positions' | 'movement' | 'headtohead'>('positions');
+
+    const { data: competitorsData, isLoading: competitorsLoading } = useCompetitors();
     const addCompetitor = useAddCompetitor();
     const removeCompetitor = useRemoveCompetitor();
+    const refreshPositions = useRefreshCompetitorPositions();
 
-    const [showAdd, setShowAdd] = useState(false);
-    const [newDomain, setNewDomain] = useState('');
-    const [addError, setAddError] = useState<string | null>(null);
-    const [analyzeDomain, setAnalyzeDomain] = useState<string | undefined>();
+    const competitors = competitorsData?.competitors ?? [];
+    const selectedCompetitor = competitors.find(c => c.id === selectedCompetitorId) ?? null;
 
-    const competitors = competitorsData?.competitors || [];
-    const { data: analysis, isLoading: analysisLoading } = useCompetitorAnalysis(analyzeDomain);
+    const { data: keywordsData, isLoading: keywordsLoading } = useCompetitorKeywords(selectedCompetitorId);
+    const { data: movementData, isLoading: movementLoading } = useCompetitorMovement(7);
+    const { data: headToHeadData, isLoading: h2hLoading } = useCompetitorHeadToHead(selectedCompetitor?.domain ?? null);
 
-    const handleAdd = async () => {
-        const d = newDomain.trim();
-        if (!d) return;
-        setAddError(null);
-        try {
-            await addCompetitor.mutateAsync({ domain: d });
-            setNewDomain('');
-            setShowAdd(false);
-        } catch (err: any) {
-            setAddError(err?.message || 'Failed to add competitor');
-        }
+    const keywords = keywordsData?.keywords ?? [];
+    const movements = movementData?.movements ?? [];
+    const headToHead = headToHeadData?.rows ?? [];
+
+    /** Handle adding a competitor */
+    const handleAdd = () => {
+        const domain = newDomain.trim();
+        if (!domain) return;
+        addCompetitor.mutate({ domain }, {
+            onSuccess: () => setNewDomain(''),
+        });
     };
 
     return (
-        <div className="space-y-6 animate-fade-slide-up">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Competitor Analysis</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Compare your keyword coverage against competitors
-                    </p>
+        <div className="space-y-6">
+            {/* ── Header: Add Competitor + Refresh ── */}
+            <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 flex gap-2">
+                    <input
+                        id="competitor-domain-input"
+                        type="text"
+                        placeholder="competitor.com"
+                        value={newDomain}
+                        onChange={e => setNewDomain(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                    />
+                    <button
+                        id="add-competitor-btn"
+                        onClick={handleAdd}
+                        disabled={addCompetitor.isPending || !newDomain.trim()}
+                        className="px-4 py-2 rounded-lg bg-sky-500/20 text-sky-400 text-sm font-medium hover:bg-sky-500/30 transition-colors disabled:opacity-50"
+                    >
+                        {addCompetitor.isPending ? 'Adding…' : 'Add'}
+                    </button>
                 </div>
                 <button
-                    onClick={() => setShowAdd(!showAdd)}
-                    className="btn-gradient btn-shimmer flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl font-semibold"
+                    id="refresh-competitor-positions-btn"
+                    onClick={() => refreshPositions.mutate()}
+                    disabled={refreshPositions.isPending || competitors.length === 0}
+                    className="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
                 >
-                    <Plus className="w-4 h-4" />
-                    Add Competitor
+                    {refreshPositions.isPending ? 'Checking SERPs…' : '🔄 Refresh Positions'}
                 </button>
             </div>
 
-            {/* Add Form */}
-            {showAdd && (
-                <>
-                    <div className="glass-panel rounded-xl p-4 flex items-center gap-3">
-                        <Globe className="w-4 h-4 text-slate-400 shrink-0" />
-                        <input
-                            type="text"
-                            placeholder="Enter competitor domain (e.g. competitor.com)"
-                            value={newDomain}
-                            onChange={(e) => setNewDomain(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                            className="input-premium flex-1 bg-transparent text-sm"
-                            autoFocus
-                        />
-                        <button
-                            onClick={handleAdd}
-                            disabled={!newDomain.trim() || addCompetitor.isPending}
-                            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
-                        >
-                            {addCompetitor.isPending ? 'Adding...' : 'Add'}
-                        </button>
-                        <button onClick={() => { setShowAdd(false); setNewDomain(''); setAddError(null); }} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-                    {addError && <p className="text-xs text-red-500 dark:text-red-400 px-1 -mt-4">{addError}</p>}
-                </>
-            )}
-
-            {/* Competitor List */}
-            {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
-                </div>
+            {/* ── Competitor Cards ── */}
+            {competitorsLoading ? (
+                <div className="text-sm text-slate-400 text-center py-6">Loading competitors…</div>
             ) : competitors.length === 0 ? (
-                <div className="glass-panel rounded-2xl text-center py-14 px-6">
-                    <Users className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3 animate-float" />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">No competitors added yet.</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Add a competitor domain to compare keyword coverage.</p>
+                <div className="text-center py-8 text-slate-400">
+                    <p className="text-lg mb-1">No competitors tracked yet</p>
+                    <p className="text-sm">Add a competitor domain above to start tracking their SERP positions.</p>
                 </div>
             ) : (
-                <div className="glass-panel rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-700/50">
-                    {competitors.map((comp: CompetitorDomain) => (
-                        <div
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {competitors.map(comp => (
+                        <CompetitorCard
                             key={comp.id}
-                            className={`flex items-center justify-between px-4 py-3.5 transition-all duration-200 cursor-pointer ${analyzeDomain === comp.domain
-                                ? 'bg-blue-50/80 dark:bg-blue-900/20'
-                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                }`}
-                            onClick={() => setAnalyzeDomain(analyzeDomain === comp.domain ? undefined : comp.domain)}
-                        >
-                            <div className="flex items-center gap-3">
-                                <Globe className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                                <span className="font-medium text-sm text-slate-900 dark:text-slate-200">{comp.domain}</span>
-                                <span className="text-xs text-slate-400 dark:text-slate-500">
-                                    Added {new Date(comp.createdAt).toLocaleDateString()}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setAnalyzeDomain(comp.domain); }}
-                                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors font-medium"
-                                >
-                                    <BarChart3 className="w-3 h-3" />
-                                    Analyze
-                                </button>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        window.confirm(`Remove ${comp.domain}?`) && removeCompetitor.mutate(comp.id);
-                                    }}
-                                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        </div>
+                            competitor={comp}
+                            isSelected={comp.id === selectedCompetitorId}
+                            onSelect={() => setSelectedCompetitorId(comp.id === selectedCompetitorId ? null : comp.id)}
+                            onRemove={() => {
+                                removeCompetitor.mutate(comp.id);
+                                if (selectedCompetitorId === comp.id) setSelectedCompetitorId(null);
+                            }}
+                        />
                     ))}
                 </div>
             )}
 
-            {/* Gap Analysis Results */}
-            {analyzeDomain && (
-                <div className="glass-panel rounded-2xl p-6 animate-fade-slide-up">
-                    <h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4 text-blue-500" />
-                        Gap Analysis: {analyzeDomain}
-                    </h4>
-
-                    {analysisLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                            <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
-                        </div>
-                    ) : analysis ? (
-                        <div className="space-y-4">
-                            {/* Summary Stats */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 rounded-xl p-3.5 border border-blue-100 dark:border-blue-800/30">
-                                    <p className="text-xs text-blue-600/70 dark:text-blue-400/70 font-medium">Overlap</p>
-                                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-0.5">{analysis.overlapPct}%</p>
-                                </div>
-                                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/20 dark:to-emerald-800/10 rounded-xl p-3.5 border border-emerald-100 dark:border-emerald-800/30">
-                                    <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 font-medium">Shared</p>
-                                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">{analysis.sharedKeywords.length}</p>
-                                </div>
-                                <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 dark:from-violet-900/20 dark:to-violet-800/10 rounded-xl p-3.5 border border-violet-100 dark:border-violet-800/30">
-                                    <p className="text-xs text-violet-600/70 dark:text-violet-400/70 font-medium">Your Only</p>
-                                    <p className="text-2xl font-bold text-violet-700 dark:text-violet-300 mt-0.5">{analysis.yourOnlyKeywords.length}</p>
-                                </div>
-                                <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-900/20 dark:to-amber-800/10 rounded-xl p-3.5 border border-amber-100 dark:border-amber-800/30">
-                                    <p className="text-xs text-amber-600/70 dark:text-amber-400/70 font-medium">Their Only</p>
-                                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-300 mt-0.5">{analysis.theirOnlyKeywords.length}</p>
-                                </div>
-                            </div>
-
-                            {/* Their-only keywords — opportunities */}
-                            {analysis.theirOnlyKeywords.length > 0 && (
-                                <div>
-                                    <h5 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Keyword Opportunities (they rank, you don't)</h5>
-                                    <div className="flex flex-wrap gap-2">
-                                        {analysis.theirOnlyKeywords.slice(0, 20).map((kw: string) => (
-                                            <span key={kw} className="inline-flex items-center px-2.5 py-1 text-xs bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/30 rounded-lg">
-                                                {kw}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Shared keywords table */}
-                            {analysis.sharedKeywords.length > 0 && (
-                                <div>
-                                    <h5 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Shared Keywords</h5>
-                                    <div className="max-h-64 overflow-y-auto">
-                                        <table className="w-full text-sm">
-                                            <thead className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/50 sticky top-0">
-                                                <tr>
-                                                    <th className="text-left px-3 py-2 font-medium">Keyword</th>
-                                                    <th className="text-right px-3 py-2 font-medium">Your Position</th>
-                                                    <th className="text-right px-3 py-2 font-medium">Their Estimate</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                                {analysis.sharedKeywords.map((sk: { keyword: string; yourPosition: number; theirEstimate: string }) => (
-                                                    <tr key={sk.keyword} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                                                        <td className="px-3 py-2 text-slate-900 dark:text-slate-200">{sk.keyword}</td>
-                                                        <td className="px-3 py-2 text-right font-medium">
-                                                            <span className={sk.yourPosition <= 10 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}>
-                                                                #{Math.round(sk.yourPosition)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">{sk.theirEstimate}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">No analysis data available.</p>
-                    )}
+            {/* ── View Tabs ── */}
+            {competitors.length > 0 && (
+                <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+                    {(['positions', 'movement', 'headtohead'] as const).map(view => (
+                        <button
+                            key={view}
+                            onClick={() => setActiveView(view)}
+                            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeView === view
+                                ? 'bg-sky-500/20 text-sky-400'
+                                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                }`}
+                        >
+                            {view === 'positions' && '📊 Positions'}
+                            {view === 'movement' && '📈 Movement Feed'}
+                            {view === 'headtohead' && '⚔️ Head-to-Head'}
+                        </button>
+                    ))}
                 </div>
             )}
+
+            {/* ── Position Table ── */}
+            {activeView === 'positions' && selectedCompetitorId && (
+                <PositionTable keywords={keywords} loading={keywordsLoading} competitor={selectedCompetitor} />
+            )}
+            {activeView === 'positions' && !selectedCompetitorId && competitors.length > 0 && (
+                <p className="text-sm text-slate-400 text-center py-6">Select a competitor above to view their keyword positions.</p>
+            )}
+
+            {/* ── Movement Feed ── */}
+            {activeView === 'movement' && (
+                <MovementFeed movements={movements} loading={movementLoading} />
+            )}
+
+            {/* ── Head-to-Head ── */}
+            {activeView === 'headtohead' && selectedCompetitorId && (
+                <HeadToHeadTable rows={headToHead} loading={h2hLoading} competitor={selectedCompetitor} />
+            )}
+            {activeView === 'headtohead' && !selectedCompetitorId && competitors.length > 0 && (
+                <p className="text-sm text-slate-400 text-center py-6">Select a competitor above to see head-to-head comparison.</p>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────
+// Sub-Components
+// ─────────────────────────────────────────────────────
+
+/** Competitor domain card with aggregate stats */
+function CompetitorCard({
+    competitor,
+    isSelected,
+    onSelect,
+    onRemove,
+}: {
+    competitor: CompetitorDomain;
+    isSelected: boolean;
+    onSelect: () => void;
+    onRemove: () => void;
+}) {
+    return (
+        <div
+            onClick={onSelect}
+            className={`relative p-4 rounded-xl border cursor-pointer transition-all ${isSelected
+                ? 'border-sky-500/50 bg-sky-500/10 shadow-lg shadow-sky-500/5'
+                : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'
+                }`}
+        >
+            <button
+                onClick={e => { e.stopPropagation(); onRemove(); }}
+                className="absolute top-2 right-2 p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                title="Remove competitor"
+            >
+                ✕
+            </button>
+
+            <h4 className="text-sm font-semibold text-white truncate pr-6">{competitor.domain}</h4>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                    <span className="text-slate-400">Keywords</span>
+                    <p className="text-white font-medium">{competitor.keywordCount}</p>
+                </div>
+                <div>
+                    <span className="text-slate-400">Avg Position</span>
+                    <p className={`font-medium ${positionColorClass(competitor.avgPosition)}`}>
+                        {competitor.avgPosition ? `#${competitor.avgPosition}` : '—'}
+                    </p>
+                </div>
+            </div>
+
+            {competitor.lastCheckedAt && (
+                <p className="mt-2 text-xs text-slate-500">
+                    Last checked: {new Date(competitor.lastCheckedAt).toLocaleDateString()}
+                </p>
+            )}
+        </div>
+    );
+}
+
+/** Position tracking table for a selected competitor */
+function PositionTable({
+    keywords,
+    loading,
+    competitor,
+}: {
+    keywords: CompetitorKeywordPosition[];
+    loading: boolean;
+    competitor: CompetitorDomain | null;
+}) {
+    if (loading) {
+        return <div className="text-sm text-slate-400 text-center py-6">Loading positions…</div>;
+    }
+
+    if (keywords.length === 0) {
+        return (
+            <div className="text-center py-6 text-slate-400">
+                <p className="text-sm">No keyword data yet.</p>
+                <p className="text-xs mt-1">Make sure you're tracking keywords first, then click "Refresh Positions".</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="overflow-x-auto">
+            <h4 className="text-sm font-medium text-slate-300 mb-3">
+                Positions for <span className="text-sky-400">{competitor?.domain}</span>
+            </h4>
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="text-left text-xs text-slate-400 border-b border-white/10">
+                        <th className="pb-2 pr-4">Keyword</th>
+                        <th className="pb-2 pr-4 text-right">Position</th>
+                        <th className="pb-2 pr-4 text-right">Change</th>
+                        <th className="pb-2 text-right">Ranking URL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {keywords.map(kw => (
+                        <tr key={kw.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            <td className="py-2.5 pr-4 text-white font-medium">{kw.keyword}</td>
+                            <td className={`py-2.5 pr-4 text-right font-mono ${positionColorClass(kw.currentPosition)}`}>
+                                {formatPosition(kw.currentPosition)}
+                            </td>
+                            <td className={`py-2.5 pr-4 text-right font-mono ${changeColorClass(kw.positionChange)}`}>
+                                {kw.positionChange !== null
+                                    ? `${kw.positionChange > 0 ? '+' : ''}${kw.positionChange}`
+                                    : '—'
+                                }
+                            </td>
+                            <td className="py-2.5 text-right text-xs text-slate-400 max-w-[200px] truncate" title={kw.rankingUrl ?? ''}>
+                                {kw.rankingUrl ? new URL(kw.rankingUrl).pathname : '—'}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+/** Movement feed showing recent significant competitor rank changes */
+function MovementFeed({
+    movements,
+    loading,
+}: {
+    movements: CompetitorMovement[];
+    loading: boolean;
+}) {
+    if (loading) {
+        return <div className="text-sm text-slate-400 text-center py-6">Loading movement data…</div>;
+    }
+
+    if (movements.length === 0) {
+        return (
+            <div className="text-center py-6 text-slate-400">
+                <p className="text-sm">No significant movements in the last 7 days.</p>
+                <p className="text-xs mt-1">Position changes ≥5 places will appear here.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-2">
+            <h4 className="text-sm font-medium text-slate-300 mb-3">Recent Movement (last 7 days)</h4>
+            {movements.map((m, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                    <span className="text-lg">{directionIcon(m.direction)}</span>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white">
+                            <span className="text-sky-400 font-medium">{m.competitorDomain}</span>
+                            {' '}
+                            <span className="text-slate-400">
+                                {m.direction === 'entered' && `appeared at ${formatPosition(m.newPosition)} for`}
+                                {m.direction === 'dropped' && `dropped out of top 30 for`}
+                                {m.direction === 'improved' && `moved ${formatPosition(m.previousPosition)} → ${formatPosition(m.newPosition)} for`}
+                                {m.direction === 'declined' && `fell ${formatPosition(m.previousPosition)} → ${formatPosition(m.newPosition)} for`}
+                            </span>
+                            {' '}
+                            <span className="font-medium">"{m.keyword}"</span>
+                        </p>
+                    </div>
+                    <span className="text-xs text-slate-500 shrink-0">{m.date}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/** Head-to-head comparison table */
+function HeadToHeadTable({
+    rows,
+    loading,
+    competitor,
+}: {
+    rows: HeadToHeadRow[];
+    loading: boolean;
+    competitor: CompetitorDomain | null;
+}) {
+    if (loading) {
+        return <div className="text-sm text-slate-400 text-center py-6">Loading comparison…</div>;
+    }
+
+    if (rows.length === 0) {
+        return (
+            <div className="text-center py-6 text-slate-400">
+                <p className="text-sm">No shared keywords to compare.</p>
+                <p className="text-xs mt-1">Both you and your competitor need keyword data for comparison.</p>
+            </div>
+        );
+    }
+
+    const youWinning = rows.filter(r => r.advantage !== null && r.advantage > 0).length;
+    const theyWinning = rows.filter(r => r.advantage !== null && r.advantage < 0).length;
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-slate-300">
+                    You vs <span className="text-sky-400">{competitor?.domain}</span>
+                </h4>
+                <div className="flex gap-3 text-xs">
+                    <span className="text-emerald-400">You lead: {youWinning}</span>
+                    <span className="text-red-400">They lead: {theyWinning}</span>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="text-left text-xs text-slate-400 border-b border-white/10">
+                            <th className="pb-2 pr-4">Keyword</th>
+                            <th className="pb-2 pr-4 text-right">Your Position</th>
+                            <th className="pb-2 pr-4 text-right">Their Position</th>
+                            <th className="pb-2 text-right">Advantage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((row, i) => (
+                            <tr key={i} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                <td className="py-2.5 pr-4 text-white font-medium">{row.keyword}</td>
+                                <td className={`py-2.5 pr-4 text-right font-mono ${positionColorClass(row.yourPosition)}`}>
+                                    {formatPosition(row.yourPosition)}
+                                </td>
+                                <td className={`py-2.5 pr-4 text-right font-mono ${positionColorClass(row.theirPosition)}`}>
+                                    {formatPosition(row.theirPosition)}
+                                </td>
+                                <td className={`py-2.5 text-right font-mono font-medium ${row.advantage === null ? 'text-slate-400' :
+                                    row.advantage > 0 ? 'text-emerald-400' :
+                                        row.advantage < 0 ? 'text-red-400' : 'text-slate-400'
+                                    }`}>
+                                    {row.advantage !== null
+                                        ? `${row.advantage > 0 ? '+' : ''}${row.advantage}`
+                                        : '—'
+                                    }
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

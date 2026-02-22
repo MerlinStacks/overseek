@@ -189,7 +189,15 @@ export class PurchaseOrderService {
             updateData.totalAmount = totalAmount;
 
             // Transaction to delete old items and create new ones
+            // Bug fix: scope to accountId to prevent cross-account writes
             return prisma.$transaction(async (tx) => {
+                // Verify ownership before mutating
+                const owned = await tx.purchaseOrder.findFirst({
+                    where: { id: poId, accountId },
+                    select: { id: true }
+                });
+                if (!owned) throw new Error('Purchase Order not found or access denied');
+
                 // Delete existing items
                 await tx.purchaseOrderItem.deleteMany({
                     where: { purchaseOrderId: poId }
@@ -328,22 +336,12 @@ export class PurchaseOrderService {
                     });
 
                     if (variation) {
-                        // Atomic increment prevents race with concurrent BOM consumption
-                        const updated = await prisma.productVariation.update({
-                            where: { id: variation.id },
-                            data: {
-                                stockQuantity: { increment: item.quantity },
-                                manageStock: true
-                            },
-                            select: { stockQuantity: true }
-                        });
-                        const newStock = updated.stockQuantity ?? 0;
-
-                        // Update stockStatus based on resulting stock
-                        await prisma.productVariation.update({
-                            where: { id: variation.id },
-                            data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
-                        });
+                        // Atomic increment + status in single query to prevent crash-induced drift
+                        const variationResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
+                            `UPDATE "ProductVariation" SET "stockQuantity" = "stockQuantity" + $1, "manageStock" = true, "stockStatus" = CASE WHEN "stockQuantity" + $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
+                            item.quantity, variation.id
+                        );
+                        const newStock = variationResult[0]?.stock_quantity ?? 0;
 
                         Logger.info('Stock received for variation', {
                             productId: product.id,
@@ -388,22 +386,12 @@ export class PurchaseOrderService {
 
                     const previousStock = product.stockQuantity ?? 0;
 
-                    // Atomic increment prevents race with concurrent BOM consumption
-                    const updated = await prisma.wooProduct.update({
-                        where: { id: product.id },
-                        data: {
-                            stockQuantity: { increment: item.quantity },
-                            manageStock: true
-                        },
-                        select: { stockQuantity: true }
-                    });
-                    const newStock = updated.stockQuantity ?? 0;
-
-                    // Update stockStatus based on resulting stock
-                    await prisma.wooProduct.update({
-                        where: { id: product.id },
-                        data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
-                    });
+                    // Atomic increment + status in single query to prevent crash-induced drift
+                    const productResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
+                        `UPDATE "WooProduct" SET "stockQuantity" = "stockQuantity" + $1, "manageStock" = true, "stockStatus" = CASE WHEN "stockQuantity" + $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
+                        item.quantity, product.id
+                    );
+                    const newStock = productResult[0]?.stock_quantity ?? 0;
 
                     Logger.info('Stock received for product', {
                         productId: product.id,
@@ -554,18 +542,13 @@ export class PurchaseOrderService {
                     });
 
                     if (variation) {
-                        // Atomic decrement prevents race with concurrent stock changes
-                        const updated = await prisma.productVariation.update({
-                            where: { id: variation.id },
-                            data: { stockQuantity: { decrement: item.quantity } },
-                            select: { stockQuantity: true }
-                        });
-                        const newStock = Math.max(0, updated.stockQuantity ?? 0);
-
-                        await prisma.productVariation.update({
-                            where: { id: variation.id },
-                            data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
-                        });
+                        // Atomic decrement + status in single query to prevent crash-induced drift
+                        // No Math.max(0) clamping — keep local DB truthful so WooCommerce stays in sync
+                        const variationResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
+                            `UPDATE "ProductVariation" SET "stockQuantity" = "stockQuantity" - $1, "stockStatus" = CASE WHEN "stockQuantity" - $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
+                            item.quantity, variation.id
+                        );
+                        const newStock = variationResult[0]?.stock_quantity ?? 0;
 
                         // Queue WooCommerce sync for background with retry
                         if (wooService) {
@@ -591,17 +574,13 @@ export class PurchaseOrderService {
                         continue;
                     }
 
-                    const updated = await prisma.wooProduct.update({
-                        where: { id: product.id },
-                        data: { stockQuantity: { decrement: item.quantity } },
-                        select: { stockQuantity: true }
-                    });
-                    const newStock = Math.max(0, updated.stockQuantity ?? 0);
-
-                    await prisma.wooProduct.update({
-                        where: { id: product.id },
-                        data: { stockStatus: newStock > 0 ? 'instock' : 'outofstock' }
-                    });
+                    // Atomic decrement + status in single query to prevent crash-induced drift
+                    // No Math.max(0) clamping — keep local DB truthful so WooCommerce stays in sync
+                    const productResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
+                        `UPDATE "WooProduct" SET "stockQuantity" = "stockQuantity" - $1, "stockStatus" = CASE WHEN "stockQuantity" - $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
+                        item.quantity, product.id
+                    );
+                    const newStock = productResult[0]?.stock_quantity ?? 0;
 
                     // Queue WooCommerce sync for background with retry
                     if (wooService) {

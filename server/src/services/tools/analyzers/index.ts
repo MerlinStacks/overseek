@@ -26,3 +26,7 @@ export type { FunnelAnalysis, CampaignFunnelAnalysis, FunnelStage } from './Funn
 export { AudienceAnalyzer } from './AudienceAnalyzer';
 export type { AudienceAnalysis, DevicePerformance, GeoPerformance } from './AudienceAnalyzer';
 
+export { NegativeKeywordAnalyzer } from './NegativeKeywordAnalyzer';
+
+export { CannibalizationAnalyzer } from './CannibalizationAnalyzer';
+

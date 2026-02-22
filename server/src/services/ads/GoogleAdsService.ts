@@ -516,6 +516,72 @@ export class GoogleAdsService {
     }
 
     /**
+     * Add a negative keyword to a campaign.
+     * Prevents the campaign from showing ads for irrelevant search terms.
+     *
+     * Why campaign-level: campaign negatives are scoped correctly and don't
+     * require knowing the ad group structure. Shared negative lists are more
+     * complex and rarely needed for automated suggestions.
+     */
+    static async addNegativeKeyword(
+        adAccountId: string,
+        campaignId: string,
+        keywordText: string,
+        matchType: 'BROAD' | 'PHRASE' | 'EXACT' = 'EXACT'
+    ): Promise<boolean> {
+        const { customer } = await createGoogleAdsClient(adAccountId);
+
+        try {
+            Logger.info('[GoogleAds] Adding negative keyword', { campaignId, keywordText, matchType });
+
+            const resourceName = `customers/${customer.credentials.customer_id}/campaigns/${campaignId}`;
+
+            await customer.campaignCriteria.create([{
+                campaign: resourceName,
+                negative: true,
+                keyword: {
+                    text: keywordText,
+                    match_type: matchType
+                }
+            }]);
+
+            return true;
+        } catch (error: any) {
+            if (error.message?.includes('CRITERION_ALREADY_EXISTS')) {
+                Logger.info('Negative keyword already exists, treating as success', { keywordText, campaignId });
+                return true;
+            }
+            Logger.error('Failed to add negative keyword', { error: error.message, campaignId, keywordText });
+            throw error;
+        }
+    }
+
+    /**
+     * List existing negative keywords for a campaign.
+     * Used to avoid adding duplicates.
+     */
+    static async getNegativeKeywords(adAccountId: string, campaignId: string): Promise<string[]> {
+        try {
+            const { customer } = await createGoogleAdsClient(adAccountId);
+
+            const query = `
+                SELECT
+                    campaign_criterion.keyword.text
+                FROM campaign_criterion
+                WHERE campaign.id = ${campaignId}
+                    AND campaign_criterion.negative = TRUE
+                    AND campaign_criterion.type = 'KEYWORD'
+            `;
+
+            const results = await customer.query(query);
+            return results.map((row: any) => row.campaign_criterion?.keyword?.text || '').filter(Boolean);
+        } catch (error: any) {
+            Logger.warn('Failed to fetch negative keywords', { error: error.message, campaignId });
+            return [];
+        }
+    }
+
+    /**
      * Add a Search Keyword to an Ad Group.
      */
     static async addSearchKeyword(

@@ -302,16 +302,15 @@ export class EmailIngestion {
             return guestConv;
         }
 
-        // TIER 3: Create new
-        const newCustomer = await prisma.wooCustomer.findFirst({ where: { accountId, email: fromEmail } });
+        // TIER 3: Create new — reuse customer from Tier 2 lookup to avoid duplicate query
         const conv = await prisma.conversation.create({
             data: {
                 accountId,
                 status: 'OPEN',
                 channel: 'EMAIL',
-                wooCustomerId: newCustomer?.id,
-                guestEmail: newCustomer ? undefined : fromEmail,
-                guestName: newCustomer ? undefined : fromName || undefined,
+                wooCustomerId: customer?.id,
+                guestEmail: customer ? undefined : fromEmail,
+                guestName: customer ? undefined : fromName || undefined,
                 title: cleanTitle || undefined,
                 priority: 'MEDIUM'
             }

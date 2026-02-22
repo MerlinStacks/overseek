@@ -6,3 +6,4 @@
 export * from './types';
 export { MetaAdsService } from './MetaAdsService';
 export { GoogleAdsService } from './GoogleAdsService';
+export { SearchToAdsIntelligenceService } from './SearchToAdsIntelligenceService';

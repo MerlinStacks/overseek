@@ -11,6 +11,8 @@ import { Logger } from '../../utils/logger';
 import { AdsService } from '../ads';
 import { MetaAdsService } from './MetaAdsService';
 import { GoogleAdsService } from './GoogleAdsService';
+import { SearchToAdsIntelligenceService } from './SearchToAdsIntelligenceService';
+import { QueryTrend } from '../search-console/SearchConsoleService';
 
 /** Configuration for budget rebalancer behavior */
 export interface RebalancerConfig {
@@ -123,8 +125,13 @@ export class BudgetRebalancerService {
             losers: losers.length
         });
 
-        // Generate recommendations
-        const recommendations = this.generateRecommendations(winners, losers, settings);
+        // Fetch organic trends to apply the "organic safety net" modifier
+        const organicTrends = await SearchToAdsIntelligenceService
+            .getOrganicTrendsForPaidQueries(accountId)
+            .catch(() => new Map<string, QueryTrend>());
+
+        // Generate recommendations with organic trend context
+        const recommendations = this.generateRecommendations(winners, losers, settings, organicTrends);
 
         // Schedule actions if configured
         const scheduledActions: string[] = [];
@@ -206,11 +213,14 @@ export class BudgetRebalancerService {
 
     /**
      * Generate budget change recommendations.
+     * Organic trends provide an "organic safety net" — if a campaign's
+     * keywords are trending up organically, budget cuts are softened.
      */
     private static generateRecommendations(
         winners: CampaignAnalysis[],
         losers: CampaignAnalysis[],
-        settings: RebalancerConfig
+        settings: RebalancerConfig,
+        organicTrends: Map<string, QueryTrend> = new Map()
     ): BudgetRecommendation[] {
         const recommendations: BudgetRecommendation[] = [];
 
@@ -266,12 +276,39 @@ export class BudgetRebalancerService {
                 currentBudget: loser.currentBudget,
                 newBudget: Math.round(newBudget * 100) / 100,
                 changePercent: -((loser.currentBudget - newBudget) / loser.currentBudget) * 100,
-                reason: `Low ROAS (${loser.roas.toFixed(2)}) - reducing spend`,
+                reason: this.buildLoserReason(loser, organicTrends),
                 roas: loser.roas
             });
         }
 
         return recommendations;
+    }
+
+    /**
+     * Build reason string for loser campaigns, factoring in organic trend.
+     * If the campaign name matches a rising organic query, the reason
+     * notes the organic safety net so the user understands the softer cut.
+     */
+    private static buildLoserReason(
+        loser: CampaignAnalysis,
+        organicTrends: Map<string, QueryTrend>
+    ): string {
+        const baseLine = `Low ROAS (${loser.roas.toFixed(2)}) - reducing spend`;
+
+        if (organicTrends.size === 0) return baseLine;
+
+        // Check if any organic trend matches the campaign name keywords
+        const campaignWords = loser.campaignName.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+        for (const [query, trend] of organicTrends) {
+            const queryWords = query.split(' ');
+            const overlap = campaignWords.filter(w => queryWords.includes(w) && w.length > 2);
+            if (overlap.length >= 2 && trend.clickGrowthPct > 10) {
+                return `${baseLine}. Note: organic traffic for "${trend.query}" is rising ` +
+                    `(+${trend.clickGrowthPct.toFixed(0)}% clicks) — softer cut recommended.`;
+            }
+        }
+
+        return baseLine;
     }
 
     /**

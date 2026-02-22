@@ -126,6 +126,14 @@ export function useBOMSync(): UseBOMSyncReturn {
     const syncErrorsRef = useRef(syncErrors);
     syncErrorsRef.current = syncErrors;
 
+    /** Ref for isPaused so the polling closure always reads the latest value */
+    const isPausedRef = useRef(isPaused);
+    isPausedRef.current = isPaused;
+
+    /** Track polling interval/timeout so we can clean up on unmount or re-invocation */
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Stats and progress
     const [stats, setStats] = useState<SyncStats>({ total: 0, needsSync: 0, inSync: 0, errors: 0 });
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
@@ -180,6 +188,25 @@ export function useBOMSync(): UseBOMSyncReturn {
             Logger.error('Failed to fetch sync history', { error: err });
         } finally {
             setIsLoadingHistory(false);
+        }
+    }, [currentAccount?.id, token]);
+
+    /** Fetch BOM consumption history (deduction ledger entries) */
+    const fetchConsumptionHistory = useCallback(async () => {
+        if (!currentAccount || !token) return;
+        try {
+            const res = await fetch('/api/inventory/bom/consumption-history?limit=50', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setConsumptionHistory(data.entries || []);
+            }
+        } catch (err) {
+            Logger.error('Failed to fetch consumption history', { error: err });
         }
     }, [currentAccount?.id, token]);
 
@@ -241,10 +268,14 @@ export function useBOMSync(): UseBOMSyncReturn {
         } finally {
             setSyncingProductId(null);
         }
-    }, [currentAccount, token, fetchPendingChanges, fetchSyncHistory]);
+    }, [currentAccount?.id, token, fetchPendingChanges, fetchSyncHistory]);
 
     const handleSyncAll = useCallback(async () => {
         if (!currentAccount || !token) return;
+
+        // Clean up any existing poll from a previous invocation
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
 
         setIsSyncing(true);
         setSyncResult(null);
@@ -268,21 +299,26 @@ export function useBOMSync(): UseBOMSyncReturn {
                     setSyncResult({ synced: -2, failed: 0 });
 
                     let pollCount = 0;
-                    const pollInterval = setInterval(async () => {
+                    pollIntervalRef.current = setInterval(async () => {
+                        // Why ref: the closure captures stale isPaused, ref always has latest
+                        if (isPausedRef.current) return;
                         pollCount++;
                         await fetchPendingChanges();
                         await fetchSyncHistory();
                         await checkSyncStatus();
 
                         if (pollCount >= 12) {
-                            clearInterval(pollInterval);
+                            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                            pollIntervalRef.current = null;
                             setIsSyncing(false);
                             setSyncProgress(null);
                         }
                     }, 5000);
 
-                    setTimeout(() => {
-                        clearInterval(pollInterval);
+                    pollTimeoutRef.current = setTimeout(() => {
+                        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                        pollIntervalRef.current = null;
+                        pollTimeoutRef.current = null;
                         setIsSyncing(false);
                         setSyncProgress(null);
                     }, 60000);
@@ -307,7 +343,7 @@ export function useBOMSync(): UseBOMSyncReturn {
             setIsSyncing(false);
             setSyncProgress(null);
         }
-    }, [currentAccount, token, stats.needsSync, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
+    }, [currentAccount?.id, token, stats.needsSync, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
 
     const handleRetryFailed = useCallback(async () => {
         const failedItems = pendingChanges.filter(item => syncErrors[`${item.productId}-${item.variationId}`]);
@@ -335,7 +371,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to cancel sync', { error: err });
         }
-    }, [currentAccount, token, fetchPendingChanges]);
+    }, [currentAccount?.id, token, fetchPendingChanges]);
 
     const handleTogglePause = useCallback(() => {
         setIsPaused(prev => !prev);
@@ -363,8 +399,9 @@ export function useBOMSync(): UseBOMSyncReturn {
     const handleRefresh = useCallback(() => {
         fetchPendingChanges();
         fetchSyncHistory();
+        fetchConsumptionHistory();
         fetchDeactivatedItems();
-    }, [fetchPendingChanges, fetchSyncHistory, fetchDeactivatedItems]);
+    }, [fetchPendingChanges, fetchSyncHistory, fetchConsumptionHistory, fetchDeactivatedItems]);
 
     /** Reactivate a single deactivated item, then refresh the list */
     const handleReactivateItem = useCallback(async (itemId: string) => {
@@ -384,13 +421,14 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to reactivate BOM item', { error: err });
         }
-    }, [currentAccount, token, fetchDeactivatedItems, fetchPendingChanges]);
+    }, [currentAccount?.id, token, fetchDeactivatedItems, fetchPendingChanges]);
 
     // Initial fetch — only run when account or token changes
     useEffect(() => {
         if (currentAccount && token) {
             fetchPendingChanges();
             fetchSyncHistory();
+            fetchConsumptionHistory();
             fetchDeactivatedItems();
             checkSyncStatus();
 
@@ -403,6 +441,14 @@ export function useBOMSync(): UseBOMSyncReturn {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount?.id, token]);
+
+    // Cleanup polling on unmount to prevent setState on unmounted component
+    useEffect(() => {
+        return () => {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+        };
+    }, []);
 
     return {
         pendingChanges,

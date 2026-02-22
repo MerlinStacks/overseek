@@ -42,6 +42,7 @@ export const EVENTS = {
     SEO: {
         RANK_CHANGE: 'seo:rank_change',
         KEYWORD_ALERT: 'seo:keyword_alert',
+        COMPETITOR_RANK_CHANGE: 'seo:competitor_rank_change',
     }
 };
 

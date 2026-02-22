@@ -337,23 +337,59 @@ export function useAssignKeywordsToGroup() {
 }
 
 /* ─────────────────────────────────────────────────────
-   Competitor Analysis
+   Competitor Analysis & Intelligence
    ───────────────────────────────────────────────────── */
 
-/** Competitor domain */
+/** Competitor domain with tracking stats */
 export interface CompetitorDomain {
     id: string;
     domain: string;
+    notes: string | null;
+    isActive: boolean;
+    keywordCount: number;
+    avgPosition: number | null;
+    lastCheckedAt: string | null;
     createdAt: string;
 }
 
-/** Gap analysis result */
+/** Legacy gap analysis result (backward compat) */
 export interface CompetitorAnalysis {
     competitor: string;
     sharedKeywords: Array<{ keyword: string; yourPosition: number; theirEstimate: string }>;
     yourOnlyKeywords: string[];
     theirOnlyKeywords: string[];
     overlapPct: number;
+}
+
+/** Competitor keyword with SERP position data */
+export interface CompetitorKeywordPosition {
+    id: string;
+    keyword: string;
+    currentPosition: number | null;
+    previousPosition: number | null;
+    rankingUrl: string | null;
+    positionChange: number | null;
+    lastCheckedAt: string | null;
+}
+
+/** Significant competitor position change */
+export interface CompetitorMovement {
+    competitorDomain: string;
+    keyword: string;
+    previousPosition: number | null;
+    newPosition: number | null;
+    change: number;
+    direction: 'improved' | 'declined' | 'entered' | 'dropped';
+    date: string;
+}
+
+/** Side-by-side keyword comparison row */
+export interface HeadToHeadRow {
+    keyword: string;
+    yourPosition: number | null;
+    theirPosition: number | null;
+    positionDelta: number | null;
+    advantage: number | null;
 }
 
 /** Hook: List competitor domains */
@@ -393,7 +429,7 @@ export function useRemoveCompetitor() {
     });
 }
 
-/** Hook: Run competitor gap analysis */
+/** Hook: Run competitor gap analysis (legacy) */
 export function useCompetitorAnalysis(domain?: string) {
     const api = useApi();
     return useQuery<CompetitorAnalysis>({
@@ -401,6 +437,65 @@ export function useCompetitorAnalysis(domain?: string) {
         queryFn: () => api.get(`/api/search-console/competitor-analysis${domain ? `?domain=${domain}` : ''}`),
         enabled: api.isReady && !!domain,
         staleTime: 10 * 60 * 1000,
+    });
+}
+
+/** Hook: Get tracked keyword positions for a competitor */
+export function useCompetitorKeywords(competitorId: string | null) {
+    const api = useApi();
+    return useQuery<{ keywords: CompetitorKeywordPosition[]; count: number }>({
+        queryKey: ['search-console', 'competitor-keywords', competitorId],
+        queryFn: () => api.get(`/api/search-console/competitors/${competitorId}/keywords`),
+        enabled: api.isReady && !!competitorId,
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+/** Hook: Get rank history for a specific competitor keyword (chart data) */
+export function useCompetitorKeywordHistory(competitorId: string | null, kwId: string | null, days: number = 30) {
+    const api = useApi();
+    return useQuery<{ history: Array<{ date: string; position: number | null }>; count: number }>({
+        queryKey: ['search-console', 'competitor-keyword-history', competitorId, kwId, days],
+        queryFn: () => api.get(`/api/search-console/competitors/${competitorId}/keywords/${kwId}/history?days=${days}`),
+        enabled: api.isReady && !!competitorId && !!kwId,
+        staleTime: 10 * 60 * 1000,
+    });
+}
+
+/** Hook: Fetch recent significant competitor position changes */
+export function useCompetitorMovement(days: number = 7) {
+    const api = useApi();
+    return useQuery<{ movements: CompetitorMovement[]; count: number }>({
+        queryKey: ['search-console', 'competitor-movement', days],
+        queryFn: () => api.get(`/api/search-console/competitor-movement?days=${days}`),
+        enabled: api.isReady,
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+/** Hook: Side-by-side You vs Competitor keyword positions */
+export function useCompetitorHeadToHead(domain: string | null) {
+    const api = useApi();
+    return useQuery<{ rows: HeadToHeadRow[]; count: number }>({
+        queryKey: ['search-console', 'competitor-head-to-head', domain],
+        queryFn: () => api.get(`/api/search-console/competitor-head-to-head?domain=${domain}`),
+        enabled: api.isReady && !!domain,
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+/** Hook: Manually trigger a SERP position refresh for all competitors */
+export function useRefreshCompetitorPositions() {
+    const api = useApi();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: () => api.post('/api/search-console/competitors/refresh'),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['search-console', 'competitors'] });
+            qc.invalidateQueries({ queryKey: ['search-console', 'competitor-keywords'] });
+            qc.invalidateQueries({ queryKey: ['search-console', 'competitor-movement'] });
+            qc.invalidateQueries({ queryKey: ['search-console', 'competitor-head-to-head'] });
+        },
     });
 }
 

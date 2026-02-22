@@ -80,6 +80,15 @@ async function start() {
     Logger.error('[Startup] Failed to start keyword rank scheduler', { error });
   }
 
+  // Start competitor SERP position tracking scheduler
+  try {
+    const { startCompetitorRankScheduler } = await import('./services/search-console/CompetitorRankScheduler');
+    startCompetitorRankScheduler();
+    Logger.info('[Startup] Competitor rank scheduler started');
+  } catch (error) {
+    Logger.error('[Startup] Failed to start competitor rank scheduler', { error });
+  }
+
   // Initialize Elastic Indices
   try {
     await IndexingService.initializeIndices();

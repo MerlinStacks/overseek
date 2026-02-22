@@ -122,7 +122,7 @@ export class GoldPriceService {
         // Fetch live price and calculate
         const account = await prisma.account.findUnique({
             where: { id: accountId },
-            select: { currency: true, goldPriceMargin: true, goldPrice: true, updatedAt: true }
+            select: { currency: true, goldPriceMargin: true, goldPrice: true, updatedAt: true, goldPriceUpdatedAt: true }
         });
 
         if (!account) return;
@@ -145,12 +145,17 @@ export class GoldPriceService {
                     goldPrice18ct: price18ct,
                     goldPrice9ct: price9ct,
                     goldPrice18ctWhite: price18ct, // White gold same price base
-                    goldPrice9ctWhite: price9ct
+                    goldPrice9ctWhite: price9ct,
+                    goldPriceUpdatedAt: new Date()  // Track when gold prices were last successfully fetched
                 }
             });
         } else {
             // EDGE CASE: API failed - check if cached price is stale and notify user
-            const priceAgeMs = Date.now() - new Date(account.updatedAt).getTime();
+            // Why goldPriceUpdatedAt: account.updatedAt changes on ANY account edit
+            // (name, settings, etc.), making stale gold prices look fresh. This field
+            // only updates when gold prices are actually fetched successfully.
+            const priceTimestamp = account.goldPriceUpdatedAt ?? account.updatedAt;
+            const priceAgeMs = Date.now() - new Date(priceTimestamp).getTime();
             const priceAgeHours = priceAgeMs / (1000 * 60 * 60);
             const STALE_THRESHOLD_HOURS = 1;
 

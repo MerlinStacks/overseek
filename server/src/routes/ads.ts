@@ -17,6 +17,7 @@ import rebalancerRoutes from './ads/rebalancer';
 import wizardRoutes from './ads/wizard';
 import experimentsRoutes from './ads/experiments';
 import reportsRoutes from './ads/reports';
+import intelligenceRoutes from './ads/intelligence';
 
 interface AdAccountBody {
     platform?: string;
@@ -50,6 +51,9 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Register executive reports routes (Phase 5: Executive Report Generation)
     await fastify.register(reportsRoutes, { prefix: '/reports' });
+
+    // Register SC↔Ads intelligence routes (Phase 6: Search Intelligence)
+    await fastify.register(intelligenceRoutes, { prefix: '/intelligence' });
 
     // =====================================================
     // AD ACCOUNT MANAGEMENT

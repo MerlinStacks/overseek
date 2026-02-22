@@ -27,7 +27,10 @@ declare module 'fastify' {
     }
 }
 
-// Strict account routes that require accountId
+/**
+ * Routes that require x-account-id header.
+ * If a route handles account-scoped data, it belongs here.
+ */
 const STRICT_ACCOUNT_ROUTES = [
     '/customers',
     '/products',
@@ -40,7 +43,23 @@ const STRICT_ACCOUNT_ROUTES = [
     '/email',
     '/segments',
     '/audits',
-    '/sync'
+    '/sync',
+    '/reviews',
+    '/cohorts',
+    '/gold-price-report',
+    '/search-console',
+    '/dashboard',
+    '/chat',
+    '/roles',
+    '/policies',
+    '/help',
+    '/notifications',
+    '/tracking',
+    '/labels',
+    '/ads',
+    '/sms',
+    '/internal-products',
+    '/status-center'
 ];
 
 /**

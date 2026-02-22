@@ -90,6 +90,7 @@ model Account {
   goldPrice18ctWhite Decimal? @default(0) @db.Decimal(10, 2)
   goldPrice9ctWhite  Decimal? @default(0) @db.Decimal(10, 2)
   goldPriceMargin    Decimal? @default(10) @db.Decimal(10, 2)
+  goldPriceUpdatedAt DateTime? // When gold prices were last successfully fetched (independent of general updatedAt)
 
   // AI Settings
   openRouterApiKey String?
@@ -2401,16 +2402,63 @@ model KeywordGroup {
   @@index([accountId])
 }
 
-/// Competitor domains for SERP overlap analysis.
+/// Competitor domains for SERP overlap analysis and position tracking.
 model CompetitorDomain {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   accountId String
   domain    String
+  notes     String?
+  isActive  Boolean @default(true)
 
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account  Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  keywords CompetitorKeyword[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([accountId, domain])
   @@index([accountId])
+}
+
+/// A keyword being tracked for a specific competitor domain.
+/// Links competitor domains to the user's tracked keywords to
+/// compare positions side-by-side.
+model CompetitorKeyword {
+  id              String    @id @default(uuid())
+  competitorId    String
+  keyword         String
+  /// Latest known position for this competitor on this keyword
+  currentPosition Float?
+  /// URL ranking for this keyword (if detected)
+  rankingUrl      String?
+  lastCheckedAt   DateTime?
+
+  competitor CompetitorDomain       @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  history    CompetitorRankHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([competitorId, keyword])
+  @@index([competitorId])
+  @@index([keyword])
+}
+
+/// Daily position snapshots for competitor keywords.
+/// Mirrors KeywordRankHistory but for competitor domains.
+model CompetitorRankHistory {
+  id                  String   @id @default(uuid())
+  competitorKeywordId String
+  /// null = not found in top 100
+  position            Float?
+  previousPosition    Float?
+  rankingUrl          String?
+  date                DateTime @db.Date
+
+  competitorKeyword CompetitorKeyword @relation(fields: [competitorKeywordId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([competitorKeywordId, date])
+  @@index([competitorKeywordId, date(sort: Desc)])
 }

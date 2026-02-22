@@ -23,6 +23,8 @@ import { FunnelAnalyzer } from './FunnelAnalyzer';
 import { AudienceAnalyzer } from './AudienceAnalyzer';
 import { ProductOpportunityAnalyzer } from './ProductOpportunityAnalyzer';
 import { KeywordOpportunityAnalyzer } from './KeywordOpportunityAnalyzer';
+import { NegativeKeywordAnalyzer } from './NegativeKeywordAnalyzer';
+import { CannibalizationAnalyzer } from './CannibalizationAnalyzer';
 import { MarketingStrategyAdvisor } from '../advisors/MarketingStrategyAdvisor';
 import { SearchCampaignAdvisor } from '../advisors/SearchCampaignAdvisor';
 import { getFeedbackContext, shouldFilterRecommendation } from '../feedback/FeedbackService';
@@ -41,7 +43,7 @@ export class AnalysisPipeline {
         // Parse user context for priority keywords
         const contextKeywords = userContext ? this.parseContextKeywords(userContext) : [];
 
-        // Run all analyzers in parallel
+        // Run all analyzers in parallel — including SC↔Ads intelligence
         const [
             multiPeriod,
             crossChannel,
@@ -50,6 +52,8 @@ export class AnalysisPipeline {
             audience,
             productOpp,
             keywordOpp,
+            negativeKw,
+            cannibalization,
             strategy,
             searchCampaigns
         ] = await Promise.all([
@@ -60,6 +64,8 @@ export class AnalysisPipeline {
             AudienceAnalyzer.analyze(accountId),
             ProductOpportunityAnalyzer.analyze(accountId),
             KeywordOpportunityAnalyzer.analyze(accountId),
+            NegativeKeywordAnalyzer.analyze(accountId),
+            CannibalizationAnalyzer.analyze(accountId),
             MarketingStrategyAdvisor.analyze(accountId),  // Strategic layer
             SearchCampaignAdvisor.analyze(accountId)       // Search campaign layer
         ]);
@@ -76,6 +82,13 @@ export class AnalysisPipeline {
         if (keywordOpp.keywordOpportunities) allActions.push(...keywordOpp.keywordOpportunities);
         if (keywordOpp.negativeKeywordOpportunities) allActions.push(...keywordOpp.negativeKeywordOpportunities);
         if (keywordOpp.bidAdjustments) allActions.push(...keywordOpp.bidAdjustments);
+
+        // Negative keyword recommendations (SC↔Ads bridge)
+        if (negativeKw.suggestions) allActions.push(...negativeKw.suggestions);
+
+        // Cannibalization recommendations (SC↔Ads bridge)
+        if (cannibalization.cannibalized) allActions.push(...cannibalization.cannibalized);
+        if (cannibalization.paidOpportunities) allActions.push(...cannibalization.paidOpportunities);
 
         // Strategic recommendations (executive-level insights)
         if (strategy.recommendations) allActions.push(...strategy.recommendations);
@@ -144,8 +157,8 @@ export class AnalysisPipeline {
         // Build unified result
         const hasData = multiPeriod.hasData || crossChannel.hasData ||
             ltv.hasData || funnel.hasData || audience.hasData ||
-            productOpp.hasData || keywordOpp.hasData || strategy.hasData ||
-            searchCampaigns.hasData;
+            productOpp.hasData || keywordOpp.hasData || negativeKw.hasData ||
+            cannibalization.hasData || strategy.hasData || searchCampaigns.hasData;
 
 
         return {
@@ -165,7 +178,7 @@ export class AnalysisPipeline {
                 importantCount: sortedSuggestions.filter(s => s.priority === 2).length,
                 infoCount: sortedSuggestions.filter(s => s.priority === 3).length,
                 topConfidence: sortedSuggestions[0]?.confidence || 0,
-                analyzersRun: 9,
+                analyzersRun: 11,
                 totalDurationMs: Date.now() - startTime,
             },
             metadata: {

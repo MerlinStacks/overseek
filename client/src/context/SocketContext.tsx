@@ -7,13 +7,11 @@ import { Logger } from '../utils/logger';
 
 interface SocketContextType {
     socket: Socket | null;
-    firstName: string;
     isConnected: boolean;
 }
 
 const SocketContext = createContext<SocketContextType>({
     socket: null,
-    firstName: '',
     isConnected: false
 });
 
@@ -67,7 +65,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     }, [token, currentAccount?.id]);
 
     return (
-        <SocketContext.Provider value={{ socket, isConnected, firstName: 'Test' }}>
+        <SocketContext.Provider value={{ socket, isConnected }}>
             {children}
         </SocketContext.Provider>
     );

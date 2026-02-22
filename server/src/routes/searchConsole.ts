@@ -460,7 +460,7 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
-     * GET /api/search-console/competitor-analysis — Run gap analysis
+     * GET /api/search-console/competitor-analysis — Run gap analysis (legacy)
      */
     fastify.get('/competitor-analysis', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
@@ -472,6 +472,96 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             return analysis;
         } catch (error: any) {
             Logger.error('Failed to run competitor analysis', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /api/search-console/competitors/:id/keywords — Tracked keyword positions for a competitor
+     */
+    fastify.get('/competitors/:id/keywords', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const { id } = request.params as { id: string };
+            const keywords = await CompetitorAnalysisService.getCompetitorKeywords(id);
+            return { keywords, count: keywords.length };
+        } catch (error: any) {
+            Logger.error('Failed to fetch competitor keywords', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /api/search-console/competitors/:id/keywords/:kwId/history — Rank history chart data
+     * Query params: days (default 30)
+     */
+    fastify.get('/competitors/:id/keywords/:kwId/history', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const { kwId } = request.params as { id: string; kwId: string };
+            const query = request.query as { days?: string };
+            const days = parseDays(query.days, 30);
+
+            const history = await CompetitorAnalysisService.getCompetitorKeywordHistory(kwId, days);
+            return { history, count: history.length };
+        } catch (error: any) {
+            Logger.error('Failed to fetch competitor keyword history', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /api/search-console/competitor-movement — Recent significant position changes
+     * Query params: days (default 7)
+     */
+    fastify.get('/competitor-movement', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const query = request.query as { days?: string };
+            const days = parseDays(query.days, 7);
+
+            const movements = await CompetitorAnalysisService.getCompetitorMovement(accountId, days);
+            return { movements, count: movements.length };
+        } catch (error: any) {
+            Logger.error('Failed to fetch competitor movement', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * GET /api/search-console/competitor-head-to-head — You vs competitor side-by-side
+     * Query params: domain (required)
+     */
+    fastify.get('/competitor-head-to-head', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            const query = request.query as { domain?: string };
+            if (!query.domain) return reply.code(400).send({ error: 'domain is required' });
+
+            const rows = await CompetitorAnalysisService.getHeadToHead(accountId, query.domain);
+            return { rows, count: rows.length };
+        } catch (error: any) {
+            Logger.error('Failed to fetch head-to-head data', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
+    /**
+     * POST /api/search-console/competitors/refresh — Manually trigger SERP position refresh
+     */
+    fastify.post('/competitors/refresh', { preHandler: requireAuthFastify }, async (request, reply) => {
+        try {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+
+            // Sync keywords first, then refresh positions
+            await CompetitorAnalysisService.syncCompetitorKeywords(accountId);
+            const result = await CompetitorAnalysisService.refreshCompetitorPositions(accountId);
+            return { success: true, ...result };
+        } catch (error: any) {
+            Logger.error('Failed to refresh competitor positions', { error });
             return reply.code(500).send({ error: error.message });
         }
     });

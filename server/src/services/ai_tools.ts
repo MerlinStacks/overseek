@@ -7,6 +7,7 @@ import { AdsTools } from './tools/AdsTools';
 import { WooCommerceTools } from './tools/WooCommerceTools';
 import { AnalyticsTools } from './tools/AnalyticsTools';
 import { SearchConsoleTools } from './tools/SearchConsoleTools';
+import { SearchToAdsTools } from './tools/SearchToAdsTools';
 import { Logger } from '../utils/logger';
 
 export interface ToolDefinition {
@@ -262,6 +263,25 @@ export class AIToolsService {
                     },
                     required: []
                 }
+            },
+
+            // ─────────────────────────────────────────────────────────
+            // Search Intelligence (SC ↔ Ads Bridge)
+            // ─────────────────────────────────────────────────────────
+            {
+                name: "get_search_ads_correlation",
+                description: "Get organic ↔ paid keyword correlation. Shows keywords appearing in both Search Console and Google Ads, cannibalization scoring, estimated wasted spend, and organic-only opportunities that could be targeted with paid ads. Requires both Google Search Console and Google Ads.",
+                parameters: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_negative_keyword_suggestions",
+                description: "Get negative keyword suggestions. Identifies paid keywords with spend but zero conversions that are unrelated to the product catalog. Shows estimated monthly savings from negating these keywords.",
+                parameters: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_cannibalization_analysis",
+                description: "Get organic/paid cannibalization analysis. Detects queries where you're paying for clicks that organic search already delivers. Also identifies queries where organic is too weak and paid should be scaled up.",
+                parameters: { type: "object", properties: {}, required: [] }
             }
         ];
     }
@@ -306,6 +326,11 @@ export class AIToolsService {
         // SEO & Organic Search
         get_seo_keyword_recommendations: (_args, accountId) => SearchConsoleTools.getKeywordRecommendations(accountId),
         get_organic_search_performance: (args, accountId) => SearchConsoleTools.getOrganicPerformance(accountId, (args.days as number) || 28),
+
+        // Search Intelligence (SC ↔ Ads Bridge)
+        get_search_ads_correlation: (_args, accountId) => SearchToAdsTools.getSearchAdsCorrelation(accountId),
+        get_negative_keyword_suggestions: (_args, accountId) => SearchToAdsTools.getNegativeKeywordSuggestions(accountId),
+        get_cannibalization_analysis: (_args, accountId) => SearchToAdsTools.getCannibalizationAnalysis(accountId),
     };
 
     /**
