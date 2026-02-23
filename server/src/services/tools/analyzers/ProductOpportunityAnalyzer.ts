@@ -95,6 +95,8 @@ export class ProductOpportunityAnalyzer {
             }
 
             // Get sales data from orders in the last 30 days
+            // Cap to prevent OOM on stores with large order volumes
+            const MAX_ORDERS = 20000;
             const orders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
@@ -106,7 +108,9 @@ export class ProductOpportunityAnalyzer {
                     total: true,
                     rawData: true,
                     dateCreated: true
-                }
+                },
+                orderBy: { dateCreated: 'desc' },
+                take: MAX_ORDERS
             });
 
             // Calculate product velocity from order line items

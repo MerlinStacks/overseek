@@ -102,6 +102,8 @@ export class AudienceAnalyzer {
             const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
             // Get orders with attribution (device, geo from analytics sessions)
+            // Cap to prevent OOM on stores with large order volumes
+            const MAX_ORDERS = 20000;
             const orders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
@@ -113,7 +115,9 @@ export class AudienceAnalyzer {
                     total: true,
                     dateCreated: true,
                     rawData: true
-                }
+                },
+                orderBy: { dateCreated: 'desc' },
+                take: MAX_ORDERS
             });
 
             if (orders.length === 0) return result;

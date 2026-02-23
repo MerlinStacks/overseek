@@ -84,6 +84,8 @@ export class CrossChannelAnalyzer {
             const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
             // Get all orders with their attribution
+            // Cap to prevent OOM on stores with large order volumes
+            const MAX_ORDERS = 20000;
             const orders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
@@ -95,7 +97,9 @@ export class CrossChannelAnalyzer {
                     total: true,
                     dateCreated: true,
                     rawData: true
-                }
+                },
+                orderBy: { dateCreated: 'desc' },
+                take: MAX_ORDERS
             });
 
             if (orders.length === 0) {

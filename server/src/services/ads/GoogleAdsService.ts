@@ -425,7 +425,7 @@ export class GoogleAdsService {
                 Logger.warn('Attempted to update shared/immutable budget', { campaignId });
                 throw new Error('Cannot update this budget: It may be a shared budget or immutable.');
             }
-            Logger.error('Failed to update Google Ads campaign budget', { error: error.message, fullError: error });
+            Logger.error('Failed to update Google Ads campaign budget', { error: error.message, code: error.code });
             throw error;
         }
     }
@@ -630,7 +630,7 @@ export class GoogleAdsService {
                 Logger.info('Keyword already exists, treating as success', { keywordText, adGroupId });
                 return true;
             }
-            Logger.error('Failed to add Google Ads keyword', { error: error.message, fullError: error });
+            Logger.error('Failed to add Google Ads keyword', { error: error.message, code: error.code });
             throw error;
         }
     }
