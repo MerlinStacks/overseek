@@ -72,14 +72,15 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         return weight * goldPricePerGram;
     }, [currentAccount]);
 
-    const saveAllBOMs = async (): Promise<boolean> => {
-        const refs = Array.from(bomPanelRefs.current.values()).filter(ref => ref !== null);
+    // Why: useCallback so the function identity only changes when bomPanelRefs is reassigned (never)
+    const saveAllBOMs = useCallback(async (): Promise<boolean> => {
+        const refs = Array.from(bomPanelRefs.current.values()).filter(r => r !== null);
         if (refs.length === 0) return true;
-        const results = await Promise.all(refs.map(ref => ref!.save()));
+        const results = await Promise.all(refs.map(r => r!.save()));
         return results.every(success => success);
-    };
+    }, []);
 
-    useImperativeHandle(ref, () => ({ saveAllBOMs }), []);
+    useImperativeHandle(ref, () => ({ saveAllBOMs }), [saveAllBOMs]);
 
     useEffect(() => {
         setEditingVariants(variants);
@@ -137,8 +138,13 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         setEditingVariants(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
     }, []);
 
+    // Why: reference comparison always triggered because setEditingVariants creates new arrays.
+    // Use JSON comparison to detect actual value changes.
     useEffect(() => {
-        if (editingVariants !== lastSyncedVariantsRef.current && onUpdate) {
+        if (!onUpdate) return;
+        const serialised = JSON.stringify(editingVariants);
+        if (serialised !== JSON.stringify(lastSyncedVariantsRef.current)) {
+            lastSyncedVariantsRef.current = editingVariants;
             onUpdate(editingVariants);
         }
     }, [editingVariants, onUpdate]);

@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { ArrowLeft, Save, Plus, Trash2, Loader2, Calendar, Copy, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Loader2, Calendar, Copy, ExternalLink, RotateCcw } from 'lucide-react';
 import { CreateSupplierModal } from '../components/inventory/CreateSupplierModal';
 import { ProductSearchInput, ProductSelection } from '../components/inventory/ProductSearchInput';
 import { SupplierSearchInput } from '../components/inventory/SupplierSearchInput';
 import { POStatusStepper } from '../components/inventory/POStatusStepper';
 import { Toast, ToastType } from '../components/ui/Toast';
+import { usePODraftPersistence } from '../hooks/usePODraftPersistence';
 
 interface POItem {
     id?: string;
@@ -60,14 +61,60 @@ export function PurchaseOrderEditPage() {
 
     const [poNumber, setPoNumber] = useState('');
 
+    /** Whether the server data has loaded — prevents draft from overwriting fetched PO */
+    const serverDataLoadedRef = useRef(false);
+    /** Whether any field has been touched since last save — drives beforeunload guard */
+    const isDirtyRef = useRef(false);
+    /** Prevents draft restore from firing more than once per PO session */
+    const draftRestoredRef = useRef(false);
+
+    // --- Draft persistence ---
+    const { loadDraft, clearDraft } = usePODraftPersistence({
+        accountId: currentAccount?.id ?? '',
+        poId: id ?? 'new',
+        formState: { supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items },
+        enabled: !!currentAccount && !isLoading,
+    });
+
     useEffect(() => {
         if (currentAccount) {
             fetchSuppliers();
             if (!isNew) {
                 fetchPO(id!);
+            } else {
+                // Why: for new POs, try to restore a saved draft
+                const draft = loadDraft();
+                if (draft) {
+                    setSupplierId(draft.supplierId);
+                    setStatus(draft.status);
+                    setNotes(draft.notes);
+                    setOrderDate(draft.orderDate);
+                    setExpectedDate(draft.expectedDate);
+                    setTrackingNumber(draft.trackingNumber);
+                    setTrackingLink(draft.trackingLink);
+                    setItems(draft.items);
+                    showToast('Draft restored from your last session', 'success');
+                }
             }
         }
     }, [currentAccount, token, id]);
+
+    // Why: warn the user before they accidentally close/refresh with unsaved changes
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (!isDirtyRef.current) return;
+            e.preventDefault();
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, []);
+
+    // Why: mark dirty whenever form state changes (skip initial mount)
+    const mountedRef = useRef(false);
+    useEffect(() => {
+        if (!mountedRef.current) { mountedRef.current = true; return; }
+        isDirtyRef.current = true;
+    }, [supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items]);
 
     async function fetchSuppliers() {
         // Assume endpoint exists
@@ -97,7 +144,7 @@ export function PurchaseOrderEditPage() {
                 setPoNumber(data.orderNumber || '');
 
                 // Map items
-                setItems(data.items.map((i: any) => ({
+                const serverItems = data.items.map((i: any) => ({
                     id: i.id,
                     productId: i.productId,
                     supplierItemId: i.supplierItemId,
@@ -108,7 +155,26 @@ export function PurchaseOrderEditPage() {
                     quantity: i.quantity,
                     unitCost: Number(i.unitCost),
                     totalCost: Number(i.totalCost)
-                })));
+                }));
+                setItems(serverItems);
+
+                // Why: after loading server data, check for a saved draft with unsaved edits
+                if (!draftRestoredRef.current) {
+                    draftRestoredRef.current = true;
+                    const draft = loadDraft();
+                    if (draft) {
+                        setSupplierId(draft.supplierId);
+                        setStatus(draft.status);
+                        setNotes(draft.notes);
+                        setOrderDate(draft.orderDate);
+                        setExpectedDate(draft.expectedDate);
+                        setTrackingNumber(draft.trackingNumber);
+                        setTrackingLink(draft.trackingLink);
+                        setItems(draft.items);
+                        isDirtyRef.current = true;
+                        showToast('Unsaved changes restored from your last session', 'success');
+                    }
+                }
             }
         } catch (err) { Logger.error('An error occurred', { error: err }); }
         finally { setIsLoading(false); }
@@ -172,6 +238,8 @@ export function PurchaseOrderEditPage() {
             });
 
             if (res.ok) {
+                clearDraft();
+                isDirtyRef.current = false;
                 navigate('/inventory?tab=purchasing');
             } else {
                 let errorMessage = 'Failed to save';
@@ -227,6 +295,24 @@ export function PurchaseOrderEditPage() {
                         >
                             <Copy size={18} />
                             Duplicate
+                        </button>
+                    )}
+                    {isNew && (
+                        <button
+                            onClick={() => {
+                                clearDraft();
+                                setSupplierId(''); setStatus('DRAFT'); setNotes('');
+                                setOrderDate(''); setExpectedDate('');
+                                setTrackingNumber(''); setTrackingLink('');
+                                setItems([]);
+                                isDirtyRef.current = false;
+                                showToast('Draft discarded', 'success');
+                            }}
+                            className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200"
+                            title="Discard saved draft"
+                        >
+                            <RotateCcw size={18} />
+                            Discard Draft
                         </button>
                     )}
                     <button

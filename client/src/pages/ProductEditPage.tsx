@@ -6,7 +6,8 @@
  */
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { SeoAnalysisPanel } from '../components/Seo/SeoAnalysisPanel';
 import { MerchantCenterPanel } from '../components/Seo/MerchantCenterPanel';
@@ -31,6 +32,8 @@ export function ProductEditPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
 
+    const { user } = useAuth();
+
     const {
         isLoading,
         isSaving,
@@ -53,7 +56,9 @@ export function ProductEditPage() {
         hideToast,
         handleSave,
         handleSync,
-        fetchProduct
+        fetchProduct,
+        discardDraft,
+        hasDraft
     } = useProductEdit(id);
 
     if (isLoading) {
@@ -130,7 +135,7 @@ export function ProductEditPage() {
                 <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <PricingPanel formData={formData} onChange={updateFormData} />
                     <GoldPricePanel
-                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied }}
+                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied, goldPriceType: formData.goldPriceType, weight: formData.weight }}
                         onChange={updateFormData}
                         hasVariants={!!(product.variations?.length)}
                     />
@@ -255,8 +260,8 @@ export function ProductEditPage() {
                             <div>
                                 <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     {product.name}
-                                    <span className={`text-xs px-2 py-0.5 rounded-full border ${product.stockStatus === 'instock' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                        {product.stockStatus === 'instock' ? 'In Stock' : 'Out of Stock'}
+                                    <span className={`text-xs px-2 py-0.5 rounded-full border ${formData.stockStatus === 'instock' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                        {formData.stockStatus === 'instock' ? 'In Stock' : 'Out of Stock'}
                                     </span>
                                 </h1>
                                 <div className="flex items-center gap-3 mt-1">
@@ -284,7 +289,7 @@ export function ProductEditPage() {
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            <PresenceAvatars users={activeUsers} currentUserId={currentAccount?.id} />
+                            <PresenceAvatars users={activeUsers} currentUserId={user?.id} />
                             <div className="h-8 w-px bg-gray-300 mx-2 hidden sm:block"></div>
                             <button
                                 onClick={handleSync}
@@ -294,6 +299,16 @@ export function ProductEditPage() {
                                 {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                                 <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
                             </button>
+                            {hasDraft && (
+                                <button
+                                    onClick={discardDraft}
+                                    className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 text-red-700 font-medium rounded-lg hover:bg-red-100 transition-colors backdrop-blur-xs"
+                                    title="Discard restored draft and reset to saved version"
+                                >
+                                    <Trash2 size={18} />
+                                    <span className="hidden sm:inline">Discard Draft</span>
+                                </button>
+                            )}
                             <button
                                 onClick={handleSave}
                                 disabled={isSaving}
