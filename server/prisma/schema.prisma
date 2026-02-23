@@ -2414,7 +2414,7 @@ model CompetitorDomain {
   keywords CompetitorKeyword[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([accountId, domain])
   @@index([accountId])
