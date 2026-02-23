@@ -40,6 +40,9 @@ reproduce_*.ts
 .env
 .env*.local
 stack.env
+
+# Docker Compose local dev override (not for production server)
+docker-compose.override.yml
 git_*.txt
 
 # IDE & OS

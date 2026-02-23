@@ -76,13 +76,10 @@ services:
         max-file: "3"
 
   # Node API (Fastify + Prisma)
+  # Image built and pushed by GitHub Actions (.github/workflows/deploy.yml)
+  # For local builds: docker-compose.override.yml restores build: directives
   api:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-      args:
-        DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
-    pull_policy: build
+    image: ghcr.io/merlinstacks/overseek-api:latest
     ports:
       - "3000:3000"
     env_file:
@@ -125,11 +122,10 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Frontend (Vite + Nginx)
+  # Image built and pushed by GitHub Actions (.github/workflows/deploy.yml)
   web:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-    pull_policy: build
+    image: ghcr.io/merlinstacks/overseek-web:latest
     ports:
       - "5173:80" # External 5173 -> Internal Nginx 80
     depends_on:

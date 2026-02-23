@@ -17,55 +17,99 @@ See the [README](./README.md) for full Quick Start instructions.
 
 ---
 
-## Overview
+## Automated CI/CD (Recommended)
 
-OverSeek supports zero-downtime updates via Portainer with health checks.
+Pushes to `main` trigger GitHub Actions to build only the changed service image(s) and push them to GitHub Container Registry (GHCR). Portainer picks up the new images automatically.
+
+### How It Works
+
+1. **Push to `main`** → GitHub Actions detects changed paths (`server/` vs `client/`)
+2. **Build** → Only the affected image is built and pushed to GHCR
+3. **Deploy** → Portainer GitOps detects the change and pulls the new image
+4. **Zero downtime** → Health checks gate the rollover; `shutdown.ts` drains in-flight requests
+
+### First-Time Setup
+
+1. **GitHub**: No extra secrets needed — the workflow uses the built-in `GITHUB_TOKEN` for GHCR.
+
+2. **Portainer**: Configure your stack for GitOps auto-updates:
+   - Go to **Stacks → overseekv2 → Editor**
+   - Enable **"GitOps updates"** pointing to `main` branch
+   - Set polling interval (e.g., 5 minutes)
+   - Enable **"Re-pull images"** so Portainer pulls new GHCR images
+
+3. **Initial image bootstrap** (one-time):
+   - Temporarily **pause** Portainer GitOps polling
+   - Push the workflow to `main` and wait for GitHub Actions to finish (~5 min)
+   - Verify images exist: `docker pull ghcr.io/merlinstacks/overseek-api:latest`
+   - **Resume** Portainer GitOps polling
+
+### Optional: Instant Deploys via Webhooks
+
+Instead of waiting for Portainer polling, you can trigger instant redeploys:
+
+1. In Portainer, enable webhooks for `api` and `web` services
+2. Add the webhook URLs as **GitHub Repository Variables** (Settings → Secrets → Actions → Variables):
+   - `PORTAINER_WEBHOOK_API`
+   - `PORTAINER_WEBHOOK_WEB`
+3. The workflow will ping them after pushing images
 
 ---
 
-## How It Works
+## Local Development
 
-1. **Health Endpoints** (already in API):
-   - `/health` - Basic check
-   - `/health/ready` - Full dependency check (DB, Redis, ES)
-   - `/health/live` - Simple liveness ping
+The `docker-compose.override.yml` file (gitignored) restores `build:` directives for local builds:
 
-2. **Docker Health Checks** (added to docker-compose.yml):
-   - API: Waits 180s startup, checks `/health/live` every 15s
-   - Web: Waits 30s startup, checks port 80 every 15s
+```bash
+# Local: builds from source (override file adds build: directives)
+docker compose build
+docker compose up -d
 
-3. **Portainer Integration**:
-   - Portainer monitors health status
-   - Won't route traffic until container is healthy
-   - Rolling update waits for new container to be ready
+# Production server: pulls from GHCR (no override file present)
+docker compose pull
+docker compose up -d
+```
+
+> **Note:** The override file should exist on developer machines but **not** on the production server.
 
 ---
 
-## Deployment Process (Portainer)
+## Health Endpoints
 
-### Standard Update
+- `/health` — Basic check
+- `/health/ready` — Full dependency check (DB, Redis, ES)
+- `/health/live` — Simple liveness ping
+
+Docker health checks are configured in `docker-compose.yml`:
+- API: 180s startup, checks `/health/live` every 15s
+- Web: 30s startup, checks port 80 every 15s
+
+---
+
+## Manual Deployment
+
+### Per-Service Update (via GHCR)
+```bash
+# On the server — pull and restart only one service
+docker compose pull api
+docker compose up -d --no-deps api
+
+# Or for the web client:
+docker compose pull web
+docker compose up -d --no-deps web
+```
+
+### Force Rebuild via GitHub Actions
+Use the **workflow_dispatch** trigger in GitHub:
+1. Go to **Actions → Build & Deploy → Run workflow**
+2. Select `api`, `web`, or `both`
+
+### Full Stack Update (Portainer)
 1. Go to **Stacks → overseekv2**
 2. Click **Editor** tab
 3. Click **"Update the stack"**
 4. Enable **"Re-pull image and redeploy"**
 5. Click **"Update"**
-
-Portainer will:
-- Pull new images
-- Start new containers
-- Wait for health checks to pass
-- Route traffic to new containers
-- Stop old containers
-
-### Per-Service Update (Safer)
-```bash
-# On the server via SSH or Portainer console
-docker compose build api
-docker compose up -d --no-deps api
-# Wait for healthy, then:
-docker compose build web
-docker compose up -d --no-deps web
-```
 
 ---
 
@@ -98,6 +142,13 @@ curl http://localhost:3000/health/ready
 If an update fails:
 ```bash
 # Portainer: Click "Rollback" on the stack
-# Or via CLI:
+# Or via CLI — roll back to previous image by SHA:
+docker compose pull   # pulls latest (which may be broken)
+# Instead, use a specific known-good SHA:
+# docker pull ghcr.io/merlinstacks/overseek-api:<good-commit-sha>
+# docker compose up -d --no-deps api
+
+# Or force recreate with current images:
 docker compose up -d --force-recreate
 ```
+
