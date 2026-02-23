@@ -8,7 +8,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, KeywordIdea, formatDateISO, formatDateGAQL } from './types';
-import { createGoogleAdsClient, parseGoogleAdsError } from './GoogleAdsClient';
+import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
 
 export class GoogleAdsService {
@@ -60,11 +60,14 @@ export class GoogleAdsService {
 
             // Transient gRPC/network errors — return null to let scheduler continue
             if (!error.message && error.details) {
+                recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Ads Insights (gRPC)', { error: msg, adAccountId });
                 return null;
             }
 
-            Logger.error('Failed to fetch Google Ads Insights', { error: msg, fullError: error, adAccountId });
+            // Intentionally omit fullError — gRPC error objects contain huge
+            // protobuf descriptors that cause OOM when serialised to JSON.
+            Logger.error('Failed to fetch Google Ads Insights', { error: msg, code: error.code, adAccountId });
 
             // If it's a permission/auth error, throw object with statusCode for Fastify
             if (userMessage.includes('Permission denied') || userMessage.includes('Authentication expired')) {
@@ -125,6 +128,7 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             const msg = error.message || error.details || 'Unknown gRPC error';
+            recordGrpcFailure(adAccountId);
             Logger.warn('Failed to fetch Google Ads Campaign Insights', { error: msg, adAccountId });
             return [];
         }
@@ -164,6 +168,7 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             const msg = error.message || error.details || 'Unknown gRPC error';
+            recordGrpcFailure(adAccountId);
             Logger.warn('Failed to fetch Google Ads Daily Trends', { error: msg, adAccountId });
             return [];
         }
@@ -227,6 +232,7 @@ export class GoogleAdsService {
                 Logger.info('Shopping performance view not available', { adAccountId });
                 return [];
             }
+            recordGrpcFailure(adAccountId);
             Logger.warn('Failed to fetch Google Shopping Products', { error: msg, adAccountId });
             return [];
         }
@@ -370,6 +376,7 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             const msg = error.message || error.details || 'Unknown gRPC error';
+            recordGrpcFailure(adAccountId);
             Logger.warn('Failed to fetch Google Search Keywords', { error: msg, adAccountId });
             return [];
         }
@@ -703,6 +710,7 @@ export class GoogleAdsService {
                 return [];
             }
 
+            recordGrpcFailure(adAccountId);
             Logger.warn('Failed to fetch keyword ideas', { error: errorMsg || 'Unknown gRPC error', adAccountId });
             return []; // Return empty to allow graceful fallback
         }

@@ -227,6 +227,10 @@ export class MarketingScheduler {
     /**
      * Dispatch ad alerts check for all accounts with ad accounts
      */
+    // Prevents concurrent alert checks for the same account. Without this,
+    // overlapping scheduler cycles pile up gRPC calls and inflate the heap.
+    private static inFlightAlertAccounts = new Set<string>();
+
     static async dispatchAdAlerts() {
         Logger.info('[Scheduler] Starting ad alert check');
 
@@ -241,6 +245,13 @@ export class MarketingScheduler {
             Logger.info(`[Scheduler] Checking ad alerts for ${accountsWithAds.length} accounts`);
 
             for (const { accountId } of accountsWithAds) {
+                // Skip accounts that are already being checked by a previous cycle
+                if (this.inFlightAlertAccounts.has(accountId)) {
+                    Logger.debug('[Scheduler] Skipping ad alert check — already in flight', { accountId });
+                    continue;
+                }
+
+                this.inFlightAlertAccounts.add(accountId);
                 try {
                     const alerts = await AdAlertService.checkForAlerts(accountId);
 
@@ -286,12 +297,15 @@ export class MarketingScheduler {
                     }
                 } catch (error) {
                     Logger.error(`[Scheduler] Ad alert check failed for account ${accountId}`, { error });
+                } finally {
+                    this.inFlightAlertAccounts.delete(accountId);
                 }
             }
         } catch (error) {
             Logger.error('[Scheduler] Ad alerts dispatch failed', { error });
         }
     }
+
 
     /**
      * Assess outcomes of implemented recommendations (AI Marketing Co-Pilot Phase 5)
