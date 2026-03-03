@@ -71,6 +71,9 @@ export class NotificationEngine {
         // Ad Performance Alerts (AI Marketing Co-Pilot Phase 6)
         EventBus.on(EVENTS.AD.ALERT, this.handleAdAlert.bind(this));
 
+        // Ad Account Auth Expired
+        EventBus.on(EVENTS.AD.AUTH_EXPIRED, this.handleAdAuthExpired.bind(this));
+
         // Inventory Stockout Alerts (Predictive Inventory Forecasting)
         EventBus.on(EVENTS.INVENTORY.STOCKOUT_ALERT, this.handleStockoutAlert.bind(this));
 
@@ -81,7 +84,7 @@ export class NotificationEngine {
         EventBus.on(EVENTS.SEO.RANK_CHANGE, this.handleRankChange.bind(this));
 
         this.initialized = true;
-        Logger.info('[NotificationEngine] Initialized - listening for 10 event types');
+        Logger.info('[NotificationEngine] Initialized - listening for 11 event types');
     }
 
     /**
@@ -329,6 +332,39 @@ export class NotificationEngine {
                 severity: alert.severity,
                 campaignName: alert.campaignName
             }
+        });
+    }
+
+    /**
+     * Handle ad account auth expiry (token invalid_grant or Meta token expired).
+     * Notifies the user to reconnect their ad account.
+     */
+    private static async handleAdAuthExpired(data: {
+        accountId: string;
+        adAccountId: string;
+        platform: string;
+        adAccountName?: string;
+    }): Promise<void> {
+        const { accountId, platform, adAccountName } = data;
+        const label = adAccountName || platform;
+
+        await this.sendNotification({
+            accountId,
+            eventType: 'AD_AUTH_EXPIRED',
+            channels: ['in_app', 'push'],
+            inApp: {
+                title: 'Ad Account Disconnected',
+                message: `Your ${label} ad account token has expired. Please reconnect it in Settings to resume syncing.`,
+                type: 'ERROR',
+                link: '/settings?tab=connected'
+            },
+            push: {
+                title: '🔑 Ad Account Needs Reconnection',
+                body: `${label} token expired — reconnect in Settings to keep your ads syncing.`,
+                data: { url: '/settings?tab=connected' }
+            },
+            pushType: 'order',
+            payload: { platform, adAccountName }
         });
     }
 

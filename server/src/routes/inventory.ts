@@ -459,11 +459,14 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
-            await poService.updatePurchaseOrder(accountId, id, body as any);
-
-            // If status changed to RECEIVED, increment stock for linked products
             if (isTransitioningToReceived) {
+                // CRITICAL ORDER: update items/fields FIRST (without status), then receive stock,
+                // then set status to RECEIVED. Why: receiveStock has a guard that bails out if
+                // the PO is already RECEIVED — writing the status first causes stock to never update.
+                const { status: _status, ...fieldsWithoutStatus } = body;
+                await poService.updatePurchaseOrder(accountId, id, fieldsWithoutStatus as any);
                 const result = await poService.receiveStock(accountId, id);
+                await poService.updatePurchaseOrder(accountId, id, { status: 'RECEIVED' });
                 Logger.info('Stock received from PO', { poId: id, ...result });
 
                 // Fire-and-forget: ES re-indexing runs in background
@@ -495,6 +498,8 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         await invalidateCache('products', bgAccountId);
                     })().catch(err => Logger.error('Background ES re-index failed', { error: err }));
                 });
+            } else {
+                await poService.updatePurchaseOrder(accountId, id, body as any);
             }
 
             const updated = await poService.getPurchaseOrder(accountId, id);

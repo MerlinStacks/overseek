@@ -4,7 +4,7 @@
  * For variable products, shows stock per variant
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Package, Loader2, AlertTriangle, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -41,6 +41,12 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
+    // Why: refs prevent callback recreation on silent token refresh, same pattern as useProductEdit
+    const tokenRef = useRef(token);
+    tokenRef.current = token;
+    const accountRef = useRef(currentAccount);
+    accountRef.current = currentAccount;
+
     const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [savingVariantId, setSavingVariantId] = useState<number | null>(null);
@@ -49,13 +55,15 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
     const [isExpanded, setIsExpanded] = useState(true);
 
     const fetchStock = useCallback(async () => {
-        if (!token || !currentAccount) return;
+        const tkn = tokenRef.current;
+        const acct = accountRef.current;
+        if (!tkn || !acct) return;
 
         try {
             const res = await fetch(`/api/products/${productWooId}/stock`, {
                 headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
+                    'Authorization': `Bearer ${tkn}`,
+                    'X-Account-ID': acct.id
                 }
             });
 
@@ -82,7 +90,7 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
         } finally {
             setIsLoading(false);
         }
-    }, [token, currentAccount, productWooId]);
+    }, [productWooId]);
 
     useEffect(() => {
         fetchStock();
@@ -92,7 +100,9 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
      * Save stock for a variant or main product
      */
     const handleSave = async (variantWooId?: number) => {
-        if (!token || !currentAccount) return;
+        const tkn = tokenRef.current;
+        const acct = accountRef.current;
+        if (!tkn || !acct) return;
 
         const targetId = variantWooId ?? 0;
         const newStock = parseInt(editValues[targetId] ?? '', 10);
@@ -112,8 +122,8 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
             const res = await fetch(url, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
+                    'Authorization': `Bearer ${tkn}`,
+                    'X-Account-ID': acct.id,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ stockQuantity: newStock })

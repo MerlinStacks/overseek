@@ -417,7 +417,7 @@ export class EmailIngestion {
             });
 
             if (!emailAccount || !emailAccount.smtpEnabled) {
-                Logger.warn('[EmailIngestion] Receiving email account has no SMTP, skipping auto-reply', { emailAccountId });
+                Logger.info('[EmailIngestion] Receiving email account has no SMTP, skipping auto-reply', { emailAccountId });
                 return;
             }
 

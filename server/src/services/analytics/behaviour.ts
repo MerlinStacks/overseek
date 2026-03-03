@@ -140,7 +140,16 @@ export class BehaviourAnalytics {
     }
 
     /**
-     * Get page view counts for a specific product URL (7d and 30d)
+     * Get page view counts for a specific product URL (7d and 30d).
+     *
+     * Why pathname-only matching: the tracking pixel records the full browser URL
+     * (e.g. `https://www.store.com/product/ring/`) while the WooCommerce permalink
+     * may use a different scheme or subdomain (e.g. `https://store.com/product/ring`).
+     * Extracting the pathname from both sides normalises this mismatch.
+     *
+     * Why we avoid leading-wildcard LIKE: `LIKE '%/product/ring'` prevents PostgreSQL
+     * from using a B-tree index and can produce false positives where one product slug
+     * is a suffix of another path.
      */
     static async getProductPageViews(accountId: string, productUrl: string) {
         try {
@@ -148,8 +157,23 @@ export class BehaviourAnalytics {
             const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
             const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-            // Normalize URL by removing trailing slash for matching
-            const normalizedUrl = productUrl.replace(/\/$/, '');
+            // Extract pathname from the WooCommerce permalink
+            let pathname: string;
+            try {
+                pathname = new URL(productUrl).pathname;
+            } catch {
+                // Already a relative path or malformed — use as-is
+                pathname = productUrl;
+            }
+
+            // Normalise: remove trailing slash, ensure leading slash
+            const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+
+            // Build both with and without trailing slash for exact comparison.
+            // The SQL extracts the pathname from the stored event URL (which is a
+            // full absolute URL) using regexp_replace, then compares it to the
+            // normalised path. This is an exact path check, not a substring LIKE.
+            const pathWithSlash = normalizedPath + '/';
 
             const [views7d, views30d] = await Promise.all([
                 prisma.$queryRaw<[{ count: bigint }]>`
@@ -159,7 +183,7 @@ export class BehaviourAnalytics {
                     WHERE s."accountId" = ${accountId}
                     AND e."createdAt" >= ${sevenDaysAgo}
                     AND e.type IN ('pageview', 'product_view')
-                    AND (e.url = ${normalizedUrl} OR e.url = ${normalizedUrl + '/'})
+                    AND regexp_replace(split_part(e.url, '?', 1), '^https?://[^/]+', '') IN (${normalizedPath}, ${pathWithSlash})
                 `,
                 prisma.$queryRaw<[{ count: bigint }]>`
                     SELECT COUNT(e.id) as count
@@ -168,7 +192,7 @@ export class BehaviourAnalytics {
                     WHERE s."accountId" = ${accountId}
                     AND e."createdAt" >= ${thirtyDaysAgo}
                     AND e.type IN ('pageview', 'product_view')
-                    AND (e.url = ${normalizedUrl} OR e.url = ${normalizedUrl + '/'})
+                    AND regexp_replace(split_part(e.url, '?', 1), '^https?://[^/]+', '') IN (${normalizedPath}, ${pathWithSlash})
                 `
             ]);
 

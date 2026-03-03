@@ -32,6 +32,7 @@ export const EVENTS = {
     },
     AD: {
         ALERT: 'ad:alert', // AI Marketing Co-Pilot Phase 6
+        AUTH_EXPIRED: 'ad:auth_expired', // Token expired, user must reconnect
     },
     INVENTORY: {
         STOCKOUT_ALERT: 'inventory:stockout_alert', // Predictive Inventory Forecasting

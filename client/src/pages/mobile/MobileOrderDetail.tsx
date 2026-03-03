@@ -5,6 +5,8 @@ import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, M
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { fixMojibake, formatCurrency, formatDateTime } from '../../utils/format';
+import { usePermissions } from '../../hooks/usePermissions';
+import { OrderCOGSPanel } from '../../components/orders/OrderCOGSPanel';
 
 interface OrderApiLineItem {
     id: string;
@@ -87,6 +89,8 @@ export function MobileOrderDetail() {
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [orderTags, setOrderTags] = useState<string[]>([]);
+    const { hasPermission } = usePermissions();
+    const canViewCogs = hasPermission('view_cogs');
 
     useEffect(() => {
         if (id) fetchOrder();
@@ -324,6 +328,11 @@ export function MobileOrderDetail() {
                 </div>
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100"><CreditCard size={16} className="text-gray-400" /><span className="text-sm text-gray-600">{order.paymentMethod}</span></div>
             </div>
+
+            {/* COGS Breakdown - visible to users with view_cogs permission */}
+            {canViewCogs && (
+                <OrderCOGSPanel orderId={order.id} currency={order.currency} />
+            )}
 
             {/* Tags Section */}
             {orderTags.length > 0 && (

@@ -13,6 +13,7 @@ import { Clock } from 'lucide-react';
 import { FraudBadge } from '../components/orders/FraudBadge';
 import { OrderTagPanel } from '../components/orders/OrderTagPanel';
 import { OrderMetaSection } from '../components/orders/OrderMetaSection';
+import { OrderCOGSPanel } from '../components/orders/OrderCOGSPanel';
 import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
 
 interface Attribution {
@@ -284,6 +285,9 @@ export function OrderDetailPage() {
                         onTagsChange={handleTagsChange}
                         onRefresh={fetchOrder}
                     />
+
+                    {/* COGS Breakdown - visible to users with view_cogs permission */}
+                    <OrderCOGSPanel orderId={order.id || order.wooId?.toString() || id || ''} currency={order.currency} />
 
                     {/* Customer Card */}
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">

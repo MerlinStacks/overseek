@@ -96,6 +96,12 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
 
                 return (
                     <div className="mt-6 pt-6 border-t border-gray-100/50">
+                        {hasCogs && (
+                            <div className="flex items-center justify-between mb-4">
+                                <span className="text-sm font-medium text-gray-700">Total COGS</span>
+                                <span className="text-sm font-bold text-gray-900">${totalCost.toFixed(2)}</span>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-700">Profit Margin</span>
                             {hasCogs && hasPrice ? (

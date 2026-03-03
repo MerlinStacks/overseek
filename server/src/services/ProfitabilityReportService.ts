@@ -128,14 +128,20 @@ export async function getProfitabilityReport(
             sku = v.sku || '';
             miscCostsSource = v.miscCosts;
         }
-        // Fallback to Product
-        else if (productMap.has(line.productId)) {
+
+        // Fallback to Product if variation cogs is 0 or variation not found
+        if (cogsUnit === 0 && productMap.has(line.productId)) {
             const p = productMap.get(line.productId)!;
-            if (cogsUnit === 0) {
-                cogsUnit = p.cogs ? Number(p.cogs) : 0;
-                if (!sku) sku = p.sku || '';
+            cogsUnit = p.cogs ? Number(p.cogs) : 0;
+
+            // Only inherit parent misc costs if variation has no misc costs
+            if (!miscCostsSource || (Array.isArray(miscCostsSource) && miscCostsSource.length === 0)) {
+                miscCostsSource = p.miscCosts;
             }
-            miscCostsSource = p.miscCosts;
+
+            if (!sku) sku = p.sku || '';
+        } else if (!sku && productMap.has(line.productId)) {
+            sku = productMap.get(line.productId)!.sku || '';
         }
 
         // Add miscellaneous costs (shipping, packaging, etc.) to COGS

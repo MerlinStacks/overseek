@@ -20,7 +20,9 @@ export class GoldPriceService {
                 // This endpoint returns Ounce price in configured currency (default USD)
                 const response = await fetch(`https://data-asg.goldprice.org/dbXRates/${currency}`, {
                     headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept': 'application/json',
+                        'Referer': 'https://goldprice.org/'
                     }
                 });
 
@@ -39,9 +41,30 @@ export class GoldPriceService {
                     }
                 }
                 return null;
-            } catch (error) {
-                Logger.error('GoldPriceService: Error fetching public price', { error: (error as Error).message });
-                return null;
+            } catch (primaryError) {
+                Logger.warn('GoldPriceService: Primary public endpoint failed, trying fallback', { error: (primaryError as Error).message });
+
+                // Secondary fallback: metals.dev free API (returns price per gram directly)
+                try {
+                    const fallbackResponse = await fetch(`https://api.metals.dev/v1/latest?api_key=demo&currency=${currency}&unit=g`, {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    if (!fallbackResponse.ok) {
+                        throw new Error(`HTTP ${fallbackResponse.status}`);
+                    }
+                    const fallbackData = await fallbackResponse.json();
+                    // metals.dev returns { metals: { gold: <price_per_gram> } }
+                    if (fallbackData?.metals?.gold) {
+                        return fallbackData.metals.gold;
+                    }
+                    return null;
+                } catch (fallbackError) {
+                    Logger.error('GoldPriceService: Error fetching public price (both endpoints failed)', {
+                        primaryError: (primaryError as Error).message,
+                        fallbackError: (fallbackError as Error).message
+                    });
+                    return null;
+                }
             }
         }
 

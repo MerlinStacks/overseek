@@ -128,7 +128,9 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             const msg = error.message || error.details || 'Unknown gRPC error';
-            recordGrpcFailure(adAccountId);
+            if (!msg.includes('circuit-breaker')) {
+                recordGrpcFailure(adAccountId);
+            }
             Logger.warn('Failed to fetch Google Ads Campaign Insights', { error: msg, adAccountId });
             return [];
         }
@@ -168,7 +170,9 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             const msg = error.message || error.details || 'Unknown gRPC error';
-            recordGrpcFailure(adAccountId);
+            if (!msg.includes('circuit-breaker')) {
+                recordGrpcFailure(adAccountId);
+            }
             Logger.warn('Failed to fetch Google Ads Daily Trends', { error: msg, adAccountId });
             return [];
         }
@@ -232,7 +236,9 @@ export class GoogleAdsService {
                 Logger.info('Shopping performance view not available', { adAccountId });
                 return [];
             }
-            recordGrpcFailure(adAccountId);
+            if (!msg.includes('circuit-breaker')) {
+                recordGrpcFailure(adAccountId);
+            }
             Logger.warn('Failed to fetch Google Shopping Products', { error: msg, adAccountId });
             return [];
         }
@@ -376,7 +382,9 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             const msg = error.message || error.details || 'Unknown gRPC error';
-            recordGrpcFailure(adAccountId);
+            if (!msg.includes('circuit-breaker')) {
+                recordGrpcFailure(adAccountId);
+            }
             Logger.warn('Failed to fetch Google Search Keywords', { error: msg, adAccountId });
             return [];
         }
@@ -710,7 +718,9 @@ export class GoogleAdsService {
                 return [];
             }
 
-            recordGrpcFailure(adAccountId);
+            if (!errorMsg.includes('circuit-breaker')) {
+                recordGrpcFailure(adAccountId);
+            }
             Logger.warn('Failed to fetch keyword ideas', { error: errorMsg || 'Unknown gRPC error', adAccountId });
             return []; // Return empty to allow graceful fallback
         }

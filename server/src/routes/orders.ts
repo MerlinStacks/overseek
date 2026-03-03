@@ -374,6 +374,50 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // -------------------------------------------------------------------------
+    // COGS Breakdown - GET /api/orders/:id/cogs
+    // -------------------------------------------------------------------------
+    fastify.get<{ Params: { id: string } }>('/:id/cogs', async (request, reply) => {
+        const { id } = orderIdParamSchema.parse(request.params);
+        const accountId = request.user?.accountId;
+        const userId = request.user?.id;
+
+        if (!accountId || !userId) {
+            return reply.code(400).send({ error: 'accountId header is required' });
+        }
+
+        // Server-side permission gate — COGS is sensitive financial data
+        const { PermissionService } = await import('../services/PermissionService');
+        const allowed = await PermissionService.hasPermission(userId, accountId, 'view_cogs');
+        if (!allowed) {
+            return reply.code(403).send({ error: 'Insufficient permissions' });
+        }
+
+        try {
+            let order;
+
+            order = await prisma.wooOrder.findFirst({ where: { id, accountId } });
+
+            if (!order && !isNaN(Number(id))) {
+                order = await prisma.wooOrder.findUnique({
+                    where: { accountId_wooId: { accountId, wooId: Number(id) } }
+                });
+            }
+
+            if (!order) {
+                return reply.code(404).send({ error: 'Order not found' });
+            }
+
+            const { getOrderCOGS } = await import('../services/orderCogs');
+            const result = await getOrderCOGS(accountId, order.rawData as Record<string, unknown>);
+
+            return result;
+        } catch (error) {
+            Logger.error('Failed to fetch order COGS', { error });
+            return reply.code(500).send({ error: 'Failed to fetch order COGS' });
+        }
+    });
+
     // Remove a tag from an order
     fastify.delete<{ Params: { id: string; tag: string } }>('/:id/tags/:tag', async (request, reply) => {
         const { id } = orderIdParamSchema.parse(request.params);

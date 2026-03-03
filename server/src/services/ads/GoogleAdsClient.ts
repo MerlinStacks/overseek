@@ -12,6 +12,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { GoogleAdsApi } from 'google-ads-api';
 import { getCredentials } from './types';
+import { EventBus, EVENTS } from '../events';
 
 // ─── Singleton GoogleAdsApi instance ────────────────────────────────────────
 // All accounts share the same developer token / client ID / secret, so there
@@ -58,6 +59,20 @@ export function tripAuthBreaker(adAccountId: string): void {
     authBreakerMap.set(adAccountId, Date.now());
     // Also evict from customer cache so stale tokens aren't reused
     customerCache.delete(adAccountId);
+
+    // Notify the user that their token has expired
+    prisma.adAccount.findUnique({ where: { id: adAccountId }, select: { accountId: true, name: true, platform: true } })
+        .then(adAccount => {
+            if (adAccount?.accountId) {
+                EventBus.emit(EVENTS.AD.AUTH_EXPIRED, {
+                    accountId: adAccount.accountId,
+                    adAccountId,
+                    platform: adAccount.platform,
+                    adAccountName: adAccount.name
+                });
+            }
+        })
+        .catch(err => Logger.warn('Failed to emit auth-expired event', { error: err.message }));
 }
 
 /**
@@ -71,15 +86,19 @@ export function recordGrpcFailure(adAccountId: string): void {
         state = { failures: [], cooldownUntil: 0 };
         grpcBreakerMap.set(adAccountId, state);
     }
+    // Already in cooldown — don't accumulate more failures
+    if (state.cooldownUntil > now) return;
+
     // Prune old failures outside the window
     state.failures = state.failures.filter(t => now - t < GRPC_BREAKER_WINDOW_MS);
     state.failures.push(now);
 
     if (state.failures.length >= GRPC_BREAKER_THRESHOLD) {
         state.cooldownUntil = now + GRPC_BREAKER_COOLDOWN_MS;
+        state.failures = []; // Reset so counter starts fresh after cooldown
         Logger.warn('gRPC circuit-breaker tripped — skipping account for 10 min', {
             adAccountId,
-            failureCount: state.failures.length
+            failureCount: GRPC_BREAKER_THRESHOLD
         });
     }
 }

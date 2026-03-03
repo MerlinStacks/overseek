@@ -138,6 +138,13 @@ export function useProductEdit(productId: string | undefined) {
     const bomPanelRef = useRef<BOMPanelRef>(null);
     const variationsPanelRef = useRef<VariationsPanelRef>(null);
 
+    // Why: refs for volatile context values so callbacks don't regenerate on
+    // silent token refresh, which was causing fetchProduct to re-fire and wipe edits.
+    const tokenRef = useRef(token);
+    tokenRef.current = token;
+    const accountRef = useRef(currentAccount);
+    accountRef.current = currentAccount;
+
     // --- Draft persistence state ---
     /** Whether any field has changed since the last save — drives beforeunload guard */
     const isDirtyRef = useRef(false);
@@ -181,22 +188,26 @@ export function useProductEdit(productId: string | undefined) {
 
     // Fetch suppliers
     const fetchSuppliers = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        const acct = accountRef.current;
+        const tkn = tokenRef.current;
+        if (!acct || !tkn) return;
         try {
-            const data = await InventoryService.getSuppliers(token, currentAccount.id);
+            const data = await InventoryService.getSuppliers(tkn, acct.id);
             setSuppliers(data);
         } catch (e) {
             Logger.error('Failed to fetch suppliers', { error: e });
         }
-    }, [currentAccount, token]);
+    }, []);
 
     // Fetch product
     const fetchProduct = useCallback(async (background = false) => {
-        if (!currentAccount || !token || !productId) return;
+        const acct = accountRef.current;
+        const tkn = tokenRef.current;
+        if (!acct || !tkn || !productId) return;
         if (!background) setIsLoading(true);
 
         try {
-            const data = await ProductService.getProduct(productId, token, currentAccount.id);
+            const data = await ProductService.getProduct(productId, tkn, acct.id);
             Logger.debug('Product data loaded', { productId, wooId: data.wooId });
             setProduct(data);
             setMainImageFailed(false);
@@ -241,27 +252,31 @@ export function useProductEdit(productId: string | undefined) {
             if (!background) setIsLoading(false);
             serverLoadedRef.current = true;
         }
-    }, [currentAccount, token, productId]);
+    }, [productId]);
 
     // Fetch product views
     const fetchViews = useCallback(async () => {
-        if (!currentAccount || !productId || !token) return;
+        const acct = accountRef.current;
+        const tkn = tokenRef.current;
+        if (!acct || !productId || !tkn) return;
         try {
             const res = await fetch(`/api/analytics/product-views/${productId}`, {
                 headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    Authorization: `Bearer ${tkn}`,
+                    'x-account-id': acct.id
                 }
             });
             if (res.ok) setProductViews(await res.json());
         } catch (e) {
             Logger.error('Failed to fetch product views', { error: e });
         }
-    }, [currentAccount, productId, token]);
+    }, [productId]);
 
     // Save handler
     const handleSave = useCallback(async () => {
-        if (!currentAccount || !productId || !token) return;
+        const acct = accountRef.current;
+        const tkn = tokenRef.current;
+        if (!acct || !productId || !tkn) return;
         setIsSaving(true);
 
         try {
@@ -288,7 +303,7 @@ export function useProductEdit(productId: string | undefined) {
                 images: formData.images,
                 variations: variants,
                 focusKeyword: formData.focusKeyword
-            }, token, currentAccount.id);
+            }, tkn, acct.id);
 
             const bomSaveResult = await bomPanelRef.current?.save();
             const variantBomsSaveResult = await variationsPanelRef.current?.saveAllBOMs();
@@ -300,8 +315,8 @@ export function useProductEdit(productId: string | undefined) {
             }
 
             // Why: clear the draft after a successful save to avoid stale restoration
-            if (currentAccount && productId) {
-                const key = buildProductDraftKey(currentAccount.id, productId);
+            if (acct && productId) {
+                const key = buildProductDraftKey(acct.id, productId);
                 localStorage.removeItem(key);
             }
             isDirtyRef.current = false;
@@ -314,18 +329,20 @@ export function useProductEdit(productId: string | undefined) {
         } finally {
             setIsSaving(false);
         }
-    }, [currentAccount, productId, token, formData, variants, showToast, fetchProduct]);
+    }, [productId, formData, variants, showToast, fetchProduct]);
 
     // Sync handler
     const handleSync = useCallback(async () => {
-        if (!currentAccount || !productId || !token) return;
+        const acct = accountRef.current;
+        const tkn = tokenRef.current;
+        if (!acct || !productId || !tkn) return;
         setIsSyncing(true);
 
         try {
-            const updated = await ProductService.syncProduct(productId, token, currentAccount.id);
+            const updated = await ProductService.syncProduct(productId, tkn, acct.id);
             Logger.debug('Product synced', { productId, wooId: updated?.wooId });
             // Why: sync overwrites formData from server, so clear any saved draft
-            const key = buildProductDraftKey(currentAccount.id, productId);
+            const key = buildProductDraftKey(acct.id, productId);
             localStorage.removeItem(key);
             isDirtyRef.current = false;
             setHasDraft(false);
@@ -337,24 +354,25 @@ export function useProductEdit(productId: string | undefined) {
         } finally {
             setIsSyncing(false);
         }
-    }, [currentAccount, productId, token, fetchProduct, showToast]);
+    }, [productId, fetchProduct, showToast]);
 
-    // Effects
+    // Effects — depend on stable primitives (currentAccount?.id) not object references
     useEffect(() => {
-        if (currentAccount) fetchSuppliers();
-    }, [currentAccount, fetchSuppliers]);
-
-    useEffect(() => {
-        if (currentAccount && productId) fetchProduct();
-    }, [currentAccount, productId, fetchProduct]);
+        if (currentAccount?.id) fetchSuppliers();
+    }, [currentAccount?.id, fetchSuppliers]);
 
     useEffect(() => {
-        if (currentAccount && productId && token) fetchViews();
-    }, [currentAccount, productId, token, fetchViews]);
+        if (currentAccount?.id && productId) fetchProduct();
+    }, [currentAccount?.id, productId, fetchProduct]);
+
+    useEffect(() => {
+        if (currentAccount?.id && productId) fetchViews();
+    }, [currentAccount?.id, productId, fetchViews]);
 
     // --- Draft auto-save: debounced write to localStorage ---
     useEffect(() => {
-        if (!currentAccount || !productId || !serverLoadedRef.current) return;
+        const acct = accountRef.current;
+        if (!acct || !productId || !serverLoadedRef.current) return;
         // Why: skip persisting the initial server-loaded formData
         if (!initialFormSetRef.current) {
             initialFormSetRef.current = true;
@@ -364,7 +382,7 @@ export function useProductEdit(productId: string | undefined) {
         if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
         draftTimerRef.current = setTimeout(() => {
             try {
-                const key = buildProductDraftKey(currentAccount.id, productId);
+                const key = buildProductDraftKey(acct.id, productId);
                 localStorage.setItem(key, JSON.stringify({
                     formData,
                     savedAt: Date.now(),
@@ -376,16 +394,17 @@ export function useProductEdit(productId: string | undefined) {
 
         return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount, productId, JSON.stringify(formData)]);
+    }, [currentAccount?.id, productId, JSON.stringify(formData)]);
 
     // --- Draft restore: after server data loads, check for a saved draft ---
     useEffect(() => {
         // Why: guard prevents re-triggering on background fetchProduct or formData changes
         if (draftRestoredRef.current) return;
-        if (!currentAccount || !productId || !product || isLoading) return;
+        const acct = accountRef.current;
+        if (!acct || !productId || !product || isLoading) return;
         draftRestoredRef.current = true;
 
-        const key = buildProductDraftKey(currentAccount.id, productId);
+        const key = buildProductDraftKey(acct.id, productId);
         try {
             const raw = localStorage.getItem(key);
             if (!raw) return;
@@ -409,7 +428,7 @@ export function useProductEdit(productId: string | undefined) {
         }
         // Why: only run once after the initial product load, not on every formData change
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount, productId, isLoading, product]);
+    }, [currentAccount?.id, productId, isLoading, product]);
 
     // --- Beforeunload guard: warn when navigating away with unsaved changes ---
     useEffect(() => {
@@ -423,14 +442,15 @@ export function useProductEdit(productId: string | undefined) {
 
     /** Discard the saved draft and reset form to server state */
     const discardDraft = useCallback(() => {
-        if (!currentAccount || !productId) return;
-        const key = buildProductDraftKey(currentAccount.id, productId);
+        const acct = accountRef.current;
+        if (!acct || !productId) return;
+        const key = buildProductDraftKey(acct.id, productId);
         localStorage.removeItem(key);
         isDirtyRef.current = false;
         setHasDraft(false);
         // Re-fetch server data to reset form
         fetchProduct(false);
-    }, [currentAccount, productId, fetchProduct]);
+    }, [productId, fetchProduct]);
 
     return {
         // State

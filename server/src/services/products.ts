@@ -186,6 +186,15 @@ export class ProductsService {
 
         // Only call WooCommerce API if there are fields to update
         if (Object.keys(wooUpdateData).length > 0) {
+            // Why: always include current stock state alongside other fields.
+            // Partial updates without manage_stock/stock_quantity can cause
+            // WooCommerce to reset stock management. The next ProductSync
+            // would then pull stale stock back into the DB.
+            wooUpdateData.manage_stock = existing.manageStock;
+            if (existing.stockQuantity !== null) {
+                wooUpdateData.stock_quantity = existing.stockQuantity;
+            }
+
             try {
                 const wooService = await WooService.forAccount(accountId);
                 await wooService.updateProduct(wooId, wooUpdateData);
@@ -259,7 +268,12 @@ export class ProductsService {
                         }
                     });
                 } catch (err: any) {
-                    Logger.error(`Failed to process variation ${v.id}`, { error: err.message, productWooId: wooId });
+                    Logger.error(`Failed to process variation ${v.id}`, {
+                        error: err.message,
+                        productWooId: wooId,
+                        status: err?.response?.status,
+                        responseData: err?.response?.data,
+                    });
                 }
             }));
         }

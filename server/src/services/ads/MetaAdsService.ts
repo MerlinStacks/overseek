@@ -8,10 +8,35 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, getCredentials, formatDateISO } from './types';
+import { EventBus, EVENTS } from '../events';
 
 /** Current Meta Graph API version */
 const API_VERSION = 'v24.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
+
+/**
+ * Safely parse a Meta Graph API response as JSON.
+ * Guards against HTML error pages (e.g. expired tokens, rate limits) that
+ * would otherwise throw an unhandled SyntaxError.
+ */
+async function safeFetchJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!response.ok || !contentType.includes('application/json')) {
+        // Read body as text so we can log it without crashing
+        const bodySnippet = (await response.text()).substring(0, 200);
+        Logger.warn(`[MetaAds] Non-JSON response in ${context}`, {
+            status: response.status,
+            contentType,
+            bodySnippet
+        });
+        throw new Error(
+            `Meta API returned HTTP ${response.status} (${contentType || 'no content-type'}) during ${context}`
+        );
+    }
+
+    return response.json();
+}
 
 /**
  * Service for Meta (Facebook/Instagram) Ads integration.
@@ -40,7 +65,7 @@ export class MetaAdsService {
             Logger.info('[MetaAds] Fetching insights', { actId, hasToken: !!adAccount.accessToken });
 
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'getInsights');
 
             if (data.error) {
                 Logger.error('[MetaAds] API Error', {
@@ -102,7 +127,7 @@ export class MetaAdsService {
 
         try {
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'exchangeToken');
 
             if (data.error) {
                 throw new Error(data.error.message);
@@ -146,7 +171,7 @@ export class MetaAdsService {
 
         try {
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'getCampaignInsights');
 
             if (data.error) {
                 Logger.error('Meta API Error (campaigns)', { error: data.error });
@@ -240,7 +265,7 @@ export class MetaAdsService {
 
         try {
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'getDailyTrends');
 
             if (data.error) {
                 Logger.error('Meta API Error (trends)', { error: data.error });
@@ -316,7 +341,7 @@ export class MetaAdsService {
                 })
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'updateCampaignBudget');
 
             if (data.error) {
                 Logger.error('[MetaAds] Update Budget Error', { error: data.error });
@@ -355,7 +380,7 @@ export class MetaAdsService {
                 })
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'updateCampaignStatus');
 
             if (data.error) {
                 Logger.error('[MetaAds] Update Status Error', { error: data.error });
@@ -407,7 +432,7 @@ export class MetaAdsService {
                 })
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'createCustomAudience');
 
             if (data.error) {
                 Logger.error('[MetaAds] Create Custom Audience Error', { error: data.error });
@@ -462,7 +487,7 @@ export class MetaAdsService {
                 body: JSON.stringify(payload)
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'uploadCustomAudienceMembers');
 
             if (data.error) {
                 Logger.error('[MetaAds] Upload Audience Error', { error: data.error });
@@ -522,7 +547,7 @@ export class MetaAdsService {
                 body: JSON.stringify(payload)
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'replaceCustomAudienceMembers');
 
             if (data.error) {
                 Logger.error('[MetaAds] Replace Audience Error', { error: data.error });
@@ -587,7 +612,7 @@ export class MetaAdsService {
                 })
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'createLookalikeAudience');
 
             if (data.error) {
                 Logger.error('[MetaAds] Create Lookalike Error', { error: data.error });
@@ -624,7 +649,7 @@ export class MetaAdsService {
                 method: 'DELETE'
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'deleteCustomAudience');
 
             if (data.error) {
                 Logger.error('[MetaAds] Delete Audience Error', { error: data.error });
@@ -667,7 +692,7 @@ export class MetaAdsService {
 
         try {
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'getAdMetrics');
 
             if (data.error) {
                 Logger.error('[MetaAds] Ad Metrics Error', { error: data.error, adId });
@@ -728,7 +753,7 @@ export class MetaAdsService {
                 })
             });
 
-            const data = await response.json();
+            const data = await safeFetchJson(response, 'updateAdStatus');
 
             if (data.error) {
                 Logger.error('[MetaAds] Update Ad Status Error', { error: data.error });

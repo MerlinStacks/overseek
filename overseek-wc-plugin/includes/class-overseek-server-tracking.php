@@ -211,9 +211,9 @@ class OverSeek_Server_Tracking
      */
     private function is_wc_store_api_request()
     {
-        // Primary: check the parsed REST route
+        // Primary: check the parsed REST route (may be null during early init)
         global $wp;
-        if (isset($wp->query_vars['rest_route'])) {
+        if ($wp !== null && isset($wp->query_vars['rest_route'])) {
             return strpos($wp->query_vars['rest_route'], '/wc/store/') === 0;
         }
 
@@ -837,37 +837,14 @@ class OverSeek_Server_Tracking
      */
     public function configure_cache_exclusions()
     {
-        // LiteSpeed Cache: vary by our tracking cookie so each visitor
-        // gets their own cached version
-        if (defined('LSCWP_V')) {
-            add_action('litespeed_vary_add', function () {
-                if (function_exists('do_action')) {
-                    do_action('litespeed_vary_append', '_os_vid');
-                }
-            });
-        }
-
-        // WP Rocket: add cookie to "Don't cache pages with these cookies"
-        add_filter('rocket_cache_reject_cookies', function ($cookies) {
-            $cookies[] = '_os_vid';
-            $cookies[] = '_os_utm';
-            $cookies[] = '_os_click';
-            return $cookies;
-        });
-
-        // W3 Total Cache: add cookie to rejected cookies list
-        add_filter('w3tc_rejected_cookies', function ($cookies) {
-            if (!is_array($cookies)) {
-                $cookies = array();
-            }
-            $cookies[] = '_os_vid';
-            return $cookies;
-        });
-
-        // General: send Vary header so CDN/proxies vary cache by cookie
-        if (!headers_sent() && !is_admin()) {
-            header('Vary: Cookie', false);
-        }
+        // Why we do NOT vary cache by _os_vid / _os_utm / _os_click:
+        // Tracking is server-side (init hook + shutdown flush). The cookie
+        // is set on the first uncached hit and read on subsequent requests.
+        // Varying cache by a per-visitor UUID would disable page cache
+        // entirely — each visitor would get their own cache entry.
+        //
+        // Cart and checkout pages already send no-cache headers in their
+        // respective track_cart_view() / track_checkout_view() methods.
     }
 
     /**
