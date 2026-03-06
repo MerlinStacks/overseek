@@ -54,10 +54,10 @@ export function useProductSearchInsights(permalink: string | undefined) {
 
     /** Derive aggregate summary from individual query rows */
     const summary: ProductSearchSummary | null = queries.length > 0 ? {
-        totalClicks: queries.reduce((s, q) => s + q.clicks, 0),
-        totalImpressions: queries.reduce((s, q) => s + q.impressions, 0),
-        avgPosition: Math.round((queries.reduce((s, q) => s + q.position, 0) / queries.length) * 10) / 10,
-        avgCtr: Math.round((queries.reduce((s, q) => s + q.ctr, 0) / queries.length) * 100) / 100,
+        totalClicks: queries.reduce((s: number, q: ProductQueryRow) => s + q.clicks, 0),
+        totalImpressions: queries.reduce((s: number, q: ProductQueryRow) => s + q.impressions, 0),
+        avgPosition: Math.round((queries.reduce((s: number, q: ProductQueryRow) => s + q.position, 0) / queries.length) * 10) / 10,
+        avgCtr: Math.round((queries.reduce((s: number, q: ProductQueryRow) => s + q.ctr, 0) / queries.length) * 100) / 100,
     } : null;
 
     return {

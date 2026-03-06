@@ -102,6 +102,19 @@ For local development, configure the plugin to point to your local OverSeek serv
 API URL: http://localhost:3000
 ```
 
+## Changelog
+
+### 2.4.2 — 2026-03-06
+- **Fixed:** Real visitor User-Agent is now sent via the HTTP `User-Agent` header in `wp_remote_post`, preventing WordPress's default UA from being parsed for device/browser/OS detection
+- **Added:** Filter out crawler bots with `/wp-admin/` or `/wp-login.php` referrers — events are silently dropped before queuing
+- **Improved:** Better compatibility with ua-parser-js v2 browser naming conventions (Mobile Chrome, Mobile Safari, etc.)
+
+### 2.4.1
+- Server-side tracking reliability improvements
+- Blocking request mode for reliable event delivery at shutdown
+- WooCommerce Blocks checkout support (Store API)
+- Ad platform click ID tracking (gclid, fbclid, msclkid, etc.)
+
 ## License
 
 MIT — Same as the main OverSeek project.

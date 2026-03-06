@@ -3,7 +3,7 @@
  * Plugin Name: OverSeek Integration for WooCommerce
  * Plugin URI:  https://github.com/MerlinStacks/overseek
  * Description: Connects your WooCommerce store to your self-hosted OverSeek server. Server-side tracking, live chat, and full data sync. Requires OverSeek server.
- * Version:     2.4.1
+ * Version:     2.4.2
  * Author:      OverSeek Contributors
  * Author URI:  https://github.com/MerlinStacks/overseek
  * Text Domain: overseek-wc
@@ -19,15 +19,15 @@
 
 declare(strict_types=1);
 
-if ( ! defined( 'ABSPATH' ) ) {
+if (!defined('ABSPATH')) {
 	exit;
 }
 
 // Define plugin constants.
-define( 'OVERSEEK_WC_VERSION', '2.4.1' );
-define( 'OVERSEEK_WC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'OVERSEEK_WC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'OVERSEEK_WC_PLUGIN_FILE', __FILE__ );
+define('OVERSEEK_WC_VERSION', '2.4.2');
+define('OVERSEEK_WC_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('OVERSEEK_WC_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('OVERSEEK_WC_PLUGIN_FILE', __FILE__);
 
 /**
  * Declare WooCommerce feature compatibility.
@@ -35,8 +35,8 @@ define( 'OVERSEEK_WC_PLUGIN_FILE', __FILE__ );
  *
  * @since 2.0.0
  */
-add_action( 'before_woocommerce_init', static function(): void {
-	if ( ! class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+add_action('before_woocommerce_init', static function (): void {
+	if (!class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
 		return;
 	}
 
@@ -47,28 +47,29 @@ add_action( 'before_woocommerce_init', static function(): void {
 		'product_block_editor',   // Product Block Editor
 	];
 
-	foreach ( $features as $feature ) {
+	foreach ($features as $feature) {
 		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
 			$feature,
 			__FILE__,
 			true
 		);
 	}
-} );
+});
 
 /**
  * Main Plugin Class Initialization.
  *
  * @since 1.0.0
  */
-function overseek_wc_init(): void {
+function overseek_wc_init(): void
+{
 	// Abort if WooCommerce is not active to prevent fatal errors.
-	if ( ! class_exists( 'WooCommerce' ) ) {
-		add_action( 'admin_notices', 'overseek_wc_missing_woocommerce_notice' );
+	if (!class_exists('WooCommerce')) {
+		add_action('admin_notices', 'overseek_wc_missing_woocommerce_notice');
 		return;
 	}
 
-	if ( ! class_exists( 'OverSeek_Main' ) ) {
+	if (!class_exists('OverSeek_Main')) {
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-main.php';
 	}
 
@@ -76,14 +77,15 @@ function overseek_wc_init(): void {
 	$overseek_plugin = new OverSeek_Main();
 	$overseek_plugin->run();
 }
-add_action( 'plugins_loaded', 'overseek_wc_init' );
+add_action('plugins_loaded', 'overseek_wc_init');
 
 /**
  * Admin notice displayed when WooCommerce is not active.
  *
  * @since 1.0.0
  */
-function overseek_wc_missing_woocommerce_notice(): void {
+function overseek_wc_missing_woocommerce_notice(): void
+{
 	?>
 	<div class="notice notice-error">
 		<p><strong>OverSeek Integration</strong> requires WooCommerce to be installed and active.</p>

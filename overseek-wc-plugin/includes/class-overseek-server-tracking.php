@@ -550,7 +550,7 @@ class OverSeek_Server_Tracking
             'yandexbot',
             'sogou',
             'exabot',
-            
+
             // Social Media Crawlers
             'facebot',
             'linkedinbot',
@@ -559,7 +559,7 @@ class OverSeek_Server_Tracking
             'discordbot',
             'telegrambot',
             'whatsapp',
-            
+
             // SEO/Analytics Tools
             'ia_archiver',
             'mj12bot',
@@ -573,7 +573,7 @@ class OverSeek_Server_Tracking
             'dataforseo',
             'serpstatbot',
             'bytespider',     // TikTok/ByteDance crawler
-            
+
             // Monitoring/Testing Tools
             'gtmetrix',
             'pingdom',
@@ -582,7 +582,7 @@ class OverSeek_Server_Tracking
             'newrelicpinger',
             'site24x7',
             'pagespeedonline',
-            
+
             // AI/ML Crawlers (2026 additions)
             'gptbot',         // OpenAI GPT crawler
             'claudebot',      // Anthropic Claude crawler
@@ -590,7 +590,7 @@ class OverSeek_Server_Tracking
             'amazonbot',      // Amazon
             'applebot',       // Apple
             'meta-externalagent',  // Meta AI crawler
-            
+
             // Generic Bot Identifiers
             'crawler',
             'spider',
@@ -600,7 +600,7 @@ class OverSeek_Server_Tracking
             'phantomjs',
             'playwright',
             'puppeteer',
-            
+
             // HTTP Clients (Non-Browser)
             'wget',
             'curl',
@@ -950,6 +950,12 @@ class OverSeek_Server_Tracking
             return;
         }
 
+        // Skip wp-admin/wp-login referrer traffic (crawler bots probing admin endpoints)
+        $http_referrer = isset($_SERVER['HTTP_REFERER']) ? strtolower($_SERVER['HTTP_REFERER']) : '';
+        if (strpos($http_referrer, '/wp-admin/') !== false || strpos($http_referrer, '/wp-login.php') !== false) {
+            return;
+        }
+
         $visitor_id = $this->get_visitor_id();
         $visitor_ip = $this->get_visitor_ip();
         $referrer_data = $this->get_referrer_data();
@@ -1049,6 +1055,9 @@ class OverSeek_Server_Tracking
             unset($data['visitorIp']); // Don't send in body, use headers
             unset($data['_retry_count']); // Don't send retry metadata
 
+            // Get the real visitor UA from the event data (before it was unset)
+            $visitor_ua = $data['userAgent'] ?? '';
+
             $response = wp_remote_post($this->api_url . '/api/t/e', array(
                 'timeout' => $timeout,
                 'blocking' => $blocking,
@@ -1057,6 +1066,7 @@ class OverSeek_Server_Tracking
                     'Content-Type' => 'application/json',
                     'X-Forwarded-For' => $visitor_ip,
                     'X-Real-IP' => $visitor_ip,
+                    'User-Agent' => !empty($visitor_ua) ? $visitor_ua : 'OverSeek-WC-Plugin/1.0',
                     'Expect' => '', // CRITICAL: Prevents cURL from dropping large payloads (>1024 bytes)
                 ),
                 'body' => wp_json_encode($data),

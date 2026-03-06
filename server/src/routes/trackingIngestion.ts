@@ -95,7 +95,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             const session = await TrackingService.processEvent({
                 accountId, visitorId, type, url, payload, pageTitle,
                 ipAddress: ip as string,
-                userAgent: bodyUserAgent || request.headers['user-agent'] as string,
+                userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, utmSource, utmMedium, utmCampaign, is404,
                 clickId, clickPlatform, landingReferrer
             });

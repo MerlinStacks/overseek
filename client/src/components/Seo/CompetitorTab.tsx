@@ -71,7 +71,7 @@ export function CompetitorTab() {
     const refreshPositions = useRefreshCompetitorPositions();
 
     const competitors = competitorsData?.competitors ?? [];
-    const selectedCompetitor = competitors.find(c => c.id === selectedCompetitorId) ?? null;
+    const selectedCompetitor = competitors.find((c: CompetitorDomain) => c.id === selectedCompetitorId) ?? null;
 
     const { data: keywordsData, isLoading: keywordsLoading } = useCompetitorKeywords(selectedCompetitorId);
     const { data: movementData, isLoading: movementLoading } = useCompetitorMovement(7);
@@ -133,7 +133,7 @@ export function CompetitorTab() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {competitors.map(comp => (
+                    {competitors.map((comp: CompetitorDomain) => (
                         <CompetitorCard
                             key={comp.id}
                             competitor={comp}

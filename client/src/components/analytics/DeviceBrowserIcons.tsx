@@ -13,8 +13,8 @@ export function getBrowserIcon(browser?: string | null): React.ReactNode {
 
     const b = browser.toLowerCase();
 
-    // Chrome
-    if (b.includes('chrome') && !b.includes('edge')) {
+    // Chrome (including Mobile Chrome, Chrome WebView, Chrome Headless)
+    if ((b.includes('chrome') || b.includes('chromium')) && !b.includes('edge')) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" fill="#4285F4" />
@@ -26,7 +26,7 @@ export function getBrowserIcon(browser?: string | null): React.ReactNode {
         );
     }
 
-    // Firefox
+    // Firefox (including Mobile Firefox, Firefox Focus)
     if (b.includes('firefox')) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
@@ -36,7 +36,7 @@ export function getBrowserIcon(browser?: string | null): React.ReactNode {
         );
     }
 
-    // Safari
+    // Safari (including Mobile Safari)
     if (b.includes('safari') && !b.includes('chrome')) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
@@ -47,7 +47,7 @@ export function getBrowserIcon(browser?: string | null): React.ReactNode {
         );
     }
 
-    // Edge
+    // Edge (including Edge WebView)
     if (b.includes('edge')) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
@@ -67,12 +67,43 @@ export function getBrowserIcon(browser?: string | null): React.ReactNode {
         );
     }
 
-    // Opera
+    // Opera (including Opera Mini, Opera Mobi, Opera GX, Opera Touch)
     if (b.includes('opera')) {
         return (
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" fill="#FF1B2D" />
                 <ellipse cx="12" cy="12" rx="4" ry="6" fill="white" />
+            </svg>
+        );
+    }
+
+    // Brave
+    if (b.includes('brave')) {
+        return (
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" fill="#FB542B" />
+                <path d="M12 5l3 3-1 4-2 2-2-2-1-4z" fill="white" />
+            </svg>
+        );
+    }
+
+    // Vivaldi
+    if (b.includes('vivaldi')) {
+        return (
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" fill="#EF3939" />
+                <circle cx="12" cy="12" r="5" fill="white" />
+                <circle cx="12" cy="12" r="2" fill="#EF3939" />
+            </svg>
+        );
+    }
+
+    // DuckDuckGo
+    if (b.includes('duckduckgo')) {
+        return (
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" fill="#DE5833" />
+                <circle cx="12" cy="12" r="5" fill="white" />
             </svg>
         );
     }

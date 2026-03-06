@@ -48,7 +48,7 @@ export function SeoPage() {
         if (sites.length > 0 && !selectedSiteUrl) {
             const defaultUrl = status.data?.defaultSiteUrl;
             // Use the persisted default if it's still in the connected sites list
-            const validDefault = defaultUrl && sites.some(s => s.siteUrl === defaultUrl);
+            const validDefault = defaultUrl && sites.some((s: { siteUrl: string }) => s.siteUrl === defaultUrl);
             setSelectedSiteUrl(validDefault ? defaultUrl : sites[0].siteUrl);
         }
     }, [sites, selectedSiteUrl, status.data?.defaultSiteUrl]);
@@ -94,7 +94,7 @@ export function SeoPage() {
                                         }}
                                         className="appearance-none pl-8 pr-8 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/40 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                                     >
-                                        {sites.map(site => (
+                                        {sites.map((site: { id: string; siteUrl: string }) => (
                                             <option key={site.id} value={site.siteUrl}>
                                                 {prettySiteUrl(site.siteUrl)}
                                             </option>

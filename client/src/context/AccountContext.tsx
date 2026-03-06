@@ -122,7 +122,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         },
         enabled: !!currentAccount?.id && !!token,
         staleTime: 5 * 60 * 1000,
-        select: (userData) => {
+        select: (userData: any) => {
             if (userData) {
                 const currentUser = userRef.current;
                 const changed = !currentUser ||

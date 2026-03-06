@@ -74,6 +74,14 @@ export async function processEvent(data: TrackingEventPayload) {
         return null; // Silently skip excluded IP traffic
     }
 
+    // Filter out WordPress admin/login traffic (crawler bots probing admin endpoints)
+    const wpAdminPatterns = ['/wp-admin/', '/wp-login.php'];
+    const urlLower = (data.url || '').toLowerCase();
+    const referrerLower = (data.referrer || '').toLowerCase();
+    if (wpAdminPatterns.some(p => urlLower.includes(p) || referrerLower.includes(p))) {
+        return null; // Silently skip wp-admin traffic
+    }
+
     // Filter out non-page URLs for pageview events (e.g. static assets)
     // These should not be tracked as page views
     if (data.type === 'pageview' && data.url) {
@@ -127,11 +135,13 @@ export async function processEvent(data: TrackingEventPayload) {
     if (country) sessionPayload.country = country;
     if (city) sessionPayload.city = city;
 
-    // Attribution (only set if not exists, or maybe overwrite if it's a new campaign?)
-    // For simplicity, we'll strip falsy values to avoid overwriting with null if the client didn't send them this time
-    if (data.referrer) {
+    // Attribution: Set referrer on session — prefer landingReferrer (original external entry point),
+    // then current referrer ONLY if it's external (not internal navigation).
+    // Internal referrers (same-site) would overwrite the original source with the site's own URLs.
+    if (data.landingReferrer) {
+        sessionPayload.referrer = data.landingReferrer;
+    } else if (data.referrer && data.referrerType !== 'internal') {
         sessionPayload.referrer = data.referrer;
-        // Note: trafficSource is tracked via firstTouchSource/lastTouchSource fields
     }
     if (data.utmSource) sessionPayload.utmSource = data.utmSource;
     if (data.utmMedium) sessionPayload.utmMedium = data.utmMedium;

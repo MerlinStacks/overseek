@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import ReactDOM from 'react-dom';
-import { X, User, MapPin, Clock, Smartphone, Monitor, ShoppingBag, Search, ChevronDown, ChevronRight, Eye } from 'lucide-react';
+import { X, User, MapPin, Clock, Smartphone, Monitor, Tablet, ShoppingBag, Search, ChevronDown, ChevronRight, Eye } from 'lucide-react';
+import { DeviceBrowserBadge } from './DeviceBrowserIcons';
 import { format, formatDistanceStrict } from 'date-fns';
 
 interface VisitorProfileModalProps {
@@ -324,10 +325,32 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                                     <MapPin className="w-4 h-4 text-gray-400" />
                                     <span>{data.session.city || 'Unknown City'}, {data.session.country || 'Unknown Country'}</span>
                                 </div>
-                                <div className="flex items-center gap-2 text-gray-600">
-                                    {data.session.deviceType === 'mobile' ? <Smartphone className="w-4 h-4 text-gray-400" /> : <Monitor className="w-4 h-4 text-gray-400" />}
-                                    <span>{data.session.os} • {data.session.browser}</span>
+
+                                {/* Device Info Section */}
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center gap-2 text-gray-600">
+                                        {data.session.deviceType === 'mobile' ? (
+                                            <Smartphone className="w-4 h-4 text-gray-400" />
+                                        ) : data.session.deviceType === 'tablet' ? (
+                                            <Tablet className="w-4 h-4 text-gray-400" />
+                                        ) : (
+                                            <Monitor className="w-4 h-4 text-gray-400" />
+                                        )}
+                                        <span className="capitalize font-medium">{data.session.deviceType || 'Desktop'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-gray-500 pl-6">
+                                        <DeviceBrowserBadge
+                                            browser={data.session.browser}
+                                            os={data.session.os}
+                                            deviceType={data.session.deviceType}
+                                        />
+                                        <span className="text-xs">
+                                            {data.session.browser || 'Unknown Browser'}
+                                            {data.session.os ? ` on ${data.session.os}` : ''}
+                                        </span>
+                                    </div>
                                 </div>
+
                                 <div className="flex items-center gap-2 text-gray-600">
                                     <Clock className="w-4 h-4 text-gray-400" />
                                     <span>Last Active: {format(new Date(data.session.lastActiveAt), 'MMM d, HH:mm')}</span>
