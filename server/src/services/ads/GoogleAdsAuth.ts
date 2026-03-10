@@ -139,11 +139,15 @@ export class GoogleAdsAuth {
 
                     const customer = client.Customer(customerConfig);
 
-                    const [info] = await customer.query(`
+                    const _tmp_info: any[] = [];
+                    for await (const row of customer.queryStream(`
                         SELECT customer.descriptive_name, customer.id
                         FROM customer
                         LIMIT 1
-                    `);
+                    `)) {
+                        _tmp_info.push(row);
+                    }
+                    const [info] = _tmp_info;
 
                     results.push({
                         id: customerId,
