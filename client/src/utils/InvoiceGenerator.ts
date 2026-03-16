@@ -88,6 +88,11 @@ export const generateInvoicePDF = async (
         // Make container visible for html2canvas (it reads computed styles)
         container.style.opacity = '1';
 
+        // 4. Resolve oklch() colors → rgb() for html2canvas compatibility.
+        //    Tailwind v4 uses oklch() which html2canvas 1.x cannot parse.
+        //    getComputedStyle() returns browser-resolved rgb() values.
+        resolveColorsForCapture(container);
+
         // 5. Strip decorative UI styling that shouldn't appear in the PDF
         //    InvoiceRenderer's readOnly container has shadow/ring/rounded for the
         //    on-screen preview, but these appear as artifacts in the captured image.
@@ -162,6 +167,52 @@ function nextFrame(): Promise<void> {
 /** Promise-based setTimeout wrapper. */
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Resolves all oklch() (and other modern CSS color functions) to rgb() on every
+ * element in the tree. html2canvas 1.x cannot parse oklch(), which Tailwind v4
+ * uses extensively. The browser's getComputedStyle() returns resolved rgb() values
+ * regardless of the original CSS format, so we bake them into inline styles.
+ */
+const COLOR_PROPERTIES = [
+    'color',
+    'backgroundColor',
+    'borderColor',
+    'borderTopColor',
+    'borderRightColor',
+    'borderBottomColor',
+    'borderLeftColor',
+    'outlineColor',
+    'textDecorationColor',
+] as const;
+
+function resolveColorsForCapture(container: HTMLElement): void {
+    const elements = container.querySelectorAll('*');
+    elements.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const computed = getComputedStyle(htmlEl);
+        for (const prop of COLOR_PROPERTIES) {
+            const value = computed[prop];
+            // Only override if the computed value contains an unsupported function
+            if (value && (value.includes('oklch') || value.includes('oklab') || value.includes('lab(') || value.includes('lch('))) {
+                htmlEl.style[prop as any] = value;
+            }
+        }
+        // Also resolve box-shadow which may contain oklch colors
+        const shadow = computed.boxShadow;
+        if (shadow && shadow !== 'none' && (shadow.includes('oklch') || shadow.includes('oklab'))) {
+            htmlEl.style.boxShadow = shadow;
+        }
+    });
+    // Also resolve on the container itself
+    const computed = getComputedStyle(container);
+    for (const prop of COLOR_PROPERTIES) {
+        const value = computed[prop];
+        if (value && (value.includes('oklch') || value.includes('oklab'))) {
+            container.style[prop as any] = value;
+        }
+    }
 }
 
 /**
