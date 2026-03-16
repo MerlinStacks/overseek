@@ -1,15 +1,26 @@
 /**
- * Shared utilities for invoice item metadata extraction.
- * Used by both InvoiceRenderer (HTML preview) and InvoiceGenerator (PDF).
+ * Decode HTML entities (&#NNN; and common named entities) to actual characters.
+ * WooCommerce metadata often contains raw HTML entities that should display as symbols.
  */
+export const decodeEntities = (text: string): string => {
+    return text
+        .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'");
+};
 
 /**
  * Safely converts any value to a displayable string.
  * Handles nested objects, arrays, and primitive types.
+ * Decodes HTML entities in the final output.
  */
 export const safeStringify = (val: any): string => {
     if (val === null || val === undefined) return '';
-    if (typeof val === 'string') return val;
+    if (typeof val === 'string') return decodeEntities(val);
     if (typeof val === 'number' || typeof val === 'boolean') return String(val);
     if (Array.isArray(val)) return val.map(v => safeStringify(v)).join(', ');
     if (typeof val === 'object') {

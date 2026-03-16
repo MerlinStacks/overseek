@@ -159,9 +159,28 @@ export class InvoiceService {
                 itemTypes: items.map((i: any) => i.type)
             });
 
-            // Helpers
-            const formatCurrency = (val: any) => `$${parseFloat(val || 0).toFixed(2)}`;
+            // Helpers — use Intl.NumberFormat with order currency for consistency with HTML preview
+            const orderCurrency = (order.rawData as any)?.currency || 'AUD';
+            const formatCurrency = (val: any) => {
+                try {
+                    return new Intl.NumberFormat('en-US', { style: 'currency', currency: orderCurrency }).format(parseFloat(val || 0));
+                } catch {
+                    return `$${parseFloat(val || 0).toFixed(2)}`;
+                }
+            };
             const formatDate = (d: Date) => d.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            /** Decode HTML entities (&#NNN; and common named entities) to actual characters. */
+            const decodeEntities = (text: string): string => {
+                return text
+                    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+                    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&apos;/g, "'");
+            };
 
             // Page dimensions (A4 with 50pt margins)
             const pageWidth = 495; // 595 - 100 (margins)
@@ -286,20 +305,21 @@ export class InvoiceService {
                     }
 
                     case 'order_table': {
-                        // Table header
+                        // Use full page width for the table regardless of grid placement
                         doc.fontSize(9).font('Helvetica-Bold');
-                        const tableX = x;
-                        const descWidth = width * 0.5;
+                        const tableX = 50; // marginLeft
+                        const fullTableWidth = pageWidth;
+                        const descWidth = fullTableWidth * 0.55;
                         const qtyWidth = 40;
-                        const priceWidth = 60;
-                        const totalWidth = 60;
+                        const priceWidth = 70;
+                        const totalWidth = fullTableWidth - descWidth - qtyWidth - priceWidth;
 
                         doc.text('Description', tableX, startY);
                         doc.text('Qty', tableX + descWidth, startY, { width: qtyWidth, align: 'center' });
-                        doc.text('Price', tableX + descWidth + qtyWidth, startY, { width: priceWidth, align: 'right' });
+                        doc.text('Unit Price', tableX + descWidth + qtyWidth, startY, { width: priceWidth, align: 'right' });
                         doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, startY, { width: totalWidth, align: 'right' });
 
-                        doc.moveTo(tableX, startY + 12).lineTo(tableX + width, startY + 12).stroke();
+                        doc.moveTo(tableX, startY + 12).lineTo(tableX + fullTableWidth, startY + 12).stroke();
 
                         let tableY = startY + 18;
                         doc.font('Helvetica').fontSize(9);
@@ -340,7 +360,7 @@ export class InvoiceService {
                                 itemMeta.slice(0, 6).forEach((m: any) => {
                                     const label = m.display_key || m.key.replace(/_/g, ' ');
                                     const val = typeof m.value === 'object' ? JSON.stringify(m.value) : (m.display_value || m.value);
-                                    doc.text(`${label}: ${val}`, tableX + 10, tableY, { width: descWidth - 20 });
+                                    doc.text(decodeEntities(`${label}: ${val}`), tableX + 10, tableY, { width: descWidth - 20 });
                                     tableY += 10;
                                 });
                                 doc.fillColor('black').fontSize(9);
@@ -351,14 +371,14 @@ export class InvoiceService {
 
                         // Totals integrated into table — use rawData for consistency
                         const rawOrderData = order.rawData as any || {};
-                        doc.moveTo(tableX, tableY).lineTo(tableX + width, tableY).stroke();
+                        doc.moveTo(tableX, tableY).lineTo(tableX + fullTableWidth, tableY).stroke();
                         tableY += 10;
 
                         const taxVal = parseFloat(rawOrderData.total_tax ?? order.taxTotal ?? 0);
                         const shipVal = parseFloat(rawOrderData.shipping_total ?? order.shippingTotal ?? 0);
                         const totalVal = parseFloat(rawOrderData.total ?? order.total ?? 0);
                         const subtotal = totalVal - taxVal - shipVal;
-                        const totalsX = tableX + width - 150;
+                        const totalsX = tableX + fullTableWidth - 170;
 
                         doc.font('Helvetica').fontSize(9);
                         doc.text('Subtotal', totalsX, tableY);
