@@ -16,7 +16,6 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { flushSync } from 'react-dom';
 import { Logger } from './logger';
 import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
 
@@ -45,16 +44,20 @@ export const generateInvoicePDF = async (
     items: any[],
     _templateName: string = 'Invoice'
 ): Promise<void> => {
-    // 1. Create off-screen container matching A4 width
+    // 1. Create hidden container — must stay within viewport for html2canvas
+    //    to capture correctly. We use opacity:0 + overflow:hidden instead of
+    //    left:-9999px which html2canvas cannot capture.
     const container = document.createElement('div');
     container.style.cssText = [
         'position: fixed',
-        'left: -9999px',
+        'left: 0',
         'top: 0',
         `width: ${CONTAINER_WIDTH_PX}px`,
         'background: white',
-        'z-index: -1',
-        // Ensure text renders at print quality
+        'opacity: 0',
+        'pointer-events: none',
+        'z-index: -9999',
+        'overflow: auto',
         '-webkit-font-smoothing: antialiased',
     ].join(';');
     document.body.appendChild(container);
@@ -62,25 +65,25 @@ export const generateInvoicePDF = async (
 
     let root: ReturnType<typeof createRoot> | null = null;
     try {
-        // 2. Render InvoiceRenderer synchronously into the container
+        // 2. Render InvoiceRenderer into the container
         root = createRoot(container);
-        flushSync(() => {
-            root!.render(
-                createElement(InvoiceRenderer, {
-                    layout: grid,
-                    items,
-                    data: order,
-                    readOnly: true,
-                    pageMode: 'single',
-                })
-            );
-        });
+        root.render(
+            createElement(InvoiceRenderer, {
+                layout: grid,
+                items,
+                data: order,
+                readOnly: true,
+                pageMode: 'single',
+            })
+        );
 
-        // 3. Wait for all images (logo, etc.) to finish loading
-        await waitForImages(container);
-
-        // 4. Extra animation frame for layout to fully settle
+        // 3. Wait for React render to flush + images to load
         await nextFrame();
+        await waitForImages(container);
+        await nextFrame();
+
+        // Make container visible momentarily for html2canvas (it needs computed styles)
+        container.style.opacity = '1';
 
         // 5. Strip decorative UI styling that shouldn't appear in the PDF
         //    InvoiceRenderer's readOnly container has shadow/ring/rounded for the
