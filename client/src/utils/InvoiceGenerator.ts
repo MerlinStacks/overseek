@@ -59,11 +59,13 @@ export const generateInvoicePDF = async (
     ].join(';');
     document.body.appendChild(container);
 
+
+    let root: ReturnType<typeof createRoot> | null = null;
     try {
         // 2. Render InvoiceRenderer synchronously into the container
-        const root = createRoot(container);
+        root = createRoot(container);
         flushSync(() => {
-            root.render(
+            root!.render(
                 createElement(InvoiceRenderer, {
                     layout: grid,
                     items,
@@ -80,7 +82,20 @@ export const generateInvoicePDF = async (
         // 4. Extra animation frame for layout to fully settle
         await nextFrame();
 
-        // 5. Capture the rendered DOM with html2canvas
+        // 5. Strip decorative UI styling that shouldn't appear in the PDF
+        //    InvoiceRenderer's readOnly container has shadow/ring/rounded for the
+        //    on-screen preview, but these appear as artifacts in the captured image.
+        const innerDiv = container.querySelector(':scope > div') as HTMLElement;
+        if (innerDiv) {
+            innerDiv.style.boxShadow = 'none';
+            innerDiv.style.outline = 'none';
+            innerDiv.style.border = 'none';
+            innerDiv.style.borderRadius = '0';
+            // Remove Tailwind ring (uses box-shadow with --tw-ring-* vars)
+            innerDiv.classList.remove('shadow-2xl', 'ring-1', 'rounded-sm');
+        }
+
+        // 6. Capture the rendered DOM with html2canvas
         const canvas = await html2canvas(container, {
             scale: CAPTURE_SCALE,
             useCORS: true,
@@ -90,16 +105,15 @@ export const generateInvoicePDF = async (
             windowWidth: CONTAINER_WIDTH_PX,
         });
 
-        // 6. Create paginated PDF from the canvas
+        // 7. Create paginated PDF from the canvas
         const pdf = createPaginatedPdf(canvas);
         pdf.save(`Invoice_${order.number}.pdf`);
-
-        // 7. Cleanup React tree
-        root.unmount();
     } catch (err) {
         Logger.error('Failed to generate invoice PDF', { error: err });
         throw err;
     } finally {
+        // Always cleanup: unmount React tree + remove container from DOM
+        try { root?.unmount(); } catch { /* already unmounted or never mounted */ }
         document.body.removeChild(container);
     }
 };
