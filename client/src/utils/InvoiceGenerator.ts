@@ -95,7 +95,12 @@ export const generateInvoicePDF = async (
             innerDiv.classList.remove('shadow-2xl', 'ring-1', 'rounded-sm');
         }
 
-        // 6. Capture the rendered DOM with html2canvas
+        // 6. Collect safe page break points from the rendered DOM before capture
+        //    These are Y positions (in CSS px) of block/row boundaries where
+        //    we can safely split pages without cutting through text.
+        const breakPoints = collectBreakPoints(container);
+
+        // 7. Capture the rendered DOM with html2canvas
         const canvas = await html2canvas(container, {
             scale: CAPTURE_SCALE,
             useCORS: true,
@@ -105,8 +110,8 @@ export const generateInvoicePDF = async (
             windowWidth: CONTAINER_WIDTH_PX,
         });
 
-        // 7. Create paginated PDF from the canvas
-        const pdf = createPaginatedPdf(canvas);
+        // 8. Create paginated PDF from the canvas with smart break points
+        const pdf = createPaginatedPdf(canvas, breakPoints);
         pdf.save(`Invoice_${order.number}.pdf`);
     } catch (err) {
         Logger.error('Failed to generate invoice PDF', { error: err });
@@ -145,10 +150,55 @@ function nextFrame(): Promise<void> {
 }
 
 /**
- * Slices a tall canvas into A4-proportioned pages and builds a jsPDF document.
- * Each page is extracted as a separate canvas slice to avoid image distortion.
+ * Collects Y pixel positions of "safe" page break points from the rendered DOM.
+ * Scans block boundaries: direct children of the content div, table rows, and
+ * other block-level elements. These positions are in CSS pixels relative to
+ * the container top.
  */
-function createPaginatedPdf(canvas: HTMLCanvasElement): jsPDF {
+function collectBreakPoints(container: HTMLElement): number[] {
+    const points = new Set<number>();
+    const containerRect = container.getBoundingClientRect();
+
+    // Direct children of the rendered InvoiceRenderer wrapper
+    const innerDiv = container.querySelector(':scope > div') as HTMLElement;
+    if (!innerDiv) return [];
+
+    // All block-level child boundaries (each represents a section: header, customer, table, etc.)
+    const scanChildren = (parent: HTMLElement, depth: number) => {
+        if (depth > 3) return; // Don't recurse too deep
+        for (const child of Array.from(parent.children) as HTMLElement[]) {
+            const rect = child.getBoundingClientRect();
+            const bottomY = rect.bottom - containerRect.top;
+            points.add(Math.round(bottomY));
+
+            // Recurse into tables to get row-level break points
+            if (child.tagName === 'TABLE' || child.tagName === 'TBODY' || child.tagName === 'TFOOT') {
+                scanChildren(child, depth + 1);
+            }
+            // Recurse into table rows to break between them
+            if (child.tagName === 'TR') {
+                points.add(Math.round(bottomY));
+            }
+            // Recurse into div containers (order_table wrapper, totals, etc.)
+            if (child.tagName === 'DIV' && child.children.length > 0 && depth < 2) {
+                scanChildren(child, depth + 1);
+            }
+        }
+    };
+
+    scanChildren(innerDiv, 0);
+
+    return Array.from(points).sort((a, b) => a - b);
+}
+
+/**
+ * Slices a tall canvas into A4-proportioned pages, preferring to break at
+ * safe content boundaries (between blocks/rows) instead of cutting through text.
+ */
+function createPaginatedPdf(
+    canvas: HTMLCanvasElement,
+    breakPointsCss: number[]
+): jsPDF {
     const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
     const scaledCanvasWidth = canvas.width / CAPTURE_SCALE;
@@ -165,17 +215,47 @@ function createPaginatedPdf(canvas: HTMLCanvasElement): jsPDF {
         return pdf;
     }
 
-    // Multi-page — slice canvas into A4-height chunks
+    // Convert CSS break points to canvas pixel positions (accounting for scale)
+    const breakPointsCanvas = breakPointsCss.map(y => y * CAPTURE_SCALE);
+
+    // Multi-page — slice at safe break points
     const pageHeightPx = (A4_HEIGHT_MM / mmPerPx) * CAPTURE_SCALE;
+    // Allow break points within 20% above the ideal cut line
+    const searchThreshold = pageHeightPx * 0.2;
+
     let yOffset = 0;
     let pageIndex = 0;
 
     while (yOffset < canvas.height) {
         if (pageIndex > 0) pdf.addPage();
 
-        const sliceHeight = Math.min(pageHeightPx, canvas.height - yOffset);
+        const idealCut = yOffset + pageHeightPx;
+        let actualCut: number;
 
-        // Create a slice canvas for this page
+        if (idealCut >= canvas.height) {
+            // Last page — take whatever remains
+            actualCut = canvas.height;
+        } else {
+            // Find the best safe break point: closest to idealCut but not past it
+            // Search range: [idealCut - threshold, idealCut]
+            const searchMin = idealCut - searchThreshold;
+            let bestBreak: number | null = null;
+
+            for (const bp of breakPointsCanvas) {
+                if (bp <= yOffset) continue;     // Already past this point
+                if (bp > idealCut) break;         // Beyond the ideal cut
+                if (bp >= searchMin) {
+                    bestBreak = bp;               // Closest safe break within range
+                }
+            }
+
+            // Use the safe break or fall back to the exact page height
+            actualCut = bestBreak ?? idealCut;
+        }
+
+        const sliceHeight = actualCut - yOffset;
+
+        // Create a full A4-height slice canvas (white-filled for short last pages)
         const slice = document.createElement('canvas');
         slice.width = canvas.width;
         slice.height = sliceHeight;
@@ -185,10 +265,10 @@ function createPaginatedPdf(canvas: HTMLCanvasElement): jsPDF {
             ctx.fillRect(0, 0, slice.width, slice.height);
             ctx.drawImage(
                 canvas,
-                0, yOffset,          // Source x, y
-                canvas.width, sliceHeight,  // Source width, height
-                0, 0,                // Destination x, y
-                canvas.width, sliceHeight   // Destination width, height
+                0, yOffset,
+                canvas.width, sliceHeight,
+                0, 0,
+                canvas.width, sliceHeight
             );
         }
 
@@ -196,9 +276,10 @@ function createPaginatedPdf(canvas: HTMLCanvasElement): jsPDF {
         const imgData = slice.toDataURL('image/jpeg', 0.92);
         pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, sliceHeightMM);
 
-        yOffset += pageHeightPx;
+        yOffset = actualCut;
         pageIndex++;
     }
 
     return pdf;
 }
+
