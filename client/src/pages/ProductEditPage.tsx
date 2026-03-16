@@ -50,6 +50,7 @@ export function ProductEditPage() {
         currentAccount,
         bomPanelRef,
         variationsPanelRef,
+        stockPanelRef,
         updateFormData,
         setVariants,
         setMainImageFailed,
@@ -155,6 +156,7 @@ export function ProductEditPage() {
                         dimensionUnit={currentAccount?.dimensionUnit}
                         variants={variants}
                         onChange={updateFormData}
+                        stockPanelRef={stockPanelRef}
                     />
                     {!product.type?.includes('variable') && !product.variations?.length && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">

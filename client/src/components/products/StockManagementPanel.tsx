@@ -4,7 +4,7 @@
  * For variable products, shows stock per variant
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Package, Loader2, AlertTriangle, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -22,6 +22,11 @@ interface StockManagementPanelProps {
     onStockChange?: (newStock: number, variantId?: number) => void;
 }
 
+/** Imperative handle so the parent Save button can trigger a stock save */
+export interface StockManagementPanelRef {
+    save(): Promise<boolean>;
+}
+
 interface StockInfo {
     stockQuantity: number | null;
     isBOMBased: boolean;
@@ -37,7 +42,7 @@ interface StockInfo {
     }>;
 }
 
-export function StockManagementPanel({ productWooId, variants, onStockChange }: StockManagementPanelProps) {
+export const StockManagementPanel = forwardRef<StockManagementPanelRef, StockManagementPanelProps>(function StockManagementPanel({ productWooId, variants, onStockChange }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
@@ -97,18 +102,19 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
     }, [fetchStock]);
 
     /**
-     * Save stock for a variant or main product
+     * Save stock for a variant or main product.
+     * Returns true on success, false on failure.
      */
-    const handleSave = async (variantWooId?: number) => {
+    const handleSave = async (variantWooId?: number): Promise<boolean> => {
         const tkn = tokenRef.current;
         const acct = accountRef.current;
-        if (!tkn || !acct) return;
+        if (!tkn || !acct) return false;
 
         const targetId = variantWooId ?? 0;
         const newStock = parseInt(editValues[targetId] ?? '', 10);
         if (isNaN(newStock) || newStock < 0) {
             setError('Please enter a valid stock quantity');
-            return;
+            return false;
         }
 
         setSavingVariantId(targetId);
@@ -144,13 +150,16 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
                     setStockInfo(prev => prev ? { ...prev, stockQuantity: newStock, manageStock: true } : prev);
                 }
                 onStockChange?.(newStock, variantWooId);
+                return true;
             } else {
                 const data = await res.json();
                 setError(data.error || 'Failed to update stock');
+                return false;
             }
         } catch (err) {
             Logger.error('Failed to save stock', { error: err });
             setError('Failed to save stock');
+            return false;
         } finally {
             setSavingVariantId(null);
         }
@@ -162,6 +171,38 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
         const newValue = Math.max(0, current + delta);
         setEditValues(prev => ({ ...prev, [targetId]: newValue.toString() }));
     };
+
+    /**
+     * Why: expose save() so the page-level Save button can flush pending stock edits.
+     * Returns true if save succeeded or was a no-op, false on failure.
+     */
+    useImperativeHandle(ref, () => ({
+        async save(): Promise<boolean> {
+            const targets: Array<{ variantWooId?: number; targetId: number }> = [];
+
+            if (stockInfo?.variants) {
+                for (const v of stockInfo.variants) {
+                    const current = v.stockQuantity?.toString() ?? '';
+                    if (editValues[v.wooId] !== current) {
+                        targets.push({ variantWooId: v.wooId, targetId: v.wooId });
+                    }
+                }
+            } else {
+                const current = stockInfo?.stockQuantity?.toString() ?? '';
+                if (editValues[0] !== current) {
+                    targets.push({ targetId: 0 });
+                }
+            }
+
+            if (targets.length === 0) return true;
+
+            for (const t of targets) {
+                const ok = await handleSave(t.variantWooId);
+                if (!ok) return false;
+            }
+            return true;
+        }
+    }), [stockInfo, editValues, handleSave]);
 
     if (isLoading) {
         return (
@@ -347,4 +388,4 @@ export function StockManagementPanel({ productWooId, variants, onStockChange }: 
             )}
         </div>
     );
-}
+});

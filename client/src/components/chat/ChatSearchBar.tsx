@@ -4,6 +4,7 @@
  * Provides message search functionality within a conversation.
  */
 
+import { useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 
 interface ChatSearchBarProps {
@@ -21,6 +22,14 @@ export function ChatSearchBar({
     matchCount,
     totalCount
 }: ChatSearchBarProps) {
+    // Close on Escape key
+    useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [onClose]);
     return (
         <div className="px-4 py-2 border-b border-gray-200 bg-white flex items-center gap-2">
             <Search size={16} className="text-gray-400" aria-hidden="true" />

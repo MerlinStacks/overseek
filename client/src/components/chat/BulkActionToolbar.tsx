@@ -5,12 +5,13 @@
  * Provides bulk actions: Close, Assign, Add Label, Merge.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
 import { X, CheckCircle, UserPlus, Tag, Loader2, XCircle, FolderOpen, Merge } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useClickOutside } from '../../hooks/useClickOutside';
 
 interface BulkActionToolbarProps {
     selectedIds: string[];
@@ -36,6 +37,23 @@ export function BulkActionToolbar({
     const [showLabelDropdown, setShowLabelDropdown] = useState(false);
     const [showMergeConfirm, setShowMergeConfirm] = useState(false);
     const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+
+    // Click-outside refs for dropdowns
+    const assignDropdownRef = useClickOutside<HTMLDivElement>(() => setShowAssignDropdown(false));
+    const labelDropdownRef = useClickOutside<HTMLDivElement>(() => setShowLabelDropdown(false));
+
+    // Escape key to close merge confirm modal
+    useEffect(() => {
+        if (!showMergeConfirm) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setShowMergeConfirm(false);
+                setMergeTargetId(null);
+            }
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [showMergeConfirm]);
 
     const performBulkAction = async (
         action: BulkAction,
@@ -182,7 +200,7 @@ export function BulkActionToolbar({
                         )}
 
                         {/* Assign */}
-                        <div className="relative">
+                        <div className="relative" ref={assignDropdownRef}>
                             <button
                                 onClick={() => {
                                     setShowAssignDropdown(!showAssignDropdown);
@@ -224,7 +242,7 @@ export function BulkActionToolbar({
                         </div>
 
                         {/* Add Label */}
-                        <div className="relative">
+                        <div className="relative" ref={labelDropdownRef}>
                             <button
                                 onClick={() => {
                                     setShowLabelDropdown(!showLabelDropdown);

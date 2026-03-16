@@ -45,8 +45,8 @@ export function useAIDraft({ conversationId, currentInput, onDraftGenerated }: U
             });
 
             if (!res.ok) {
-                const error = await res.json();
-                alert(error.error || 'Failed to generate AI draft');
+                const errData = await res.json();
+                Logger.warn('AI draft generation returned error', { error: errData.error });
                 return;
             }
 
@@ -56,7 +56,6 @@ export function useAIDraft({ conversationId, currentInput, onDraftGenerated }: U
             }
         } catch (error) {
             Logger.error('AI draft generation failed:', { error: error });
-            alert('Failed to generate AI draft. Please try again.');
         } finally {
             setIsGeneratingDraft(false);
         }

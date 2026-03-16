@@ -25,6 +25,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 const currentRes = await fetch(`/api/analytics/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&interval=day`, {
                     headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
                 });
+                if (!currentRes.ok) throw new Error(`HTTP ${currentRes.status}`);
                 const currentRaw = await currentRes.json();
 
                 const processedData: any[] = [];
@@ -36,6 +37,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                     const compRes = await fetch(`/api/analytics/sales-chart?startDate=${comparison.startDate}&endDate=${comparison.endDate}&interval=day`, {
                         headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
                     });
+                    if (!compRes.ok) throw new Error(`HTTP ${compRes.status}`);
                     comparisonArr = await compRes.json();
                     if (!Array.isArray(comparisonArr)) comparisonArr = [];
                 }
@@ -114,6 +116,10 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
             });
         }
 
+        const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+        const axisColor = isDark ? '#94a3b8' : '#6b7280';
+        const splitColor = isDark ? '#334155' : '#f3f4f6';
+
         return {
             grid: { top: 10, right: 10, left: 40, bottom: 30 },
             xAxis: {
@@ -121,7 +127,7 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 data: dates,
                 axisLine: { show: false },
                 axisTick: { show: false },
-                axisLabel: { fontSize: 10, color: '#6b7280' }
+                axisLabel: { fontSize: 10, color: axisColor }
             },
             yAxis: {
                 type: 'value',
@@ -129,10 +135,10 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 axisTick: { show: false },
                 axisLabel: {
                     fontSize: 10,
-                    color: '#6b7280',
+                    color: axisColor,
                     formatter: (value: number) => `$${value}`
                 },
-                splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } }
+                splitLine: { lineStyle: { color: splitColor, type: 'dashed' } }
             },
             tooltip: {
                 trigger: 'axis',

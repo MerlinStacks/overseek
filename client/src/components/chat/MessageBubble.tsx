@@ -62,7 +62,7 @@ export const MessageBubble = memo(function MessageBubble({
 
     const { subject, body } = useMemo(() => parseEmailContent(message.content), [message.content]);
     const { mainContent, quotedContent, quotedPreview, quotedLineCount, quotedAttachmentCount } = useMemo(() => parseQuotedContent(body), [body]);
-    const attachments = useMemo(() => extractAttachments(mainContent), [mainContent]); // Only from main content, not quoted
+    const attachments = useMemo(() => extractAttachments(body), [body]); // Extract from full body to catch attachments after quoted markers
     const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(mainContent), [mainContent]);
 
     const sanitizedContent = useMemo(() => {
@@ -114,10 +114,12 @@ export const MessageBubble = memo(function MessageBubble({
 
     // System messages - centered pill
     if (isSystem) {
+        // Strip HTML so tags like <br> render as spaces, not raw text
+        const cleanSystemContent = message.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         return (
             <div className="flex justify-center my-4">
                 <span className="text-gray-500 text-xs italic bg-gray-100 px-4 py-1.5 rounded-full">
-                    {message.content}
+                    {cleanSystemContent}
                 </span>
             </div>
         );

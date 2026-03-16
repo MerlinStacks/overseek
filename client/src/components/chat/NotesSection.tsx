@@ -35,6 +35,7 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
     const [notes, setNotes] = useState<Note[]>(() => notesCache.get(conversationId) || []);
     const [newNote, setNewNote] = useState('');
     const [isAddingNote, setIsAddingNote] = useState(false);
+    const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
     const fetchNotes = useCallback(async () => {
         if (!conversationId || !token) return;
@@ -91,7 +92,6 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
     };
 
     const deleteNote = async (noteId: string) => {
-        if (!confirm('Delete this note?')) return;
         try {
             await fetch(`/api/chat/conversations/${conversationId}/notes/${noteId}`, {
                 method: 'DELETE',
@@ -105,6 +105,8 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
             notesCache.set(conversationId, updated);
         } catch (e) {
             Logger.error('Failed to delete note:', { error: e });
+        } finally {
+            setConfirmingDeleteId(null);
         }
     };
 
@@ -142,12 +144,29 @@ export function NotesSection({ conversationId }: NotesSectionProps) {
                                     {note.createdBy?.fullName || 'Agent'} · {format(new Date(note.createdAt), 'MMM d, h:mm a')}
                                 </span>
                                 {note.createdBy?.id === user?.id && (
-                                    <button
-                                        onClick={() => deleteNote(note.id)}
-                                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 transition-opacity"
-                                    >
-                                        <Trash2 size={12} />
-                                    </button>
+                                    confirmingDeleteId === note.id ? (
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => deleteNote(note.id)}
+                                                className="text-[10px] text-red-600 hover:underline font-medium"
+                                            >
+                                                Delete?
+                                            </button>
+                                            <button
+                                                onClick={() => setConfirmingDeleteId(null)}
+                                                className="text-[10px] text-gray-400 hover:underline"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setConfirmingDeleteId(note.id)}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 transition-opacity"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    )
                                 )}
                             </div>
                         </div>

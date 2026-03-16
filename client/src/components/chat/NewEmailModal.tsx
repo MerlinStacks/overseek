@@ -45,6 +45,15 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
     const [isGeneratingAI, setIsGeneratingAI] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Close on Escape key
+    useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && !isSending) onClose();
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [onClose, isSending]);
+
     // Canned responses integration
     const {
         cannedResponses,
@@ -162,6 +171,16 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
             setError('Please fill in all required fields');
             return;
         }
+
+        // Basic email format validation
+        const emails = to.split(',').map(e => e.trim()).filter(Boolean);
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const invalidEmails = emails.filter(e => !emailRegex.test(e));
+        if (invalidEmails.length > 0) {
+            setError(`Invalid email address: ${invalidEmails.join(', ')}`);
+            return;
+        }
+
         if (!emailAccountId) {
             setError('Please select an email account');
             return;

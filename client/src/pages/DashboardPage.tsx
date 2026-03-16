@@ -9,7 +9,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { DashboardPageSkeleton } from '../components/ui/PageSkeletons';
 import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
 import { debounce, isEqual } from '../utils/debounce';
-import { useRef, useLayoutEffect, useState, useEffect, useMemo } from 'react';
+import { useRef, useLayoutEffect, useState, useEffect, useMemo, useCallback } from 'react';
 import { useMobile } from '../hooks/useMobile';
 import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 import { api } from '../services/api';
@@ -76,6 +76,7 @@ export function DashboardPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [showAddWidget, setShowAddWidget] = useState(false);
+    const addWidgetRef = useRef<HTMLDivElement>(null);
     // Mobile lock state: locked by default on mobile to prevent accidental drag
     const [isLayoutLocked, setIsLayoutLocked] = useState(true);
     // Track current breakpoint to maintain layout stability during resize
@@ -89,6 +90,18 @@ export function DashboardPage() {
         fetchLayout();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount?.id, token]);
+
+    /** Close the Add Widget dropdown when clicking outside */
+    useEffect(() => {
+        if (!showAddWidget) return;
+        const handler = (e: MouseEvent) => {
+            if (addWidgetRef.current && !addWidgetRef.current.contains(e.target as Node)) {
+                setShowAddWidget(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showAddWidget]);
 
     async function fetchLayout() {
         if (!currentAccount) return;
@@ -154,7 +167,11 @@ export function DashboardPage() {
         }
     };
 
-    const debouncedSave = debounce(async (newWidgets: WidgetInstance[]) => {
+    /** Ref-based save to avoid stale closures over token/currentAccount */
+    const widgetsRef = useRef(widgets);
+    widgetsRef.current = widgets;
+
+    const saveLayout = useCallback(async (newWidgets: WidgetInstance[]) => {
         setIsSaving(true);
         try {
             await api.request('/api/dashboard', {
@@ -177,7 +194,12 @@ export function DashboardPage() {
         } finally {
             setIsSaving(false);
         }
-    }, 2000);
+    }, [token, currentAccount]);
+
+    const debouncedSave = useMemo(
+        () => debounce((newWidgets: WidgetInstance[]) => saveLayout(newWidgets), 2000),
+        [saveLayout]
+    );
     /**
      * Memoized responsive layouts for all breakpoints.
      * Generated from widget positions, only recalculates when widgets change.
@@ -283,7 +305,7 @@ export function DashboardPage() {
                         {isLayoutLocked ? 'Locked' : 'Editing'}
                     </button>
 
-                    <div className="relative">
+                    <div className="relative" ref={addWidgetRef}>
                         <button
                             onClick={() => setShowAddWidget(!showAddWidget)}
                             className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5"
@@ -343,12 +365,12 @@ export function DashboardPage() {
                                 <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }}
-                                        className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-sm hover:bg-red-50 hover:text-red-500 text-gray-400 pointer-events-auto shadow-xs"
+                                        className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-slate-700/80 rounded-sm hover:bg-red-50 dark:hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 text-gray-400 dark:text-slate-400 pointer-events-auto shadow-xs"
                                         title="Remove Widget"
                                     >
                                         <X size={14} />
                                     </button>
-                                    <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-sm text-gray-500 pointer-events-auto shadow-xs hover:bg-white">
+                                    <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-slate-700/80 rounded-sm text-gray-500 dark:text-slate-400 pointer-events-auto shadow-xs hover:bg-white dark:hover:bg-slate-600">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
                                     </div>
                                 </div>

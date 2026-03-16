@@ -20,7 +20,10 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
         fetch(`/api/analytics/customer-growth?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
             headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
         })
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
             .then(resData => setData(Array.isArray(resData) ? resData : []))
             .catch(e => Logger.error('Failed to fetch customer growth', { error: e }))
             .finally(() => setLoading(false));
@@ -34,6 +37,9 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
         });
         const values = data.map(d => d.newCustomers || 0);
 
+        const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+        const axisColor = isDark ? '#94a3b8' : '#6b7280';
+
         return {
             grid: { top: 10, right: 10, left: 10, bottom: 30 },
             xAxis: {
@@ -41,7 +47,7 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
                 data: dates,
                 axisLine: { show: false },
                 axisTick: { show: false },
-                axisLabel: { fontSize: 12, color: '#6b7280' }
+                axisLabel: { fontSize: 12, color: axisColor }
             },
             yAxis: {
                 type: 'value',

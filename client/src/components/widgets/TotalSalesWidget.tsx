@@ -25,6 +25,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
             const currentRes = await fetch(`/api/analytics/sales?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
+            if (!currentRes.ok) throw new Error(`HTTP ${currentRes.status}`);
             const currentData = await currentRes.json();
             setSales(currentData.total || 0);
             setOrderCount(currentData.count || 0);
@@ -33,6 +34,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
                 const compRes = await fetch(`/api/analytics/sales?startDate=${comparison.startDate}&endDate=${comparison.endDate}`, {
                     headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
                 });
+                if (!compRes.ok) throw new Error(`HTTP ${compRes.status}`);
                 const compData = await compRes.json();
                 setComparisonSales(compData.total || 0);
             } else {

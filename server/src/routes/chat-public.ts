@@ -115,12 +115,29 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                 const { content, visitorToken } = request.body as any;
                 const conversationId = request.params.id;
 
+                // Validate content
+                if (!content || typeof content !== 'string') {
+                    return reply.code(400).send({ error: 'Message content is required' });
+                }
+
+                // Why: strip HTML tags to prevent stored XSS from guest visitors,
+                // and enforce a sane length limit to prevent abuse.
+                const MAX_GUEST_MESSAGE_LENGTH = 10_000;
+                const sanitized = content.replace(/<[^>]*>/g, '').trim();
+
+                if (!sanitized) {
+                    return reply.code(400).send({ error: 'Message content is required' });
+                }
+                if (sanitized.length > MAX_GUEST_MESSAGE_LENGTH) {
+                    return reply.code(400).send({ error: `Message too long (max ${MAX_GUEST_MESSAGE_LENGTH} chars)` });
+                }
+
                 const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
                 if (!conversation || conversation.visitorToken !== visitorToken) {
                     return reply.code(403).send({ error: 'Unauthorized access to conversation' });
                 }
 
-                const msg = await chatService.addMessage(conversationId, content, 'CUSTOMER');
+                const msg = await chatService.addMessage(conversationId, sanitized, 'CUSTOMER');
                 return msg;
             } catch (error) {
                 Logger.error('Public message error', { error });

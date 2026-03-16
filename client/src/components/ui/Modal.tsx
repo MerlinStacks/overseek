@@ -18,14 +18,21 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
             if (isOpen) {
                 setIsVisible(true);
             } else {
-                // Small delay for fade-out if we were to implement exit animations strictly,
-                // but for now we'll just unmount after a tiny delay or immediately.
-                // keeping it simple for now to match current patterns.
                 setIsVisible(false);
             }
         }, 0);
         return () => clearTimeout(timeoutId);
     }, [isOpen]);
+
+    // Close on Escape key
+    useEffect(() => {
+        if (!isOpen || !onClose) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [isOpen, onClose]);
 
     if (!isOpen && !isVisible) return null;
 

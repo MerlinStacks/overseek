@@ -48,6 +48,16 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
         }
     }, [isOpen, currentAccount, token]);
 
+    // Close on Escape key
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [isOpen, onClose]);
+
     const fetchLabels = async () => {
         if (!currentAccount || !token) return;
         try {
@@ -147,7 +157,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
     }, {} as Record<string, { label: CannedResponseLabel | null; items: CannedResponse[] }>);
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">

@@ -188,11 +188,8 @@ export const ChatWindow = memo(function ChatWindow({
         return messages.filter(msg => msg.content.toLowerCase().includes(query));
     }, [messages, searchQuery]);
 
-    // === REACTION TOGGLE HANDLER ===
-    const handleReactionToggle = useCallback(async (messageId: string, emoji: string) => {
-        // Reactions are handled via the attachments hook context
-        // This is kept as local since it's simple and doesn't need auth context
-    }, []);
+    // NOTE: Reaction toggle API is not yet implemented.
+    // When ready, add a callback here and pass it to MessageBubble via onReactionToggle.
 
     // === STATUS CHANGE ===
     const handleStatusChange = async (newStatus: string) => {
@@ -250,7 +247,6 @@ export const ChatWindow = memo(function ChatWindow({
                         recipientEmail={recipientEmail}
                         onImageClick={(src) => setLightboxImage(src)}
                         onQuoteReply={(msg) => messageSend.setQuotedMessage(msg)}
-                        onReactionToggle={handleReactionToggle}
                     />
                 ))}
 
@@ -340,6 +336,7 @@ export const ChatWindow = memo(function ChatWindow({
                 fileInputRef={attachments.fileInputRef}
                 stagedAttachments={attachments.stagedAttachments}
                 onRemoveAttachment={attachments.handleRemoveAttachment}
+                attachmentError={attachments.attachmentError}
                 onOpenSchedule={() => setShowScheduleModal(true)}
                 availableChannels={availableChannels}
                 currentChannel={currentChannel}

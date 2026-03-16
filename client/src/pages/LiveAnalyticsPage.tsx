@@ -12,6 +12,7 @@ import { ReportsTable } from '../components/analytics/ReportsTable';
 import { AnalyticsOverview } from '../components/analytics/AnalyticsOverview';
 import { UrlBuilder } from '../components/analytics/UrlBuilder';
 import { RoadblocksView } from '../components/analytics/RoadblocksView';
+import VisitorProfileModal from '../components/analytics/VisitorProfileModal';
 
 // Sidebar Menu Items
 const MENUS = [
@@ -43,11 +44,11 @@ export function LiveAnalyticsPage() {
     const { currentAccount } = useAccount();
 
     const [activeView, setActiveView] = useState('overview');
+    const [selectedVisitorId, setSelectedVisitorId] = useState<string | null>(null);
 
     // Live Data (Shared)
     const [visitors, setVisitors] = useState<LiveSession[]>([]);
     const [carts, setCarts] = useState<LiveSession[]>([]);
-    // const [loadingLive, setLoadingLive] = useState(true); // Unused for now, or use in UI?
 
     // Report Data (Generic)
     const [reportData, setReportData] = useState<any[]>([]);
@@ -161,11 +162,12 @@ export function LiveAnalyticsPage() {
                         visitors={visitors}
                         carts={carts}
                         setActiveView={setActiveView}
+                        onVisitorClick={setSelectedVisitorId}
                     />
                 )}
                 {activeView === 'realtime' && (
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-                        <VisitorsTable data={visitors} />
+                        <VisitorsTable data={visitors} onVisitorClick={setSelectedVisitorId} />
                     </div>
                 )}
                 {activeView === 'url-builder' && <UrlBuilder />}
@@ -180,6 +182,15 @@ export function LiveAnalyticsPage() {
                     />
                 )}
             </main>
+
+            {/* Visitor Profile Modal — opens when any visitor row is clicked */}
+            {selectedVisitorId && currentAccount && (
+                <VisitorProfileModal
+                    visitorId={selectedVisitorId}
+                    accountId={currentAccount.id}
+                    onClose={() => setSelectedVisitorId(null)}
+                />
+            )}
         </div>
     );
 }

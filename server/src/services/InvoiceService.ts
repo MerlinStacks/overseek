@@ -1,6 +1,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import PDFDocument from 'pdfkit';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 
@@ -130,7 +131,6 @@ export class InvoiceService {
      */
     private createPdf(filePath: string, order: any, billing: any, lineItems: any[], template: any): Promise<void> {
         return new Promise((resolve, reject) => {
-            const PDFDocument = require('pdfkit');
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
             const stream = fs.createWriteStream(filePath);
 
@@ -263,10 +263,14 @@ export class InvoiceService {
                         const rawData = order.rawData as any || {};
                         const shippingMethod = rawData.shipping_lines?.[0]?.method_title || 'N/A';
                         const paymentMethod = rawData.payment_method_title || order.paymentMethod || 'N/A';
+                        // Use WooCommerce's date_created for consistency with client-side rendering
+                        const orderDate = rawData.date_created
+                            ? formatDate(new Date(rawData.date_created))
+                            : formatDate(order.createdAt);
 
                         const detailsData = [
                             ['Order Number:', order.number],
-                            ['Order Date:', formatDate(order.createdAt)],
+                            ['Order Date:', orderDate],
                             ['Payment Method:', paymentMethod],
                             ['Shipping Method:', shippingMethod]
                         ];
@@ -300,6 +304,13 @@ export class InvoiceService {
                         let tableY = startY + 18;
                         doc.font('Helvetica').fontSize(9);
 
+                        // Keys to exclude from metadata display (internal plugin/system keys)
+                        const excludedKeyPatterns = [
+                            /^_/, /^pa_/, /wcpa/i, /meta_data/i,
+                            /^reduced_stock/i, /label_map/i, /droppable/i, /^id$/i, /^key$/i
+                        ];
+                        const isExcludedKey = (key: string) => excludedKeyPatterns.some(p => p.test(key));
+
                         lineItems.forEach((item: any) => {
                             // Check for page break
                             if (tableY > 720) {
@@ -316,12 +327,17 @@ export class InvoiceService {
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
 
-                            // Check for metadata
-                            const itemMeta = item.meta_data?.filter((m: any) => !m.key.startsWith('_')) || [];
+                            // Display user-facing metadata with proper filtering
+                            const itemMeta = (item.meta_data || []).filter((m: any) => {
+                                const key = m.key || '';
+                                if (isExcludedKey(key)) return false;
+                                if (!m.display_key && !m.display_value) return false;
+                                return true;
+                            });
                             if (itemMeta.length > 0) {
                                 tableY += 12;
                                 doc.fontSize(8).fillColor('#64748b');
-                                itemMeta.slice(0, 3).forEach((m: any) => {
+                                itemMeta.slice(0, 6).forEach((m: any) => {
                                     const label = m.display_key || m.key.replace(/_/g, ' ');
                                     const val = typeof m.value === 'object' ? JSON.stringify(m.value) : (m.display_value || m.value);
                                     doc.text(`${label}: ${val}`, tableX + 10, tableY, { width: descWidth - 20 });
@@ -333,11 +349,15 @@ export class InvoiceService {
                             tableY += 14;
                         });
 
-                        // Totals integrated into table
+                        // Totals integrated into table — use rawData for consistency
+                        const rawOrderData = order.rawData as any || {};
                         doc.moveTo(tableX, tableY).lineTo(tableX + width, tableY).stroke();
                         tableY += 10;
 
-                        const subtotal = parseFloat(order.total) - parseFloat(order.taxTotal || 0) - parseFloat(order.shippingTotal || 0);
+                        const taxVal = parseFloat(rawOrderData.total_tax ?? order.taxTotal ?? 0);
+                        const shipVal = parseFloat(rawOrderData.shipping_total ?? order.shippingTotal ?? 0);
+                        const totalVal = parseFloat(rawOrderData.total ?? order.total ?? 0);
+                        const subtotal = totalVal - taxVal - shipVal;
                         const totalsX = tableX + width - 150;
 
                         doc.font('Helvetica').fontSize(9);
@@ -345,19 +365,28 @@ export class InvoiceService {
                         doc.text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 14;
 
-                        if (order.shippingTotal && parseFloat(order.shippingTotal) > 0) {
+                        if (shipVal > 0) {
                             doc.text('Shipping', totalsX, tableY);
-                            doc.text(formatCurrency(order.shippingTotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                            doc.text(formatCurrency(shipVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                             tableY += 14;
                         }
 
+                        const discountVal = parseFloat(rawOrderData.discount_total ?? 0);
+                        if (discountVal > 0) {
+                            doc.fillColor('#059669'); // emerald
+                            doc.text('Discount', totalsX, tableY);
+                            doc.text(`-${formatCurrency(discountVal)}`, totalsX + 80, tableY, { width: 70, align: 'right' });
+                            tableY += 14;
+                            doc.fillColor('black');
+                        }
+
                         doc.text('Tax', totalsX, tableY);
-                        doc.text(formatCurrency(order.taxTotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.text(formatCurrency(taxVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 16;
 
                         doc.font('Helvetica-Bold').fontSize(11);
                         doc.text('Total', totalsX, tableY);
-                        doc.text(formatCurrency(order.total), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.text(formatCurrency(totalVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 20;
 
                         blockHeight = tableY - startY;
@@ -365,8 +394,13 @@ export class InvoiceService {
                     }
 
                     case 'totals': {
-                        // Standalone totals block (if not integrated into order_table)
-                        const subtotalVal = parseFloat(order.total) - parseFloat(order.taxTotal || 0) - parseFloat(order.shippingTotal || 0);
+                        // Standalone totals block — use rawData for consistency
+                        const rawTotals = order.rawData as any || {};
+                        const totTax = parseFloat(rawTotals.total_tax ?? order.taxTotal ?? 0);
+                        const totShip = parseFloat(rawTotals.shipping_total ?? order.shippingTotal ?? 0);
+                        const totTotal = parseFloat(rawTotals.total ?? order.total ?? 0);
+                        const subtotalVal = totTotal - totTax - totShip;
+
                         doc.fontSize(9).font('Helvetica');
 
                         let totY = startY;
@@ -374,19 +408,28 @@ export class InvoiceService {
                         doc.text(formatCurrency(subtotalVal), x + 80, totY, { width: 70, align: 'right' });
                         totY += 14;
 
-                        if (order.shippingTotal && parseFloat(order.shippingTotal) > 0) {
+                        if (totShip > 0) {
                             doc.text('Shipping:', x, totY);
-                            doc.text(formatCurrency(order.shippingTotal), x + 80, totY, { width: 70, align: 'right' });
+                            doc.text(formatCurrency(totShip), x + 80, totY, { width: 70, align: 'right' });
                             totY += 14;
                         }
 
+                        const totDiscount = parseFloat(rawTotals.discount_total ?? 0);
+                        if (totDiscount > 0) {
+                            doc.fillColor('#059669');
+                            doc.text('Discount:', x, totY);
+                            doc.text(`-${formatCurrency(totDiscount)}`, x + 80, totY, { width: 70, align: 'right' });
+                            totY += 14;
+                            doc.fillColor('black');
+                        }
+
                         doc.text('Tax:', x, totY);
-                        doc.text(formatCurrency(order.taxTotal), x + 80, totY, { width: 70, align: 'right' });
+                        doc.text(formatCurrency(totTax), x + 80, totY, { width: 70, align: 'right' });
                         totY += 16;
 
                         doc.font('Helvetica-Bold').fontSize(11);
                         doc.text('Total:', x, totY);
-                        doc.text(formatCurrency(order.total), x + 80, totY, { width: 70, align: 'right' });
+                        doc.text(formatCurrency(totTotal), x + 80, totY, { width: 70, align: 'right' });
 
                         blockHeight = totY - startY + 20;
                         break;
@@ -394,9 +437,31 @@ export class InvoiceService {
 
                     case 'text': {
                         let textContent = itemConfig.content || '';
-                        // Simple handlebars replacement
-                        textContent = textContent.replace(/\{\{order\.number\}\}/g, order.number || '');
-                        textContent = textContent.replace(/\{\{order\.total\}\}/g, formatCurrency(order.total));
+                        const rawData = order.rawData as any || {};
+                        // Handlebars replacement with dot-notation support
+                        textContent = textContent.replace(/\{\{(.*?)\}\}/g, (_: string, key: string) => {
+                            const k = key.trim();
+                            // Try order fields first, then rawData for WooCommerce fields
+                            if (k.includes('.')) {
+                                const parts = k.split('.');
+                                // Check rawData first (has billing, shipping, etc.)
+                                let value: any = rawData;
+                                for (const part of parts) {
+                                    value = value?.[part];
+                                }
+                                if (value != null) return String(value);
+                                // Fallback to order model
+                                value = order;
+                                for (const part of parts) {
+                                    value = (value as any)?.[part];
+                                }
+                                return value != null ? String(value) : `{{${k}}}`;
+                            }
+                            // Top-level keys: check order model then rawData
+                            if ((order as any)[k] != null) return String((order as any)[k]);
+                            if (rawData[k] != null) return String(rawData[k]);
+                            return `{{${k}}}`;
+                        });
 
                         const style = itemConfig.style || {};
                         doc.fontSize(parseInt(style.fontSize) || 10);
@@ -486,10 +551,11 @@ export class InvoiceService {
                 currentY += blockHeight + 10; // Add spacing between blocks
             });
 
-            doc.end();
-
+            // Register handlers before ending doc to avoid race condition
             stream.on('finish', resolve);
             stream.on('error', reject);
+
+            doc.end();
         });
     }
 }

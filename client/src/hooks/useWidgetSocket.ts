@@ -41,26 +41,44 @@ export function useWidgetSocket<T = any>(
 
 /**
  * Hook for widgets to subscribe to multiple socket events.
+ * Uses ref to prevent re-subscription on every render.
  */
 export function useWidgetSocketMulti(
     events: Array<{ event: string; handler: (data: any) => void }>,
     enabled: boolean = true
 ) {
     const { socket, isConnected } = useSocket();
+    const eventsRef = useRef(events);
+
+    // Keep events ref up to date without re-subscribing
+    useEffect(() => {
+        eventsRef.current = events;
+    }, [events]);
 
     useEffect(() => {
         if (!socket || !isConnected || !enabled) return;
 
-        for (const { event, handler } of events) {
-            socket.on(event, handler);
+        /** Stable wrappers that delegate to the latest handlers via ref */
+        const wrappers = eventsRef.current.map(({ event }) => ({
+            event,
+            fn: (data: any) => {
+                const current = eventsRef.current.find(e => e.event === event);
+                current?.handler(data);
+            }
+        }));
+
+        for (const { event, fn } of wrappers) {
+            socket.on(event, fn);
         }
 
         return () => {
-            for (const { event, handler } of events) {
-                socket.off(event, handler);
+            for (const { event, fn } of wrappers) {
+                socket.off(event, fn);
             }
         };
-    }, [socket, isConnected, events, enabled]);
+    // Only re-subscribe when socket connection state or enabled flag changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [socket, isConnected, enabled]);
 
     return { isConnected };
 }

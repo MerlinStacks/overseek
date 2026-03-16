@@ -196,6 +196,12 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     return reply.code(400).send({ error: 'Missing required fields: to, subject, body, emailAccountId' });
                 }
 
+                // Validate email format
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(to)) {
+                    return reply.code(400).send({ error: 'Invalid email format for "to" address' });
+                }
+
                 let wooCustomerId: string | null = null;
                 const existingCustomer = await prisma.wooCustomer.findFirst({
                     where: { accountId, email: to }

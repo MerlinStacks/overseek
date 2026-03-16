@@ -16,6 +16,7 @@ import { Logger } from '../utils/logger';
 import { ToastType } from '../components/ui/Toast';
 import type { BOMPanelRef } from '../components/products/BOMPanel';
 import type { VariationsPanelRef } from '../components/products/VariationsPanel';
+import type { StockManagementPanelRef } from '../components/products/StockManagementPanel';
 
 export interface ProductFormData {
     name: string;
@@ -137,6 +138,7 @@ export function useProductEdit(productId: string | undefined) {
     // Refs for child panels
     const bomPanelRef = useRef<BOMPanelRef>(null);
     const variationsPanelRef = useRef<VariationsPanelRef>(null);
+    const stockPanelRef = useRef<StockManagementPanelRef>(null);
 
     // Why: refs for volatile context values so callbacks don't regenerate on
     // silent token refresh, which was causing fetchProduct to re-fire and wipe edits.
@@ -307,9 +309,10 @@ export function useProductEdit(productId: string | undefined) {
 
             const bomSaveResult = await bomPanelRef.current?.save();
             const variantBomsSaveResult = await variationsPanelRef.current?.saveAllBOMs();
+            const stockSaveResult = await stockPanelRef.current?.save();
 
-            if (bomSaveResult === false || variantBomsSaveResult === false) {
-                showToast('Product saved, but some BOM configurations failed to save.', 'error');
+            if (bomSaveResult === false || variantBomsSaveResult === false || stockSaveResult === false) {
+                showToast('Product saved, but some sub-panel saves failed (BOM or stock).', 'error');
             } else {
                 showToast('Product saved successfully');
             }
@@ -472,6 +475,7 @@ export function useProductEdit(productId: string | undefined) {
         // Refs
         bomPanelRef,
         variationsPanelRef,
+        stockPanelRef,
 
         // Actions
         updateFormData,

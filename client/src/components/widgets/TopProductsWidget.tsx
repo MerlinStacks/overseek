@@ -21,7 +21,10 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
         fetch(url, {
             headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
         })
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
             .then(data => setProducts(Array.isArray(data) ? data : []))
             .catch(e => Logger.error('Failed to fetch top products', { error: e }))
             .finally(() => setLoading(false));

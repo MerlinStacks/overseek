@@ -33,6 +33,8 @@ const updateProductBodySchema = z.object({
     binLocation: z.string().optional(),
     name: z.string().optional(),
     stockStatus: z.string().optional(),
+    manageStock: z.boolean().optional(),
+    backorders: z.enum(['no', 'notify', 'yes']).optional(),
     isGoldPriceApplied: z.boolean().optional(),
     goldPriceType: z.string().nullable().optional(),
     sku: z.string().optional(),
@@ -263,10 +265,10 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
-            const { binLocation, name, stockStatus, isGoldPriceApplied, goldPriceType, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword, variations } = updateProductBodySchema.parse(request.body);
+            const { binLocation, name, stockStatus, manageStock, backorders, isGoldPriceApplied, goldPriceType, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword, variations } = updateProductBodySchema.parse(request.body);
 
             let product = await ProductsService.updateProduct(accountId, wooId, {
-                binLocation, name, stockStatus, isGoldPriceApplied, goldPriceType,
+                binLocation, name, stockStatus, manageStock, backorders, isGoldPriceApplied, goldPriceType,
                 sku, price, salePrice, weight, length, width, height, description, short_description,
                 cogs, supplierId, images, variations
             });
@@ -276,6 +278,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             if (binLocation !== undefined) changedFields.binLocation = binLocation;
             if (name !== undefined) changedFields.name = name;
             if (stockStatus !== undefined) changedFields.stockStatus = stockStatus;
+            if (manageStock !== undefined) changedFields.manageStock = manageStock;
+            if (backorders !== undefined) changedFields.backorders = backorders;
             if (isGoldPriceApplied !== undefined) changedFields.isGoldPriceApplied = isGoldPriceApplied;
             if (sku !== undefined) changedFields.sku = sku;
             if (price !== undefined) changedFields.price = price;

@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { clsx } from 'clsx';
 import { Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText } from 'lucide-react';
+import { getItemMeta, resolveHandlebars } from '../../utils/invoiceItemUtils';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -97,18 +98,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
 
                 // Handlebars-style replacement with data
                 if (data) {
-                    text = text.replace(/{{(.*?)}}/g, (_: any, key: string) => {
-                        const k = key.trim();
-                        if (k.includes('.')) {
-                            const parts = k.split('.');
-                            let value = data;
-                            for (const part of parts) {
-                                value = value?.[part];
-                            }
-                            return value || `{{${k}}}`;
-                        }
-                        return data[k] || `{{${k}}}`;
-                    });
+                    text = resolveHandlebars(text, data);
                 }
 
                 return (
@@ -180,10 +170,14 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                 const hasItems = lineItems.length > 0;
                 const hasOrderData = data?.total !== undefined;
 
-                // Helper to format currency
+                // Helper to format currency using order's actual currency
                 const formatMoney = (val: any) => {
                     const num = parseFloat(val || 0);
-                    return `$${num.toFixed(2)}`;
+                    try {
+                        return new Intl.NumberFormat('en-US', { style: 'currency', currency: data?.currency || 'USD' }).format(num);
+                    } catch {
+                        return `$${num.toFixed(2)}`;
+                    }
                 };
 
                 // Calculate subtotal
@@ -191,87 +185,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     ? parseFloat(data.total) - parseFloat(data.total_tax || 0) - parseFloat(data.shipping_total || 0)
                     : 0;
 
-                // Helper to safely convert any value to a displayable string
-                const safeStringify = (val: any): string => {
-                    if (val === null || val === undefined) return '';
-                    if (typeof val === 'string') return val;
-                    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-                    if (Array.isArray(val)) return val.map(v => safeStringify(v)).join(', ');
-                    if (typeof val === 'object') {
-                        // Check if it's a simple {key: value} structure - flatten it
-                        const entries = Object.entries(val);
-                        if (entries.length === 0) return '';
-                        return entries.map(([k, v]) => safeStringify(v)).filter(Boolean).join(', ');
-                    }
-                    return String(val);
-                };
-
-                // Helper to extract item metadata (with deduplication)
-                const getItemMeta = (item: any) => {
-                    const meta: { label: string; value: string }[] = [];
-                    const seenLabels = new Set<string>(); // Track labels to prevent duplicates
-
-                    // Helper to add meta entry only if not already seen
-                    const addMeta = (label: string, value: string) => {
-                        const normalizedLabel = label.toLowerCase().trim();
-                        if (!seenLabels.has(normalizedLabel) && value.length > 0 && value.length < 200) {
-                            seenLabels.add(normalizedLabel);
-                            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value });
-                        }
-                    };
-
-                    // Keys to always exclude (internal plugin/system keys)
-                    const excludedKeyPatterns = [
-                        /^_/,                    // Internal underscore-prefixed keys
-                        /^pa_/,                  // Already handled separately for variations
-                        /wcpa/i,                 // WCPA plugin internal data
-                        /meta_data/i,            // Nested meta references
-                        /^reduced_stock/i,       // Stock management internal
-                        /label_map/i,            // Internal mappings
-                        /droppable/i,            // UI state fields
-                        /^id$/i,                 // Internal IDs
-                        /^key$/i,                // Internal keys
-                    ];
-
-                    const isExcludedKey = (key: string) =>
-                        excludedKeyPatterns.some(pattern => pattern.test(key));
-
-                    // Standard fields
-                    if (item.sku) addMeta('SKU', item.sku);
-
-                    // Variation attributes only (pa_ prefixed keys)
-                    if (item.variation_id && item.variation_id > 0) {
-                        const attrs = item.meta_data?.filter((m: any) =>
-                            m.key?.startsWith('pa_')
-                        ) || [];
-                        attrs.forEach((attr: any) => {
-                            const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
-                            const rawValue = attr.display_value || attr.value;
-                            const strValue = safeStringify(rawValue);
-                            addMeta(label, strValue);
-                        });
-                    }
-
-                    // Custom meta fields - strict filtering (non pa_ keys with display values)
-                    const customMeta = item.meta_data?.filter((m: any) => {
-                        const key = m.key || '';
-                        if (isExcludedKey(key)) return false;
-                        if (key.startsWith('pa_')) return false; // Already handled above
-                        if (!m.display_key && !m.display_value) return false;
-                        return true;
-                    }) || [];
-
-                    customMeta.forEach((m: any) => {
-                        const rawValue = m.display_value || m.value;
-                        const strValue = safeStringify(rawValue);
-                        if (strValue.length > 0) {
-                            const label = m.display_key || m.key.replace(/_/g, ' ');
-                            addMeta(label, strValue);
-                        }
-                    });
-
-                    return meta;
-                };
+                // Helper to extract item metadata (delegated to shared utility)
 
                 return (
                     <div className="py-2" style={{ overflow: 'visible' }}>
@@ -335,6 +249,13 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                                 <td className="py-1.5 text-right text-slate-700">{formatMoney(data.shipping_total)}</td>
                                             </tr>
                                         )}
+                                        {data.discount_total && parseFloat(data.discount_total) > 0 && (
+                                            <tr>
+                                                <td colSpan={2}></td>
+                                                <td className="py-1.5 text-right text-emerald-600">Discount</td>
+                                                <td className="py-1.5 text-right text-emerald-600">-{formatMoney(data.discount_total)}</td>
+                                            </tr>
+                                        )}
                                         <tr>
                                             <td colSpan={2}></td>
                                             <td className="py-1.5 text-right text-slate-600">Tax</td>
@@ -360,7 +281,11 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                 const hasData = data?.total !== undefined;
                 const formatCurrency = (val: any) => {
                     const num = parseFloat(val || 0);
-                    return `$${num.toFixed(2)}`;
+                    try {
+                        return new Intl.NumberFormat('en-US', { style: 'currency', currency: data?.currency || 'USD' }).format(num);
+                    } catch {
+                        return `$${num.toFixed(2)}`;
+                    }
                 };
 
                 const subtotal = hasData
@@ -380,6 +305,12 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                         <tr>
                                             <td className="py-1.5 text-slate-600">Shipping</td>
                                             <td className="py-1.5 text-right text-slate-700">{formatCurrency(data.shipping_total)}</td>
+                                        </tr>
+                                    )}
+                                    {data.discount_total && parseFloat(data.discount_total) > 0 && (
+                                        <tr>
+                                            <td className="py-1.5 text-emerald-600">Discount</td>
+                                            <td className="py-1.5 text-right text-emerald-600">-{formatCurrency(data.discount_total)}</td>
                                         </tr>
                                     )}
                                     <tr>

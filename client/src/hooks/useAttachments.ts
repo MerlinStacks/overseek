@@ -5,7 +5,7 @@
  * Extracted from ChatWindow.tsx for improved modularity.
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -16,11 +16,18 @@ interface UseAttachmentsOptions {
     onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
 }
 
+/** 25 MB per file — matches typical email provider limits. */
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+/** Maximum files that can be staged at once. */
+const MAX_FILE_COUNT = 10;
+
 interface UseAttachmentsResult {
     stagedAttachments: File[];
     isUploading: boolean;
     uploadProgress: number;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
+    /** Error message from last file staging attempt, if any. */
+    attachmentError: string | null;
     handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleRemoveAttachment: (index: number) => void;
     sendMessageWithAttachments: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
@@ -38,13 +45,39 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
     const [stagedAttachments, setStagedAttachments] = useState<File[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+    // Clear staged attachments when switching conversations
+    useEffect(() => {
+        setStagedAttachments([]);
+        setUploadProgress(0);
+        setAttachmentError(null);
+    }, [conversationId]);
 
     const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
+        setAttachmentError(null);
 
-        // Stage files locally - they will be uploaded when user sends the message
-        setStagedAttachments(prev => [...prev, ...Array.from(files)]);
+        const incoming = Array.from(files);
+
+        // Validate file sizes
+        const oversized = incoming.filter(f => f.size > MAX_FILE_SIZE);
+        if (oversized.length > 0) {
+            const names = oversized.map(f => f.name).join(', ');
+            setAttachmentError(`File(s) exceed 25 MB limit: ${names}`);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
+        // Validate total count
+        setStagedAttachments(prev => {
+            if (prev.length + incoming.length > MAX_FILE_COUNT) {
+                setAttachmentError(`Maximum ${MAX_FILE_COUNT} attachments allowed`);
+                return prev;
+            }
+            return [...prev, ...incoming];
+        });
 
         // Reset input so same file can be selected again
         if (fileInputRef.current) {
@@ -134,6 +167,7 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
         isUploading,
         uploadProgress,
         fileInputRef,
+        attachmentError,
         handleFileUpload,
         handleRemoveAttachment,
         sendMessageWithAttachments,

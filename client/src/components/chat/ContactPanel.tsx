@@ -105,18 +105,19 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
 
     // Fetch recent orders when customer changes or for guest emails
     useEffect(() => {
+        const controller = new AbortController();
         if (customer?.wooId && token && currentAccount?.id) {
-            fetchCustomerOrders(customer.wooId);
+            fetchCustomerOrders(customer.wooId, controller.signal);
         } else if (conversation?.guestEmail && token && currentAccount?.id) {
-            // For guests without a WooCustomer link, try to find orders by billing email
-            fetchOrdersByEmail(conversation.guestEmail);
+            fetchOrdersByEmail(conversation.guestEmail, controller.signal);
         } else {
             setRecentOrders([]);
             setPreviousConversations([]);
         }
+        return () => controller.abort();
     }, [customer?.wooId, conversation?.guestEmail, token, currentAccount?.id]);
 
-    const fetchCustomerOrders = async (wooCustomerId: number) => {
+    const fetchCustomerOrders = async (wooCustomerId: number, signal?: AbortSignal) => {
         setIsLoadingOrders(true);
         try {
             const headers = {
@@ -126,8 +127,8 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
 
             // Fetch orders and conversations in parallel
             const [ordersRes, convsRes] = await Promise.all([
-                fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers }),
-                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}`, { headers })
+                fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers, signal }),
+                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}`, { headers, signal })
             ]);
 
             if (ordersRes.ok) {
@@ -142,15 +143,15 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                     : [];
                 setPreviousConversations(otherConvs);
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
             Logger.error('Failed to fetch customer data:', { error: error });
         } finally {
             setIsLoadingOrders(false);
         }
     };
 
-    // Fetch orders by billing email for guest checkouts
-    const fetchOrdersByEmail = async (email: string) => {
+    const fetchOrdersByEmail = async (email: string, signal?: AbortSignal) => {
         setIsLoadingOrders(true);
         try {
             const ordersRes = await fetch(`/api/orders?billingEmail=${encodeURIComponent(email)}&limit=5`, {
@@ -158,12 +159,14 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount?.id || '',
                 },
+                signal,
             });
             if (ordersRes.ok) {
                 const ordersData = await ordersRes.json();
                 setRecentOrders(ordersData.orders || []);
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
             Logger.error('Failed to fetch orders by email:', { error: error });
         } finally {
             setIsLoadingOrders(false);

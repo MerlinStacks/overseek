@@ -11,6 +11,7 @@ import { Gem, ArrowRight, TrendingDown, Loader2, AlertTriangle, RefreshCw } from
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Logger } from '../../utils/logger';
+import { WidgetProps } from './WidgetRegistry';
 
 // Margin thresholds for color coding (aligned with report page)
 const MARGIN_THRESHOLD_LOW = 20;
@@ -27,7 +28,7 @@ interface GoldPriceSummary {
  * Dashboard widget showing gold price product margin summary.
  * Clickable to navigate to full report.
  */
-export function GoldPriceMarginWidget() {
+export function GoldPriceMarginWidget({ className }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const navigate = useNavigate();
@@ -74,7 +75,7 @@ export function GoldPriceMarginWidget() {
 
     if (error) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4">
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-4">
                 <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-full mb-2">
                     <AlertTriangle className="w-5 h-5 text-red-400" />
                 </div>
@@ -92,7 +93,7 @@ export function GoldPriceMarginWidget() {
 
     if (!summary || summary.totalCount === 0) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4">
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-4">
                 <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-full mb-2">
                     <Gem className="w-5 h-5 text-amber-400" />
                 </div>
@@ -136,9 +137,9 @@ export function GoldPriceMarginWidget() {
                             <span className="text-sm text-gray-800 dark:text-gray-200 truncate flex-1 mr-2">
                                 {item.name}
                             </span>
-                            <span className={`text-xs font-mono font-bold ${item.margin < MARGIN_THRESHOLD_LOW ? 'text-red-600' :
-                                item.margin < MARGIN_THRESHOLD_MEDIUM ? 'text-amber-600' :
-                                    'text-green-600'
+                            <span className={`text-xs font-mono font-bold ${item.margin < MARGIN_THRESHOLD_LOW ? 'text-red-600 dark:text-red-400' :
+                                item.margin < MARGIN_THRESHOLD_MEDIUM ? 'text-amber-600 dark:text-amber-400' :
+                                    'text-green-600 dark:text-green-400'
                                 }`}>
                                 {item.margin.toFixed(1)}%
                             </span>

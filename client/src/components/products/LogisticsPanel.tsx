@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Package, Ruler, ToggleLeft, ToggleRight } from 'lucide-react';
 import { StockManagementPanel } from './StockManagementPanel';
+import type { StockManagementPanelRef } from './StockManagementPanel';
 
 interface LogisticsPanelProps {
     formData: {
@@ -24,9 +25,11 @@ interface LogisticsPanelProps {
         stock_status?: string;
     }>;
     onChange: (updates: any) => void;
+    /** Forwarded ref so the parent can trigger stock saves via the page-level Save button */
+    stockPanelRef?: React.Ref<StockManagementPanelRef>;
 }
 
-export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'cm', productWooId, variants, onChange }: LogisticsPanelProps) {
+export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'cm', productWooId, variants, onChange, stockPanelRef }: LogisticsPanelProps) {
     const hasVariants = variants && variants.length > 0;
 
     return (
@@ -34,7 +37,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
             {/* Stock Management - shown only for simple products (no variants) when manageStock is enabled */}
             {/* For variable products, stock is managed per-variant in the Variations tab */}
             {productWooId && !hasVariants && formData.manageStock && (
-                <StockManagementPanel productWooId={productWooId} />
+                <StockManagementPanel ref={stockPanelRef} productWooId={productWooId} />
             )}
 
             <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -54,8 +57,8 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                             type="button"
                             onClick={() => onChange({ manageStock: !formData.manageStock })}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${formData.manageStock
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                    : 'bg-gray-100 text-gray-500 border border-gray-200'
+                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                : 'bg-gray-100 text-gray-500 border border-gray-200'
                                 }`}
                         >
                             {formData.manageStock ? (

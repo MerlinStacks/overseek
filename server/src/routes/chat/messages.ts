@@ -8,16 +8,16 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { ChatService } from '../../services/ChatService';
-import { EmailService } from '../../services/EmailService';
-import { MetaMessagingService } from '../../services/messaging/MetaMessagingService';
-import { TikTokMessagingService } from '../../services/messaging/TikTokMessagingService';
-import { TwilioService } from '../../services/TwilioService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
+import { routeMessageToChannel, sendEmailWithAttachments } from '../../utils/ChannelRouter';
 import path from 'path';
 import fs from 'fs';
 
 const attachmentsDir = path.join(__dirname, '../../../uploads/attachments');
+
+// Why: ensure the directory exists on startup so file writes don't crash with ENOENT
+fs.mkdirSync(attachmentsDir, { recursive: true });
 
 /**
  * Factory function to create message routes with injected ChatService
@@ -65,7 +65,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         // POST /:id/attachment (using @fastify/multipart)
         fastify.post<{ Params: { id: string } }>('/:id/attachment', async (request, reply) => {
             try {
-                const data = await (request as any).file();
+                const data = await (request as any).file({ limits: { fileSize: 25 * 1024 * 1024 } });
                 if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
                 const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx|txt|csv|zip/;
@@ -253,177 +253,3 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
     };
 };
 
-/**
- * Routes a message to the appropriate external channel
- */
-async function routeMessageToChannel(
-    conversationId: string,
-    content: string,
-    channel: string,
-    accountId: string,
-    emailAccountId?: string
-): Promise<void> {
-    const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
-        include: {
-            wooCustomer: true,
-            socialAccount: true,
-            mergedFrom: { include: { socialAccount: true } }
-        }
-    });
-
-    if (!conversation) {
-        Logger.warn('[ChannelRouting] Conversation not found', { id: conversationId });
-        return;
-    }
-
-    if (channel === 'EMAIL') {
-        const recipientEmail = conversation.wooCustomer?.email || conversation.guestEmail;
-        if (recipientEmail) {
-            let emailAccount = null;
-            if (emailAccountId) {
-                emailAccount = await prisma.emailAccount.findUnique({
-                    where: { id: emailAccountId }
-                });
-            }
-            if (!emailAccount) {
-                const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
-                emailAccount = await getDefaultEmailAccount(accountId);
-            }
-            if (emailAccount) {
-                const emailService = new EmailService();
-                let subject = conversation.title
-                    ? (conversation.title.startsWith('Re:') ? conversation.title : `Re: ${conversation.title}`)
-                    : 'Re: Your inquiry';
-                let body = content;
-
-                if (content.startsWith('Subject:')) {
-                    const lines = content.split('\n');
-                    subject = lines[0].replace('Subject:', '').trim();
-                    body = lines.slice(2).join('\n');
-                }
-
-                const originalEmailLog = await prisma.emailLog.findFirst({
-                    where: { sourceId: conversation.id, messageId: { not: null } },
-                    orderBy: { createdAt: 'asc' }
-                });
-
-                await emailService.sendEmail(accountId, emailAccount.id, recipientEmail, subject, body, undefined, {
-                    source: 'INBOX',
-                    sourceId: conversation.id,
-                    inReplyTo: originalEmailLog?.messageId || undefined,
-                    references: originalEmailLog?.messageId || undefined
-                });
-                Logger.info('[ChannelRouting] Email sent', { to: recipientEmail, conversationId: conversation.id });
-            }
-        }
-    } else if (channel === 'FACEBOOK' || channel === 'INSTAGRAM') {
-        let socialAccount = conversation.socialAccount?.platform === channel ? conversation.socialAccount : null;
-        let externalId = conversation.externalConversationId;
-
-        if (!socialAccount) {
-            const merged = conversation.mergedFrom.find(m => m.socialAccount?.platform === channel);
-            socialAccount = merged?.socialAccount || null;
-            externalId = merged?.externalConversationId || null;
-        }
-
-        if (socialAccount && externalId) {
-            const recipientId = externalId.split('_')[0];
-            const result = await MetaMessagingService.sendMessage(socialAccount.id, {
-                recipientId,
-                message: content.replace(/<[^>]*>/g, ''),
-                messageType: 'RESPONSE'
-            });
-            if (result) {
-                Logger.info('[ChannelRouting] Meta message sent', { channel, messageId: result.messageId });
-            }
-        }
-    } else if (channel === 'TIKTOK') {
-        let socialAccount = conversation.socialAccount?.platform === 'TIKTOK' ? conversation.socialAccount : null;
-        let externalId = conversation.externalConversationId;
-
-        if (!socialAccount) {
-            const merged = conversation.mergedFrom.find(m => m.socialAccount?.platform === 'TIKTOK');
-            socialAccount = merged?.socialAccount || null;
-            externalId = merged?.externalConversationId || null;
-        }
-
-        if (socialAccount && externalId) {
-            const recipientOpenId = externalId.split('_')[0];
-            const result = await TikTokMessagingService.sendMessage(socialAccount.id, {
-                recipientOpenId,
-                message: content.replace(/<[^>]*>/g, '')
-            });
-            if (result) {
-                Logger.info('[ChannelRouting] TikTok message sent', { messageId: result.messageId });
-            }
-        }
-    } else if (channel === 'SMS') {
-        let externalId = conversation.channel === 'SMS' ? conversation.externalConversationId : null;
-
-        if (!externalId) {
-            const merged = conversation.mergedFrom.find(m => m.channel === 'SMS');
-            externalId = merged?.externalConversationId || null;
-        }
-
-        if (externalId) {
-            await TwilioService.sendSms(accountId, externalId, content.replace(/<[^>]*>/g, ''));
-            Logger.info('[ChannelRouting] SMS sent', { to: externalId });
-        }
-    }
-}
-
-/**
- * Sends email with attachments for EMAIL channel conversations
- */
-async function sendEmailWithAttachments(
-    conversationId: string,
-    content: string,
-    attachments: Array<{ filename: string; path: string; contentType: string }>,
-    accountId: string,
-    emailAccountId?: string
-): Promise<void> {
-    const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
-        include: { wooCustomer: true }
-    });
-
-    if (conversation?.channel !== 'EMAIL') return;
-
-    const recipientEmail = conversation.wooCustomer?.email || conversation.guestEmail;
-    if (!recipientEmail) return;
-
-    let emailAccount = null;
-    if (emailAccountId) {
-        emailAccount = await prisma.emailAccount.findUnique({ where: { id: emailAccountId } });
-    }
-    if (!emailAccount) {
-        const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
-        emailAccount = await getDefaultEmailAccount(accountId);
-    }
-
-    if (!emailAccount) return;
-
-    const emailService = new EmailService();
-    const subject = conversation.title
-        ? (conversation.title.startsWith('Re:') ? conversation.title : `Re: ${conversation.title}`)
-        : 'Re: Your inquiry';
-
-    const originalEmailLog = await prisma.emailLog.findFirst({
-        where: { sourceId: conversation.id, messageId: { not: null } },
-        orderBy: { createdAt: 'asc' }
-    });
-
-    await emailService.sendEmail(accountId, emailAccount.id, recipientEmail, subject, content, attachments, {
-        source: 'INBOX',
-        sourceId: conversation.id,
-        inReplyTo: originalEmailLog?.messageId || undefined,
-        references: originalEmailLog?.messageId || undefined
-    });
-
-    Logger.info('[message-with-attachments] Email sent with attachments', {
-        to: recipientEmail,
-        attachmentCount: attachments.length,
-        conversationId
-    });
-}

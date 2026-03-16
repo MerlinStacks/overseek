@@ -9,6 +9,7 @@ import { Logger } from '../../utils/logger';
 import { Database, RefreshCw, HardDrive, Trash2 } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { getCacheStats, clearAccountCache, hotTierDB } from '../../services/db';
+import { WidgetProps } from './WidgetRegistry';
 
 interface CacheStats {
     orders: number;
@@ -21,11 +22,12 @@ interface CacheStats {
     };
 }
 
-export function HotCacheWidget() {
+export function HotCacheWidget({ className }: WidgetProps) {
     const { currentAccount } = useAccount();
     const [stats, setStats] = useState<CacheStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
+    const [confirmClear, setConfirmClear] = useState(false);
 
     const loadStats = async () => {
         if (!currentAccount?.id) return;
@@ -44,11 +46,19 @@ export function HotCacheWidget() {
         loadStats();
     }, [currentAccount?.id]);
 
+    /** Two-step clear: first click shows confirmation, second click executes */
     const handleClear = async () => {
         if (!currentAccount?.id) return;
-        if (!confirm('Clear all cached data? This will be re-synced from the server.')) return;
+
+        if (!confirmClear) {
+            setConfirmClear(true);
+            // Auto-dismiss after 3 seconds
+            setTimeout(() => setConfirmClear(false), 3000);
+            return;
+        }
 
         setClearing(true);
+        setConfirmClear(false);
         try {
             await clearAccountCache(currentAccount.id);
             await loadStats();
@@ -73,76 +83,76 @@ export function HotCacheWidget() {
     const totalItems = stats ? stats.orders + stats.products + stats.customers : 0;
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 h-full">
+        <div className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 p-4 h-full shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`}>
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                    <HardDrive className="w-5 h-5 text-purple-600" />
-                    <h3 className="font-semibold text-gray-900">Hot Cache</h3>
+                    <HardDrive className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <h3 className="font-semibold text-slate-900 dark:text-white">Hot Cache</h3>
                 </div>
                 <div className="flex gap-1">
                     <button
                         onClick={loadStats}
                         disabled={loading}
-                        className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
                         title="Refresh stats"
                     >
-                        <RefreshCw className={`w-4 h-4 text-gray-500 ${loading ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-4 h-4 text-slate-500 dark:text-slate-400 ${loading ? 'animate-spin' : ''}`} />
                     </button>
                     <button
                         onClick={handleClear}
                         disabled={clearing || totalItems === 0}
-                        className="p-1.5 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                        title="Clear cache"
+                        className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${confirmClear ? 'bg-red-100 dark:bg-red-500/20 hover:bg-red-200' : 'hover:bg-red-50 dark:hover:bg-red-500/10'}`}
+                        title={confirmClear ? 'Click again to confirm' : 'Clear cache'}
                     >
-                        <Trash2 className="w-4 h-4 text-gray-500" />
+                        <Trash2 className={`w-4 h-4 ${confirmClear ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`} />
                     </button>
                 </div>
             </div>
 
             {loading ? (
                 <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                    <RefreshCw className="w-5 h-5 text-slate-400 dark:text-slate-500 animate-spin" />
                 </div>
             ) : stats ? (
                 <div className="space-y-3">
                     <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-blue-50 rounded-lg p-2 text-center">
-                            <div className="text-lg font-bold text-blue-700">{stats.products}</div>
-                            <div className="text-xs text-blue-600">Products</div>
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-blue-700 dark:text-blue-400">{stats.products}</div>
+                            <div className="text-xs text-blue-600 dark:text-blue-500">Products</div>
                         </div>
-                        <div className="bg-green-50 rounded-lg p-2 text-center">
-                            <div className="text-lg font-bold text-green-700">{stats.orders}</div>
-                            <div className="text-xs text-green-600">Orders</div>
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-green-700 dark:text-green-400">{stats.orders}</div>
+                            <div className="text-xs text-green-600 dark:text-green-500">Orders</div>
                         </div>
-                        <div className="bg-purple-50 rounded-lg p-2 text-center">
-                            <div className="text-lg font-bold text-purple-700">{stats.customers}</div>
-                            <div className="text-xs text-purple-600">Customers</div>
+                        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-purple-700 dark:text-purple-400">{stats.customers}</div>
+                            <div className="text-xs text-purple-600 dark:text-purple-500">Customers</div>
                         </div>
                     </div>
 
-                    <div className="border-t pt-3 space-y-1">
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-1">
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-500">Products synced</span>
-                            <span className="text-gray-700">{formatTime(stats.lastSync.products)}</span>
+                            <span className="text-slate-500 dark:text-slate-400">Products synced</span>
+                            <span className="text-slate-700 dark:text-slate-300">{formatTime(stats.lastSync.products)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-500">Orders synced</span>
-                            <span className="text-gray-700">{formatTime(stats.lastSync.orders)}</span>
+                            <span className="text-slate-500 dark:text-slate-400">Orders synced</span>
+                            <span className="text-slate-700 dark:text-slate-300">{formatTime(stats.lastSync.orders)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-500">Customers synced</span>
-                            <span className="text-gray-700">{formatTime(stats.lastSync.customers)}</span>
+                            <span className="text-slate-500 dark:text-slate-400">Customers synced</span>
+                            <span className="text-slate-700 dark:text-slate-300">{formatTime(stats.lastSync.customers)}</span>
                         </div>
                     </div>
 
                     {totalItems === 0 && (
-                        <p className="text-xs text-gray-500 text-center py-2">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-2">
                             No data cached yet. Visit Products, Orders, or Customers to populate.
                         </p>
                     )}
                 </div>
             ) : (
-                <p className="text-sm text-gray-500 text-center py-4">
+                <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
                     Unable to load cache stats
                 </p>
             )}

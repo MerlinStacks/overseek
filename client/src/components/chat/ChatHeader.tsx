@@ -4,9 +4,10 @@
  * Displays conversation recipient info and action buttons.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronDown, Clock, CheckCircle, RotateCcw, MoreHorizontal, MoreVertical, Search, Users, Merge, Ban, Eye } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { useClickOutside } from '../../hooks/useClickOutside';
 import { MacrosDropdown } from './MacrosDropdown';
 import { RecipientList, MergedRecipient } from './RecipientList';
 
@@ -56,6 +57,27 @@ export function ChatHeader({
 }: ChatHeaderProps) {
     const [showActionsMenu, setShowActionsMenu] = useState(false);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
+    const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+
+    // Close dropdowns on outside click
+    const actionsMenuRef = useClickOutside<HTMLDivElement>(
+        useCallback(() => setShowActionsMenu(false), []),
+        showActionsMenu
+    );
+    const moreMenuRef = useClickOutside<HTMLDivElement>(
+        useCallback(() => setShowMoreMenu(false), []),
+        showMoreMenu
+    );
+
+    // Close block-confirm modal on Escape key
+    useEffect(() => {
+        if (!showBlockConfirm) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowBlockConfirm(false);
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [showBlockConfirm]);
 
     const isOpen = status === 'OPEN';
     const hasOtherViewers = otherViewers.length > 0;
@@ -109,7 +131,7 @@ export function ChatHeader({
                 <MacrosDropdown conversationId={conversationId} />
 
                 {/* Resolve/Reopen Button with Dropdown */}
-                <div className="relative">
+                <div className="relative" ref={actionsMenuRef}>
                     <div className="flex">
                         <button
                             onClick={() => onStatusChange(isOpen ? 'CLOSED' : 'OPEN')}
@@ -181,7 +203,7 @@ export function ChatHeader({
                 </button>
 
                 {/* More Options */}
-                <div className="relative">
+                <div className="relative" ref={moreMenuRef}>
                     <button
                         onClick={() => setShowMoreMenu(!showMoreMenu)}
                         aria-label="More options"
@@ -215,11 +237,9 @@ export function ChatHeader({
                             </button>
                             {recipientEmail && onBlock && (
                                 <button
-                                    onClick={async () => {
+                                    onClick={() => {
                                         setShowMoreMenu(false);
-                                        if (confirm(`Block ${recipientEmail}? Their future messages will be auto-resolved without notifications.`)) {
-                                            await onBlock();
-                                        }
+                                        setShowBlockConfirm(true);
                                     }}
                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-b-lg border-t border-gray-100"
                                 >
@@ -231,6 +251,39 @@ export function ChatHeader({
                     )}
                 </div>
             </div>
+            {/* Block Customer Confirmation Modal */}
+            {showBlockConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                                <Ban size={20} className="text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Block Customer</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-5">
+                            Block <span className="font-medium text-gray-900">{recipientEmail}</span>? Their future messages will be auto-resolved without notifications.
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowBlockConfirm(false)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setShowBlockConfirm(false);
+                                    await onBlock?.();
+                                }}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                            >
+                                Block
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

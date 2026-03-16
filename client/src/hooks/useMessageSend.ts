@@ -2,7 +2,7 @@
  * Hook for managing message sending logic in chat conversations.
  * Handles undo delay, quote replies, email signatures, and scheduling.
  */
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, type MutableRefObject } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -83,15 +83,22 @@ export function useMessageSend({
     const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
     const [isScheduling, setIsScheduling] = useState(false);
 
+    // Ref that always holds the latest pendingSend — avoids stale closure
+    // when the conversation-switch effect fires.
+    const pendingSendRef: MutableRefObject<PendingSend | null> = useRef(null);
+    pendingSendRef.current = pendingSend;
+
     // Load draft when conversation changes
     useEffect(() => {
         if (conversationId) {
             const savedDraft = getDraft(conversationId);
             setInput(savedDraft);
             setQuotedMessage(null);
-            // Cancel any pending send
-            if (pendingSend) {
-                clearTimeout(pendingSend.timeout);
+            // Cancel any pending send using ref to avoid stale closure
+            const pending = pendingSendRef.current;
+            if (pending) {
+                clearTimeout(pending.timeout);
+                clearInterval(pending.countdownInterval);
                 setPendingSend(null);
             }
         }
@@ -212,20 +219,17 @@ export function useMessageSend({
             });
 
             if (!res.ok) {
-                const error = await res.json();
-                alert(error.error || 'Failed to schedule message');
+                const errData = await res.json();
+                Logger.warn('Failed to schedule message', { error: errData.error });
                 return;
             }
 
             // Clear input on success
             setInput('');
             clearDraft(conversationId);
-
-            // Show success toast
-            alert(`Message scheduled for ${scheduledFor.toLocaleString()}`);
+            Logger.info('Message scheduled', { scheduledFor: scheduledFor.toISOString() });
         } catch (error) {
             Logger.error('Schedule message error:', { error: error });
-            alert('Failed to schedule message. Please try again.');
         } finally {
             setIsScheduling(false);
         }

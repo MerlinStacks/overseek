@@ -607,6 +607,7 @@ export class EmailService {
                         if (parsed.attachments && parsed.attachments.length > 0) {
                             for (const attachment of parsed.attachments) {
                                 let isInline = false;
+                                let isSignatureImage = false;
 
                                 // Handle inline images
                                 if (html && attachment.contentId && attachment.content && attachment.contentType) {
@@ -621,8 +622,31 @@ export class EmailService {
                                     }
                                 }
 
+                                // Detect signature images that shouldn't appear as attachments:
+                                // - marked as "related" by mailparser (embedded in HTML context)
+                                // - inline disposition + small size (logos, social icons)
+                                // - inline disposition + generic name (image001.png, etc.)
+                                if (!isInline && attachment.contentType?.startsWith('image/')) {
+                                    const isRelated = (attachment as any).related === true;
+                                    const isInlineDisposition = (attachment as any).contentDisposition === 'inline';
+                                    const attachSize = attachment.size ?? attachment.content?.length ?? 0;
+                                    const isSmall = attachSize > 0 && attachSize < 30000;
+                                    const hasGenericName = !attachment.filename ||
+                                        /^image\d{0,3}\.\w+$/i.test(attachment.filename);
+
+                                    if (isRelated || (isInlineDisposition && (isSmall || hasGenericName))) {
+                                        isSignatureImage = true;
+                                        Logger.info('[checkEmails] Skipping signature image', {
+                                            filename: attachment.filename,
+                                            disposition: (attachment as any).contentDisposition,
+                                            related: (attachment as any).related,
+                                            size: attachSize
+                                        });
+                                    }
+                                }
+
                                 // Handle regular attachments (or unreferenced inline ones)
-                                if (!isInline && attachment.filename && attachment.content) {
+                                if (!isInline && !isSignatureImage && attachment.filename && attachment.content) {
                                     try {
                                         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
                                         const filename = uniqueSuffix + '-' + attachment.filename;

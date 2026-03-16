@@ -183,33 +183,33 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
     useVisibilityPolling(fetchLog, 15000, [fetchLog], 'visitor-log');
 
     if (loading && visitors.length === 0) {
-        return <div className="p-4 text-xs text-gray-500">Loading log...</div>;
+        return <div className="p-4 text-xs text-slate-500 dark:text-slate-400">Loading log...</div>;
     }
 
     return (
-        <div className="h-full overflow-hidden flex flex-col bg-white rounded-xl border border-gray-100 shadow-xs">
+        <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-slate-800/90 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-xs">
             {/* Header */}
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
                 <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-blue-500" />
-                    <span className="font-semibold text-gray-800 text-sm">Live Visitor Log</span>
+                    <span className="font-semibold text-slate-800 dark:text-white text-sm">Live Visitor Log</span>
                 </div>
-                <span className="text-xs text-gray-400">{visitors.length} visitors</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">{visitors.length} visitors</span>
             </div>
 
             {/* Visitor Stream */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {visitors.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-8">
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 py-8">
                         <Users className="w-8 h-8 mb-2 opacity-50" />
                         <span className="text-sm">No recent visitors</span>
                     </div>
                 ) : (
-                    <div className="divide-y divide-gray-50">
+                    <div className="divide-y divide-slate-50 dark:divide-slate-700/50">
                         {visitors.map(v => (
                             <div
                                 key={v.id}
-                                className="p-3 hover:bg-gray-50/50 transition-colors cursor-pointer group"
+                                className="p-3 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer group"
                                 onClick={() => setSelectedVisitor(v.visitorId)}
                             >
                                 {/* Visitor Header Row */}
@@ -221,12 +221,12 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
                                         </div>
                                         {/* Name & Location */}
                                         <div className="flex flex-col min-w-0">
-                                            <span className="font-medium text-gray-800 text-sm truncate">
+                                            <span className="font-medium text-slate-800 dark:text-slate-200 text-sm truncate">
                                                 {v.customer?.firstName
                                                     ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
                                                     : v.email || `Visitor ${v.visitorId.slice(0, 6)}`}
                                             </span>
-                                            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                                            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
                                                 {/* Device/Browser Icons */}
                                                 <DeviceBrowserBadge
                                                     browser={v.browser}
@@ -246,24 +246,24 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
                                             </div>
                                             {/* Traffic Source Row */}
                                             {(v.utmCampaign || v.utmSource || v.referrer) && (
-                                                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                                <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                                     <Link2 className="w-3 h-3 text-blue-400" />
                                                     <span className="truncate">
                                                         {v.utmCampaign ? (
                                                             <>
-                                                                <span className="text-gray-400">Campaign:</span>{' '}
-                                                                <span className="font-medium text-blue-600">{v.utmCampaign}</span>
-                                                                {v.utmSource && <span className="text-gray-400"> via {v.utmSource}</span>}
+                                                                <span className="text-slate-400 dark:text-slate-500">Campaign:</span>{' '}
+                                                                <span className="font-medium text-blue-600 dark:text-blue-400">{v.utmCampaign}</span>
+                                                                {v.utmSource && <span className="text-slate-400 dark:text-slate-500"> via {v.utmSource}</span>}
                                                             </>
                                                         ) : v.utmSource ? (
                                                             <>
-                                                                <span className="text-gray-400">Source:</span>{' '}
+                                                                <span className="text-slate-400 dark:text-slate-500">Source:</span>{' '}
                                                                 <span className="font-medium">{v.utmSource}</span>
-                                                                {v.utmMedium && <span className="text-gray-400"> / {v.utmMedium}</span>}
+                                                                {v.utmMedium && <span className="text-slate-400 dark:text-slate-500"> / {v.utmMedium}</span>}
                                                             </>
                                                         ) : v.referrer ? (
                                                             <>
-                                                                <span className="text-gray-400">Referrer:</span>{' '}
+                                                                <span className="text-slate-400 dark:text-slate-500">Referrer:</span>{' '}
                                                                 <span className="font-medium">{v.referrer.replace(/^https?:\/\//, '').split('/')[0]}</span>
                                                             </>
                                                         ) : null}
@@ -275,15 +275,15 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
                                     {/* Actions count badge + Returning indicator */}
                                     <div className="flex items-center gap-2 shrink-0">
                                         {(v.totalVisits ?? 1) > 1 && (
-                                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full flex items-center gap-1" title={`${v.totalVisits} total visits since ${v.firstTouchAt ? new Date(v.firstTouchAt).toLocaleDateString() : 'first visit'}`}>
+                                            <span className="text-xs bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full flex items-center gap-1" title={`${v.totalVisits} total visits since ${v.firstTouchAt ? new Date(v.firstTouchAt).toLocaleDateString() : 'first visit'}`}>
                                                 <RefreshCw className="w-3 h-3" />
                                                 Returning
                                             </span>
                                         )}
-                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                        <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">
                                             {v._count?.events || 0} actions
                                         </span>
-                                        <ExternalLink className="w-3 h-3 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        <ExternalLink className="w-3 h-3 text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                 </div>
 
@@ -342,7 +342,7 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
                                                 );
                                             })}
                                             {dedupedEvents.length > 8 && (
-                                                <span className="text-xs text-gray-400 ml-1">+{dedupedEvents.length - 8}</span>
+                                                <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">+{dedupedEvents.length - 8}</span>
                                             )}
                                         </div>
                                     );

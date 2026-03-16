@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -59,6 +59,17 @@ export const AnalyticsOverviewPage: React.FC = () => {
         fetchData();
     }, [currentAccount, token, days]);
 
+    /** Derive startDate/endDate from the days filter for widget props */
+    const dateRange = useMemo(() => {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - days);
+        return {
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0]
+        };
+    }, [days]);
+
     return (
         <div className="p-6 space-y-6">
             <div className="flex items-center justify-between">
@@ -76,7 +87,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <FunnelWidget days={days} />
+                        <FunnelWidget dateRange={dateRange} />
                     </CardContent>
                 </Card>
 
@@ -88,7 +99,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <AnalyticsStatsWidget days={days} />
+                        <AnalyticsStatsWidget dateRange={dateRange} />
                     </CardContent>
                 </Card>
             </div>

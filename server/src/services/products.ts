@@ -131,6 +131,7 @@ export class ProductsService {
                 binLocation: productData.binLocation,
                 name: productData.name,
                 stockStatus: productData.stockStatus,
+                manageStock: productData.manageStock,
                 sku: productData.sku,
                 price: productData.price ? parseFloat(productData.price) : undefined,
                 weight: productData.weight ? parseFloat(productData.weight) : undefined,

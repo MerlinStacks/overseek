@@ -136,6 +136,15 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                 let mergedCount = 0;
                 for (const sourceId of sourceIds) {
                     try {
+                        // Why: verify sourceId belongs to this account to prevent
+                        // cross-account data theft via guessed conversation IDs.
+                        const sourceConv = await prisma.conversation.findFirst({
+                            where: { id: sourceId, accountId }
+                        });
+                        if (!sourceConv) {
+                            Logger.warn('Bulk merge: source not in account', { sourceId, accountId });
+                            continue;
+                        }
                         await chatService.mergeConversations(targetId, sourceId);
                         mergedCount++;
                     } catch (mergeError: any) {

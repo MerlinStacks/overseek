@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Save, ArrowLeft, Loader2, CheckCircle, AlertCircle, X, FileText, Eye, ChevronDown, FileStack, File } from 'lucide-react';
+import { Save, ArrowLeft, Loader2, CheckCircle, AlertCircle, X, FileText, Eye, ChevronDown, FileStack, File, Download, Printer, Copy } from 'lucide-react';
 import { api } from '../services/api';
 import { generateId } from './invoiceUtils';
+import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { DesignerSidebar } from './DesignerSidebar';
 import { DesignerCanvas } from './DesignerCanvas';
 import { DesignerProperties } from './DesignerProperties';
@@ -27,8 +28,18 @@ export function InvoiceDesigner() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isDirty, setIsDirty] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [showPreview, setShowPreview] = useState(false);
+    const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+    // Refs for keyboard shortcut access to latest state
+    const isDirtyRef = useRef(isDirty);
+    isDirtyRef.current = isDirty;
+    const selectedIdRef = useRef(selectedId);
+    selectedIdRef.current = selectedId;
+    const showPreviewRef = useRef(showPreview);
+    showPreviewRef.current = showPreview;
 
     // Preview state
     const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -132,6 +143,7 @@ export function InvoiceDesigner() {
     const demoData = {
         number: 'DEMO-0001',
         date_created: new Date().toISOString(),
+        currency: 'AUD',
         billing: {
             first_name: 'John',
             last_name: 'Doe',
@@ -147,8 +159,9 @@ export function InvoiceDesigner() {
             { name: 'Product B', quantity: 1, price: '75.00', total: '75.00' },
         ],
         subtotal: '125.00',
+        shipping_total: '10.00',
         total_tax: '12.50',
-        total: '137.50'
+        total: '147.50'
     };
 
     const addItem = (type: string, parentRowId?: string) => {
@@ -230,7 +243,8 @@ export function InvoiceDesigner() {
         setItems(prev => prev.map(i => i.id === selectedId ? { ...i, ...updates } : i));
     };
 
-    const deleteItem = () => {
+    const deleteItem = useCallback(() => {
+        if (!selectedId) return;
         // Also remove from any parent row's children array
         setItems(prev => {
             const itemToDelete = prev.find(i => i.id === selectedId);
@@ -247,9 +261,51 @@ export function InvoiceDesigner() {
         });
         setLayout(prev => prev.filter(l => l.i !== selectedId));
         setSelectedId(null);
-    };
+        setIsDirty(true);
+    }, [selectedId]);
 
-    const saveTemplate = async () => {
+    /** Duplicates the currently selected item with a new ID, offset +1 row down. */
+    const duplicateItem = useCallback(() => {
+        if (!selectedId) return;
+        const source = items.find(i => i.id === selectedId);
+        const sourceLayout = layout.find(l => l.i === selectedId);
+        if (!source || !sourceLayout) return;
+
+        const newId = generateId();
+        const clonedItem = { ...JSON.parse(JSON.stringify(source)), id: newId };
+        const clonedLayout = {
+            ...sourceLayout,
+            i: newId,
+            y: sourceLayout.y + sourceLayout.h,
+        };
+
+        // If duplicating a row, also duplicate its children
+        const newChildItems: any[] = [];
+        const newChildLayouts: any[] = [];
+        if (source.type === 'row' && source.children?.length > 0) {
+            const newChildIds: string[] = [];
+            for (const childId of source.children) {
+                const childItem = items.find(i => i.id === childId);
+                if (!childItem) continue;
+                const newChildId = generateId();
+                newChildIds.push(newChildId);
+                newChildItems.push({ ...JSON.parse(JSON.stringify(childItem)), id: newChildId });
+                // Row children may have layout entries too
+                const childLayout = layout.find(l => l.i === childId);
+                if (childLayout) {
+                    newChildLayouts.push({ ...childLayout, i: newChildId });
+                }
+            }
+            clonedItem.children = newChildIds;
+        }
+
+        setItems(prev => [...prev, clonedItem, ...newChildItems]);
+        setLayout(prev => [...prev, clonedLayout, ...newChildLayouts]);
+        setSelectedId(newId);
+        setIsDirty(true);
+    }, [selectedId, items, layout]);
+
+    const saveTemplate = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsSaving(true);
         setSaveMessage(null);
@@ -271,6 +327,7 @@ export function InvoiceDesigner() {
             }
 
             setSaveMessage({ type: 'success', text: 'Template saved successfully!' });
+            setIsDirty(false);
             setTimeout(() => setSaveMessage(null), 3000);
         } catch (err: any) {
             Logger.error('Failed to save template', { error: err });
@@ -278,6 +335,86 @@ export function InvoiceDesigner() {
         } finally {
             setIsSaving(false);
         }
+    }, [currentAccount, token, name, layout, items]);
+
+    // Track dirty state — only flip dirty on user-initiated changes, not template load
+    const hasLoadedRef = useRef(false);
+    useEffect(() => {
+        // Skip the first render + any renders before/during template load
+        if (isLoading) return;
+        if (!hasLoadedRef.current) {
+            // Mark loaded after the template hydration settles
+            hasLoadedRef.current = true;
+            return;
+        }
+        setIsDirty(true);
+    }, [layout, items, isLoading]);
+
+    // Warn on page close when dirty
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (isDirtyRef.current) {
+                e.preventDefault();
+            }
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, []);
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            // Don't trigger when typing in inputs/textareas
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveTemplate();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                duplicateItem();
+            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedIdRef.current) {
+                    e.preventDefault();
+                    deleteItem();
+                }
+            } else if (e.key === 'Escape') {
+                if (showPreviewRef.current) {
+                    setShowPreview(false);
+                } else if (selectedIdRef.current) {
+                    setSelectedId(null);
+                }
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [saveTemplate, duplicateItem, deleteItem]);
+
+    /** Downloads a PDF using the client-side jsPDF generator. Requires a real order. */
+    const handleDownloadPdf = async () => {
+        const orderData = previewOrder || demoData;
+        setIsDownloadingPdf(true);
+        try {
+            await generateInvoicePDF(orderData, layout, items, name);
+        } catch (err) {
+            Logger.error('Failed to generate PDF', { error: err });
+            setSaveMessage({ type: 'error', text: 'Failed to generate PDF' });
+            setTimeout(() => setSaveMessage(null), 3000);
+        } finally {
+            setIsDownloadingPdf(false);
+        }
+    };
+
+    /** Prints the current preview via window.print() */
+    const handlePrint = () => {
+        window.print();
+    };
+
+    /** Navigates back with unsaved changes confirmation */
+    const handleBack = () => {
+        if (isDirty && !window.confirm('You have unsaved changes. Leave anyway?')) return;
+        navigate(-1);
     };
 
     if (isLoading) {
@@ -305,7 +442,7 @@ export function InvoiceDesigner() {
                 <div className="flex items-center gap-4">
                     <button
                         type="button"
-                        onClick={() => navigate(-1)}
+                        onClick={handleBack}
                         className="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
                     >
                         <ArrowLeft size={20} />
@@ -446,6 +583,27 @@ export function InvoiceDesigner() {
                                 {/* Close Button */}
                                 <button
                                     type="button"
+                                    onClick={handlePrint}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-sm font-medium transition-all"
+                                    title="Print invoice"
+                                >
+                                    <Printer size={14} />
+                                    Print
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadPdf}
+                                    disabled={isDownloadingPdf}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-all disabled:opacity-60"
+                                    title="Download as PDF"
+                                >
+                                    {isDownloadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                    PDF
+                                </button>
+
+                                <button
+                                    type="button"
                                     onClick={() => setShowPreview(false)}
                                     className="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
                                 >
@@ -518,6 +676,7 @@ export function InvoiceDesigner() {
                         selectedId={selectedId}
                         onUpdateItem={updateItem}
                         onDeleteItem={deleteItem}
+                        onDuplicateItem={duplicateItem}
                         onClose={() => setSelectedId(null)}
                         token={token || undefined}
                         accountId={currentAccount?.id}

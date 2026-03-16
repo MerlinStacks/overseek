@@ -8,18 +8,47 @@ import { debounce } from '../utils/debounce';
 const DRAFT_KEY_PREFIX = 'inbox_draft_';
 
 /**
+ * Performs the actual localStorage write for a draft.
+ * Extracted so the debounced wrapper can call it with current args.
+ */
+function writeDraft(conversationId: string, content: string): void {
+    try {
+        const key = `${DRAFT_KEY_PREFIX}${conversationId}`;
+        const plainText = content.replace(/<[^>]*>/g, '').trim();
+        if (plainText) {
+            localStorage.setItem(key, content);
+        } else {
+            localStorage.removeItem(key);
+        }
+    } catch {
+        // Silently fail if localStorage is full/unavailable
+    }
+}
+
+/**
  * Returns draft management functions for inbox conversations.
  * Drafts are stored in localStorage keyed by conversation ID.
  */
 export function useDrafts() {
-    // Debounced save ref to prevent excessive writes
-    const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
+    // Store latest args so the single debounced function always writes the
+    // most recent values when it fires.
+    const latestArgsRef = useRef<{ conversationId: string; content: string }>({
+        conversationId: '',
+        content: ''
+    });
 
-    // Cleanup debounced function on unmount
+    // Create the debounced writer exactly once and reuse it.
+    const debouncedSaveRef = useRef(
+        debounce(() => {
+            const { conversationId, content } = latestArgsRef.current;
+            if (conversationId) writeDraft(conversationId, content);
+        }, 500)
+    );
+
+    // Cleanup on unmount
     useEffect(() => {
-        return () => {
-            debouncedSaveRef.current?.cancel();
-        };
+        const fn = debouncedSaveRef.current;
+        return () => fn.cancel();
     }, []);
 
     /**
@@ -39,28 +68,7 @@ export function useDrafts() {
      */
     const saveDraft = useCallback((conversationId: string, content: string) => {
         if (!conversationId) return;
-
-        // Cancel any pending save
-        debouncedSaveRef.current?.cancel();
-
-        // Create new debounced save
-        debouncedSaveRef.current = debounce(() => {
-            try {
-                const key = `${DRAFT_KEY_PREFIX}${conversationId}`;
-                // Strip HTML to check if there's actual content
-                const plainText = content.replace(/<[^>]*>/g, '').trim();
-
-                if (plainText) {
-                    localStorage.setItem(key, content);
-                } else {
-                    // Remove empty drafts
-                    localStorage.removeItem(key);
-                }
-            } catch {
-                // Silently fail if localStorage is full/unavailable
-            }
-        }, 500);
-
+        latestArgsRef.current = { conversationId, content };
         debouncedSaveRef.current();
     }, []);
 

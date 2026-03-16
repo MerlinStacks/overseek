@@ -21,7 +21,10 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
         fetch('/api/analytics/recent-orders', {
             headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
         })
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
             .then(data => setOrders(Array.isArray(data) ? data : []))
             .catch(e => Logger.error('Failed to fetch orders', { error: e }))
             .finally(() => setLoading(false));

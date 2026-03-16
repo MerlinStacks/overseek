@@ -113,7 +113,7 @@ export function MobileChat() {
             style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
         >
             {/* Header */}
-            <header className="flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-3">
+            <header className="flex-shrink-0 bg-slate-800/90 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-3 relative z-10">
                 <button
                     onClick={() => navigate('/m/inbox')}
                     className="p-2 -ml-2 rounded-full hover:bg-slate-700 active:bg-slate-600 text-white"

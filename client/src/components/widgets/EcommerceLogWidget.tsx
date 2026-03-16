@@ -62,7 +62,7 @@ const EcommerceLogWidget = () => {
             case 'checkout_start': return <CreditCard className="w-4 h-4 text-blue-500" />;
             case 'checkout_success':
             case 'purchase': return <CheckCircle className="w-4 h-4 text-green-600" />;
-            default: return <ShoppingCart className="w-4 h-4 text-gray-400" />;
+            default: return <ShoppingCart className="w-4 h-4 text-slate-400 dark:text-slate-500" />;
         }
     };
 
@@ -75,45 +75,45 @@ const EcommerceLogWidget = () => {
                     ? products.join(', ') + (e.payload?.items?.length > 2 ? ` +${e.payload.items.length - 2} more` : '')
                     : 'items';
                 const total = e.payload?.total ? ` ($${e.payload.total})` : '';
-                return <span><span className="font-semibold text-gray-800">{who}</span> added <span className="text-gray-700">{productLabel}</span>{total}</span>;
+                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> added <span className="text-slate-700 dark:text-slate-300">{productLabel}</span>{total}</span>;
             case 'remove_from_cart':
-                return <span><span className="font-semibold text-gray-800">{who}</span> removed items from cart</span>;
+                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> removed items from cart</span>;
             case 'checkout_start':
-                return <span><span className="font-semibold text-gray-800">{who}</span> started checkout</span>;
+                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> started checkout</span>;
             case 'checkout_success':
             case 'purchase':
-                return <span><span className="font-semibold text-emerald-700">{who} completed a purchase!</span></span>;
+                return <span><span className="font-semibold text-emerald-700 dark:text-emerald-400">{who} completed a purchase!</span></span>;
             case 'cart_view':
                 const cartTotal = e.payload?.total ? ` ($${e.payload.total})` : '';
-                return <span><span className="font-semibold text-gray-800">{who}</span> viewed cart{cartTotal}</span>;
+                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> viewed cart{cartTotal}</span>;
             case 'checkout_view':
                 const checkoutTotal = e.payload?.total ? ` ($${e.payload.total})` : '';
-                return <span><span className="font-semibold text-gray-800">{who}</span> viewing checkout{checkoutTotal}</span>;
+                return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> viewing checkout{checkoutTotal}</span>;
             default:
                 return <span>{who} performed {e.type}</span>;
         }
     };
 
-    if (loading && events.length === 0) return <div className="p-4 text-xs text-gray-500">Loading stream...</div>;
+    if (loading && events.length === 0) return <div className="p-4 text-xs text-slate-500 dark:text-slate-400">Loading stream...</div>;
 
     return (
         <div className="h-full overflow-y-auto custom-scrollbar p-2 space-y-2">
             {events.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
                     <ShoppingCart className="w-6 h-6 mb-2 opacity-50" />
                     <span className="text-xs">No recent commerce activity</span>
                 </div>
             ) : (
                 events.map(e => (
-                    <div key={e.id} className="flex gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-xs">
-                        <div className="mt-0.5 shrink-0 bg-gray-50 p-2 rounded-full h-fit">
+                    <div key={e.id} className="flex gap-3 p-3 bg-white dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 rounded-lg shadow-xs">
+                        <div className="mt-0.5 shrink-0 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-full h-fit">
                             {getIcon(e.type)}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <div className="text-sm text-gray-600 truncate">
+                            <div className="text-sm text-slate-600 dark:text-slate-300 truncate">
                                 {getLabel(e)}
                             </div>
-                            <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 dark:text-slate-500">
                                 <span>{formatDistanceToNow(new Date(e.createdAt), { addSuffix: true })}</span>
                                 {e.session?.country && (
                                     <>

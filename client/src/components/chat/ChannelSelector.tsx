@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Mail, MessageSquare, Facebook, Music, ChevronDown, Smartphone } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { useClickOutside } from '../../hooks/useClickOutside';
 
 export type ConversationChannel = 'EMAIL' | 'CHAT' | 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'SMS';
 
@@ -48,23 +49,12 @@ export function ChannelSelector({
     disabled = false
 }: ChannelSelectorProps) {
     const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false));
 
     // Filter to only available channels
     const availableChannels = channels.filter(c => c.available);
     const selected = channels.find(c => c.channel === selectedChannel);
     const config = CHANNEL_CONFIG[selectedChannel];
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
     // Only show static display if no channels available (fallback)
     if (availableChannels.length === 0) {

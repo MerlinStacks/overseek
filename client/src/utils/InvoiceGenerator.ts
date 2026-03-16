@@ -2,6 +2,7 @@
 import jsPDF from 'jspdf';
 import { Logger } from './logger';
 import autoTable from 'jspdf-autotable';
+import { getItemMeta, resolveHandlebars } from './invoiceItemUtils';
 
 interface InvoiceLayoutItem {
     id: string;
@@ -39,94 +40,6 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
         img.onload = () => resolve(img);
         img.onerror = reject;
     });
-};
-
-/**
- * Safely converts any value to a displayable string
- * Handles nested objects, arrays, and primitive types
- */
-const safeStringify = (val: any): string => {
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-    if (Array.isArray(val)) return val.map(v => safeStringify(v)).join(', ');
-    if (typeof val === 'object') {
-        const entries = Object.entries(val);
-        if (entries.length === 0) return '';
-        return entries.map(([_k, v]) => safeStringify(v)).filter(Boolean).join(', ');
-    }
-    return String(val);
-};
-
-/**
- * Extracts user-facing metadata from an order line item
- * Filters out internal plugin/system keys and returns label/value pairs
- * Prevents duplicate entries by tracking seen labels
- */
-const getItemMeta = (item: any): { label: string; value: string }[] => {
-    const meta: { label: string; value: string }[] = [];
-    const seenLabels = new Set<string>(); // Track labels to prevent duplicates
-
-    // Helper to add meta entry only if not already seen
-    const addMeta = (label: string, value: string) => {
-        const normalizedLabel = label.toLowerCase().trim();
-        if (!seenLabels.has(normalizedLabel) && value.length > 0 && value.length < 200) {
-            seenLabels.add(normalizedLabel);
-            meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value });
-        }
-    };
-
-    // Keys to always exclude (internal plugin/system keys)
-    const excludedKeyPatterns = [
-        /^_/,                    // Internal underscore-prefixed keys
-        /^pa_/,                  // Already handled separately for variations
-        /wcpa/i,                 // WCPA plugin internal data
-        /meta_data/i,            // Nested meta references
-        /^reduced_stock/i,       // Stock management internal
-        /label_map/i,            // Internal mappings
-        /droppable/i,            // UI state fields
-        /^id$/i,                 // Internal IDs
-        /^key$/i,                // Internal keys
-    ];
-
-    const isExcludedKey = (key: string) =>
-        excludedKeyPatterns.some(pattern => pattern.test(key));
-
-    // Standard fields
-    if (item.sku) addMeta('SKU', item.sku);
-
-    // Variation attributes only (pa_ prefixed keys)
-    if (item.variation_id && item.variation_id > 0) {
-        const attrs = item.meta_data?.filter((m: any) =>
-            m.key?.startsWith('pa_')
-        ) || [];
-        attrs.forEach((attr: any) => {
-            const label = attr.display_key || attr.key.replace('pa_', '').replace(/_/g, ' ');
-            const rawValue = attr.display_value || attr.value;
-            const strValue = safeStringify(rawValue);
-            addMeta(label, strValue);
-        });
-    }
-
-    // Custom meta fields - strict filtering (non pa_ keys with display values)
-    const customMeta = item.meta_data?.filter((m: any) => {
-        const key = m.key || '';
-        if (isExcludedKey(key)) return false;
-        if (key.startsWith('pa_')) return false; // Already handled above
-        if (!m.display_key && !m.display_value) return false;
-        return true;
-    }) || [];
-
-    customMeta.forEach((m: any) => {
-        const rawValue = m.display_value || m.value;
-        const strValue = safeStringify(rawValue);
-        if (strValue.length > 0) {
-            const label = m.display_key || m.key.replace(/_/g, ' ');
-            addMeta(label, strValue);
-        }
-    });
-
-    return meta;
 };
 
 
@@ -277,12 +190,8 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
         }
         else if (type === 'text') {
             let text = content || '';
-            // Handlebars replacement
-            text = text.replace(/{{(.*?)}}/g, (_: any, key: string) => {
-                const k = key.trim();
-                // Deep access could be handled here if needed
-                return order[k] || `{{${k}}}`;
-            });
+            // Handlebars replacement with dot-notation support
+            text = resolveHandlebars(text, order);
 
             // Apply Styles
             const fontSize = parseInt(style.fontSize || '14px');
@@ -457,6 +366,10 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             if (shippingTotal > 0) {
                 footerRows.push(['', '', 'Shipping', formatPrice(shippingTotal, order.currency)]);
             }
+            const discountTotal = Number(order.discount_total || 0);
+            if (discountTotal > 0) {
+                footerRows.push(['', '', 'Discount', `-${formatPrice(discountTotal, order.currency)}`]);
+            }
             footerRows.push(['', '', 'Tax', formatPrice(tax, order.currency)]);
             footerRows.push(['', '', { content: 'Total', styles: { fontStyle: 'bold', fontSize: 11 } }, { content: formatPrice(total, order.currency), styles: { fontStyle: 'bold', fontSize: 11 } }]);
 
@@ -501,8 +414,18 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
 
-            doc.text(`Subtotal: ${formatPrice(Number(order.total) - Number(order.total_tax), order.currency)}`, x + w - 5, currentY, { align: 'right' });
+            const subtotalVal = Number(order.total) - Number(order.total_tax || 0) - Number(order.shipping_total || 0);
+            doc.text(`Subtotal: ${formatPrice(subtotalVal, order.currency)}`, x + w - 5, currentY, { align: 'right' });
             currentY += 5;
+            if (Number(order.shipping_total || 0) > 0) {
+                doc.text(`Shipping: ${formatPrice(order.shipping_total, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+                currentY += 5;
+            }
+            const discountVal = Number(order.discount_total || 0);
+            if (discountVal > 0) {
+                doc.text(`Discount: -${formatPrice(discountVal, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+                currentY += 5;
+            }
             doc.text(`Tax: ${formatPrice(order.total_tax, order.currency)}`, x + w - 5, currentY, { align: 'right' });
             currentY += 6;
             doc.setFont("helvetica", "bold");

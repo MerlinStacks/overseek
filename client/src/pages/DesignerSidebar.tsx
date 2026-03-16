@@ -1,4 +1,4 @@
-import { Type, Image as ImageIcon, Table, DollarSign, Sparkles, User, LayoutTemplate, Heading, Rows } from 'lucide-react';
+import { Type, Image as ImageIcon, Table, DollarSign, User, LayoutTemplate, Heading, Rows, FileText } from 'lucide-react';
 import { TOOLBOX_ITEMS } from './invoiceUtils';
 
 interface DesignerSidebarProps {
@@ -10,6 +10,7 @@ const ICONS: Record<string, any> = {
     header: Heading,
     text: Type,
     image: ImageIcon,
+    order_details: FileText,
     customer_details: User,
     order_table: Table,
     totals: DollarSign,
@@ -37,7 +38,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                    <Sparkles size={16} className="text-indigo-500" />
+                    <LayoutTemplate size={16} className="text-indigo-500" />
                     <h3 className="font-bold text-slate-700 text-sm tracking-wide">Components</h3>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">Drag or click to add</p>

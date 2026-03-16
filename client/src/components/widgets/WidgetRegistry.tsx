@@ -1,5 +1,6 @@
 import { ReactNode, lazy, Suspense, ComponentType } from 'react';
 import { Loader2 } from 'lucide-react';
+import { WidgetErrorBoundary } from './WidgetErrorBoundary';
 
 /**
  * Lazy-loaded widget imports for code-splitting.
@@ -29,6 +30,9 @@ const HotCacheWidget = lazy(() => import('./HotCacheWidget'));
 const QuickProductsWidget = lazy(() => import('./QuickProductsWidget'));
 const AdSuggestionsWidget = lazy(() => import('./AdSuggestionsWidget').then(m => ({ default: m.AdSuggestionsWidget })));
 const CartAbandonmentWidget = lazy(() => import('./CartAbandonmentWidget').then(m => ({ default: m.CartAbandonmentWidget })));
+const StatusCenterWidget = lazy(() => import('./StatusCenterWidget').then(m => ({ default: m.StatusCenterWidget })));
+const FunnelWidget = lazy(() => import('./FunnelWidget'));
+const AnalyticsStatsWidget = lazy(() => import('./AnalyticsStatsWidget'));
 
 // Heavy widgets (echarts ~617KB) - deferred until actually rendered
 const CustomerGrowthWidget = lazy(() => import('./CustomerGrowthWidget').then(m => ({ default: m.CustomerGrowthWidget })));
@@ -83,14 +87,17 @@ export const WidgetRegistry: Record<string, {
     'live-carts': { component: LiveCartsWidget, label: 'Live Carts', defaultW: 4, defaultH: 4, requiredPermission: 'view_orders' },
     'visitor-log': { component: VisitorLogWidget, label: 'Visitor Log', defaultW: 6, defaultH: 6 },
     'ecommerce-log': { component: EcommerceLogWidget, label: 'Ecommerce Stream', defaultW: 6, defaultH: 6, requiredPermission: 'view_orders' },
-    'hot-cache': { component: HotCacheWidget as any, label: 'Hot Cache', defaultW: 4, defaultH: 5 },
-    'quick-products': { component: QuickProductsWidget as any, label: 'Quick Products', defaultW: 4, defaultH: 6, requiredPermission: 'view_products' },
+    'hot-cache': { component: HotCacheWidget, label: 'Hot Cache', defaultW: 4, defaultH: 5 },
+    'quick-products': { component: QuickProductsWidget, label: 'Quick Products', defaultW: 4, defaultH: 6, requiredPermission: 'view_products' },
     'visitor-count': { component: VisitorCountWidget, label: 'Live Visitors', defaultW: 3, defaultH: 2 },
     'open-inbox': { component: OpenInboxWidget, label: 'Open Inbox', defaultW: 3, defaultH: 2 },
     'ad-suggestions': { component: AdSuggestionsWidget, label: 'Ad Suggestions', defaultW: 4, defaultH: 5, requiredPermission: 'view_marketing' },
     'cart-abandonment': { component: CartAbandonmentWidget, label: 'Cart Abandonment', defaultW: 4, defaultH: 6, requiredPermission: 'view_finance' },
     'gold-price-margin': { component: GoldPriceMarginWidget, label: 'Gold Price Margins', defaultW: 4, defaultH: 5, requiredPermission: 'view_finance' },
-    'seo-keywords': { component: SeoKeywordsWidget, label: 'SEO Keywords', defaultW: 4, defaultH: 6 }
+    'seo-keywords': { component: SeoKeywordsWidget, label: 'SEO Keywords', defaultW: 4, defaultH: 6 },
+    'status-center': { component: StatusCenterWidget, label: 'Status Center', defaultW: 4, defaultH: 6 },
+    'funnel': { component: FunnelWidget, label: 'Conversion Funnel', defaultW: 4, defaultH: 6 },
+    'analytics-stats': { component: AnalyticsStatsWidget, label: 'Analytics Stats', defaultW: 4, defaultH: 6 }
 };
 
 /**
@@ -102,8 +109,10 @@ export function renderWidget(key: string, props: WidgetProps): ReactNode {
     if (!entry) return <div className="p-4 bg-red-50 text-red-500">Widget {key} not found</div>;
     const Component = entry.component;
     return (
-        <Suspense fallback={<WidgetSkeleton />}>
-            <Component {...props} />
-        </Suspense>
+        <WidgetErrorBoundary widgetKey={key}>
+            <Suspense fallback={<WidgetSkeleton />}>
+                <Component {...props} />
+            </Suspense>
+        </WidgetErrorBoundary>
     );
 }

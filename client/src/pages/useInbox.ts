@@ -7,7 +7,7 @@
  * component is purely presentational.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Logger } from '../utils/logger';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +16,7 @@ import { useCannedResponses } from '../hooks/useCannedResponses';
 import { useEmailAccounts } from '../hooks/useEmailAccounts';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useInboxSocket } from '../hooks/useInboxSocket';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
 
 /** Shared auth headers builder — eliminates per-fetch boilerplate */
@@ -230,9 +231,8 @@ export function useInbox() {
                 setConversations(prev => prev.map(c =>
                     c.id === selectedId ? { ...c, status: 'CLOSED' } : c
                 ));
-                alert('Contact blocked. Their future messages will be auto-resolved.');
             } else {
-                alert('Failed to block contact');
+                Logger.warn('Failed to block contact', { email: recipientEmail });
             }
         };
     }, [recipientEmail, selectedId, token, currentAccount, patchConversation]);
@@ -274,7 +274,6 @@ export function useInbox() {
             }
         } catch (error: any) {
             Logger.error('Failed to send message', { error: error?.message || error });
-            alert(error?.message || 'Failed to send');
             throw error;
         }
     }, [selectedId, token, currentAccount]);
@@ -292,84 +291,16 @@ export function useInbox() {
     // Visibility-based polling fallback
     useVisibilityPolling(() => fetchConversations(), 30000, [fetchConversations], 'inbox-conversations');
 
-    // Socket listeners
-    useEffect(() => {
-        if (!socket || !currentAccount || !token) return;
-
-        const fetchNewConversation = async (id: string) => {
-            if (!currentAccount) return;
-            try {
-                const res = await fetch(`/api/chat/${id}`, {
-                    headers: buildHeaders(token, currentAccount.id),
-                });
-                if (res.ok) {
-                    const newConv = await res.json();
-                    setConversations(prev => {
-                        if (prev.find(c => c.id === id)) return prev;
-                        return [newConv, ...prev];
-                    });
-                }
-            } catch (error) {
-                Logger.error('Failed to fetch new conversation', { error });
-            }
-        };
-
-        socket.on('conversation:updated', async (data: any) => {
-            startTransition(() => {
-                setConversations(prev => {
-                    const idx = prev.findIndex(c => c.id === data.id);
-                    if (idx === -1) {
-                        fetchNewConversation(data.id);
-                        return prev;
-                    }
-                    const updated = [...prev];
-                    updated[idx] = {
-                        ...updated[idx],
-                        messages: [data.lastMessage],
-                        updatedAt: data.updatedAt,
-                        isRead: selectedId === data.id,
-                    };
-                    return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-                });
-            });
-
-            if (selectedId === data.id && data.lastMessage) {
-                setMessages(prev => {
-                    if (prev.find(m => m.id === data.lastMessage.id)) return prev;
-                    return [...prev, data.lastMessage];
-                });
-            }
-        });
-
-        socket.on('conversation:read', (data: { id: string }) => {
-            startTransition(() => {
-                setConversations(prev => prev.map(c =>
-                    c.id === data.id ? { ...c, isRead: true } : c
-                ));
-            });
-        });
-
-        socket.on('message:new', (msg: any) => {
-            if (selectedId === msg.conversationId) {
-                setMessages(prev => {
-                    const updated = [...prev, msg];
-                    messagesCache.current.set(msg.conversationId, updated);
-                    return updated;
-                });
-            } else {
-                const cached = messagesCache.current.get(msg.conversationId);
-                if (cached) {
-                    messagesCache.current.set(msg.conversationId, [...cached, msg]);
-                }
-            }
-        });
-
-        return () => {
-            socket.off('conversation:updated');
-            socket.off('conversation:read');
-            socket.off('message:new');
-        };
-    }, [socket, selectedId, currentAccount, token]);
+    // Socket listeners (extracted to reduce file size)
+    useInboxSocket({
+        socket,
+        selectedId,
+        token,
+        accountId: currentAccount?.id,
+        messagesCache,
+        setConversations,
+        setMessages,
+    });
 
     // Fetch messages when a conversation is selected
     useEffect(() => {

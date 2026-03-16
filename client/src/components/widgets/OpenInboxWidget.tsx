@@ -57,7 +57,7 @@ export function OpenInboxWidget(_props: WidgetProps) {
     return (
         <div
             onClick={handleClick}
-            className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 flex flex-col h-full justify-center items-center relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-6 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-slate-700/50 flex flex-col h-full justify-center items-center relative overflow-hidden cursor-pointer hover:shadow-md dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] transition-shadow"
         >
             {/* Notification Indicator */}
             {count > 0 && (
@@ -66,7 +66,7 @@ export function OpenInboxWidget(_props: WidgetProps) {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
                     </span>
-                    <span className="text-xs font-medium text-blue-600">Active</span>
+                    <span className="text-xs font-medium text-blue-600 dark:text-blue-400">Active</span>
                 </div>
             )}
 
@@ -75,14 +75,14 @@ export function OpenInboxWidget(_props: WidgetProps) {
                 {loading ? (
                     <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
                 ) : (
-                    <span className="text-5xl font-bold text-gray-900">{count}</span>
+                    <span className="text-5xl font-bold text-slate-900 dark:text-white">{count}</span>
                 )}
-                <p className="text-sm text-gray-500 mt-2 font-medium">Open Conversations</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Open Conversations</p>
             </div>
 
             {/* Background Icon */}
-            <div className="absolute -bottom-4 -right-4 text-gray-100 opacity-40 z-0">
-                <Inbox size={80} />
+            <div className="absolute -bottom-4 -right-4 opacity-[0.06] dark:opacity-[0.08] z-0">
+                <Inbox size={80} className="text-blue-600 dark:text-blue-400" />
             </div>
         </div>
     );

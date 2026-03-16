@@ -3,6 +3,7 @@ import { Logger } from '../../utils/logger';
 import { ShoppingCart, TrendingDown, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { WidgetProps } from './WidgetRegistry';
 
 interface ProductAbandonmentStat {
     productId: number;
@@ -30,7 +31,7 @@ interface CartAbandonmentWidgetProps {
     days?: number;
 }
 
-export function CartAbandonmentWidget({ className = '', days = 30 }: CartAbandonmentWidgetProps) {
+export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [data, setData] = useState<CartAbandonmentData | null>(null);
@@ -41,7 +42,7 @@ export function CartAbandonmentWidget({ className = '', days = 30 }: CartAbandon
         if (!currentAccount || !token) return;
 
         try {
-            const res = await fetch(`/api/tracking/cart-abandonment?days=${days}`, {
+            const res = await fetch(`/api/tracking/cart-abandonment?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
@@ -55,7 +56,7 @@ export function CartAbandonmentWidget({ className = '', days = 30 }: CartAbandon
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token, days]);
+    }, [currentAccount, token, dateRange]);
 
     useEffect(() => {
         fetchData();

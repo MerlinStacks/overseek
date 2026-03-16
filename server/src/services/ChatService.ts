@@ -342,15 +342,25 @@ export class ChatService {
     }
 
     async mergeConversations(targetId: string, sourceId: string) {
-        await prisma.message.updateMany({
-            where: { conversationId: sourceId },
-            data: { conversationId: targetId }
+        // Why: wrap in transaction so partial failure (e.g., crash after moving
+        // messages but before closing source) doesn't leave orphaned data.
+        await prisma.$transaction(async (tx) => {
+            await tx.message.updateMany({
+                where: { conversationId: sourceId },
+                data: { conversationId: targetId }
+            });
+            await tx.conversation.update({
+                where: { id: sourceId },
+                data: { status: 'CLOSED', mergedIntoId: targetId }
+            });
+            await tx.message.create({
+                data: {
+                    conversationId: targetId,
+                    content: `Merged conversation #${sourceId} into this thread.`,
+                    senderType: 'SYSTEM'
+                }
+            });
         });
-        await prisma.conversation.update({
-            where: { id: sourceId },
-            data: { status: 'CLOSED', mergedIntoId: targetId }
-        });
-        await this.addMessage(targetId, `Merged conversation #${sourceId} into this thread.`, 'SYSTEM');
         return { success: true };
     }
 

@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
-import { X, Trash2, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle, User, LayoutTemplate, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Heading, FileText } from 'lucide-react';
+import { X, Trash2, Copy, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle, User, LayoutTemplate, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Heading, FileText } from 'lucide-react';
 
 interface DesignerPropertiesProps {
     items: any[];
     selectedId: string | null;
     onUpdateItem: (updates: any) => void;
     onDeleteItem: () => void;
+    onDuplicateItem?: () => void;
     onClose: () => void;
     token?: string;
     accountId?: string;
@@ -27,7 +28,7 @@ const TYPE_CONFIG: Record<string, { icon: any; label: string; color: string }> =
  * DesignerProperties - Property editor panel for selected canvas items.
  * Allows editing content and deleting items.
  */
-export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteItem, onClose, token, accountId }: DesignerPropertiesProps) {
+export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteItem, onDuplicateItem, onClose, token, accountId }: DesignerPropertiesProps) {
     const selectedItem = items.find(i => i.id === selectedId);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -42,8 +43,9 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
     /**
      * Handles image file upload to server.
      * Uses FormData for multipart upload to /api/invoices/templates/upload-image.
+     * @param updateField - The item field to update with the uploaded URL ('content' for images, 'logo' for header logos)
      */
-    const handleImageUpload = async (file: File) => {
+    const handleImageUpload = async (file: File, updateField: 'content' | 'logo' = 'content') => {
         if (!token || !accountId) {
             setUploadError('Authentication required');
             return;
@@ -84,7 +86,7 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
             }
 
             const result = await response.json();
-            onUpdateItem({ content: result.url });
+            onUpdateItem({ [updateField]: result.url });
         } catch (error: any) {
             setUploadError(error.message || 'Failed to upload image');
         } finally {
@@ -157,31 +159,11 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                         onClick={() => fileInputRef.current?.click()}
                                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                         onDragLeave={() => setIsDragging(false)}
-                                        onDrop={async (e) => {
+                                        onDrop={(e) => {
                                             e.preventDefault();
                                             setIsDragging(false);
                                             const file = e.dataTransfer.files?.[0];
-                                            if (file && token && accountId) {
-                                                setIsUploading(true);
-                                                setUploadError(null);
-                                                try {
-                                                    const formData = new FormData();
-                                                    formData.append('file', file);
-                                                    const response = await fetch('/api/invoices/templates/upload-image', {
-                                                        method: 'POST',
-                                                        headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId },
-                                                        body: formData
-                                                    });
-                                                    if (response.ok) {
-                                                        const result = await response.json();
-                                                        onUpdateItem({ logo: result.url });
-                                                    }
-                                                } catch (err) {
-                                                    setUploadError('Upload failed');
-                                                } finally {
-                                                    setIsUploading(false);
-                                                }
-                                            }
+                                            if (file) handleImageUpload(file, 'logo');
                                         }}
                                     >
                                         <input
@@ -189,29 +171,9 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                             type="file"
                                             accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
                                             className="hidden"
-                                            onChange={async (e) => {
+                                            onChange={(e) => {
                                                 const file = e.target.files?.[0];
-                                                if (file && token && accountId) {
-                                                    setIsUploading(true);
-                                                    setUploadError(null);
-                                                    try {
-                                                        const formData = new FormData();
-                                                        formData.append('file', file);
-                                                        const response = await fetch('/api/invoices/templates/upload-image', {
-                                                            method: 'POST',
-                                                            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId },
-                                                            body: formData
-                                                        });
-                                                        if (response.ok) {
-                                                            const result = await response.json();
-                                                            onUpdateItem({ logo: result.url });
-                                                        }
-                                                    } catch (err) {
-                                                        setUploadError('Upload failed');
-                                                    } finally {
-                                                        setIsUploading(false);
-                                                    }
-                                                }
+                                                if (file) handleImageUpload(file, 'logo');
                                             }}
                                         />
                                         {isUploading ? (
@@ -476,14 +438,25 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                 </div>
             </div>
 
-            {/* Delete Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+            {/* Actions Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
+                {onDuplicateItem && (
+                    <button
+                        onClick={onDuplicateItem}
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 text-sm font-semibold transition-all border border-indigo-100 hover:border-indigo-200"
+                    >
+                        <Copy size={16} />
+                        Duplicate Component
+                        <span className="text-xs text-indigo-400 ml-auto">Ctrl+D</span>
+                    </button>
+                )}
                 <button
                     onClick={onDeleteItem}
                     className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 text-sm font-semibold transition-all border border-red-100 hover:border-red-200"
                 >
                     <Trash2 size={16} />
                     Delete Component
+                    <span className="text-xs text-red-400 ml-auto">Del</span>
                 </button>
             </div>
         </div>

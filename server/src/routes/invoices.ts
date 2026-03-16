@@ -9,6 +9,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 
 const invoiceService = new InvoiceService();
 
@@ -86,7 +87,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         try {
-            const data = await (request as any).file();
+            const data = await (request as any).file({ limits: { fileSize: 5 * 1024 * 1024 } });
             if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
             // Validate image types
@@ -97,9 +98,8 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             // Generate unique filename with account prefix for isolation
-            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
             const safeFilename = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const filename = `${accountId}-${uniqueSuffix}-${safeFilename}`;
+            const filename = `${accountId}-${randomUUID()}-${safeFilename}`;
             const filePath = path.join(invoiceImagesDir, filename);
 
             // Write file to disk
