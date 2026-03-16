@@ -170,47 +170,100 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Resolves all oklch() (and other modern CSS color functions) to rgb() on every
- * element in the tree. html2canvas 1.x cannot parse oklch(), which Tailwind v4
- * uses extensively. The browser's getComputedStyle() returns resolved rgb() values
- * regardless of the original CSS format, so we bake them into inline styles.
+ * Converts a modern CSS color (oklch, oklab, etc.) to a hex string using the
+ * Canvas 2D API. The canvas context's fillStyle setter accepts any valid CSS color
+ * and always returns a hex string (#rrggbb) when read back.
+ * Returns the original value if no conversion needed or conversion fails.
+ */
+const colorConversionCtx = document.createElement('canvas').getContext('2d');
+
+function resolveColorToHex(color: string): string {
+    if (!color || color === 'transparent' || color === 'none' || color === 'inherit'
+        || color === 'currentcolor' || color === 'initial' || color === 'unset') {
+        return color;
+    }
+    // Only convert if it contains an unsupported color function
+    if (!color.includes('oklch') && !color.includes('oklab')
+        && !color.includes('lab(') && !color.includes('lch(')
+        && !color.includes('color(')) {
+        return color;
+    }
+    try {
+        if (!colorConversionCtx) return color;
+        colorConversionCtx.fillStyle = '#000000'; // Reset
+        colorConversionCtx.fillStyle = color;
+        return colorConversionCtx.fillStyle; // Returns hex like #rrggbb
+    } catch {
+        return color;
+    }
+}
+
+/**
+ * Two-pronged fix for html2canvas 1.x not supporting oklch() colors:
+ *
+ * 1. Override CSS custom properties — Tailwind v4 defines oklch values in
+ *    custom properties on :root. html2canvas parses these from stylesheets.
+ *    We resolve them to hex and set them on the container (CSS inheritance
+ *    makes them override the :root values within the subtree).
+ *
+ * 2. Inline element colors — Walk every element and bake resolved colors
+ *    into inline styles, overriding any computed oklch values.
  */
 const COLOR_PROPERTIES = [
-    'color',
-    'backgroundColor',
-    'borderColor',
-    'borderTopColor',
-    'borderRightColor',
-    'borderBottomColor',
-    'borderLeftColor',
-    'outlineColor',
-    'textDecorationColor',
+    'color', 'backgroundColor', 'borderColor',
+    'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
+    'outlineColor', 'textDecorationColor',
 ] as const;
 
 function resolveColorsForCapture(container: HTMLElement): void {
-    const elements = container.querySelectorAll('*');
-    elements.forEach((el) => {
-        const htmlEl = el as HTMLElement;
-        const computed = getComputedStyle(htmlEl);
-        for (const prop of COLOR_PROPERTIES) {
-            const value = computed[prop];
-            // Only override if the computed value contains an unsupported function
-            if (value && (value.includes('oklch') || value.includes('oklab') || value.includes('lab(') || value.includes('lch('))) {
-                htmlEl.style[prop as any] = value;
+    // --- Phase 1: Override CSS custom properties containing oklch ---
+    // Tailwind v4 uses --color-*, --tw-*, etc. with oklch values on :root
+    try {
+        for (const sheet of Array.from(document.styleSheets)) {
+            try {
+                for (const rule of Array.from(sheet.cssRules)) {
+                    if (!(rule instanceof CSSStyleRule)) continue;
+                    // Check :root and * rules where custom properties are defined
+                    if (rule.selectorText === ':root' || rule.selectorText === '*'
+                        || rule.selectorText === ':host') {
+                        for (let i = 0; i < rule.style.length; i++) {
+                            const prop = rule.style[i];
+                            if (!prop.startsWith('--')) continue;
+                            const value = rule.style.getPropertyValue(prop).trim();
+                            if (value.includes('oklch') || value.includes('oklab')) {
+                                const resolved = resolveColorToHex(value);
+                                container.style.setProperty(prop, resolved);
+                            }
+                        }
+                    }
+                }
+            } catch {
+                // Cross-origin stylesheet — skip silently
             }
         }
-        // Also resolve box-shadow which may contain oklch colors
-        const shadow = computed.boxShadow;
-        if (shadow && shadow !== 'none' && (shadow.includes('oklch') || shadow.includes('oklab'))) {
-            htmlEl.style.boxShadow = shadow;
+    } catch {
+        // StyleSheets API not available
+    }
+
+    // --- Phase 2: Inline resolved colors on every element ---
+    const allElements = [container, ...Array.from(container.querySelectorAll('*'))] as HTMLElement[];
+    for (const el of allElements) {
+        const computed = getComputedStyle(el);
+        for (const prop of COLOR_PROPERTIES) {
+            const value = computed[prop];
+            if (value) {
+                const resolved = resolveColorToHex(value);
+                if (resolved !== value) {
+                    el.style[prop as any] = resolved;
+                }
+            }
         }
-    });
-    // Also resolve on the container itself
-    const computed = getComputedStyle(container);
-    for (const prop of COLOR_PROPERTIES) {
-        const value = computed[prop];
-        if (value && (value.includes('oklch') || value.includes('oklab'))) {
-            container.style[prop as any] = value;
+        // Box-shadow can also contain oklch colors
+        const shadow = computed.boxShadow;
+        if (shadow && shadow !== 'none' &&
+            (shadow.includes('oklch') || shadow.includes('oklab'))) {
+            // Box-shadow values can't be converted via canvas — just clear them
+            el.style.boxShadow = 'none';
         }
     }
 }
