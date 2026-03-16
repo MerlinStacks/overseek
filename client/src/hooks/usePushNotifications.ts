@@ -96,6 +96,17 @@ export function usePushNotifications(): UsePushNotificationsReturn {
             return;
         }
 
+        // Why extracted: defining the handler outside init() lets us remove it
+        // in the cleanup return. Without this, each re-mount adds another listener.
+        const handleSwMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'SW_UPDATED') {
+                Logger.debug('[usePushNotifications] New SW version available', { version: event.data.version });
+                window.dispatchEvent(new CustomEvent('pwa-update-available', {
+                    detail: { version: event.data.version }
+                }));
+            }
+        };
+
         const init = async () => {
             try {
                 // Register service worker with cache bypass
@@ -109,15 +120,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                 registration.update().catch(err => Logger.warn('[usePushNotifications] SW update check failed', { err }));
 
                 // Listen for SW update messages
-                navigator.serviceWorker.addEventListener('message', (event) => {
-                    if (event.data?.type === 'SW_UPDATED') {
-                        Logger.debug('[usePushNotifications] New SW version available', { version: event.data.version });
-                        // Dispatch custom event for UI to handle
-                        window.dispatchEvent(new CustomEvent('pwa-update-available', {
-                            detail: { version: event.data.version }
-                        }));
-                    }
-                });
+                navigator.serviceWorker.addEventListener('message', handleSwMessage);
 
                 // Check existing subscription from browser
                 const subscription = await registration.pushManager.getSubscription();
@@ -165,6 +168,10 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         };
 
         init();
+
+        return () => {
+            navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+        };
     }, [isSupported, token, currentAccount]);
 
     /**

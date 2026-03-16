@@ -207,22 +207,35 @@ export class OrderSync extends BaseSync {
                 .map(local => local.wooId);
 
             if (wooIdsToDelete.length > 0) {
+                // Why safety cap: if WooCommerce API returns partial data (e.g.,
+                // only 1 order due to a transient error), we'd delete everything
+                // else. Capping at 30% prevents catastrophic mass-deletion.
+                const MAX_DELETE_RATIO = 0.3;
+                const maxDeletions = Math.max(10, Math.floor(localOrders.length * MAX_DELETE_RATIO));
 
-                const deleteIndexPromises = wooIdsToDelete.map(wooId =>
-                    IndexingService.deleteOrder(accountId, wooId)
-                );
-                await Promise.allSettled(deleteIndexPromises);
+                if (wooIdsToDelete.length > maxDeletions) {
+                    Logger.warn(`Reconciliation aborted: would delete ${wooIdsToDelete.length}/${localOrders.length} orders (>${Math.round(MAX_DELETE_RATIO * 100)}% cap). Likely API issue.`, {
+                        accountId, syncId,
+                        toDelete: wooIdsToDelete.length,
+                        localTotal: localOrders.length,
+                        wooTotal: wooOrderIds.size
+                    });
+                } else {
+                    const deleteIndexPromises = wooIdsToDelete.map(wooId =>
+                        IndexingService.deleteOrder(accountId, wooId)
+                    );
+                    await Promise.allSettled(deleteIndexPromises);
 
+                    const { count } = await prisma.wooOrder.deleteMany({
+                        where: {
+                            accountId,
+                            wooId: { in: wooIdsToDelete }
+                        }
+                    });
+                    totalDeleted = count;
 
-                const { count } = await prisma.wooOrder.deleteMany({
-                    where: {
-                        accountId,
-                        wooId: { in: wooIdsToDelete }
-                    }
-                });
-                totalDeleted = count;
-
-                Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned orders`, { accountId, syncId });
+                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned orders`, { accountId, syncId });
+                }
             }
         }
 

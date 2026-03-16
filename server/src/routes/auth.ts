@@ -300,7 +300,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // 2FA Check (successful password, check 2FA if enabled)
             if (user.isTwoFactorEnabled) {
                 if (!twoFactorToken) {
-                    return { requireTwoFactor: true };
+                    // Why 401 + requireTwoFactor: returning 200 with requireTwoFactor
+                    // leaks that the email/password combo is valid, enabling enumeration.
+                    return reply.code(401).send({ requireTwoFactor: true });
                 }
                 const isTokenValid = SecurityService.verifyTwoFactorToken(twoFactorToken, user.twoFactorSecret!);
                 if (!isTokenValid) {
@@ -374,13 +376,22 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // UPLOAD AVATAR
+    // Why max 5MB: avatars are small images; unbounded uploads can OOM the server
+    // when toBuffer() loads the entire file into memory.
+    const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
     fastify.post('/upload-avatar', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
             const userId = request.user!.id;
-            const data = await request.file();
+            const data = await request.file({ limits: { fileSize: MAX_AVATAR_SIZE } });
             if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
             const fileBuffer = await data.toBuffer();
+
+            // Check if file was truncated (exceeded size limit)
+            if ((data as any).file?.truncated) {
+                return reply.code(400).send({ error: 'File too large. Maximum avatar size is 5MB.' });
+            }
+
             const detected = detectImageType(fileBuffer);
             if (!detected) {
                 return reply.code(400).send({ error: 'Only image files are allowed!' });
@@ -415,12 +426,18 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             const resetToken = crypto.randomBytes(32).toString('hex');
             const resetTokenExpiry = new Date(Date.now() + 3600000);
 
+            // Why hash: storing the token in plaintext means a DB leak gives
+            // attackers password-reset capability. Hashing prevents this.
+            const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
             await prisma.user.update({
                 where: { id: user.id },
-                data: { resetToken, resetTokenExpiry }
+                data: { resetToken: hashedResetToken, resetTokenExpiry }
             });
 
-            const resetLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}&email=${email}`;
+            // Why no email param: including the email in the URL leaks it into
+            // browser history, server logs, and referrer headers.
+            const resetLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
             if (process.env.SMTP_HOST) {
                 const nodemailer = require('nodemailer');
@@ -457,8 +474,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const { email, token, newPassword } = parsed.data;
 
+            // Hash the incoming token to compare against stored hash
+            const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
             const user = await prisma.user.findUnique({ where: { email } });
-            if (!user || !user.resetToken || user.resetToken !== token || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+            if (!user || !user.resetToken || user.resetToken !== hashedToken || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
                 return reply.code(400).send({ error: 'Invalid or expired token' });
             }
 
@@ -508,6 +528,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: userId },
                 data: { passwordHash: newPasswordHash }
             });
+
+            // Why: existing JWTs remain valid until expiry. Revoking all refresh
+            // tokens forces re-login, closing any stolen sessions.
+            await SecurityService.revokeUserSessions(userId);
 
             Logger.info('Password changed successfully', { userId });
             return { message: 'Password changed successfully' };

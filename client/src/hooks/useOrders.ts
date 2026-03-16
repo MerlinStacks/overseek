@@ -5,7 +5,7 @@
  * Extracted from OrdersPage.tsx for maintainability.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -103,7 +103,9 @@ export function useOrders() {
             const params = new URLSearchParams();
             params.append('page', page.toString());
             params.append('limit', limit.toString());
-            if (searchQuery) params.append('q', searchQuery);
+            // Why debouncedSearch: using raw searchQuery causes fetches on every
+            // keystroke, then re-fetches when the debounce fires (double-fetch).
+            if (debouncedSearch) params.append('q', debouncedSearch);
             if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
             if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus);
 
@@ -120,7 +122,7 @@ export function useOrders() {
         } finally {
             setIsLoading(false);
         }
-    }, [currentAccount, token, page, limit, searchQuery, selectedTags, selectedStatus]);
+    }, [currentAccount, token, page, limit, debouncedSearch, selectedTags, selectedStatus]);
 
     useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -167,7 +169,13 @@ export function useOrders() {
         };
 
         fetchAttributions();
-    }, [orders, token, currentAccount]);
+    // Why attributions in deps: without it, the stale closure always sees
+    // the initial empty object, causing redundant refetches for every page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orders, token, currentAccount, attributions]);
+
+    // Ref to hold the post-sync fetch timeout for cleanup
+    const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleSync = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -180,15 +188,22 @@ export function useOrders() {
             });
             if (!res.ok) throw new Error('Sync failed');
             const result = await res.json();
-            alert(`Sync started! Status: ${result.status}`);
-            setTimeout(fetchOrders, 2000);
+            Logger.info('Sync started', { status: result.status });
+            // Why ref: so cleanup can cancel if component unmounts during 2s delay
+            syncTimeoutRef.current = setTimeout(fetchOrders, 2000);
         } catch (err) {
             Logger.error('Sync failed', { error: err });
-            alert('Sync failed. Check backend logs.');
         } finally {
             setIsSyncing(false);
         }
     }, [currentAccount, token, fetchOrders]);
+
+    // Cleanup sync timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+        };
+    }, []);
 
     const handleGeneratePicklist = useCallback(async () => {
         if (!currentAccount || !token) return;

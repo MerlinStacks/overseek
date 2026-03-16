@@ -158,8 +158,9 @@ export class EmailService {
             throw new Error("Neither HTTP relay nor SMTP is configured for this account");
         }
 
+        let transporter: Awaited<ReturnType<typeof this.createTransporter>> | null = null;
         try {
-            const transporter = await this.createTransporter(emailAccount);
+            transporter = await this.createTransporter(emailAccount);
 
             const mailOptions: any = {
                 from: `"${emailAccount.name}" <${emailAccount.email}>`,
@@ -197,6 +198,10 @@ export class EmailService {
             Logger.info(`Sent email with tracking`, { messageId: info.messageId, to, trackingId });
             return info;
         } catch (error: any) {
+            // Why: transporter.close() was only called on success.
+            // Leaking the connection on error causes TCP socket exhaustion.
+            try { transporter?.close(); } catch { /* ignore close errors */ }
+
             await prisma.emailLog.create({
                 data: {
                     accountId,

@@ -130,14 +130,66 @@ export async function processWebhookPayload(
 
     // Handle Product Events
     if (topic === 'product.created' || topic === 'product.updated') {
-        await IndexingService.indexProduct(accountId, body);
-        Logger.info(`Indexed Product`, { productId: body.id, accountId });
+        // Why upsert first: indexing in ES without persisting to Postgres causes
+        // data drift — ES shows data that the DB doesn't know about until next sync.
+        try {
+            await prisma.wooProduct.upsert({
+                where: { accountId_wooId: { accountId, wooId: body.id as number } },
+                update: {
+                    name: (body.name as string) || 'Unknown',
+                    rawData: body as any
+                },
+                create: {
+                    account: { connect: { id: accountId } },
+                    wooId: body.id as number,
+                    name: (body.name as string) || 'Unknown',
+                    rawData: body as any
+                }
+            });
+        } catch (err: any) {
+            Logger.warn('[Webhook] Failed to upsert product to DB', { accountId, productId: body.id, error: err.message });
+        }
+
+        try {
+            await IndexingService.indexProduct(accountId, body);
+        } catch (err: any) {
+            Logger.warn('[Webhook] Failed to index product in ES', { accountId, productId: body.id, error: err.message });
+        }
+        Logger.info(`Processed product webhook`, { productId: body.id, accountId });
     }
 
     // Handle Customer Events
     if (topic === 'customer.created' || topic === 'customer.updated') {
-        await IndexingService.indexCustomer(accountId, body);
-        Logger.info(`Indexed Customer`, { customerId: body.id, accountId });
+        try {
+            await prisma.wooCustomer.upsert({
+                where: { accountId_wooId: { accountId, wooId: body.id as number } },
+                update: {
+                    email: ((body as any).email as string)?.toLowerCase() || '',
+                    firstName: (body as any).first_name || '',
+                    lastName: (body as any).last_name || '',
+                    rawData: body as any
+                },
+                create: {
+                    account: { connect: { id: accountId } },
+                    wooId: body.id as number,
+                    email: ((body as any).email as string)?.toLowerCase() || '',
+                    firstName: (body as any).first_name || '',
+                    lastName: (body as any).last_name || '',
+                    totalSpent: 0,
+                    ordersCount: 0,
+                    rawData: body as any
+                }
+            });
+        } catch (err: any) {
+            Logger.warn('[Webhook] Failed to upsert customer to DB', { accountId, customerId: body.id, error: err.message });
+        }
+
+        try {
+            await IndexingService.indexCustomer(accountId, body);
+        } catch (err: any) {
+            Logger.warn('[Webhook] Failed to index customer in ES', { accountId, customerId: body.id, error: err.message });
+        }
+        Logger.info(`Processed customer webhook`, { customerId: body.id, accountId });
     }
 }
 
@@ -241,7 +293,13 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Mark as failed with error details
             if (deliveryId) {
-                await WebhookDeliveryService.markFailed(deliveryId, errorMessage);
+                try {
+                    await WebhookDeliveryService.markFailed(deliveryId, errorMessage);
+                } catch (markErr) {
+                    // Why: if markFailed throws (DB down), we don't want to mask
+                    // the original processing error with a Prisma error.
+                    Logger.error('[Webhook] Failed to mark delivery as failed', { deliveryId, error: markErr });
+                }
             }
 
             return reply.code(500).send('Server Error');

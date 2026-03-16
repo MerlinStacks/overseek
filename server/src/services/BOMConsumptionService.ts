@@ -629,18 +629,36 @@ export class BOMConsumptionService {
         const qty = deduction.quantityDeducted;
 
         if (deduction.componentType === 'InternalProduct') {
-            await prisma.internalProduct.update({
+            const updated = await prisma.internalProduct.update({
                 where: { id: deduction.componentId },
-                data: { stockQuantity: { decrement: qty } }
+                data: { stockQuantity: { decrement: qty } },
+                select: { stockQuantity: true }
             });
+            // Why floor: negative stock in WooCommerce confuses customers and order workflows.
+            if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
+                Logger.warn('[BOM] Component stock went negative after deduction', {
+                    componentType: 'InternalProduct',
+                    componentId: deduction.componentId,
+                    newStock: updated.stockQuantity,
+                    deducted: qty
+                });
+            }
         } else if (deduction.componentType === 'ProductVariation') {
             const updated = await prisma.productVariation.update({
                 where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
                 data: { stockQuantity: { decrement: qty } },
                 select: { stockQuantity: true }
             });
+            // Clamp to 0 for WooCommerce — negative stock causes UX issues
+            const wooStock = Math.max(0, updated.stockQuantity ?? 0);
+            if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
+                Logger.warn('[BOM] Component stock went negative after deduction', {
+                    componentType: 'ProductVariation', wooId: deduction.wooId,
+                    dbStock: updated.stockQuantity, wooStock, deducted: qty
+                });
+            }
             await withRetry(
-                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: updated.stockQuantity, manage_stock: true }),
+                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: wooStock, manage_stock: true }),
                 { context: `Update variation ${deduction.wooId}` }
             );
         } else if (deduction.componentType === 'WooProduct') {
@@ -649,8 +667,15 @@ export class BOMConsumptionService {
                 data: { stockQuantity: { decrement: qty } },
                 select: { stockQuantity: true }
             });
+            const wooStock = Math.max(0, updated.stockQuantity ?? 0);
+            if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
+                Logger.warn('[BOM] Component stock went negative after deduction', {
+                    componentType: 'WooProduct', wooId: deduction.wooId,
+                    dbStock: updated.stockQuantity, wooStock, deducted: qty
+                });
+            }
             await withRetry(
-                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: updated.stockQuantity, manage_stock: true }),
+                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: wooStock, manage_stock: true }),
                 { context: `Update product ${deduction.wooId}` }
             );
         }

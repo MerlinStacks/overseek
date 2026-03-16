@@ -153,11 +153,13 @@ export class WooService {
      * Uses exponential backoff with jitter for rate limits and network errors.
      * Detects credential revocation (401/403) and marks account for reconnection.
      */
-    private async requestWithRetry(method: string, endpoint: string, params: any = {}): Promise<any> {
+    private async requestWithRetry(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, params: any = {}): Promise<any> {
         try {
             return await retryWithBackoff(
                 async () => {
-                    const response = await this.api.get(endpoint, params);
+                    // Why: previously always called this.api.get() regardless of method param.
+                    // This caused silent bugs if any caller tried a PUT/POST via this path.
+                    const response = await this.api[method](endpoint, params);
                     return {
                         data: response.data,
                         total: parseInt(response.headers['x-wp-total'] || '0', 10),

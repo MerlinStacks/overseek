@@ -104,6 +104,18 @@ export function useMessageSend({
         }
     }, [conversationId, getDraft]);
 
+    // Why: if component unmounts while a send is pending, the timeout and
+    // countdownInterval keep running, firing setState on an unmounted component.
+    useEffect(() => {
+        return () => {
+            const pending = pendingSendRef.current;
+            if (pending) {
+                clearTimeout(pending.timeout);
+                clearInterval(pending.countdownInterval);
+            }
+        };
+    }, []);
+
     // Auto-save draft on input change
     useEffect(() => {
         if (conversationId && input) {

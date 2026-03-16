@@ -651,6 +651,17 @@ export class PurchaseOrderService {
             });
         }
 
+        // Transition PO status back to ORDERED after successful unreceive
+        // Why: without this, the PO stays RECEIVED even though stock was reversed,
+        // which is logically inconsistent and could allow repeat unreceive attempts.
+        if (updated > 0) {
+            await prisma.purchaseOrder.update({
+                where: { id: poId },
+                data: { status: 'ORDERED' }
+            });
+            Logger.info('PO status transitioned to ORDERED after unreceive', { poId });
+        }
+
         return { updated, errors, updatedProductIds };
     }
 }

@@ -49,7 +49,11 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
                     if (query.customerId) {
                         // Use denormalized column for faster lookups (avoids JSON parsing)
-                        whereClause.wooCustomerId = parseInt(query.customerId, 10);
+                        const parsedCustomerId = parseInt(query.customerId, 10);
+                        if (isNaN(parsedCustomerId)) {
+                            return reply.code(400).send({ error: 'customerId must be a numeric value' });
+                        }
+                        whereClause.wooCustomerId = parsedCustomerId;
                     } else if (query.billingEmail) {
                         // Use denormalized column for faster lookups
                         // Emails are normalized to lowercase on sync, so match with lowercase input

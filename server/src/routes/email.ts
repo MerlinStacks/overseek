@@ -99,14 +99,14 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                     // SMTP
                     smtpEnabled: Boolean(body.smtpEnabled),
                     smtpHost: body.smtpHost || null,
-                    smtpPort: body.smtpPort ? parseInt(String(body.smtpPort)) : null,
+                    smtpPort: body.smtpPort ? parseInt(String(body.smtpPort), 10) : null,
                     smtpUsername: body.smtpUsername || null,
                     smtpPassword: body.smtpPassword ? encrypt(body.smtpPassword) : null,
                     smtpSecure: body.smtpSecure ?? true,
                     // IMAP
                     imapEnabled: Boolean(body.imapEnabled),
                     imapHost: body.imapHost || null,
-                    imapPort: body.imapPort ? parseInt(String(body.imapPort)) : null,
+                    imapPort: body.imapPort ? parseInt(String(body.imapPort), 10) : null,
                     imapUsername: body.imapUsername || null,
                     imapPassword: body.imapPassword ? encrypt(body.imapPassword) : null,
                     imapSecure: body.imapSecure ?? true,
@@ -149,13 +149,13 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
                 // SMTP
                 smtpEnabled: Boolean(body.smtpEnabled),
                 smtpHost: body.smtpHost || null,
-                smtpPort: body.smtpPort ? parseInt(String(body.smtpPort)) : null,
+                smtpPort: body.smtpPort ? parseInt(String(body.smtpPort), 10) : null,
                 smtpUsername: body.smtpUsername || null,
                 smtpSecure: body.smtpSecure ?? true,
                 // IMAP
                 imapEnabled: Boolean(body.imapEnabled),
                 imapHost: body.imapHost || null,
-                imapPort: body.imapPort ? parseInt(String(body.imapPort)) : null,
+                imapPort: body.imapPort ? parseInt(String(body.imapPort), 10) : null,
                 imapUsername: body.imapUsername || null,
                 imapSecure: body.imapSecure ?? true,
                 // HTTP Relay
