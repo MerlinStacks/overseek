@@ -87,6 +87,10 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
     let yOffset = 0;
     let currentPage = 1;
 
+    // flowingY tracks the actual Y position of rendered content on the current page.
+    // This stays in sync even when autoTable creates its own page breaks.
+    let flowingY = contentTopPage1;
+
     // Helper to check if we need a page break before rendering an element
     const checkPageBreak = (elementY: number, elementH: number): number => {
         const adjustedY = elementY + yOffset;
@@ -95,23 +99,43 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
         if (adjustedY + elementH > contentBottom) {
             doc.addPage();
             currentPage++;
-            // On new pages, content starts at top margin (no header reserved space)
             yOffset = -elementY + contentTopOther;
+            flowingY = contentTopOther;
             return contentTopOther;
         }
 
         return adjustedY;
     };
 
-    // Helper to get coordinates with page break awareness
+    /**
+     * Gets rendering coordinates for a layout item.
+     * Uses max(grid-based Y, flowingY) to prevent overlapping
+     * content that was pushed down by variable-height blocks (e.g., autoTable).
+     */
     const getRect = (item: InvoiceLayoutItem) => {
         const baseY = pageMarginTop + (item.y * rowHeightMM);
         const h = item.h * rowHeightMM;
-        const adjustedY = checkPageBreak(baseY, h);
+
+        // Use the later of grid position or flowing position
+        const effectiveY = Math.max(baseY + yOffset, flowingY);
+
+        // Check page break with the effective position
+        if (effectiveY + h > contentBottom) {
+            doc.addPage();
+            currentPage++;
+            flowingY = contentTopOther;
+            yOffset = -baseY + contentTopOther;
+            return {
+                x: pageMarginLeft + (item.x * colWidth),
+                y: contentTopOther,
+                w: item.w * colWidth,
+                h: h
+            };
+        }
 
         return {
             x: pageMarginLeft + (item.x * colWidth),
-            y: adjustedY,
+            y: effectiveY,
             w: item.w * colWidth,
             h: h
         };
@@ -187,6 +211,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                     currentY += lineSpacing;
                 });
             }
+            flowingY = y + h;
         }
         else if (type === 'text') {
             let text = content || '';
@@ -219,6 +244,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             if (align === 'right') textX = x + w - 2;
 
             doc.text(text, textX, y + 5, { align: align as any, maxWidth: w });
+            flowingY = y + h;
         }
         else if (type === 'image') {
             if (content) {
@@ -244,6 +270,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                 doc.text('Image', x + w / 2, y + h / 2, { align: 'center' });
                 doc.setTextColor(0);
             }
+            flowingY = y + h;
         }
         else if (type === 'order_details') {
             doc.setFontSize(10);
@@ -289,6 +316,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             doc.text(shippingMethod, x + 40, currentY);
 
             doc.setFont("helvetica", "normal");
+            flowingY = currentY + 2;
         }
         else if (type === 'customer_details') {
             doc.setFontSize(10);
@@ -313,6 +341,7 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                 doc.text(line, x + 2, currentY);
                 currentY += 5;
             });
+            flowingY = currentY + 2;
         }
         else if (type === 'order_table') {
             // Helper to truncate long text values for PDF display
@@ -407,11 +436,25 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                 },
                 rowPageBreak: 'avoid'
             });
+
+            // Sync tracking after autoTable — it manages its own page breaks
+            const finalY = (doc as any).lastAutoTable?.finalY;
+            if (finalY) {
+                flowingY = finalY + 5; // 5mm spacing after table
+                currentPage = (doc.internal as any).getNumberOfPages();
+            }
         }
         else if (type === 'totals') {
-            // Render Totals — align to page right edge for consistency with table
-            let currentY = y + 5;
+            // Render Totals — use flowingY to position after the table
+            let currentY = Math.max(y, flowingY) + 5;
             const rightEdge = pageWidth - pageMarginRight - 5;
+
+            // Page break check for totals block (~30mm)
+            if (currentY + 30 > contentBottom) {
+                doc.addPage();
+                currentPage++;
+                currentY = contentTopOther + 5;
+            }
 
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
@@ -433,6 +476,8 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             doc.setFont("helvetica", "bold");
             doc.text(`Total: ${formatPrice(order.total, order.currency)}`, rightEdge, currentY, { align: 'right' });
             doc.setFont("helvetica", "normal");
+
+            flowingY = currentY + 10;
         }
     }
 
