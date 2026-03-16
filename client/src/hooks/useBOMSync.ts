@@ -432,12 +432,18 @@ export function useBOMSync(): UseBOMSyncReturn {
             fetchDeactivatedItems();
             checkSyncStatus();
 
-            // Calculate next sync time (assuming hourly)
-            const now = new Date();
-            const nextHour = new Date(now);
-            nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-            const minutesUntil = Math.round((nextHour.getTime() - now.getTime()) / 60000);
-            setNextSyncIn(`${minutesUntil} min`);
+            // Calculate next sync time (assuming hourly) and keep it fresh
+            const updateNextSync = () => {
+                const now = new Date();
+                const nextHour = new Date(now);
+                nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+                const minutesUntil = Math.round((nextHour.getTime() - now.getTime()) / 60000);
+                setNextSyncIn(`${minutesUntil} min`);
+            };
+            updateNextSync();
+            const syncTimerId = setInterval(updateNextSync, 60000);
+
+            return () => clearInterval(syncTimerId);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount?.id, token]);

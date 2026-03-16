@@ -77,10 +77,13 @@ export function useOptimisticMutation<TData, TVariables>(
 
     // Store rollback data in a ref to survive re-renders
     const rollbackRef = useRef<TData | undefined>(undefined);
+    // Why separate ref: `data` may hold optimistic (unconfirmed) state during
+    // rapid successive mutations. Rollback must restore the last *confirmed* value.
+    const confirmedDataRef = useRef<TData | undefined>(undefined);
 
     const mutate = useCallback(async (variables: TVariables): Promise<TData | undefined> => {
-        // Store current data for potential rollback
-        rollbackRef.current = data;
+        // Roll back to the last server-confirmed state, not the current (possibly optimistic) data
+        rollbackRef.current = confirmedDataRef.current;
 
         // Apply optimistic update immediately
         const optimisticData = optimisticUpdate(variables, data);
@@ -94,6 +97,7 @@ export function useOptimisticMutation<TData, TVariables>(
 
             // Update with server-confirmed data
             setData(result);
+            confirmedDataRef.current = result;
             onSuccess?.(result, variables);
 
             return result;
@@ -118,6 +122,12 @@ export function useOptimisticMutation<TData, TVariables>(
         setIsPending(false);
         setError(null);
         rollbackRef.current = undefined;
+        confirmedDataRef.current = undefined;
+    }, []);
+
+    const publicSetData = useCallback((newData: TData) => {
+        setData(newData);
+        confirmedDataRef.current = newData;
     }, []);
 
     return {
@@ -126,7 +136,7 @@ export function useOptimisticMutation<TData, TVariables>(
         error,
         mutate,
         reset,
-        setData
+        setData: publicSetData
     };
 }
 

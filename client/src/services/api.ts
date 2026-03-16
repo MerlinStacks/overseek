@@ -73,8 +73,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         ...customConfig,
         body,
         headers: {
-            // Only set Content-Type for requests with a body
-            ...(body ? { 'Content-Type': 'application/json' } : {}),
+            // Only set Content-Type for string bodies (JSON); FormData needs the
+            // browser to auto-set the multipart boundary via the Content-Type header.
+            ...(body && typeof body === 'string' ? { 'Content-Type': 'application/json' } : {}),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(accountId ? { 'X-Account-ID': accountId } : {}),
             'x-timezone': USER_TIMEZONE,

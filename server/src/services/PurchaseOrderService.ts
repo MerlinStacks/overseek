@@ -427,6 +427,14 @@ export class PurchaseOrderService {
             }
         }
 
+        // Transition PO to RECEIVED after all stock increments have been committed.
+        // Why: without this the double-receive guard (line 263) never triggers,
+        // allowing every call to re-apply stock — a data-corruption bug.
+        await prisma.purchaseOrder.update({
+            where: { id: poId },
+            data: { status: 'RECEIVED' }
+        });
+
         // Fire-and-forget: WooCommerce sync + BOM cascade run in background
         // Why: WooCommerce API calls take ~2s each — with 24 items that exceeds
         // the Nginx 60s timeout. DB updates (above) are already committed.

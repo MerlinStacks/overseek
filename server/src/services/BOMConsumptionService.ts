@@ -770,17 +770,12 @@ export class BOMConsumptionService {
         componentVariationId?: number,
         componentType: 'wooProduct' | 'internalProduct' = 'wooProduct'
     ): Promise<void> {
-        // Build the query based on component type
+        // Why no variation filter: we must cascade to ALL parent BOMs that reference
+        // this component, not just those using a specific variation. A stock change
+        // in the component affects every parent's effective stock calculation.
         const whereClause = componentType === 'internalProduct'
             ? { internalProductId: componentProductId }
-            : {
-                OR: [
-                    { childProductId: componentProductId },
-                    ...(componentVariationId
-                        ? [{ childProductId: componentProductId, childVariationId: componentVariationId }]
-                        : [])
-                ]
-            };
+            : { childProductId: componentProductId };
 
         const affectedBomItems = await prisma.bOMItem.findMany({
             where: {

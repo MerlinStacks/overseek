@@ -86,43 +86,43 @@ export const generateInvoicePDF = async (
         // Make container visible for html2canvas (it reads computed styles)
         container.style.opacity = '1';
 
-        // 4. Resolve oklch() colors → rgb() for html2canvas compatibility.
-        //    Tailwind v4 uses oklch() which html2canvas 1.x cannot parse.
-        //    getComputedStyle() returns browser-resolved rgb() values.
-        resolveColorsForCapture(container);
-
-        // 5. Strip decorative UI styling that shouldn't appear in the PDF
-        //    InvoiceRenderer's readOnly container has shadow/ring/rounded for the
-        //    on-screen preview, but these appear as artifacts in the captured image.
+        // Strip decorative UI styling that shouldn't appear in the PDF
         const innerDiv = container.querySelector(':scope > div') as HTMLElement;
         if (innerDiv) {
             innerDiv.style.boxShadow = 'none';
             innerDiv.style.outline = 'none';
             innerDiv.style.border = 'none';
             innerDiv.style.borderRadius = '0';
-            // Remove Tailwind ring (uses box-shadow with --tw-ring-* vars)
             innerDiv.classList.remove('shadow-2xl', 'ring-1', 'rounded-sm');
         }
 
-        // 6. Collect safe page break points from the rendered DOM before capture
-        //    These are Y positions (in CSS px) of block/row boundaries where
-        //    we can safely split pages without cutting through text.
+        // Collect safe page break points before we patch styles
         const breakPoints = collectBreakPoints(container);
 
-        // 7. Capture the rendered DOM with html2canvas
-        const canvas = await html2canvas(container, {
-            scale: CAPTURE_SCALE,
-            useCORS: true,
-            // allowTaint must be true — the logo image may not have CORS headers,
-            // and false causes html2canvas to throw on any cross-origin resource.
-            allowTaint: true,
-            backgroundColor: '#ffffff',
-            width: CONTAINER_WIDTH_PX,
-            windowWidth: CONTAINER_WIDTH_PX,
-            logging: false,
-        });
+        // 4. Resolve oklch() colors for html2canvas compatibility.
+        //    html2canvas 1.x parses raw CSS stylesheet rules and crashes on oklch().
+        //    We temporarily patch ALL stylesheets, replacing oklch→hex, then restore.
+        inlineResolvedColors(container);
+        const stylesheetPatches = patchStylesheets();
 
-        // 8. Create paginated PDF from the canvas with smart break points
+        let canvas: HTMLCanvasElement;
+        try {
+            // 5. Capture the rendered DOM with html2canvas
+            canvas = await html2canvas(container, {
+                scale: CAPTURE_SCALE,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                width: CONTAINER_WIDTH_PX,
+                windowWidth: CONTAINER_WIDTH_PX,
+                logging: false,
+            });
+        } finally {
+            // Always restore stylesheets — even if capture throws
+            restoreStylesheets(stylesheetPatches);
+        }
+
+        // 6. Create paginated PDF from the canvas with smart break points
         const pdf = createPaginatedPdf(canvas, breakPoints);
         const orderNumber = order.number || order.order_number || order.id || 'draft';
         pdf.save(`Invoice_${orderNumber}.pdf`);
@@ -208,53 +208,84 @@ function resolveColorToHex(color: string): string {
 }
 
 /**
- * Two-pronged fix for html2canvas 1.x not supporting oklch() colors:
+ * html2canvas 1.x parses raw CSS stylesheet rules from the CSSOM. It encounters
+ * oklch() in the actual CSSStyleRule values and crashes. Inline style overrides
+ * don't help because the parser reads stylesheets BEFORE element styles.
  *
- * 1. Override CSS custom properties — Tailwind v4 defines oklch values in
- *    custom properties on :root. html2canvas parses these from stylesheets.
- *    We resolve them to hex and set them on the container (CSS inheritance
- *    makes them override the :root values within the subtree).
- *
- * 2. Inline element colors — Walk every element and bake resolved colors
- *    into inline styles, overriding any computed oklch values.
+ * Fix: Temporarily modify every CSSStyleRule property that contains oklch()
+ * to its hex equivalent, capture, then restore. We store originals for rollback.
  */
+interface PatchedValue {
+    rule: CSSStyleRule;
+    prop: string;
+    original: string;
+    priority: string;
+}
+
+/**
+ * Recursively walks CSS rules (handles @media, @layer, @supports nesting)
+ * and replaces any property value containing oklch/oklab with its hex equivalent.
+ * Returns an array of patches for rollback.
+ */
+function patchStylesheets(): PatchedValue[] {
+    const patches: PatchedValue[] = [];
+
+    const walkRules = (rules: CSSRuleList) => {
+        for (const rule of Array.from(rules)) {
+            // Recurse into grouped rules (@media, @supports, @layer)
+            if ('cssRules' in rule && (rule as CSSGroupingRule).cssRules) {
+                walkRules((rule as CSSGroupingRule).cssRules);
+                continue;
+            }
+            if (!(rule instanceof CSSStyleRule)) continue;
+
+            for (let i = 0; i < rule.style.length; i++) {
+                const prop = rule.style[i];
+                const value = rule.style.getPropertyValue(prop);
+                if (value.includes('oklch') || value.includes('oklab')) {
+                    const priority = rule.style.getPropertyPriority(prop);
+                    const resolved = resolveColorToHex(value.trim());
+                    if (resolved !== value.trim()) {
+                        patches.push({ rule, prop, original: value, priority });
+                        rule.style.setProperty(prop, resolved, priority);
+                    }
+                }
+            }
+        }
+    };
+
+    for (const sheet of Array.from(document.styleSheets)) {
+        try {
+            walkRules(sheet.cssRules);
+        } catch {
+            // Cross-origin stylesheet — cannot access rules
+        }
+    }
+    return patches;
+}
+
+/** Restores all patched CSS rules to their original values. */
+function restoreStylesheets(patches: PatchedValue[]): void {
+    for (const { rule, prop, original, priority } of patches) {
+        try {
+            rule.style.setProperty(prop, original, priority);
+        } catch {
+            // Rule may have been removed — ignore
+        }
+    }
+}
+
 const COLOR_PROPERTIES = [
     'color', 'backgroundColor', 'borderColor',
     'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
     'outlineColor', 'textDecorationColor',
 ] as const;
 
-function resolveColorsForCapture(container: HTMLElement): void {
-    // --- Phase 1: Override CSS custom properties containing oklch ---
-    // Tailwind v4 uses --color-*, --tw-*, etc. with oklch values on :root
-    try {
-        for (const sheet of Array.from(document.styleSheets)) {
-            try {
-                for (const rule of Array.from(sheet.cssRules)) {
-                    if (!(rule instanceof CSSStyleRule)) continue;
-                    // Check :root and * rules where custom properties are defined
-                    if (rule.selectorText === ':root' || rule.selectorText === '*'
-                        || rule.selectorText === ':host') {
-                        for (let i = 0; i < rule.style.length; i++) {
-                            const prop = rule.style[i];
-                            if (!prop.startsWith('--')) continue;
-                            const value = rule.style.getPropertyValue(prop).trim();
-                            if (value.includes('oklch') || value.includes('oklab')) {
-                                const resolved = resolveColorToHex(value);
-                                container.style.setProperty(prop, resolved);
-                            }
-                        }
-                    }
-                }
-            } catch {
-                // Cross-origin stylesheet — skip silently
-            }
-        }
-    } catch {
-        // StyleSheets API not available
-    }
-
-    // --- Phase 2: Inline resolved colors on every element ---
+/**
+ * Belt-and-suspenders: also inline resolved colors on every element.
+ * This catches any oklch from computed styles that the stylesheet patch missed.
+ */
+function inlineResolvedColors(container: HTMLElement): void {
     const allElements = [container, ...Array.from(container.querySelectorAll('*'))] as HTMLElement[];
     for (const el of allElements) {
         const computed = getComputedStyle(el);
@@ -267,11 +298,9 @@ function resolveColorsForCapture(container: HTMLElement): void {
                 }
             }
         }
-        // Box-shadow can also contain oklch colors
         const shadow = computed.boxShadow;
         if (shadow && shadow !== 'none' &&
             (shadow.includes('oklch') || shadow.includes('oklab'))) {
-            // Box-shadow values can't be converted via canvas — just clear them
             el.style.boxShadow = 'none';
         }
     }

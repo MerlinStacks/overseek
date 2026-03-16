@@ -66,11 +66,15 @@ export function useInboxSocket({
         };
 
         socket.on('conversation:updated', async (data: any) => {
+            let needsFetch = false;
             startTransition(() => {
                 setConversations(prev => {
                     const idx = prev.findIndex(c => c.id === data.id);
                     if (idx === -1) {
-                        fetchNewConversation(data.id);
+                        // Why flag instead of calling here: startTransition only wraps
+                        // synchronous updates. An async fetch completes after the
+                        // transition boundary, so its setConversations would run outside it.
+                        needsFetch = true;
                         return prev;
                     }
                     const updated = [...prev];
@@ -83,6 +87,7 @@ export function useInboxSocket({
                     return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
                 });
             });
+            if (needsFetch) fetchNewConversation(data.id);
 
             if (selectedId === data.id && data.lastMessage) {
                 setMessages(prev => {
