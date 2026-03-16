@@ -1,510 +1,190 @@
 
-import jsPDF from 'jspdf';
-import { Logger } from './logger';
-import autoTable from 'jspdf-autotable';
-import { getItemMeta, resolveHandlebars } from './invoiceItemUtils';
+/**
+ * Invoice PDF Generator
+ *
+ * Renders the InvoiceRenderer React component into a hidden off-screen container,
+ * captures it with html2canvas, and paginates into an A4 PDF via jsPDF.
+ *
+ * Why: This guarantees pixel-perfect match between the designer preview and
+ * the generated PDF — both use the exact same InvoiceRenderer component.
+ * Previously, this file had ~460 lines of duplicated rendering logic
+ * (column widths, currency formatting, metadata extraction, page breaks)
+ * that constantly drifted out of sync with the HTML preview.
+ */
 
-interface InvoiceLayoutItem {
-    id: string;
-    type: string;
-    content?: string;
-    // RGL properties
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-}
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import { Logger } from './logger';
+import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
+
+/** A4 dimensions in mm */
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+
+/** Container width in px — matches InvoiceRenderer's design width (794px = ~210mm at 96dpi) */
+const CONTAINER_WIDTH_PX = 794;
+
+/** html2canvas scale factor — 2× for crisp text on retina/print */
+const CAPTURE_SCALE = 2;
 
 interface OrderData {
     number: string;
-    date_created: string;
-    line_items: any[];
-    total: string;
-    total_tax: string;
-    currency: string;
-    billing?: any;
-    shipping?: any;
     [key: string]: any;
 }
 
-const loadImage = (url: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        // Only set crossOrigin for external URLs - same-origin /uploads/ files
-        // don't need CORS and setting this causes them to fail when the static
-        // file server doesn't send CORS headers
-        if (url.startsWith('http') && !url.startsWith(window.location.origin)) {
-            img.crossOrigin = 'Anonymous';
-        }
-        img.src = url;
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-    });
-};
+/**
+ * Generates a PDF invoice that matches the designer HTML preview exactly.
+ * Renders InvoiceRenderer off-screen, captures via html2canvas, paginates into A4 pages.
+ */
+export const generateInvoicePDF = async (
+    order: OrderData,
+    grid: any[],
+    items: any[],
+    _templateName: string = 'Invoice'
+): Promise<void> => {
+    // 1. Create off-screen container matching A4 width
+    const container = document.createElement('div');
+    container.style.cssText = [
+        'position: fixed',
+        'left: -9999px',
+        'top: 0',
+        `width: ${CONTAINER_WIDTH_PX}px`,
+        'background: white',
+        'z-index: -1',
+        // Ensure text renders at print quality
+        '-webkit-font-smoothing: antialiased',
+    ].join(';');
+    document.body.appendChild(container);
 
+    try {
+        // 2. Render InvoiceRenderer synchronously into the container
+        const root = createRoot(container);
+        flushSync(() => {
+            root.render(
+                createElement(InvoiceRenderer, {
+                    layout: grid,
+                    items,
+                    data: order,
+                    readOnly: true,
+                    pageMode: 'single',
+                })
+            );
+        });
+
+        // 3. Wait for all images (logo, etc.) to finish loading
+        await waitForImages(container);
+
+        // 4. Extra animation frame for layout to fully settle
+        await nextFrame();
+
+        // 5. Capture the rendered DOM with html2canvas
+        const canvas = await html2canvas(container, {
+            scale: CAPTURE_SCALE,
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: '#ffffff',
+            width: CONTAINER_WIDTH_PX,
+            windowWidth: CONTAINER_WIDTH_PX,
+        });
+
+        // 6. Create paginated PDF from the canvas
+        const pdf = createPaginatedPdf(canvas);
+        pdf.save(`Invoice_${order.number}.pdf`);
+
+        // 7. Cleanup React tree
+        root.unmount();
+    } catch (err) {
+        Logger.error('Failed to generate invoice PDF', { error: err });
+        throw err;
+    } finally {
+        document.body.removeChild(container);
+    }
+};
 
 /**
- * Generates specific invoice PDF based on layout and order data
+ * Waits for every <img> in the container to finish loading.
+ * Resolves immediately for already-complete images; errors are swallowed
+ * so a broken logo doesn't block the entire PDF.
  */
-export const generateInvoicePDF = async (order: OrderData, grid: any[], items: any[], _templateName: string = 'Invoice') => {
-    // 1. Initialize PDF
-    // A4 size: 210mm x 297mm
-    const doc = new jsPDF({
-        orientation: 'p',
-        unit: 'mm',
-        format: 'a4'
-    });
+function waitForImages(container: HTMLElement): Promise<void[]> {
+    const images = container.querySelectorAll('img');
+    return Promise.all(
+        Array.from(images).map((img) =>
+            img.complete
+                ? Promise.resolve()
+                : new Promise<void>((resolve) => {
+                      img.onload = () => resolve();
+                      img.onerror = () => resolve(); // Don't block on failed images
+                  })
+        )
+    );
+}
 
-    const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
+/** Yields two animation frames to let the browser paint and layout settle. */
+function nextFrame(): Promise<void> {
+    return new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    );
+}
 
-    // Page margins
-    const pageMarginLeft = 10;
-    const pageMarginRight = 10;
-    const pageMarginTop = 10;
-    const usableWidth = pageWidth - pageMarginLeft - pageMarginRight; // 190mm
+/**
+ * Slices a tall canvas into A4-proportioned pages and builds a jsPDF document.
+ * Each page is extracted as a separate canvas slice to avoid image distortion.
+ */
+function createPaginatedPdf(canvas: HTMLCanvasElement): jsPDF {
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
-    // Grid System: 12 Cols within usable width
-    const colWidth = usableWidth / 12;
+    const scaledCanvasWidth = canvas.width / CAPTURE_SCALE;
+    const scaledCanvasHeight = canvas.height / CAPTURE_SCALE;
 
-    // Row Height: RGL uses 30px rowHeight. Scale to mm.
-    // Preview is 794px wide for ~210mm → scale factor ~0.264
-    // 30px * 0.264 ≈ 8mm
-    const rowHeightMM = 8;
+    // How many mm does 1 CSS pixel map to in the PDF
+    const mmPerPx = A4_WIDTH_MM / scaledCanvasWidth;
+    const totalHeightMM = scaledCanvasHeight * mmPerPx;
 
-    // Page dimensions for page break handling
-    const pageHeight = doc.internal.pageSize.getHeight(); // 297mm for A4
+    if (totalHeightMM <= A4_HEIGHT_MM) {
+        // Single page — content fits on one A4
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, totalHeightMM);
+        return pdf;
+    }
 
-    // Reserved zones to prevent content overlap
-    const headerReservedHeight = 35; // Space reserved for header on page 1 (logo + business details)
-    const footerReservedHeight = 25; // Space reserved for footer at bottom
-
-    // Calculate content safe zone
-    const contentTopPage1 = pageMarginTop + headerReservedHeight; // ~45mm on page 1
-    const contentTopOther = pageMarginTop; // 10mm on subsequent pages
-    const contentBottom = pageHeight - footerReservedHeight; // ~272mm from top
-
-    // Track current Y offset for page breaks
+    // Multi-page — slice canvas into A4-height chunks
+    const pageHeightPx = (A4_HEIGHT_MM / mmPerPx) * CAPTURE_SCALE;
     let yOffset = 0;
-    let currentPage = 1;
+    let pageIndex = 0;
 
-    // flowingY tracks the actual Y position of rendered content on the current page.
-    // This stays in sync even when autoTable creates its own page breaks.
-    let flowingY = contentTopPage1;
+    while (yOffset < canvas.height) {
+        if (pageIndex > 0) pdf.addPage();
 
-    // Helper to check if we need a page break before rendering an element
-    const checkPageBreak = (elementY: number, elementH: number): number => {
-        const adjustedY = elementY + yOffset;
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - yOffset);
 
-        // If element would exceed content safe zone, add new page
-        if (adjustedY + elementH > contentBottom) {
-            doc.addPage();
-            currentPage++;
-            yOffset = -elementY + contentTopOther;
-            flowingY = contentTopOther;
-            return contentTopOther;
+        // Create a slice canvas for this page
+        const slice = document.createElement('canvas');
+        slice.width = canvas.width;
+        slice.height = sliceHeight;
+        const ctx = slice.getContext('2d');
+        if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, slice.width, slice.height);
+            ctx.drawImage(
+                canvas,
+                0, yOffset,          // Source x, y
+                canvas.width, sliceHeight,  // Source width, height
+                0, 0,                // Destination x, y
+                canvas.width, sliceHeight   // Destination width, height
+            );
         }
 
-        return adjustedY;
-    };
+        const sliceHeightMM = (sliceHeight / CAPTURE_SCALE) * mmPerPx;
+        const imgData = slice.toDataURL('image/jpeg', 0.92);
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, sliceHeightMM);
 
-    /**
-     * Gets rendering coordinates for a layout item.
-     * Uses max(grid-based Y, flowingY) to prevent overlapping
-     * content that was pushed down by variable-height blocks (e.g., autoTable).
-     */
-    const getRect = (item: InvoiceLayoutItem) => {
-        const baseY = pageMarginTop + (item.y * rowHeightMM);
-        const h = item.h * rowHeightMM;
-
-        // Use the later of grid position or flowing position
-        const effectiveY = Math.max(baseY + yOffset, flowingY);
-
-        // Check page break with the effective position
-        if (effectiveY + h > contentBottom) {
-            doc.addPage();
-            currentPage++;
-            flowingY = contentTopOther;
-            yOffset = -baseY + contentTopOther;
-            return {
-                x: pageMarginLeft + (item.x * colWidth),
-                y: contentTopOther,
-                w: item.w * colWidth,
-                h: h
-            };
-        }
-
-        return {
-            x: pageMarginLeft + (item.x * colWidth),
-            y: effectiveY,
-            w: item.w * colWidth,
-            h: h
-        };
-    };
-
-    // Sort items by Y to render top-down
-    const sortedGrid = [...grid].sort((a, b) => a.y - b.y);
-
-    const footerItems: any[] = [];
-
-    for (const layoutItem of sortedGrid) {
-        const itemConfig = items.find(i => i.id === layoutItem.i);
-        if (!itemConfig) continue;
-
-        const { x, y, w, h } = getRect(layoutItem);
-        const type = itemConfig.type;
-        const content = itemConfig.content;
-        const style = itemConfig.style || {};
-
-        if (type === 'footer') {
-            footerItems.push({ layoutItem, itemConfig });
-            continue;
-        }
-
-        // Header only renders on page 1
-        if (type === 'header') {
-            if (currentPage !== 1) continue; // Skip header on subsequent pages
-
-            // Render logo if available (left side)
-            if (itemConfig.logo) {
-                try {
-                    const img = await loadImage(itemConfig.logo);
-                    const logoWidth = w * 0.3; // 30% of header width for logo
-                    const logoHeight = h;
-                    doc.addImage(img, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
-                } catch (e) {
-                    Logger.error('Failed to load logo image', { error: e });
-                }
-            }
-
-            // Render business details (right-aligned within header bounds)
-            if (itemConfig.businessDetails) {
-                // Right-align business details to header element's right edge
-                // This respects the element bounds set in the designer
-                const textX = x + w; // Right edge of the header element
-
-                // Dynamic font sizing based on header height
-                // Calculate based on number of lines and available height
-                const lines = itemConfig.businessDetails.split('\n');
-                const lineCount = lines.length || 1;
-
-                // Calculate optimal font size to fit content in available height
-                // Each line needs ~1.2x font size in mm for proper spacing
-                // h is in mm, we need pt (1mm ≈ 2.83pt)
-                const availableHeightMM = h - 4; // Leave 4mm padding (2mm top + 2mm bottom)
-                const lineHeightMM = availableHeightMM / lineCount;
-
-                // Convert to points and clamp between readable bounds
-                // lineHeightMM * 2.83 gives pt, divide by ~1.3 for actual font size
-                const calculatedFontSize = (lineHeightMM * 2.83) / 1.3;
-                const fontSize = Math.max(7, Math.min(12, calculatedFontSize));
-
-                // Line spacing in mm (font size in pt / 2.83 * 1.2 for spacing)
-                const lineSpacing = (fontSize / 2.83) * 1.2;
-
-                doc.setFontSize(fontSize);
-                doc.setFont("helvetica", "normal");
-
-                // Start text from top of element with small padding
-                let currentY = y + 2 + (fontSize / 2.83); // Account for baseline
-                lines.forEach((line: string) => {
-                    doc.text(line, textX, currentY, { align: 'right' });
-                    currentY += lineSpacing;
-                });
-            }
-            flowingY = y + h;
-        }
-        else if (type === 'text') {
-            let text = content || '';
-            // Handlebars replacement with dot-notation support
-            text = resolveHandlebars(text, order);
-
-            // Apply Styles
-            const fontSize = parseInt(style.fontSize || '14px');
-            // Convert px to pt roughly (1px = 0.75pt)
-            doc.setFontSize(fontSize * 0.75);
-
-            const fontWeight = style.fontWeight === 'bold' ? 'bold' : 'normal';
-            const fontStyle = style.fontStyle === 'italic' ? 'italic' : 'normal';
-
-            if (fontWeight === 'bold' && fontStyle === 'italic') {
-                doc.setFont("helvetica", "bolditalic");
-            } else if (fontWeight === 'bold') {
-                doc.setFont("helvetica", "bold");
-            } else if (fontStyle === 'italic') {
-                doc.setFont("helvetica", "italic");
-            } else {
-                doc.setFont("helvetica", "normal");
-            }
-
-            const align = style.textAlign || 'left';
-
-            // Calculate X based on alignment
-            let textX = x + 2;
-            if (align === 'center') textX = x + (w / 2);
-            if (align === 'right') textX = x + w - 2;
-
-            doc.text(text, textX, y + 5, { align: align as any, maxWidth: w });
-            flowingY = y + h;
-        }
-        else if (type === 'image') {
-            if (content) {
-                try {
-                    const img = await loadImage(content);
-                    doc.addImage(img, 'PNG', x, y, w, h, undefined, 'FAST');
-                } catch (e) {
-                    Logger.error('Failed to load image', { error: e });
-                    // Fallback
-                    doc.setFillColor(240, 240, 240);
-                    doc.rect(x, y, w, h, 'F');
-                    doc.setFontSize(8);
-                    doc.setTextColor(150);
-                    doc.text('Image Error', x + w / 2, y + h / 2, { align: 'center' });
-                    doc.setTextColor(0);
-                }
-            } else {
-                // Placeholder
-                doc.setFillColor(240, 240, 240);
-                doc.rect(x, y, w, h, 'F');
-                doc.setFontSize(8);
-                doc.setTextColor(150);
-                doc.text('Image', x + w / 2, y + h / 2, { align: 'center' });
-                doc.setTextColor(0);
-            }
-            flowingY = y + h;
-        }
-        else if (type === 'order_details') {
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-
-            const orderNumber = order.number || order.order_number || 'N/A';
-            const orderDate = order.date_created
-                ? new Date(order.date_created).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                : 'N/A';
-            const paymentMethod = order.payment_method_title || order.payment_method || 'N/A';
-            const shippingMethod = order.shipping_lines?.[0]?.method_title || order.shipping_method || 'N/A';
-
-            let currentY = y + 5;
-
-            doc.setTextColor(100);
-            doc.text("Order Number:", x + 2, currentY);
-            doc.setTextColor(0);
-            doc.setFont("helvetica", "bold");
-            doc.text(String(orderNumber), x + 40, currentY);
-
-            currentY += 5;
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(100);
-            doc.text("Order Date:", x + 2, currentY);
-            doc.setTextColor(0);
-            doc.setFont("helvetica", "bold");
-            doc.text(orderDate, x + 40, currentY);
-
-            currentY += 5;
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(100);
-            doc.text("Payment Method:", x + 2, currentY);
-            doc.setTextColor(0);
-            doc.setFont("helvetica", "bold");
-            doc.text(paymentMethod, x + 40, currentY);
-
-            currentY += 5;
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(100);
-            doc.text("Shipping Method:", x + 2, currentY);
-            doc.setTextColor(0);
-            doc.setFont("helvetica", "bold");
-            doc.text(shippingMethod, x + 40, currentY);
-
-            doc.setFont("helvetica", "normal");
-            flowingY = currentY + 2;
-        }
-        else if (type === 'customer_details') {
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
-            doc.text("Bill To:", x + 2, y + 5);
-            doc.setFont("helvetica", "normal");
-
-            let currentY = y + 10;
-            const billing = order.billing || {};
-
-            const lines = [
-                `${billing.first_name || ''} ${billing.last_name || ''}`,
-                billing.company,
-                billing.address_1,
-                billing.address_2,
-                `${billing.city || ''}, ${billing.state || ''} ${billing.postcode || ''}`,
-                billing.email,
-                billing.phone
-            ].filter(Boolean);
-
-            lines.forEach(line => {
-                doc.text(line, x + 2, currentY);
-                currentY += 5;
-            });
-            flowingY = currentY + 2;
-        }
-        else if (type === 'order_table') {
-            // Helper to truncate long text values for PDF display
-            const truncateText = (text: string, maxLength: number = 80): string => {
-                if (text.length <= maxLength) return text;
-                return text.substring(0, maxLength - 3) + '...';
-            };
-
-            // Build table data with item metadata (SKU, variations, custom fields)
-            const tableData = order.line_items.map(p => {
-                const itemMeta = getItemMeta(p);
-
-                // Build description with product name and metadata
-                // Limit metadata to avoid excessive table row heights
-                let description = p.name;
-                if (itemMeta.length > 0) {
-                    // Truncate long values and limit to max 6 metadata entries
-                    const limitedMeta = itemMeta.slice(0, 6).map(m => {
-                        const truncatedValue = truncateText(m.value, 60);
-                        return `${m.label}: ${truncatedValue}`;
-                    });
-                    if (itemMeta.length > 6) {
-                        limitedMeta.push(`... and ${itemMeta.length - 6} more`);
-                    }
-                    const metaStr = limitedMeta.join('\n');
-                    description = `${p.name}\n${metaStr}`;
-                }
-
-                const unitPrice = p.quantity > 0
-                    ? (parseFloat(p.total || 0) / p.quantity)
-                    : parseFloat(p.price || 0);
-
-                return [
-                    description,
-                    p.quantity,
-                    formatPrice(unitPrice, order.currency),
-                    formatPrice(p.total, order.currency)
-                ];
-            });
-
-            // Calculate totals
-            const subtotal = Number(order.total) - Number(order.total_tax || 0) - Number(order.shipping_total || 0);
-            const shippingTotal = Number(order.shipping_total || 0);
-            const tax = Number(order.total_tax || 0);
-            const total = Number(order.total);
-
-            // Build footer rows for totals
-            const footerRows: any[][] = [
-                ['', '', 'Subtotal', formatPrice(subtotal, order.currency)]
-            ];
-            if (shippingTotal > 0) {
-                footerRows.push(['', '', 'Shipping', formatPrice(shippingTotal, order.currency)]);
-            }
-            const discountTotal = Number(order.discount_total || 0);
-            if (discountTotal > 0) {
-                footerRows.push(['', '', 'Discount', `-${formatPrice(discountTotal, order.currency)}`]);
-            }
-            footerRows.push(['', '', 'Tax', formatPrice(tax, order.currency)]);
-            footerRows.push(['', '', { content: 'Total', styles: { fontStyle: 'bold', fontSize: 11 } }, { content: formatPrice(total, order.currency), styles: { fontStyle: 'bold', fontSize: 11 } }]);
-
-            // Always use full page width for the table regardless of grid item size
-            // This prevents column wrapping on narrow grid placements
-            const tableW = usableWidth;
-            const tableX = pageMarginLeft;
-
-            // Fixed column widths — wide enough for currency values like "A$1,234.56"
-            const qtyWidth = 15;
-            const priceWidth = 28;
-            const totalWidth = 28;
-            const descWidth = tableW - qtyWidth - priceWidth - totalWidth;
-
-            autoTable(doc, {
-                startY: y,
-                margin: { left: tableX, right: pageWidth - tableX - tableW },
-                tableWidth: tableW,
-                head: [['Description', 'Qty', 'Unit Price', 'Total']],
-                body: tableData,
-                foot: footerRows,
-                theme: 'grid',
-                styles: {
-                    fontSize: 9,
-                    cellPadding: 3,
-                    overflow: 'linebreak',
-                },
-                headStyles: { fillColor: [66, 66, 66] },
-                footStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0] },
-                columnStyles: {
-                    0: { cellWidth: descWidth },
-                    1: { cellWidth: qtyWidth, halign: 'center' },
-                    2: { cellWidth: priceWidth, halign: 'right' },
-                    3: { cellWidth: totalWidth, halign: 'right' },
-                },
-                rowPageBreak: 'avoid'
-            });
-
-            // Sync tracking after autoTable — it manages its own page breaks
-            const finalY = (doc as any).lastAutoTable?.finalY;
-            if (finalY) {
-                flowingY = finalY + 5; // 5mm spacing after table
-                currentPage = (doc.internal as any).getNumberOfPages();
-            }
-        }
-        else if (type === 'totals') {
-            // Render Totals — use flowingY to position after the table
-            let currentY = Math.max(y, flowingY) + 5;
-            const rightEdge = pageWidth - pageMarginRight - 5;
-
-            // Page break check for totals block (~30mm)
-            if (currentY + 30 > contentBottom) {
-                doc.addPage();
-                currentPage++;
-                currentY = contentTopOther + 5;
-            }
-
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-
-            const subtotalVal = Number(order.total) - Number(order.total_tax || 0) - Number(order.shipping_total || 0);
-            doc.text(`Subtotal: ${formatPrice(subtotalVal, order.currency)}`, rightEdge, currentY, { align: 'right' });
-            currentY += 5;
-            if (Number(order.shipping_total || 0) > 0) {
-                doc.text(`Shipping: ${formatPrice(order.shipping_total, order.currency)}`, rightEdge, currentY, { align: 'right' });
-                currentY += 5;
-            }
-            const discountVal = Number(order.discount_total || 0);
-            if (discountVal > 0) {
-                doc.text(`Discount: -${formatPrice(discountVal, order.currency)}`, rightEdge, currentY, { align: 'right' });
-                currentY += 5;
-            }
-            doc.text(`Tax: ${formatPrice(order.total_tax, order.currency)}`, rightEdge, currentY, { align: 'right' });
-            currentY += 6;
-            doc.setFont("helvetica", "bold");
-            doc.text(`Total: ${formatPrice(order.total, order.currency)}`, rightEdge, currentY, { align: 'right' });
-            doc.setFont("helvetica", "normal");
-
-            flowingY = currentY + 10;
-        }
+        yOffset += pageHeightPx;
+        pageIndex++;
     }
 
-    // Render Footer on Last Page (at bottom)
-    if (footerItems.length > 0) {
-        const pageCount = (doc.internal as any).getNumberOfPages();
-        doc.setPage(pageCount);
-
-        // Position footer near bottom of page
-        const footerY = pageHeight - 20; // 20mm from bottom
-
-        footerItems.forEach(({ layoutItem, itemConfig }) => {
-            const content = itemConfig.content || '';
-            const footerX = pageMarginLeft + (layoutItem.x * colWidth);
-            const footerW = layoutItem.w * colWidth;
-
-            doc.setFontSize(8);
-            doc.setTextColor(100);
-            doc.text(content, footerX + (footerW / 2), footerY, { align: 'center', maxWidth: footerW });
-            doc.setTextColor(0);
-        });
-    }
-
-    // Save
-    doc.save(`Invoice_${order.number}.pdf`);
-};
-
-function formatPrice(amount: string | number, currency: string) {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(Number(amount));
+    return pdf;
 }
