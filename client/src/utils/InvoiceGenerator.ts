@@ -61,8 +61,6 @@ export const generateInvoicePDF = async (
         '-webkit-font-smoothing: antialiased',
     ].join(';');
     document.body.appendChild(container);
-
-
     let root: ReturnType<typeof createRoot> | null = null;
     try {
         // 2. Render InvoiceRenderer into the container
@@ -126,7 +124,8 @@ export const generateInvoicePDF = async (
 
         // 8. Create paginated PDF from the canvas with smart break points
         const pdf = createPaginatedPdf(canvas, breakPoints);
-        pdf.save(`Invoice_${order.number}.pdf`);
+        const orderNumber = order.number || order.order_number || order.id || 'draft';
+        pdf.save(`Invoice_${orderNumber}.pdf`);
     } catch (err: any) {
         const msg = err?.message || String(err);
         Logger.error('Failed to generate invoice PDF', { error: msg, stack: err?.stack });
@@ -144,14 +143,16 @@ export const generateInvoicePDF = async (
  * so a broken logo doesn't block the entire PDF.
  */
 function waitForImages(container: HTMLElement): Promise<void[]> {
+    const IMAGE_TIMEOUT_MS = 5000;
     const images = container.querySelectorAll('img');
     return Promise.all(
         Array.from(images).map((img) =>
             img.complete
                 ? Promise.resolve()
                 : new Promise<void>((resolve) => {
-                      img.onload = () => resolve();
-                      img.onerror = () => resolve(); // Don't block on failed images
+                      const timer = setTimeout(resolve, IMAGE_TIMEOUT_MS);
+                      img.onload = () => { clearTimeout(timer); resolve(); };
+                      img.onerror = () => { clearTimeout(timer); resolve(); };
                   })
         )
     );
@@ -175,7 +176,14 @@ function delay(ms: number): Promise<void> {
  * and always returns a hex string (#rrggbb) when read back.
  * Returns the original value if no conversion needed or conversion fails.
  */
-const colorConversionCtx = document.createElement('canvas').getContext('2d');
+/** Lazy-initialized canvas context — avoids crash on SSR where document is undefined. */
+let _colorCtx: CanvasRenderingContext2D | null = null;
+function getColorConversionCtx(): CanvasRenderingContext2D | null {
+    if (!_colorCtx && typeof document !== 'undefined') {
+        _colorCtx = document.createElement('canvas').getContext('2d');
+    }
+    return _colorCtx;
+}
 
 function resolveColorToHex(color: string): string {
     if (!color || color === 'transparent' || color === 'none' || color === 'inherit'
@@ -189,10 +197,11 @@ function resolveColorToHex(color: string): string {
         return color;
     }
     try {
-        if (!colorConversionCtx) return color;
-        colorConversionCtx.fillStyle = '#000000'; // Reset
-        colorConversionCtx.fillStyle = color;
-        return colorConversionCtx.fillStyle; // Returns hex like #rrggbb
+        const ctx = getColorConversionCtx();
+        if (!ctx) return color;
+        ctx.fillStyle = '#000000'; // Reset
+        ctx.fillStyle = color;
+        return ctx.fillStyle; // Returns hex like #rrggbb
     } catch {
         return color;
     }
@@ -395,8 +404,10 @@ function createPaginatedPdf(
         const imgData = slice.toDataURL('image/jpeg', 0.92);
         pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, sliceHeightMM);
 
-        yOffset = actualCut;
+        // Guard against infinite loops — ensure forward progress
+        yOffset = Math.max(actualCut, yOffset + 1);
         pageIndex++;
+        if (pageIndex > 50) break; // Safety cap
     }
 
     return pdf;
