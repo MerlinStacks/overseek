@@ -373,18 +373,21 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
             footerRows.push(['', '', 'Tax', formatPrice(tax, order.currency)]);
             footerRows.push(['', '', { content: 'Total', styles: { fontStyle: 'bold', fontSize: 11 } }, { content: formatPrice(total, order.currency), styles: { fontStyle: 'bold', fontSize: 11 } }]);
 
-            // Calculate column widths proportionally based on table width
-            // Description should get ~66% of width, other columns share the rest
-            const qtyWidth = Math.min(12, w * 0.08);
-            const priceWidth = Math.min(22, w * 0.13);
-            const totalWidth = Math.min(22, w * 0.13);
-            // Description gets remaining space (at least 66% of table width)
-            const descWidth = w - qtyWidth - priceWidth - totalWidth;
+            // Always use full page width for the table regardless of grid item size
+            // This prevents column wrapping on narrow grid placements
+            const tableW = usableWidth;
+            const tableX = pageMarginLeft;
+
+            // Fixed column widths — wide enough for currency values like "A$1,234.56"
+            const qtyWidth = 15;
+            const priceWidth = 28;
+            const totalWidth = 28;
+            const descWidth = tableW - qtyWidth - priceWidth - totalWidth;
 
             autoTable(doc, {
                 startY: y,
-                margin: { left: x, right: pageWidth - x - w },
-                tableWidth: w,
+                margin: { left: tableX, right: pageWidth - tableX - tableW },
+                tableWidth: tableW,
                 head: [['Description', 'Qty', 'Unit Price', 'Total']],
                 body: tableData,
                 foot: footerRows,
@@ -393,43 +396,42 @@ export const generateInvoicePDF = async (order: OrderData, grid: any[], items: a
                     fontSize: 9,
                     cellPadding: 3,
                     overflow: 'linebreak',
-                    cellWidth: 'wrap'
                 },
                 headStyles: { fillColor: [66, 66, 66] },
                 footStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0] },
                 columnStyles: {
-                    0: { cellWidth: descWidth },  // Description column - proportional width
-                    1: { cellWidth: qtyWidth, halign: 'center' },  // Qty
-                    2: { cellWidth: priceWidth, halign: 'right' },   // Unit Price
-                    3: { cellWidth: totalWidth, halign: 'right' },   // Total
+                    0: { cellWidth: descWidth },
+                    1: { cellWidth: qtyWidth, halign: 'center' },
+                    2: { cellWidth: priceWidth, halign: 'right' },
+                    3: { cellWidth: totalWidth, halign: 'right' },
                 },
-                // Keep line items together - avoid page breaks within rows
                 rowPageBreak: 'avoid'
             });
         }
         else if (type === 'totals') {
-            // Render Totals
+            // Render Totals — align to page right edge for consistency with table
             let currentY = y + 5;
+            const rightEdge = pageWidth - pageMarginRight - 5;
 
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
 
             const subtotalVal = Number(order.total) - Number(order.total_tax || 0) - Number(order.shipping_total || 0);
-            doc.text(`Subtotal: ${formatPrice(subtotalVal, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+            doc.text(`Subtotal: ${formatPrice(subtotalVal, order.currency)}`, rightEdge, currentY, { align: 'right' });
             currentY += 5;
             if (Number(order.shipping_total || 0) > 0) {
-                doc.text(`Shipping: ${formatPrice(order.shipping_total, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+                doc.text(`Shipping: ${formatPrice(order.shipping_total, order.currency)}`, rightEdge, currentY, { align: 'right' });
                 currentY += 5;
             }
             const discountVal = Number(order.discount_total || 0);
             if (discountVal > 0) {
-                doc.text(`Discount: -${formatPrice(discountVal, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+                doc.text(`Discount: -${formatPrice(discountVal, order.currency)}`, rightEdge, currentY, { align: 'right' });
                 currentY += 5;
             }
-            doc.text(`Tax: ${formatPrice(order.total_tax, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+            doc.text(`Tax: ${formatPrice(order.total_tax, order.currency)}`, rightEdge, currentY, { align: 'right' });
             currentY += 6;
             doc.setFont("helvetica", "bold");
-            doc.text(`Total: ${formatPrice(order.total, order.currency)}`, x + w - 5, currentY, { align: 'right' });
+            doc.text(`Total: ${formatPrice(order.total, order.currency)}`, rightEdge, currentY, { align: 'right' });
             doc.setFont("helvetica", "normal");
         }
     }
