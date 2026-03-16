@@ -77,12 +77,15 @@ export const generateInvoicePDF = async (
             })
         );
 
-        // 3. Wait for React render to flush + images to load
+        // 3. Wait for React render to complete — React 18 batches renders,
+        //    so requestAnimationFrame alone may fire before DOM is populated.
+        //    Use a real delay followed by frames for layout to settle.
+        await delay(500);
         await nextFrame();
         await waitForImages(container);
         await nextFrame();
 
-        // Make container visible momentarily for html2canvas (it needs computed styles)
+        // Make container visible for html2canvas (it reads computed styles)
         container.style.opacity = '1';
 
         // 5. Strip decorative UI styling that shouldn't appear in the PDF
@@ -107,18 +110,22 @@ export const generateInvoicePDF = async (
         const canvas = await html2canvas(container, {
             scale: CAPTURE_SCALE,
             useCORS: true,
-            allowTaint: false,
+            // allowTaint must be true — the logo image may not have CORS headers,
+            // and false causes html2canvas to throw on any cross-origin resource.
+            allowTaint: true,
             backgroundColor: '#ffffff',
             width: CONTAINER_WIDTH_PX,
             windowWidth: CONTAINER_WIDTH_PX,
+            logging: false,
         });
 
         // 8. Create paginated PDF from the canvas with smart break points
         const pdf = createPaginatedPdf(canvas, breakPoints);
         pdf.save(`Invoice_${order.number}.pdf`);
-    } catch (err) {
-        Logger.error('Failed to generate invoice PDF', { error: err });
-        throw err;
+    } catch (err: any) {
+        const msg = err?.message || String(err);
+        Logger.error('Failed to generate invoice PDF', { error: msg, stack: err?.stack });
+        throw new Error(`Invoice generation failed: ${msg}`);
     } finally {
         // Always cleanup: unmount React tree + remove container from DOM
         try { root?.unmount(); } catch { /* already unmounted or never mounted */ }
@@ -150,6 +157,11 @@ function nextFrame(): Promise<void> {
     return new Promise((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     );
+}
+
+/** Promise-based setTimeout wrapper. */
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

@@ -121,9 +121,10 @@ export function OrderDetailPage() {
             // 2. Generate PDF
             await generateInvoicePDF(order, template.layout?.grid || [], template.layout?.items || [], template.name);
 
-        } catch (e) {
-            Logger.error('An error occurred', { error: e });
-            alert("Failed to generate invoice");
+        } catch (e: any) {
+            const msg = e?.message || String(e);
+            Logger.error('Invoice generation error', { error: msg });
+            alert(`Failed to generate invoice: ${msg}`);
         } finally {
             setIsGenerating(false);
         }
