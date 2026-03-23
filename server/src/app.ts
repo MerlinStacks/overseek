@@ -74,6 +74,12 @@ async function build() {
             if (url.startsWith('/health')) return true;
             if (url.startsWith('/api/t/')) return true;
             if (url.startsWith('/api/tracking')) return true;
+            if (url.startsWith('/api/capi')) return true;
+            if (url.startsWith('/api/analytics')) return true;
+            if (url.startsWith('/api/notifications')) return true;
+            if (url.startsWith('/api/chat')) return true;
+            if (url.startsWith('/api/dashboard')) return true;
+            if (url.startsWith('/api/status-center')) return true;
             return false;
         },
         errorResponseBuilder: () => ({

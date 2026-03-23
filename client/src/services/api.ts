@@ -66,6 +66,25 @@ function handleAuthError(message: string) {
     setTimeout(() => { isHandlingAuthError = false; }, 2000);
 }
 
+/** Max retries for 429 rate-limit responses before giving up */
+const RATE_LIMIT_MAX_RETRIES = 3;
+/** Base delay for exponential backoff (doubles each retry) */
+const RATE_LIMIT_BASE_DELAY_MS = 1_000;
+
+/**
+ * Parse the Retry-After header value into milliseconds.
+ * Handles both delta-seconds and HTTP-date formats.
+ */
+function parseRetryAfter(response: Response): number | null {
+    const header = response.headers.get('retry-after');
+    if (!header) return null;
+    const seconds = parseInt(header, 10);
+    if (!isNaN(seconds)) return seconds * 1_000;
+    const date = Date.parse(header);
+    if (!isNaN(date)) return Math.max(0, date - Date.now());
+    return null;
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { token, accountId, headers, body, ...customConfig } = options;
 
@@ -83,37 +102,49 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         },
     };
 
-    const response = await fetch(endpoint, config);
+    for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+        const response = await fetch(endpoint, config);
 
-    if (!response.ok) {
-        let errorMessage = 'Something went wrong';
-        let errorCode = 'INTERNAL_ERROR';
-        let isRecoverable = false;
+        if (!response.ok) {
+            // Retry on 429 with exponential backoff before exhausting attempts
+            if (response.status === 429 && attempt < RATE_LIMIT_MAX_RETRIES) {
+                const delay = parseRetryAfter(response) ?? RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+            }
 
-        try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorData.error || errorMessage;
-            errorCode = errorData.code || errorCode;
-            isRecoverable = errorData.isRecoverable || false;
-        } catch {
-            // Only use status text if JSON parsing fails
-            errorMessage = response.statusText;
+            let errorMessage = 'Something went wrong';
+            let errorCode = 'INTERNAL_ERROR';
+            let isRecoverable = false;
+
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.message || errorData.error || errorMessage;
+                errorCode = errorData.code || errorCode;
+                isRecoverable = errorData.isRecoverable || false;
+            } catch {
+                // Only use status text if JSON parsing fails
+                errorMessage = response.statusText;
+            }
+
+            // Handle auth errors globally - auto logout and redirect
+            if (response.status === 401) {
+                handleAuthError(errorMessage);
+            }
+
+            throw new ApiError(response.status, errorMessage, errorCode, isRecoverable);
         }
 
-        // Handle auth errors globally - auto logout and redirect
-        if (response.status === 401) {
-            handleAuthError(errorMessage);
+        // Handle 204 No Content
+        if (response.status === 204) {
+            return {} as T;
         }
 
-        throw new ApiError(response.status, errorMessage, errorCode, isRecoverable);
+        return response.json();
     }
 
-    // Handle 204 No Content
-    if (response.status === 204) {
-        return {} as T;
-    }
-
-    return response.json();
+    // Unreachable in practice — the loop always returns or throws
+    throw new ApiError(429, 'Too many requests, please try again later.', 'RATE_LIMITED', true);
 }
 
 export const api = {
