@@ -7,7 +7,7 @@
  * via a public API endpoint; access tokens stay server-side only.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApi } from '../../hooks/useApi';
 import {
     Save, Loader2, CheckCircle2, XCircle, Eye, EyeOff, Zap, ChevronDown, ChevronUp,
@@ -176,7 +176,10 @@ export function CAPISettings() {
     const [consentAutoAccept, setConsentAutoAccept] = useState(false);
     const [savingConsent, setSavingConsent] = useState(false);
 
-    /** Fetch all platform configs on mount */
+    /** Ref guard prevents re-fetch from overwriting local edits */
+    const hasFetched = useRef(false);
+
+    /** Fetch all platform configs on mount (once) */
     const fetchConfigs = useCallback(async () => {
         if (!isReady) return;
         try {
@@ -185,9 +188,15 @@ export function CAPISettings() {
             if (data.consent) setConsentAutoAccept(!!data.consent.autoAccept);
         } catch { /* silently fail on initial load */ }
         finally { setLoading(false); }
-    }, [get, accountId, isReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [accountId, isReady]);
 
-    useEffect(() => { fetchConfigs(); }, [fetchConfigs]);
+    useEffect(() => {
+        if (hasFetched.current) return;
+        if (!isReady) return;
+        hasFetched.current = true;
+        fetchConfigs();
+    }, [isReady, fetchConfigs]);
 
     /** Save a single platform's config */
     const handleSave = async (platformKey: string) => {
