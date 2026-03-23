@@ -1241,6 +1241,7 @@ class OverSeek_Server_Tracking
             'quantity' => $quantity,
             'name' => $product ? $product->get_name() : '',
             'price' => $product ? floatval($product->get_price()) : 0,
+            'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
             'eventId' => wp_generate_uuid4(), // CAPI deduplication key
         );
 
@@ -1275,6 +1276,7 @@ class OverSeek_Server_Tracking
             $payload['name'] = $product ? $product->get_name() : '';
             $payload['sku'] = $product ? $product->get_sku() : '';
             $payload['price'] = $product ? floatval($product->get_price()) : 0;
+            $payload['currency'] = function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD';
         }
 
         // Use safe cart wrapper
@@ -1296,6 +1298,7 @@ class OverSeek_Server_Tracking
 
         $payload = array(
             'email' => $email,
+            'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
             'eventId' => wp_generate_uuid4(), // CAPI deduplication key
         );
 
@@ -1464,6 +1467,7 @@ class OverSeek_Server_Tracking
             'price' => floatval($product->get_price()),
             'regularPrice' => floatval($product->get_regular_price()),
             'salePrice' => $product->get_sale_price() ? floatval($product->get_sale_price()) : null,
+            'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
             'inStock' => $product->is_in_stock(),
             'categories' => $categories,
             'productType' => $product->get_type(),
