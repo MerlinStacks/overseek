@@ -1,44 +1,58 @@
 
-
+import { useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { api } from '../services/api';
 
-/** auto-attaches auth token + account ID to every request */
+/**
+ * Auto-attaches auth token + account ID to every request.
+ *
+ * Why useMemo/useCallback: Without stable references, every component
+ * that destructures `get`/`post`/`put` from this hook would see new
+ * function identities per render. This breaks useCallback/useEffect
+ * dependency arrays downstream (e.g. CAPISettings fetchConfigs loop).
+ */
 export function useApi() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
     const accountId = currentAccount?.id;
 
-    return {
+    const get = useCallback(
+        <T>(endpoint: string) => api.get<T>(endpoint, token || undefined, accountId),
+        [token, accountId]
+    );
 
-        get: <T>(endpoint: string) =>
-            api.get<T>(endpoint, token || undefined, accountId),
+    const post = useCallback(
+        <T>(endpoint: string, data?: any) => api.post<T>(endpoint, data, token || undefined, accountId),
+        [token, accountId]
+    );
 
+    const patch = useCallback(
+        <T>(endpoint: string, data?: any) => api.patch<T>(endpoint, data, token || undefined, accountId),
+        [token, accountId]
+    );
 
-        post: <T>(endpoint: string, data?: any) =>
-            api.post<T>(endpoint, data, token || undefined, accountId),
+    const put = useCallback(
+        <T>(endpoint: string, data?: any) => api.put<T>(endpoint, data, token || undefined, accountId),
+        [token, accountId]
+    );
 
+    const del = useCallback(
+        <T>(endpoint: string) => api.delete<T>(endpoint, token || undefined, accountId),
+        [token, accountId]
+    );
 
-        patch: <T>(endpoint: string, data?: any) =>
-            api.patch<T>(endpoint, data, token || undefined, accountId),
+    const isReady = Boolean(token && accountId);
 
-
-        put: <T>(endpoint: string, data?: any) =>
-            api.put<T>(endpoint, data, token || undefined, accountId),
-
-
-        delete: <T>(endpoint: string) =>
-            api.delete<T>(endpoint, token || undefined, accountId),
-
-
-        isReady: Boolean(token && accountId),
-
-
+    return useMemo(() => ({
+        get,
+        post,
+        patch,
+        put,
+        delete: del,
+        isReady,
         accountId,
-
-
         token,
-    };
+    }), [get, post, patch, put, del, isReady, accountId, token]);
 }

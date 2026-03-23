@@ -188,8 +188,7 @@ export function CAPISettings() {
             if (data.consent) setConsentAutoAccept(!!data.consent.autoAccept);
         } catch { /* silently fail on initial load */ }
         finally { setLoading(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [accountId, isReady]);
+    }, [get, accountId, isReady]);
 
     useEffect(() => {
         if (hasFetched.current) return;
