@@ -9,6 +9,7 @@ import { prisma } from '../../utils/prisma';
 import { geoipLookupSync } from './GeoIPService';
 import { parseTrafficSource, isBot, maskIpAddress } from './TrafficAnalyzer';
 import { isExcludedIp } from './IpExclusionService';
+import { ConversionForwarder } from './ConversionForwarder';
 
 const UAParser = require('ua-parser-js');
 
@@ -42,6 +43,9 @@ export interface TrackingEventPayload {
 
     // Landing page referrer (persisted original external referrer)
     landingReferrer?: string;
+
+    // CAPI deduplication key — matches browser pixel event_id
+    eventId?: string;
 
     // Session enrichment from logged-in users (for session stitching)
     customerId?: number;
@@ -463,6 +467,12 @@ export async function processEvent(data: TrackingEventPayload) {
         console.error('Event data was:', { sessionId: session.id, visitId: currentVisit.id, type: data.type, url: data.url, pageTitle: data.pageTitle });
         throw eventError;
     }
+
+    // 5. Fire-and-forget: forward conversion events to ad platforms (CAPI)
+    // Wrapped in try/catch to ensure CAPI failures never affect tracking
+    try {
+        void ConversionForwarder.forwardIfConversion(data, session);
+    } catch (_) { /* intentionally swallowed */ }
 
     return session;
 }

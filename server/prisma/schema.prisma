@@ -243,6 +243,43 @@ model WebhookDelivery {
 }
 
 // --------------------------------------
+// Conversion Delivery Logging (CAPI)
+// --------------------------------------
+
+/// Logs server-side conversion events sent to ad platforms.
+/// Enables auditing, retry, and debugging of CAPI/Events API deliveries.
+model ConversionDelivery {
+  id          String   @id @default(uuid())
+  accountId   String
+
+  /// Target platform: META, TIKTOK, GOOGLE, PINTEREST, GA4
+  platform    String
+  /// Platform event name: "Purchase", "AddToCart", etc.
+  eventName   String
+  /// Deduplication key — matches plugin-generated eventId for pixel dedup
+  eventId     String
+  /// Full payload sent to the platform API
+  payload     Json
+  /// Delivery status: PENDING, SENT, FAILED
+  status      String   @default("PENDING")
+  /// HTTP response code from platform
+  httpStatus  Int?
+  /// Platform response body (for debugging)
+  response    String?  @db.Text
+  /// Number of delivery attempts
+  attempts    Int      @default(0)
+  /// Error message from last failed attempt
+  lastError   String?  @db.Text
+  /// When the event was successfully sent
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([accountId, status])
+  @@index([accountId, platform, createdAt])
+  @@index([eventId])
+}
+
+// --------------------------------------
 // Per-Account Rate Limiting
 // --------------------------------------
 

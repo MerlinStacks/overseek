@@ -55,6 +55,7 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-frontend.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-server-tracking.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixels.php';
 	}
 
 	/**
@@ -81,6 +82,9 @@ class OverSeek_Main
 		if (get_option('overseek_enable_tracking')) {
 			new OverSeek_Server_Tracking();
 		}
+
+		// Initialize Client-Side Pixel Tracking (fetches config from API).
+		new OverSeek_Pixels();
 	}
 
 	/**

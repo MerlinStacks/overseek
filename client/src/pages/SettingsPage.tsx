@@ -20,15 +20,16 @@ import { WebhookSettings } from '../components/settings/WebhookSettings';
 import { AdAccountSettings } from '../components/settings/AdAccountSettings';
 import { CannedResponsesSettings } from '../components/settings/CannedResponsesSettings';
 import { TrackingExclusionSettings } from '../components/settings/TrackingExclusionSettings';
+import { CAPISettings } from '../components/settings/CAPISettings';
 import {
     LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw,
     Mail, Package, Tags, Coins, Bell, Share2, Users, ChevronRight, Webhook, Megaphone, Zap, Shield
 } from 'lucide-react';
 import { SettingsPageSkeleton } from '../components/ui/PageSkeletons';
 
-type TabId = 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses';
+type TabId = 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses' | 'conversions';
 
-const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses'];
+const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses', 'conversions'];
 
 interface TabDef {
     id: TabId;
@@ -98,6 +99,7 @@ export function SettingsPage() {
                 { id: 'email', label: 'Email', icon: Mail },
                 { id: 'channels', label: 'Channels', icon: Share2 },
                 { id: 'ads', label: 'Ad Accounts', icon: Megaphone, hidden: !isAdTrackingEnabled },
+                { id: 'conversions', label: 'Tracking Pixels', icon: Zap },
                 { id: 'webhooks', label: 'Webhooks', icon: Webhook },
                 { id: 'sync', label: 'Sync Status', icon: RefreshCw },
             ]
@@ -198,6 +200,12 @@ export function SettingsPage() {
                 return (
                     <SettingsCard title="Ad Accounts" description="Connect and manage your Meta and Google Ads accounts.">
                         <AdAccountSettings />
+                    </SettingsCard>
+                );
+            case 'conversions':
+                return (
+                    <SettingsCard title="Tracking Pixels & CAPI" description="Manage client-side pixel tags and server-side conversion tracking for all ad platforms.">
+                        <CAPISettings />
                     </SettingsCard>
                 );
             default:

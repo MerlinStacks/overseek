@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.0] - 2026-03-24
+
+### 📡 Server-Side Conversion Tracking (CAPI)
+- **Conversion Forwarding Engine**: Central `ConversionForwarder` orchestrator fans out conversion events to all enabled platforms using `Promise.allSettled` with 5-minute TTL config cache.
+- **Meta Conversions API** (Graph API v25.0): SHA-256 hashed PII, `fbc`/`fbp` cookie forwarding, test event code support.
+- **TikTok Events API** (v2.0): Purchase, AddToCart, ViewContent, InitiateCheckout, Search events with `ttclid` forwarding.
+- **Google Ads Enhanced Conversions** (API v23): Purchase-only, OAuth token reuse, gclid + email matching.
+- **Pinterest Conversions API** (v5): PII array format, `epik` click ID forwarding.
+- **GA4 Measurement Protocol**: `_ga` cookie parsing, ecommerce format, debug endpoint support.
+- **Snapchat Conversions API** (v3): SHA-256 PII, `sclid` click ID, `event_tag` deduplication.
+- **Microsoft/Bing Conversions API**: `msclkid` attribution, SHA-256 enhanced conversions, SharedAccessSignature auth.
+- **Twitter/X Conversions API** (v12): `twclid` click ID, hashed PII identifiers, order-level revenue.
+- **Event Deduplication**: Shared `eventId` (UUID) between browser pixels and server-side CAPI prevents double-counting.
+- **Delivery Logging**: New `ConversionDelivery` Prisma model tracks all delivery attempts with status, HTTP codes, and error messages.
+- **Retry with Backoff**: All platform services retry failed requests (429, 5xx) with exponential backoff up to 3 attempts.
+
+### 🔍 Client-Side Pixel Tracking
+- **Unified Pixel Management**: New `OverSeek_Pixels` class in WC plugin replaces FunnelKit for ad pixel injection.
+- **8 Platform Support**: Meta Pixel, TikTok Pixel, Google Analytics 4, Google Ads Conversion Tag, Pinterest Tag, Snapchat Pixel, Microsoft/Bing UET, Twitter/X Pixel.
+- **Event Tracking**: Configurable per-event toggles for PageView, ViewContent, AddToCart, InitiateCheckout, Purchase, and Search.
+- **Advanced Matching**: Optional hashed PII (email, phone, address) sent in Meta Pixel init for improved match rates.
+- **Meta `external_id`**: Hashed WC customer ID or visitor cookie sent in Meta Pixel init for higher Event Match Quality (EMQ ≥ 6.0).
+- **TikTok Advanced Matching**: `ttq.identify()` sends hashed email/phone for better attribution.
+- **Content ID Formatting**: Configurable SKU vs Product ID, with optional prefix/suffix for catalog sync.
+- **Purchase Deduplication**: Order meta guard (`_overseek_pixel_tracked`) prevents duplicate purchase events on page reload.
+- **AddToCart AJAX Listener**: Intercepts both single product and archive add-to-cart actions via jQuery events.
+- **Shared gtag.js**: Single script load handles both GA4 and Google Ads conversion tracking.
+- **Full GA4 Ecommerce Funnel**: `view_item`, `view_item_list`, `add_to_cart`, `view_cart`, `remove_from_cart`, `begin_checkout`, `add_shipping_info`, `add_payment_info`, `purchase`, `search`.
+
+### 🔒 Google Consent Mode v2
+- **Consent Defaults**: `ad_storage`, `analytics_storage`, `ad_user_data`, `ad_personalization` set before any tags load.
+- **Auto-Accept Toggle**: For regions without cookie consent requirements (e.g. Australia), grants all consent signals automatically.
+- **Dashboard Settings**: Consent Mode card in Tracking Pixels settings page with save button and status indicator.
+
+### 🎨 Settings UI
+- **Tracking Pixels & CAPI Tab**: Unified settings page under Settings → Integrations → Tracking Pixels.
+- **Sectioned Platform Cards**: Each platform card grouped into Pixel/Tag, Server-Side (CAPI), and Advanced sections.
+- **Per-Event Toggles**: Grid of checkboxes to enable/disable individual conversion events per platform.
+- **Test Event Button**: Send test conversion events to verify platform connectivity.
+- **Delivery Log Viewer**: Collapsible table showing recent CAPI delivery attempts with status badges.
+
+### 🔌 WooCommerce Plugin (v2.5.0)
+- **Platform Cookie Forwarding**: `_fbc`, `_fbp`, `_ttp`, `_epq`, `_ga`, `_scid`, `_uetmsclkid`, `twclid` cookies sent to server for CAPI attribution.
+- **Billing PII in Purchases**: Hashed billing email, phone, name, and address included in purchase events.
+- **eventId Generation**: UUID generated per conversion event for pixel ↔ CAPI deduplication.
+- **Pixel Config API**: Public endpoint `/api/capi/pixels/:accountId` serves pixel IDs and event toggles (no secrets exposed).
+
+### 🧪 Testing
+- **68 Unit Tests**: Comprehensive test coverage across 7 test files for all CAPI services + shared utilities.
+
+---
+
+
 ## [2.3.2] - 2026-02-03
 
 ### 🔌 Meta Platform Integration

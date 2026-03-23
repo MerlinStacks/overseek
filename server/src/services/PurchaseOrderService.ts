@@ -148,13 +148,18 @@ export class PurchaseOrderService {
             sku?: string;
         }[];
     }) {
-        // Guard: RECEIVED POs are immutable — revert to DRAFT first
+        // Guard: RECEIVED POs restrict status and item updates
         const existing = await prisma.purchaseOrder.findFirst({
             where: { id: poId, accountId },
             select: { status: true }
         });
-        if (existing?.status === 'RECEIVED' && data.status !== 'DRAFT' && data.status !== 'ORDERED') {
-            throw new Error('Cannot edit a RECEIVED Purchase Order. Revert to DRAFT or ORDERED first.');
+        if (existing?.status === 'RECEIVED') {
+            if (data.status && data.status !== 'RECEIVED' && data.status !== 'DRAFT' && data.status !== 'ORDERED') {
+                throw new Error('Cannot edit a RECEIVED Purchase Order status to anything other than DRAFT or ORDERED. Revert first.');
+            }
+            if (data.items && data.items.length > 0 && data.status !== 'DRAFT' && data.status !== 'ORDERED') {
+                throw new Error('Cannot edit items on a RECEIVED Purchase Order. Revert to DRAFT or ORDERED first.');
+            }
         }
 
         // Build update payload dynamically
@@ -221,6 +226,29 @@ export class PurchaseOrderService {
             where: { id: poId, accountId },
             data: updateData
         });
+    }
+
+    /**
+     * Delete a Purchase Order that is still in DRAFT status.
+     * Why guard on DRAFT: ORDERED/RECEIVED POs may have stock applied or
+     * supplier acknowledgements — deleting them would leave orphan state.
+     */
+    async deletePurchaseOrder(accountId: string, poId: string): Promise<void> {
+        const existing = await prisma.purchaseOrder.findFirst({
+            where: { id: poId, accountId },
+            select: { status: true }
+        });
+
+        if (!existing) {
+            throw new Error('Purchase Order not found');
+        }
+
+        if (existing.status !== 'DRAFT') {
+            throw new Error('Only DRAFT Purchase Orders can be deleted');
+        }
+
+        // Why: PurchaseOrderItem has onDelete: Cascade — Prisma deletes items automatically
+        await prisma.purchaseOrder.delete({ where: { id: poId } });
     }
 
     /**

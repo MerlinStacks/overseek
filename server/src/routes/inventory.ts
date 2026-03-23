@@ -408,6 +408,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
         const { status } = body;
 
         try {
+            let stockResult: { updated: number; errors: string[]; updatedProductIds: string[] } | null = null;
             const existingPO = await poService.getPurchaseOrder(accountId, id);
             const wasReceived = existingPO?.status === 'RECEIVED';
             const isTransitioningToReceived = status === 'RECEIVED' && !wasReceived;
@@ -465,12 +466,11 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 // the PO is already RECEIVED — writing the status first causes stock to never update.
                 const { status: _status, ...fieldsWithoutStatus } = body;
                 await poService.updatePurchaseOrder(accountId, id, fieldsWithoutStatus as any);
-                const result = await poService.receiveStock(accountId, id);
-                await poService.updatePurchaseOrder(accountId, id, { status: 'RECEIVED' });
-                Logger.info('Stock received from PO', { poId: id, ...result });
+                stockResult = await poService.receiveStock(accountId, id);
+                Logger.info('Stock received from PO', { poId: id, ...stockResult });
 
                 // Fire-and-forget: ES re-indexing runs in background
-                const bgProductIds = [...result.updatedProductIds];
+                const bgProductIds = [...stockResult.updatedProductIds];
                 const bgAccountId = accountId;
                 setImmediate(() => {
                     (async () => {
@@ -503,10 +503,36 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const updated = await poService.getPurchaseOrder(accountId, id);
+            // Why: surface receiveStock warnings (e.g. BOM items skipped) so the client
+            // can display them — without these the user has no visibility into partial failures
+            if (stockResult?.errors?.length) {
+                return { ...updated, _warnings: stockResult.errors };
+            }
             return updated;
         } catch (error) {
             Logger.error('Error updating PO', { error, poId: id });
             return reply.code(500).send({ error: 'Failed to update PO' });
+        }
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/purchase-orders/:id', async (request, reply) => {
+        const accountId = request.accountId!;
+        const { id } = request.params;
+
+        try {
+            await poService.deletePurchaseOrder(accountId, id);
+            return { success: true };
+        } catch (error) {
+            const msg = (error as Error).message;
+            // Why: surface known guard errors with appropriate status codes
+            if (msg === 'Purchase Order not found') {
+                return reply.code(404).send({ error: msg });
+            }
+            if (msg === 'Only DRAFT Purchase Orders can be deleted') {
+                return reply.code(400).send({ error: msg });
+            }
+            Logger.error('Error deleting PO', { error, poId: id });
+            return reply.code(500).send({ error: 'Failed to delete PO' });
         }
     });
 

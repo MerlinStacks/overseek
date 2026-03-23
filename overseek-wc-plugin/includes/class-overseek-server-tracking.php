@@ -1241,6 +1241,7 @@ class OverSeek_Server_Tracking
             'quantity' => $quantity,
             'name' => $product ? $product->get_name() : '',
             'price' => $product ? floatval($product->get_price()) : 0,
+            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
         );
 
         // Get cart total using safe wrapper
@@ -1249,6 +1250,9 @@ class OverSeek_Server_Tracking
             $payload['total'] = floatval($cart->get_cart_contents_total());
             $payload['itemCount'] = $cart->get_cart_contents_count();
         }
+
+        // Forward ad platform cookies for server-side attribution
+        $this->attach_platform_cookies($payload);
 
         $this->queue_event('add_to_cart', $payload);
     }
@@ -1292,6 +1296,7 @@ class OverSeek_Server_Tracking
 
         $payload = array(
             'email' => $email,
+            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
         );
 
         // Use safe cart wrapper
@@ -1300,6 +1305,9 @@ class OverSeek_Server_Tracking
             $payload['total'] = floatval($cart->get_cart_contents_total());
             $payload['itemCount'] = $cart->get_cart_contents_count();
         }
+
+        // Forward ad platform cookies for server-side attribution
+        $this->attach_platform_cookies($payload);
 
         $this->queue_event('checkout_start', $payload);
     }
@@ -1348,7 +1356,19 @@ class OverSeek_Server_Tracking
             'customerId' => $order->get_customer_id(),
             'paymentMethod' => $order->get_payment_method(),
             'couponCodes' => $order->get_coupon_codes(),
+            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
+            // Billing PII for server-side hashed matching (Meta/TikTok/Google/Pinterest)
+            'billingPhone' => $order->get_billing_phone(),
+            'billingCity' => $order->get_billing_city(),
+            'billingState' => $order->get_billing_state(),
+            'billingZip' => $order->get_billing_postcode(),
+            'billingCountry' => $order->get_billing_country(),
+            'billingFirst' => $order->get_billing_first_name(),
+            'billingLast' => $order->get_billing_last_name(),
         );
+
+        // Forward ad platform cookies for server-side attribution
+        $this->attach_platform_cookies($payload);
 
         $this->queue_event('purchase', $payload);
 
@@ -1447,7 +1467,11 @@ class OverSeek_Server_Tracking
             'inStock' => $product->is_in_stock(),
             'categories' => $categories,
             'productType' => $product->get_type(),
+            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
         );
+
+        // Forward ad platform cookies for server-side attribution
+        $this->attach_platform_cookies($payload);
 
         $this->queue_event('product_view', $payload);
     }
@@ -1577,6 +1601,48 @@ class OverSeek_Server_Tracking
         );
 
         $this->queue_event('review', $payload);
+    }
+
+    /**
+     * Attach ad platform cookies to event payload for server-side attribution matching.
+     * These cookies are set by browser-side pixels (Meta, TikTok, Pinterest, GA4)
+     * and forwarded to OverSeek for CAPI deduplication and PII matching.
+     *
+     * @param array $payload Event payload to attach cookies to (passed by reference)
+     */
+    private function attach_platform_cookies(&$payload)
+    {
+        // Meta Pixel cookies (set by Facebook/Instagram pixel)
+        if (isset($_COOKIE['_fbc'])) {
+            $payload['fbc'] = sanitize_text_field($_COOKIE['_fbc']);
+        }
+        if (isset($_COOKIE['_fbp'])) {
+            $payload['fbp'] = sanitize_text_field($_COOKIE['_fbp']);
+        }
+        // TikTok Pixel cookie
+        if (isset($_COOKIE['_ttp'])) {
+            $payload['ttp'] = sanitize_text_field($_COOKIE['_ttp']);
+        }
+        // Pinterest Tag cookie
+        if (isset($_COOKIE['_epq'])) {
+            $payload['epq'] = sanitize_text_field($_COOKIE['_epq']);
+        }
+        // GA4 client ID cookie
+        if (isset($_COOKIE['_ga'])) {
+            $payload['gaClientId'] = sanitize_text_field($_COOKIE['_ga']);
+        }
+        // Snapchat Pixel cookie
+        if (isset($_COOKIE['_scid'])) {
+            $payload['sclid'] = sanitize_text_field($_COOKIE['_scid']);
+        }
+        // Microsoft/Bing Ads click ID
+        if (isset($_COOKIE['_uetmsclkid'])) {
+            $payload['msclkid'] = sanitize_text_field($_COOKIE['_uetmsclkid']);
+        }
+        // Twitter/X click ID
+        if (isset($_COOKIE['twclid'])) {
+            $payload['twclid'] = sanitize_text_field($_COOKIE['twclid']);
+        }
     }
 }
 

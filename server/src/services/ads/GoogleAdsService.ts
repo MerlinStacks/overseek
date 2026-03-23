@@ -35,11 +35,8 @@ export class GoogleAdsService {
                 WHERE segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
-            const _tmp_response: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                _tmp_response.push(row);
-            }
-            const [response] = _tmp_response;
+            const rows = await customer.query(query);
+            const response = rows[0];
 
             if (!response?.metrics) return null;
 
@@ -106,10 +103,7 @@ export class GoogleAdsService {
                 ORDER BY metrics.cost_micros DESC
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
 
             return results.map((row: any) => {
                 const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
@@ -164,10 +158,7 @@ export class GoogleAdsService {
                 ORDER BY segments.date ASC
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
 
             return results.map((row: any) => ({
                 date: row.segments?.date || '',
@@ -214,10 +205,7 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
 
             return results.map((row: any) => {
                 const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
@@ -289,10 +277,7 @@ export class GoogleAdsService {
                 LIMIT 500
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
 
             return results.map((row: any) => {
                 const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
@@ -368,10 +353,7 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
 
             return results.map((row: any) => {
                 const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
@@ -427,17 +409,14 @@ export class GoogleAdsService {
                 FROM campaign
                 WHERE campaign.id = ${campaignId}
             `;
-            const _tmp_campaignRows: any[] = [];
-            for await (const row of customer.queryStream(campaignQuery)) {
-                _tmp_campaignRows.push(row);
-            }
-            const [campaignRows] = _tmp_campaignRows;
+            const campaignRows = await customer.query(campaignQuery);
+            const campaignInfo = campaignRows[0];
 
-            if (!campaignRows || !campaignRows.campaign?.campaign_budget) {
+            if (!campaignInfo || !campaignInfo.campaign?.campaign_budget) {
                 throw new Error(`Campaign ${campaignId} not found or has no budget assigned`);
             }
 
-            const budgetId = campaignRows.campaign.campaign_budget;
+            const budgetId = campaignInfo.campaign.campaign_budget;
             const amountMicros = Math.round(dailyBudget * 1_000_000); // Convert to micros
 
             Logger.info('[GoogleAds] Updating budget', { campaignId, budgetId, dailyBudget, amountMicros });
@@ -501,11 +480,8 @@ export class GoogleAdsService {
             // Or safer: query campaign to get resource_name first.
 
             // Let's allow the library to infer or we query.
-            const _tmp_campaign: any[] = [];
-            for await (const row of customer.queryStream(`SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${campaignId}`)) {
-                _tmp_campaign.push(row);
-            }
-            const [campaign] = _tmp_campaign;
+            const campaignRows = await customer.query(`SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${campaignId}`);
+            const campaign = campaignRows[0];
             if (!campaign?.campaign?.resource_name) throw new Error('Campaign not found');
 
             await customer.campaigns.update({
@@ -540,10 +516,7 @@ export class GoogleAdsService {
                     AND ad_group.status = 'ENABLED'
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
 
             return results.map((row: any) => ({
                 id: row.ad_group?.id?.toString() || '',
@@ -618,10 +591,7 @@ export class GoogleAdsService {
                     AND campaign_criterion.type = 'KEYWORD'
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const results = await customer.query(query);
             return results.map((row: any) => row.campaign_criterion?.keyword?.text || '').filter(Boolean);
         } catch (error: any) {
             Logger.warn('Failed to fetch negative keywords', { error: error.message, campaignId });

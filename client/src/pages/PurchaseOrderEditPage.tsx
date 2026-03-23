@@ -260,6 +260,43 @@ export function PurchaseOrderEditPage() {
         }
     };
 
+    /** Delete a DRAFT PO after user confirmation */
+    const handleDelete = async () => {
+        if (!window.confirm('Are you sure you want to delete this purchase order? This cannot be undone.')) return;
+
+        setIsLoading(true);
+        try {
+            const res = await fetch(`/api/inventory/purchase-orders/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount!.id
+                }
+            });
+
+            if (res.ok) {
+                clearDraft();
+                isDirtyRef.current = false;
+                navigate('/inventory?tab=purchasing');
+            } else {
+                let errorMessage = 'Failed to delete';
+                try {
+                    const errorData = await res.json();
+                    errorMessage = errorData.error || errorData.message || `Failed to delete (${res.status})`;
+                } catch {
+                    errorMessage = `Failed to delete (HTTP ${res.status})`;
+                }
+                Logger.error('PO delete failed', { status: res.status, errorMessage });
+                showToast(errorMessage);
+            }
+        } catch (err) {
+            Logger.error('PO delete error', { error: err });
+            showToast(`Error deleting: ${err instanceof Error ? err.message : 'Network error'}`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     if (isLoading && !isNew && items.length === 0) {
         return <div className="p-12 text-center"><Loader2 className="animate-spin inline" /> Loading PO...</div>;
     }
@@ -295,6 +332,17 @@ export function PurchaseOrderEditPage() {
                         >
                             <Copy size={18} />
                             Duplicate
+                        </button>
+                    )}
+                    {!isNew && status === 'DRAFT' && (
+                        <button
+                            onClick={handleDelete}
+                            disabled={isLoading}
+                            className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 disabled:opacity-50"
+                            title="Delete this draft order"
+                        >
+                            <Trash2 size={18} />
+                            Delete
                         </button>
                     )}
                     {isNew && (

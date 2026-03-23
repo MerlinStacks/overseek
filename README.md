@@ -9,6 +9,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/AI-powered-ff6b6b?logo=openai&logoColor=white" alt="AI Powered">
+  <img src="https://img.shields.io/badge/PWA-ready-5A0FC8?logo=pwa&logoColor=white" alt="PWA Ready">
 </p>
 
 ---
@@ -16,16 +17,16 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="Sample Screenshots/Analytics Examples.png" alt="Analytics Dashboard" width="48%">
-  <img src="Sample Screenshots/Default Reports.png" alt="Reports" width="48%">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="48%">
+  <img src="docs/screenshots/unified-inbox.png" alt="Unified Inbox" width="48%">
 </p>
 <p align="center">
-  <img src="Sample Screenshots/Product List.png" alt="Product List" width="48%">
-  <img src="Sample Screenshots/Visitor Profile.png" alt="Visitor Profile" width="48%">
+  <img src="docs/screenshots/analytics.png" alt="Analytics" width="48%">
+  <img src="docs/screenshots/ai-copilot.png" alt="AI Co-Pilot" width="48%">
 </p>
 <p align="center">
-  <img src="Sample Screenshots/Report Builder.png" alt="Report Builder" width="48%">
-  <img src="Sample Screenshots/Invoice Generator.png" alt="Invoice Generator" width="48%">
+  <img src="docs/screenshots/inventory.png" alt="Inventory Management" width="48%">
+  <img src="docs/screenshots/invoice-designer.png" alt="Invoice Designer" width="48%">
 </p>
 
 ---
@@ -39,10 +40,13 @@ If you run a WooCommerce store, you know the pain: Metorik for analytics ($79/mo
 OverSeek fixes that. It's a self-hosted dashboard that syncs with your WooCommerce store and gives you:
 
 - 📊 **Real-time analytics** — See who's on your site right now, what's in their cart, and where they came from
-- 💬 **Unified inbox** — Email, live chat, Facebook, Instagram—all in one place
-- 🤖 **AI that actually helps** — Ask questions about your data, draft customer replies, optimize your ads
-- 📦 **Inventory tools** — Stock alerts, purchase orders, picklists, the works
-- ⚡ **Marketing automation** — Abandoned cart flows, welcome series, post-purchase emails
+- 💬 **Unified inbox** — Email, live chat, Facebook, Instagram—all in one place with AI-drafted replies
+- 🤖 **AI marketing co-pilot** — Analyzes your ads across Google, Meta, and TikTok with confidence-scored recommendations
+- 📦 **Inventory & warehouse** — Stock alerts based on sales velocity, BOM management, purchase orders, and picklists
+- ⚡ **Marketing automation** — Abandoned cart flows, welcome series, post-purchase emails with visual flow builder
+- 📧 **Business intelligence** — Daily/weekly email digests, customer cohort analysis, and product performance rankings
+- 🧾 **Invoice designer** — Drag-and-drop invoice builder with PDF generation
+- 📱 **Progressive Web App** — Full mobile experience with push notifications and share target support
 
 All running on your server. Your data never leaves your control.
 
@@ -138,25 +142,34 @@ Open `http://localhost:5173` for the frontend and `http://localhost:3000` for th
 ## Core Features
 
 ### 📊 Analytics & Tracking
-See your store in real-time. Live visitors on a globe, add-to-cart events streaming in, abandoned carts flagged automatically. Works even with ad blockers (server-side tracking). Compatible with WooCommerce Blocks checkout and major caching plugins (LiteSpeed Cache, WP Super Cache, etc.).
+See your store in real-time. Live visitors on a globe, add-to-cart events streaming in, abandoned carts flagged automatically. Works even with ad blockers (server-side tracking). Compatible with WooCommerce Blocks checkout and major caching plugins (LiteSpeed Cache, WP Super Cache, etc.). Includes checkout funnel analysis, entry/exit page tracking, site search analytics, and roadblock detection.
 
 ### 💬 Unified Inbox
-One inbox for everything. Emails (via IMAP), live chat widget, Facebook messages, Instagram DMs. Canned responses, AI-drafted replies, conversation search. No more tab-switching.
+One inbox for everything. Emails (via IMAP), live chat widget, Facebook messages, Instagram DMs. Canned responses with rich text support, AI-drafted replies, and conversation search. Multi-select conversation merge and full interaction history timeline.
 
 ### 🤖 AI Marketing Co-Pilot
-Connect your Google Ads, Meta Ads, and TikTok Ads accounts. The AI analyzes your campaigns across 7, 30, and 90-day windows, spots trends, and gives you specific recommendations—with confidence scores so you know what to trust. Includes AI-powered ad copy generation and creative A/B experiment tracking.
+Connect your Google Ads, Meta Ads, and TikTok Ads accounts. The AI analyzes your campaigns across 7, 30, and 90-day windows, spots trends, and gives you specific recommendations—with confidence scores so you know what to trust. Includes AI-powered ad copy generation, creative A/B experiment tracking, and proactive alerts for performance regressions. Stock-aware optimization automatically excludes out-of-stock items.
 
 ### 📈 Business Intelligence
-Daily/weekly email digests land in your inbox with revenue, top products, and traffic sources. Customer cohort analysis shows you which acquisition channels bring the best long-term customers. Product rankings reveal your winners and losers.
+Daily/weekly email digests land in your inbox with revenue, top products, and traffic sources. Customer cohort analysis shows which acquisition channels bring the best long-term customers. Product rankings reveal your winners and losers with multi-period trends (7d/30d/90d/YTD) and profit margin visibility.
 
 ### 📦 Inventory & Warehouse
-Low stock alerts based on sales velocity (not just static thresholds). Bill of Materials for bundles and kits. Purchase orders with supplier management. Picklists that optimize your warehouse walking path.
+Low stock alerts based on sales velocity (not just static thresholds). Bill of Materials for bundles and kits with circular-reference prevention. Purchase orders with supplier management. Picklists that optimize your warehouse walking path. SEO and Google Merchant Center health scores per product.
 
 ### ⚡ Marketing Automation
-Visual flow builder with drag-and-drop. Abandoned cart sequences, post-purchase follow-ups, welcome series. MJML-powered email templates that look great everywhere.
+Visual flow builder with drag-and-drop. Abandoned cart sequences, post-purchase follow-ups, welcome series. MJML-powered email templates that look great everywhere. Broadcast campaigns with audience segmentation.
+
+### 🧾 Invoice Designer
+Drag-and-drop visual invoice builder with components for headers, customer details, line items, totals, and custom text blocks. Dynamic data binding to order and customer data. PDF generation with synchronized preview-to-output layout.
 
 ### 👤 Customer Profiles
-Full 360° view of every customer. Order history, lifetime value, all their conversations, every page they've visited. Know who you're talking to.
+Full 360° view of every customer. Order history, lifetime value, all their conversations, every page they've visited, and marketing attribution. Customer segmentation for targeted campaigns.
+
+### 📱 PWA & Mobile
+Full Progressive Web App with push notifications (VAPID), share target support, and touch-optimized mobile views for orders, inventory, and customer profiles. Works on any device without app store distribution.
+
+### 🔔 Notifications & Alerts
+Centralized event-driven notification engine with in-app, web push (VAPID), and real-time Socket.IO delivery. Full diagnostic logging for 100% observability of all alerts.
 
 ---
 
@@ -168,7 +181,7 @@ Full 360° view of every customer. Order history, lifetime value, all their conv
 | Backend | Node.js 22, Fastify 5, Prisma 7 |
 | Database | PostgreSQL 17 (pgvector), Elasticsearch 9, Redis 7 |
 | AI | OpenRouter API (GPT-4, Claude, etc.) |
-| Infrastructure | Docker Compose |
+| Infrastructure | Docker Compose, GitHub Actions CI/CD |
 
 ---
 
@@ -199,8 +212,10 @@ Full 360° view of every customer. Order history, lifetime value, all their conv
 - **Argon2id** password hashing
 - **JWT** with refresh token rotation
 - **2FA** support (TOTP)
-- **Rate limiting** built-in
+- **Rate limiting** built-in (configurable per endpoint)
 - **Secure headers** via Fastify Helmet
+- **Input sanitization** with DOMPurify (all user-generated HTML)
+- **Encryption at rest** for stored credentials and API keys
 
 ---
 
@@ -211,6 +226,8 @@ overseek/
 ├── client/              # React frontend
 ├── server/              # Fastify backend
 ├── overseek-wc-plugin/  # WordPress plugin
+├── scripts/             # Utility scripts
+├── docs/                # Documentation & screenshots
 ├── docker-compose.yml   # Infrastructure
 ├── setup.sh             # Guided setup (generates stack.env)
 └── stack.env.example    # Environment variable reference
@@ -234,6 +251,8 @@ Found a bug? Want to add a feature? PRs welcome.
 2. Create your branch (`git checkout -b feature/cool-thing`)
 3. Commit your changes
 4. Push and open a PR
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development environment setup and code style guidelines.
 
 ---
 

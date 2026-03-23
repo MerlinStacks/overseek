@@ -77,6 +77,14 @@ Please run `npm run lint` before submitting PRs to ensure your code follows our 
 
 ## Styleguides
 
+### Code Style
+
+- **Documentation:** Every exported function must have JSDoc/TSDoc. Comments should explain *why*, not *what*.
+- **File size:** Keep files under 200 lines. If a file grows larger, propose a refactor in your PR.
+- **Logging:** Use the Pino logger (`request.log` or the shared `logger` instance). No `console.log` in production code.
+- **Error handling:** Use explicit error boundaries. Never swallow errors silently.
+- **API routes:** Follow the Fastify route conventions documented in `.agent/skills/api-route-development/SKILL.md`.
+
 ### Commit Messages
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/).

@@ -113,6 +113,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     const trackingRoutes = (await import('../routes/tracking')).default;
     await fastify.register(trackingRoutes, { prefix: '/api/tracking' });
 
+    // CAPI / Server-Side Conversion Tracking
+    const capiRoutes = (await import('../routes/capi')).default;
+    await fastify.register(capiRoutes, { prefix: '/api/capi' });
+
     // Labels (conversation tagging)
     const labelsRoutes = (await import('../routes/labels')).default;
     await fastify.register(labelsRoutes, { prefix: '/api/labels' });

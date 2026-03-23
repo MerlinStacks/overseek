@@ -247,7 +247,7 @@ export const MessageBubble = memo(function MessageBubble({
                         "flex items-center gap-2 mt-1 text-xs text-gray-500",
                         isMe ? "justify-end" : "justify-start"
                     )}>
-                        <span>{format(new Date(message.createdAt), 'h:mm a')}</span>
+                        <span>{format(new Date(message.createdAt), 'MMM d · h:mm a')}</span>
 
                         {/* Status indicators for sent messages */}
                         {isMe && !message.isInternal && (
