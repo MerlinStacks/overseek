@@ -28,7 +28,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/events', async (request, reply) => {
         try {
             const body = request.body as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, is404, clickId, clickPlatform, landingReferrer, eventId } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp } = body;
 
             if (!accountId || !visitorId || !type) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -44,15 +44,20 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 
             Logger.debug('Tracking event received', { type, accountId });
 
-            let ip = request.headers['x-forwarded-for'] || request.ip;
+            // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
+            let ip: string | string[] | undefined = visitorIp || request.headers['x-forwarded-for'] || request.ip;
             if (Array.isArray(ip)) ip = ip[0];
+            if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
+
+            // Fall back to payload.eventId when top-level is missing (WC plugin nests it)
+            const resolvedEventId = eventId || payload?.eventId;
 
             const session = await TrackingService.processEvent({
                 accountId, visitorId, type, url, payload, pageTitle,
                 ipAddress: ip as string,
                 userAgent: request.headers['user-agent'] as string,
                 referrer, utmSource, utmMedium, utmCampaign, is404,
-                clickId, clickPlatform, landingReferrer, eventId
+                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId
             });
 
             if (session) {
@@ -74,7 +79,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/e', async (request, reply) => {
         try {
             const body = request.body as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp } = body;
 
             if (!accountId || !visitorId || !type) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -88,16 +93,20 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(429).send({ error: 'Rate limit exceeded' });
             }
 
-            let ip = request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip;
+            // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
+            let ip: string | string[] | undefined = visitorIp || request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip;
             if (Array.isArray(ip)) ip = ip[0];
             if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
+
+            // Fall back to payload.eventId when top-level is missing (WC plugin nests it)
+            const resolvedEventId = eventId || payload?.eventId;
 
             const session = await TrackingService.processEvent({
                 accountId, visitorId, type, url, payload, pageTitle,
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, utmSource, utmMedium, utmCampaign, is404,
-                clickId, clickPlatform, landingReferrer, eventId
+                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId
             });
 
             if (session) {
