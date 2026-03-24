@@ -22,15 +22,26 @@ const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
 const MAX_RETRIES = 3;
 
 /**
+ * Normalise an IP address by stripping IPv6-mapped prefix.
+ * Docker/Node often reports IPs as `::ffff:10.0.0.1` which looks
+ * like a valid IPv6 address but is actually a mapped IPv4.
+ */
+function normaliseIp(ip: string): string {
+    if (ip.startsWith('::ffff:')) return ip.slice(7);
+    return ip;
+}
+
+/**
  * Check if an IP address is a public routable address.
  * Meta CAPI rejects private, loopback, and link-local IPs.
  */
 function isPublicIp(ip: string | undefined): boolean {
-    if (!ip || ip === '') return false;
+    if (!ip || ip.trim() === '') return false;
+    const normalised = normaliseIp(ip.trim());
     // IPv4 private ranges + loopback
-    if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)/.test(ip)) return false;
+    if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.|169\.254\.)/.test(normalised)) return false;
     // IPv6 loopback and link-local
-    if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) return false;
+    if (normalised === '::1' || normalised.startsWith('fe80:') || normalised.startsWith('fc') || normalised.startsWith('fd')) return false;
     return true;
 }
 
@@ -55,6 +66,14 @@ export class MetaCAPIService implements ConversionPlatformService {
 
         const eventName = mapEventName(data.type, 'META');
         if (!eventName) return;
+
+        // Log raw IP for debugging Meta rejection issue
+        Logger.warn('[MetaCAPI] IP check', {
+            sessionIp: session?.ipAddress || '(none)',
+            isPublic: isPublicIp(session?.ipAddress),
+            normalised: session?.ipAddress ? normaliseIp(session.ipAddress) : '(none)',
+            eventType: data.type,
+        });
 
         const eventId = data.eventId || crypto.randomUUID();
         const userData = extractUserData(data.payload, session);
