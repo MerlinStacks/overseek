@@ -16,6 +16,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { getCredentials } from '../ads/types';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
@@ -169,13 +170,18 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         const cleanCustomerId = customerId.replace(/-/g, '');
         const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}:uploadConversionAdjustments`;
 
+        // Refresh the access token before sending to avoid stale-token 400/401s.
+        // GoogleAdsClient's createGoogleAdsClient does this for gRPC calls,
+        // but Enhanced Conversions uses REST directly and needs its own refresh.
+        const accessToken = await this.refreshToken(adAccount);
+
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${adAccount.accessToken}`,
+                        'Authorization': `Bearer ${accessToken}`,
                         'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
                     },
                     body: JSON.stringify(payload),
@@ -196,7 +202,11 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                 }
 
                 await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, responseBody);
-                Logger.error('[GoogleEnhanced] Upload failed', { status: response.status, customerId });
+                Logger.error('[GoogleEnhanced] Upload failed', {
+                    status: response.status,
+                    customerId,
+                    body: responseBody.substring(0, 500),
+                });
                 return;
             } catch (error: any) {
                 if (attempt === MAX_RETRIES) {
@@ -206,6 +216,53 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                 }
                 await this.backoff(attempt);
             }
+        }
+    }
+
+    /**
+     * Refresh the OAuth access token via Google's token endpoint.
+     * Falls back to the stored token if refresh fails or no refresh token exists.
+     */
+    private async refreshToken(
+        adAccount: { id: string; accessToken: string; refreshToken: string | null },
+    ): Promise<string> {
+        if (!adAccount.refreshToken) return adAccount.accessToken;
+
+        try {
+            const creds = await getCredentials('GOOGLE_ADS');
+            if (!creds?.clientId || !creds?.clientSecret) return adAccount.accessToken;
+
+            const params = new URLSearchParams({
+                grant_type: 'refresh_token',
+                refresh_token: adAccount.refreshToken,
+                client_id: creds.clientId,
+                client_secret: creds.clientSecret,
+            });
+
+            const resp = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+            });
+
+            const data = await resp.json();
+            if (data.access_token) {
+                // Persist so other callers get the fresh token too
+                await prisma.adAccount.update({
+                    where: { id: adAccount.id },
+                    data: { accessToken: data.access_token },
+                }).catch(() => { /* best-effort */ });
+                return data.access_token;
+            }
+
+            Logger.warn('[GoogleEnhanced] Token refresh returned no access_token', {
+                error: data.error,
+                description: data.error_description,
+            });
+            return adAccount.accessToken;
+        } catch (err: any) {
+            Logger.warn('[GoogleEnhanced] Token refresh failed, using stored token', { error: err.message });
+            return adAccount.accessToken;
         }
     }
 
