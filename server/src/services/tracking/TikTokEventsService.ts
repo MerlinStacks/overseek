@@ -1,12 +1,14 @@
 /**
  * TikTok Events API Service
  *
- * Sends server-side conversion events to TikTok Events API.
+ * Sends server-side conversion events to TikTok Events API v1.3.
  * POST https://business-api.tiktok.com/open_api/v1.3/event/track/
  *
  * Why server-side: TikTok Pixel is heavily blocked by ad blockers.
  * Server events ensure attribution data reaches TikTok for campaign
  * optimisation regardless of client-side blocking.
+ *
+ * Payload spec: https://business-api.tiktok.com/portal/docs?id=1741601162187777
  */
 
 import { prisma } from '../../utils/prisma';
@@ -15,7 +17,8 @@ import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
-const TIKTOK_API_URL = 'https://business-api.tiktok.com/open_api/v2/event/track/';
+/** TikTok Events API v1.3 — the current stable version */
+const TIKTOK_API_URL = 'https://business-api.tiktok.com/open_api/v1.3/event/track/';
 const MAX_RETRIES = 3;
 
 export class TikTokEventsService implements ConversionPlatformService {
@@ -48,8 +51,14 @@ export class TikTokEventsService implements ConversionPlatformService {
     }
 
     /**
-     * Build TikTok Events API payload.
-     * Spec: https://business-api.tiktok.com/portal/docs?id=1741601162187777
+     * Build TikTok Events API v1.3 payload.
+     *
+     * Required structure:
+     * {
+     *   event_source: "web",
+     *   event_source_id: "<pixel_code>",
+     *   data: [{ event, event_time, event_id, user: {...}, properties: {...}, page: {...} }]
+     * }
      */
     private buildPayload(
         pixelCode: string,
@@ -59,43 +68,27 @@ export class TikTokEventsService implements ConversionPlatformService {
         userData: ReturnType<typeof extractUserData>,
         testEventCode?: string,
     ): Record<string, any> {
-        const eventData: Record<string, any> = {
-            event: eventName,
-            event_id: eventId,
-            event_time: Math.floor(Date.now() / 1000),
-            user: {
-                // TikTok requires SHA-256 hashed PII
-                email: hashSHA256(userData.email),
-                phone: hashSHA256(userData.phone),
-                ip: userData.ipAddress,
-                user_agent: userData.userAgent,
-                // TikTok click ID
-                ttclid: userData.ttp,
-            },
-            page: {
-                url: data.url,
-                referrer: data.referrer || undefined,
-            },
-        };
+        // Build user object — TikTok requires SHA-256 hashed PII
+        const user: Record<string, any> = {};
+        const hashedEmail = hashSHA256(userData.email);
+        if (hashedEmail) user.email = hashedEmail;
+        const hashedPhone = hashSHA256(userData.phone);
+        if (hashedPhone) user.phone_number = hashedPhone;
+        if (userData.ipAddress) user.ip = userData.ipAddress;
+        if (userData.userAgent) user.user_agent = userData.userAgent;
+        if (userData.ttp) user.ttclid = userData.ttp;
 
-        // Remove undefined user fields
-        eventData.user = Object.fromEntries(
-            Object.entries(eventData.user).filter(([, v]) => v !== undefined),
-        );
+        // Build page context
+        const page: Record<string, any> = {};
+        if (data.url) page.url = data.url;
+        if (data.referrer) page.referrer = data.referrer;
 
-        // Add properties for ecommerce events
+        // Build properties for ecommerce events
+        const properties: Record<string, any> = {};
         if (data.payload) {
-            const properties: Record<string, any> = {};
-
-            if (data.payload.total !== undefined) {
-                properties.value = data.payload.total;
-            }
-            if (data.payload.currency) {
-                properties.currency = data.payload.currency;
-            }
-            if (data.payload.orderId) {
-                properties.order_id = String(data.payload.orderId);
-            }
+            if (data.payload.total !== undefined) properties.value = data.payload.total;
+            if (data.payload.currency) properties.currency = data.payload.currency;
+            if (data.payload.orderId) properties.order_id = String(data.payload.orderId);
             if (Array.isArray(data.payload.items)) {
                 properties.contents = data.payload.items.map((item: any) => ({
                     content_id: String(item.id || item.sku || ''),
@@ -106,19 +99,23 @@ export class TikTokEventsService implements ConversionPlatformService {
                 }));
                 properties.content_type = 'product';
             }
-
-            if (Object.keys(properties).length > 0) {
-                eventData.properties = properties;
-            }
         }
 
-        const body: Record<string, any> = {
-            pixel_code: pixelCode,
+        // Build the single event entry inside the data array
+        const eventEntry: Record<string, any> = {
             event: eventName,
+            event_time: Math.floor(Date.now() / 1000),
             event_id: eventId,
-            timestamp: new Date().toISOString(),
-            context: eventData.user,
-            properties: eventData.properties || {},
+            user,
+            properties,
+            page,
+        };
+
+        // Build top-level payload per v1.3 spec
+        const body: Record<string, any> = {
+            event_source: 'web',
+            event_source_id: pixelCode,
+            data: [eventEntry],
         };
 
         if (testEventCode) {
@@ -163,11 +160,12 @@ export class TikTokEventsService implements ConversionPlatformService {
                         return;
                     }
 
-                    // TikTok-level error
+                    // TikTok-level error (200 status but non-zero code)
                     await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, parsed.message || 'TikTok API error');
                     Logger.error('[TikTokEvents] API error', {
                         code: parsed.code,
                         message: parsed.message,
+                        response: responseBody.substring(0, 500),
                     });
                     return;
                 }
@@ -180,7 +178,10 @@ export class TikTokEventsService implements ConversionPlatformService {
                 }
 
                 await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, responseBody);
-                Logger.error('[TikTokEvents] HTTP error', { status: response.status });
+                Logger.error('[TikTokEvents] HTTP error', {
+                    status: response.status,
+                    response: responseBody.substring(0, 500),
+                });
                 return;
             } catch (error: any) {
                 if (attempt === MAX_RETRIES) {
@@ -193,10 +194,12 @@ export class TikTokEventsService implements ConversionPlatformService {
         }
     }
 
+    /** Exponential backoff: 2^attempt * 1000ms */
     private backoff(attempt: number): Promise<void> {
         return new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
     }
 
+    /** Create a PENDING delivery log entry */
     private async logDelivery(
         accountId: string,
         eventName: string,
@@ -214,6 +217,7 @@ export class TikTokEventsService implements ConversionPlatformService {
         }
     }
 
+    /** Update delivery status after send attempt */
     private async markDelivery(
         deliveryId: string,
         status: string,
