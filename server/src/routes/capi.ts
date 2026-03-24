@@ -214,6 +214,8 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
                     httpStatus: true,
                     attempts: true,
                     lastError: true,
+                    response: true,
+                    payload: true,
                     sentAt: true,
                     createdAt: true,
                 },

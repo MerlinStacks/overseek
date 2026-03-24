@@ -178,17 +178,37 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
      */
     async retryFailedDeliveries(accountId: string, hoursBack: number = 8): Promise<{ attempted: number; recovered: number }> {
         const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
-        
-        const failedDeliveries = await prisma.conversionDelivery.findMany({
-            where: {
-                accountId,
-                platform: 'GOOGLE',
-                status: 'FAILED',
-                createdAt: { gte: since }
-            }
-        });
 
-        if (failedDeliveries.length === 0) return { attempted: 0, recovered: 0 };
+        // Also pick up SENT records where Google silently rejected the conversion
+        // via partialFailureError (HTTP 200 but not actually accepted). This happened
+        // for all deliveries before the partialFailureError check was added.
+        const [failedDeliveries, falseSentDeliveries] = await Promise.all([
+            prisma.conversionDelivery.findMany({
+                where: { accountId, platform: 'GOOGLE', status: 'FAILED', createdAt: { gte: since } },
+            }),
+            prisma.conversionDelivery.findMany({
+                where: {
+                    accountId,
+                    platform: 'GOOGLE',
+                    status: 'SENT',
+                    createdAt: { gte: since },
+                    response: { contains: 'partialFailureError' },
+                },
+            }),
+        ]);
+
+        // Re-mark false-SENT records so they go through the normal retry path
+        if (falseSentDeliveries.length > 0) {
+            await prisma.conversionDelivery.updateMany({
+                where: { id: { in: falseSentDeliveries.map(d => d.id) } },
+                data: { status: 'FAILED', lastError: 'Reclassified: partialFailureError detected in response' },
+            });
+            Logger.warn(`[GoogleEnhanced] Reclassified ${falseSentDeliveries.length} false-SENT deliveries as FAILED for retry`, { accountId });
+        }
+
+        const allToRetry = [...failedDeliveries, ...falseSentDeliveries];
+
+        if (allToRetry.length === 0) return { attempted: 0, recovered: 0 };
 
         // Need the ad account to get the tokens and externalId (customer ID)
         const adAccount = await prisma.adAccount.findFirst({
@@ -201,10 +221,10 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             return { attempted: failedDeliveries.length, recovered: 0 };
         }
 
-        Logger.info(`[GoogleEnhanced] Retrying ${failedDeliveries.length} failed conversions`, { accountId });
+        Logger.warn(`[GoogleEnhanced] Retrying ${allToRetry.length} conversions`, { accountId });
 
         let recovered = 0;
-        for (const delivery of failedDeliveries) {
+        for (const delivery of allToRetry) {
             try {
                 // Set back to pending so metrics don't double count if it fails again
                 await prisma.conversionDelivery.update({
@@ -232,7 +252,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             }
         }
 
-        return { attempted: failedDeliveries.length, recovered };
+        return { attempted: allToRetry.length, recovered };
     }
 
     /**
