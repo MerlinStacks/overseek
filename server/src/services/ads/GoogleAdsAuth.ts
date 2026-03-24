@@ -6,7 +6,6 @@
  */
 
 import { Logger } from '../../utils/logger';
-import { GoogleAdsApi } from 'google-ads-api';
 import { getCredentials } from './types';
 
 export class GoogleAdsAuth {
@@ -114,6 +113,8 @@ export class GoogleAdsAuth {
         const { clientId, clientSecret, developerToken, loginCustomerId } = creds;
 
         try {
+            // Lazy import to avoid loading ~500MB+ protobuf descriptors at module-load time
+            const { GoogleAdsApi } = await import('google-ads-api');
             const client = new GoogleAdsApi({
                 client_id: clientId,
                 client_secret: clientSecret,

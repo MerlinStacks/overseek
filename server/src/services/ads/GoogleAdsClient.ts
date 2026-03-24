@@ -10,14 +10,15 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
-import { GoogleAdsApi } from 'google-ads-api';
 import { getCredentials } from './types';
 import { EventBus, EVENTS } from '../events';
 
 // ─── Singleton GoogleAdsApi instance ────────────────────────────────────────
 // All accounts share the same developer token / client ID / secret, so there
 // is exactly one API client. Lazily initialised on first use.
-let cachedApiClient: GoogleAdsApi | null = null;
+// Type is `any` because google-ads-api is imported lazily to avoid loading
+// its ~500MB+ protobuf descriptors at module-load time.
+let cachedApiClient: any = null;
 let cachedApiFingerprint = '';
 
 // ─── Customer object cache (per adAccountId) ────────────────────────────────
@@ -165,15 +166,18 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     const { clientId, clientSecret, developerToken } = creds;
     const fingerprint = `${clientId}:${developerToken}`;
 
-    // Only allocate a new GoogleAdsApi if credentials changed (effectively never)
+    // Only allocate a new GoogleAdsApi if credentials changed (effectively never).
+    // Lazy import: google-ads-api loads ~500MB+ of protobuf descriptors,
+    // so we defer the import until the first actual API call.
     if (!cachedApiClient || cachedApiFingerprint !== fingerprint) {
+        const { GoogleAdsApi } = await import('google-ads-api');
         cachedApiClient = new GoogleAdsApi({
             client_id: clientId,
             client_secret: clientSecret,
             developer_token: developerToken
         });
         cachedApiFingerprint = fingerprint;
-        Logger.info('GoogleAdsApi client created (singleton)');
+        Logger.info('GoogleAdsApi client created (singleton — protobuf loaded)');
     }
 
     const loginCustomerId = creds.loginCustomerId;

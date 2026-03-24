@@ -498,8 +498,9 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                             accounts.map(acc => {
                                 const ins = insights[acc.id];
                                 const isPending = acc.externalId === 'PENDING_SETUP';
+                                const hasError = !!insightErrors[acc.id];
                                 return (
-                                    <div key={acc.id} className={`bg-white rounded-xl shadow-xs border p-6 space-y-4 ${isPending ? 'border-amber-300' : 'border-gray-200'}`}>
+                                    <div key={acc.id} className={`bg-white rounded-xl shadow-xs border p-6 space-y-4 ${isPending ? 'border-amber-300' : hasError ? 'border-red-200' : 'border-gray-200'}`}>
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-lg ${acc.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
@@ -525,6 +526,17 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                             className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full hover:bg-amber-200"
                                                         >
                                                             Complete Setup
+                                                        </button>
+                                                    </>
+                                                ) : hasError ? (
+                                                    <>
+                                                        <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Error</span>
+                                                        <button
+                                                            onClick={() => handleReconnect(acc)}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
+                                                        >
+                                                            <RefreshCw size={14} />
+                                                            Reconnect
                                                         </button>
                                                     </>
                                                 ) : (
@@ -586,24 +598,15 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                             </div>
                                         </div>
 
-                                        {/* Error Display */}
-                                        {insightErrors[acc.id] && (
-                                            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div className="flex items-start gap-2">
-                                                        <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                                                        <div className="text-sm text-red-700">
-                                                            <p className="font-medium">Failed to load data</p>
-                                                            <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
-                                                        </div>
+                                        {/* Error Detail */}
+                                        {hasError && (
+                                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                <div className="flex items-start gap-2">
+                                                    <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                                                    <div className="text-sm text-red-700">
+                                                        <p className="font-medium">Failed to load data</p>
+                                                        <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
                                                     </div>
-                                                    <button
-                                                        onClick={() => handleReconnect(acc)}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 shrink-0"
-                                                    >
-                                                        <RefreshCw size={14} />
-                                                        Reconnect
-                                                    </button>
                                                 </div>
                                             </div>
                                         )}
