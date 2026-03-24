@@ -21,6 +21,19 @@ const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
 /** Max retry attempts for transient failures */
 const MAX_RETRIES = 3;
 
+/**
+ * Check if an IP address is a public routable address.
+ * Meta CAPI rejects private, loopback, and link-local IPs.
+ */
+function isPublicIp(ip: string | undefined): boolean {
+    if (!ip || ip === '') return false;
+    // IPv4 private ranges + loopback
+    if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)/.test(ip)) return false;
+    // IPv6 loopback and link-local
+    if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) return false;
+    return true;
+}
+
 export class MetaCAPIService implements ConversionPlatformService {
     readonly platform = 'META';
 
@@ -80,8 +93,8 @@ export class MetaCAPIService implements ConversionPlatformService {
                 st: hashSHA256(userData.state),
                 zp: hashSHA256(userData.zip),
                 country: hashSHA256(userData.country),
-                // Non-hashed fields
-                client_ip_address: userData.ipAddress,
+                // Non-hashed fields — only include IP if public (Meta rejects private IPs)
+                ...(isPublicIp(userData.ipAddress) ? { client_ip_address: userData.ipAddress } : {}),
                 client_user_agent: userData.userAgent,
                 fbc: userData.fbc,
                 fbp: userData.fbp,
