@@ -67,17 +67,22 @@ export class MetaCAPIService implements ConversionPlatformService {
         const eventName = mapEventName(data.type, 'META');
         if (!eventName) return;
 
-        // Log raw IP for debugging Meta rejection issue
-        Logger.warn('[MetaCAPI] IP check', {
-            sessionIp: session?.ipAddress || '(none)',
-            isPublic: isPublicIp(session?.ipAddress),
-            normalised: session?.ipAddress ? normaliseIp(session.ipAddress) : '(none)',
-            eventType: data.type,
-        });
-
         const eventId = data.eventId || crypto.randomUUID();
         const userData = extractUserData(data.payload, session);
         const payload = this.buildPayload(eventName, eventId, data, userData, testEventCode);
+
+        // Debug: log user_data fields being sent to Meta (truncate hashes for readability)
+        const sentUserData = (payload as any).data?.[0]?.user_data || {};
+        Logger.warn('[MetaCAPI] Payload debug', {
+            eventType: data.type,
+            client_ip_address: sentUserData.client_ip_address || '(omitted)',
+            client_user_agent: sentUserData.client_user_agent ? '(present)' : '(none)',
+            hasEmail: !!sentUserData.em,
+            hasFbc: !!sentUserData.fbc,
+            hasFbp: !!sentUserData.fbp,
+            hasPhone: !!sentUserData.ph,
+            userDataKeys: Object.keys(sentUserData).join(','),
+        });
 
         // Log delivery as PENDING before sending
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
