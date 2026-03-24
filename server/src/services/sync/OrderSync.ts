@@ -24,6 +24,7 @@ export class OrderSync extends BaseSync {
         let totalProcessed = 0;
         let totalDeleted = 0;
         let totalSkipped = 0;
+        let totalUpsertFailures = 0;
 
         const wooOrderIds = new Set<number>();
         let expectedTotal = 0;
@@ -41,6 +42,9 @@ export class OrderSync extends BaseSync {
             for (const raw of rawOrders) {
                 const result = WooOrderSchema.safeParse(raw);
                 if (result.success) {
+                    // Always track the ID so reconciliation doesn't delete orders
+                    // whose status changed to a non-standard value after last sync.
+                    wooOrderIds.add(result.data.id);
                     if (!VALID_ORDER_STATUSES.has(result.data.status.toLowerCase())) {
                         totalSkipped++;
                         Logger.debug('Skipping order with non-standard status', {
@@ -79,12 +83,8 @@ export class OrderSync extends BaseSync {
             for (let i = 0; i < orders.length; i += UPSERT_CHUNK_SIZE) {
                 const chunk = orders.slice(i, i + UPSERT_CHUNK_SIZE);
 
-                for (const order of chunk) {
-                    wooOrderIds.add(order.id);
-                }
-
                 // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
-                await Promise.all(
+                const upsertResults = await Promise.all(
                     chunk.map((order) => {
                         const rawEmail = (order as any).billing?.email;
                         const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
@@ -117,13 +117,18 @@ export class OrderSync extends BaseSync {
                                 dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
                                 rawData: order as any
                             }
-                        }).catch((err) => {
+                        }).then(() => true).catch((err) => {
                             Logger.warn('Failed to upsert order', {
                                 accountId, syncId, wooId: order.id, error: err.message
                             });
+                            return false;
                         });
                     })
                 );
+                const chunkFailures = upsertResults.filter(r => r === false).length;
+                if (chunkFailures > 0) {
+                    totalUpsertFailures += chunkFailures;
+                }
             }
 
 
@@ -180,7 +185,7 @@ export class OrderSync extends BaseSync {
             }
             totalProcessed += orders.length;
 
-            Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
+            Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped, upsertFailures: totalUpsertFailures });
 
             // use WooCommerce's x-wp-totalpages header instead of checking batch size
             // (batch size is unreliable due to WC filtering and Zod validation skips)
@@ -240,13 +245,19 @@ export class OrderSync extends BaseSync {
         }
 
         // Summary log: makes incomplete syncs visible in logs
+        if (totalUpsertFailures > 0) {
+            Logger.warn(`Order sync had ${totalUpsertFailures} upsert failure(s) - some orders may be missing from the database`, {
+                accountId, syncId, totalUpsertFailures, totalProcessed
+            });
+        }
+
         if (expectedTotal > 0 && totalProcessed < expectedTotal) {
-            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped)`, {
-                accountId, syncId, expectedTotal, totalProcessed, totalSkipped, incremental
+            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped, ${totalUpsertFailures} failed)`, {
+                accountId, syncId, expectedTotal, totalProcessed, totalSkipped, totalUpsertFailures, incremental
             });
         } else {
             Logger.info(`Order sync complete: ${totalProcessed}/${expectedTotal} orders processed`, {
-                accountId, syncId, totalDeleted, totalSkipped, incremental
+                accountId, syncId, totalDeleted, totalSkipped, totalUpsertFailures, incremental
             });
         }
 

@@ -1,5 +1,5 @@
 
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { AccountProvider, useAccount } from './context/AccountContext';
@@ -123,6 +123,11 @@ function AccountGuard({ children }: { children: React.ReactNode }) {
  * Maps common desktop routes to their /m/* equivalents.
  */
 function MobileRedirect({ children }: { children: React.ReactNode }) {
+    // Must be called before any conditional returns (rules of hooks).
+    // useLocation() makes this reactive to SW notification click navigations
+    // (client.navigate(url)) which window.location.pathname misses.
+    const location = useLocation();
+
     // Check if running as installed PWA (standalone)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as any).standalone === true;
@@ -131,16 +136,12 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
     const capacitor = (window as any).Capacitor;
     const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
 
-    // Check if mobile device
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
     // Only redirect if in PWA mode or Capacitor native, not just mobile browser
     if (!isStandalone && !isCapacitorNative) {
         return <>{children}</>;
     }
 
-    // Get current path
-    const currentPath = window.location.pathname;
+    const currentPath = location.pathname;
 
     // Map desktop routes to mobile routes
     const mobileRouteMap: Record<string, string> = {
@@ -176,7 +177,8 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
 
 function App() {
     return (
-        <BrowserRouter>
+        <ErrorBoundary>
+            <BrowserRouter>
             <AuthProvider>
                 <AccountProvider>
                     <SocketProvider>
@@ -287,6 +289,7 @@ function App() {
                 </AccountProvider>
             </AuthProvider>
         </BrowserRouter>
+        </ErrorBoundary>
     );
 }
 

@@ -264,6 +264,23 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                 const responseBody = await response.text();
 
                 if (response.ok) {
+                    // Google Ads API returns HTTP 200 even for rejected conversions when
+                    // partialFailure=true. A partialFailureError in the body means the
+                    // conversion was not accepted — treat it as a failure so the delivery
+                    // log reflects reality and the UI shows actionable errors.
+                    let parsed: any;
+                    try { parsed = JSON.parse(responseBody); } catch { parsed = null; }
+
+                    if (parsed?.partialFailureError) {
+                        const errMsg = parsed.partialFailureError.message || JSON.stringify(parsed.partialFailureError);
+                        await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, errMsg);
+                        Logger.error('[GoogleEnhanced] Partial failure — conversion rejected by Google', {
+                            customerId,
+                            partialFailureError: parsed.partialFailureError,
+                        });
+                        return;
+                    }
+
                     await this.markDelivery(deliveryId, 'SENT', response.status, responseBody, attempt);
                     return;
                 }

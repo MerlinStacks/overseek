@@ -27,7 +27,7 @@ interface NotificationConfig {
         body: string;
         data?: Record<string, unknown>;
     };
-    pushType?: 'order' | 'message';
+    pushType?: 'order' | 'message' | 'lowStock' | 'dailySummary';
     socket?: {
         event: string;
         payload: Record<string, unknown>;
@@ -182,7 +182,7 @@ export class NotificationEngine {
             },
             push: {
                 title: review.rating >= 4 ? '⭐ New Review!' : '📝 New Review',
-                body: `${review.reviewer}: ${review.rating}★ - "${(review.content || '').substring(0, 50)}..."`,
+                body: `${review.reviewer}: ${review.rating}★ - "${(review.content || '').substring(0, 50)}${(review.content || '').length > 50 ? '...' : ''}"`,
                 data: { url: '/reviews' }
             },
             pushType: 'message', // Reviews use message preference for now
@@ -264,7 +264,7 @@ export class NotificationEngine {
                     url: internalProductId ? `/products/${internalProductId}` : '/inventory'
                 }
             },
-            pushType: 'order', // Stock uses order notification preference
+            pushType: 'lowStock',
             payload: { productId, productName, wooStock, expectedStock, newStock }
         });
     }
@@ -406,7 +406,7 @@ export class NotificationEngine {
                 body: `${criticalCount} product${criticalCount > 1 ? 's' : ''} may stock out soon: ${productList}${moreText}`,
                 data: { url: '/inventory/forecasts' }
             },
-            pushType: 'order', // Inventory uses order notification preference
+            pushType: 'lowStock',
             payload: {
                 criticalCount,
                 products: products.map(p => ({ id: p.id, name: p.name, daysLeft: p.daysUntilStockout }))

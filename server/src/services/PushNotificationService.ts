@@ -228,7 +228,7 @@ export class PushNotificationService {
     static async sendToAccount(
         accountId: string,
         notification: { title: string; body: string; data?: Record<string, unknown> },
-        type: 'message' | 'order'
+        type: 'message' | 'order' | 'lowStock' | 'dailySummary'
     ): Promise<{ sent: number; failed: number }> {
         const keys = await this.getVapidKeys();
         if (!keys) {
@@ -236,9 +236,14 @@ export class PushNotificationService {
             return { sent: 0, failed: 0 };
         }
 
+        const contactEmail = process.env.CONTACT_EMAIL;
+        if (!contactEmail) {
+            Logger.warn('[PushNotificationService] CONTACT_EMAIL env var not set - VAPID subject falls back to notifications@localhost which may be rejected by some push services (e.g. Firefox)');
+        }
+
         // Configure web-push
         webpush.setVapidDetails(
-            `mailto:${process.env.CONTACT_EMAIL || 'notifications@localhost'}`,
+            `mailto:${contactEmail || 'notifications@localhost'}`,
             keys.publicKey,
             keys.privateKey
         );
@@ -249,6 +254,10 @@ export class PushNotificationService {
             whereClause.notifyNewMessages = true;
         } else if (type === 'order') {
             whereClause.notifyNewOrders = true;
+        } else if (type === 'lowStock') {
+            whereClause.notifyLowStock = true;
+        } else if (type === 'dailySummary') {
+            whereClause.notifyDailySummary = true;
         }
 
         // DIAGNOSTIC: Log the exact query being made
@@ -279,21 +288,10 @@ export class PushNotificationService {
 
         // Diagnostic: log when no subscriptions found (common issue)
         if (subscriptions.length === 0) {
-            // Get all subscription accountIds to diagnose mismatches
-            const allSubs = await prisma.pushSubscription.findMany({
-                select: { accountId: true, userId: true, notifyNewOrders: true, notifyNewMessages: true }
-            });
-
             Logger.info('[PushNotificationService] No subscriptions found for account', {
                 accountId,
                 type,
-                whereClause,
-                title: notification.title,
-                totalSubscriptionsInDb: allSubs.length,
-                existingAccountIds: [...new Set(allSubs.map(s => s.accountId))],
-                preferencesCheck: type === 'order'
-                    ? allSubs.filter(s => s.notifyNewOrders).length + ' have notifyNewOrders=true'
-                    : allSubs.filter(s => s.notifyNewMessages).length + ' have notifyNewMessages=true'
+                title: notification.title
             });
             return { sent: 0, failed: 0 };
         }
@@ -349,12 +347,18 @@ export class PushNotificationService {
     static async sendToAccountWithDiagnostics(
         accountId: string,
         notification: { title: string; body: string; data?: Record<string, unknown> },
-        type: 'message' | 'order'
+        type: 'message' | 'order' | 'lowStock' | 'dailySummary'
     ): Promise<{ sent: number; failed: number; diagnostics: Record<string, unknown> }> {
+        const filterMap = {
+            order: 'notifyNewOrders=true',
+            message: 'notifyNewMessages=true',
+            lowStock: 'notifyLowStock=true',
+            dailySummary: 'notifyDailySummary=true'
+        };
         const diagnostics: Record<string, unknown> = {
             accountId,
             type,
-            filterApplied: type === 'order' ? 'notifyNewOrders=true' : 'notifyNewMessages=true'
+            filterApplied: filterMap[type]
         };
 
         const keys = await this.getVapidKeys();
@@ -375,6 +379,10 @@ export class PushNotificationService {
             whereClause.notifyNewMessages = true;
         } else if (type === 'order') {
             whereClause.notifyNewOrders = true;
+        } else if (type === 'lowStock') {
+            whereClause.notifyLowStock = true;
+        } else if (type === 'dailySummary') {
+            whereClause.notifyDailySummary = true;
         }
 
         const subscriptions = await prisma.pushSubscription.findMany({
@@ -384,17 +392,6 @@ export class PushNotificationService {
         diagnostics.subscriptionsFound = subscriptions.length;
 
         if (subscriptions.length === 0) {
-            // Get all subscriptions for diagnostic comparison
-            const allSubs = await prisma.pushSubscription.findMany({
-                select: { accountId: true, notifyNewOrders: true, notifyNewMessages: true }
-            });
-
-            diagnostics.totalSubscriptionsInDb = allSubs.length;
-            diagnostics.existingAccountIds = [...new Set(allSubs.map(s => s.accountId))];
-            diagnostics.matchingPreference = type === 'order'
-                ? allSubs.filter(s => s.notifyNewOrders).length
-                : allSubs.filter(s => s.notifyNewMessages).length;
-
             return { sent: 0, failed: 0, diagnostics };
         }
 

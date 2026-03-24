@@ -13,6 +13,11 @@ export interface AttachmentInfo {
     isInline?: boolean;
 }
 
+/** Returns true for filenames that look like signature/branding images rather than real attachments. */
+function isSignatureLikeFilename(filename: string): boolean {
+    return /^(logo|signature|sig|banner|brand|header|footer|icon|avatar|divider|spacer|separator|bullet|pixel|tracker|tracking|beacon|dot|arrow)\d*[-_]?\w*\.(png|jpe?g|gif|webp|bmp)$/i.test(filename);
+}
+
 /**
  * Extracts attachment info from message content.
  * Handles inline images, linked files, markdown links, and email attachment references.
@@ -92,7 +97,11 @@ export function extractAttachments(content: string): AttachmentInfo[] {
             else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) type = 'document';
             else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image';
 
-            attachments.push({ type, url, filename: text || url.split('/').pop() || 'file' });
+            const filename = text || url.split('/').pop() || 'file';
+            // Skip images that look like signature/branding content (server-side safety net)
+            if (type === 'image' && isSignatureLikeFilename(filename)) continue;
+
+            attachments.push({ type, url, filename });
         }
     }
 
@@ -140,11 +149,14 @@ export interface AttachmentGalleryProps {
  * Renders a gallery of file attachments as compact pills.
  */
 export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalleryProps) {
-    if (attachments.length === 0) return null;
+    // Inline images are already rendered in the message HTML body — skip them here.
+    const visibleAttachments = attachments.filter(a => !a.isInline);
+
+    if (visibleAttachments.length === 0) return null;
 
     return (
         <div className="flex flex-wrap gap-2 mt-2">
-            {attachments.map((attachment, idx) => (
+            {visibleAttachments.map((attachment, idx) => (
                 attachment.type === 'image' && attachment.url ? (
                     // Image thumbnail pill
                     <button

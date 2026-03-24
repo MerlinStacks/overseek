@@ -99,7 +99,15 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
             console.log('[SW] Precaching app shell');
-            return cache.addAll(PRECACHE_ASSETS);
+            // Cache each asset individually so a single 404 (e.g. SPA route not
+            // handled by the server) doesn't abort the entire SW install.
+            return Promise.allSettled(
+                PRECACHE_ASSETS.map(url =>
+                    cache.add(url).catch(err => {
+                        console.warn('[SW] Failed to precache:', url, err);
+                    })
+                )
+            );
         }).then(() => {
             // Activate immediately - skip waiting for old SW to stop
             return self.skipWaiting();
@@ -276,16 +284,22 @@ self.addEventListener('push', (event) => {
         self.registration.showNotification(data.title || 'OverSeek', options)
             .then(() => {
                 console.log('[SW] Notification displayed successfully');
-                // Schedule auto-dismiss after 10 minutes
-                setTimeout(async () => {
-                    try {
-                        const notifications = await self.registration.getNotifications({ tag });
-                        notifications.forEach(n => n.close());
-                        console.log('[SW] Auto-dismissed notification:', tag);
-                    } catch (e) {
-                        console.error('[SW] Auto-dismiss failed:', e);
-                    }
-                }, NOTIFICATION_AUTO_DISMISS_MS);
+                // Auto-dismiss after 10 minutes. The promise is included in waitUntil
+                // so the SW knows there is pending work — browsers may still reclaim
+                // the SW before the timer fires (this is best-effort).
+                return new Promise((resolve) => {
+                    setTimeout(async () => {
+                        try {
+                            const notifications = await self.registration.getNotifications({ tag });
+                            notifications.forEach(n => n.close());
+                            console.log('[SW] Auto-dismissed notification:', tag);
+                        } catch (e) {
+                            console.error('[SW] Auto-dismiss failed:', e);
+                        } finally {
+                            resolve();
+                        }
+                    }, NOTIFICATION_AUTO_DISMISS_MS);
+                });
             })
             .catch((err) => console.error('[SW] Failed to show notification:', err))
     );

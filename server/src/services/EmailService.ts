@@ -631,21 +631,48 @@ export class EmailService {
                                 // - marked as "related" by mailparser (embedded in HTML context)
                                 // - inline disposition + small size (logos, social icons)
                                 // - inline disposition + generic name (image001.png, etc.)
+                                // - orphaned CID: has a content-id but is NOT referenced in the HTML
+                                //   (common for signature images that clients embed but don't render)
+                                // - tiny images < 1.5 KB (tracking pixels, 1x1 spacers)
+                                // - known signature/logo filename patterns
                                 if (!isInline && attachment.contentType?.startsWith('image/')) {
                                     const isRelated = (attachment as any).related === true;
                                     const isInlineDisposition = (attachment as any).contentDisposition === 'inline';
                                     const attachSize = attachment.size ?? attachment.content?.length ?? 0;
                                     const isSmall = attachSize > 0 && attachSize < 30000;
+                                    const isTinyPixel = attachSize > 0 && attachSize < 1500;
                                     const hasGenericName = !attachment.filename ||
                                         /^image\d{0,3}\.\w+$/i.test(attachment.filename);
 
-                                    if (isRelated || (isInlineDisposition && (isSmall || hasGenericName))) {
+                                    // Orphaned CID: content-id exists but is not referenced anywhere in HTML
+                                    const rawCid = attachment.contentId?.replace(/^<|>$/g, '') ?? '';
+                                    const hasOrphanedCid = !!(rawCid && html && !html.includes(`cid:${rawCid}`));
+
+                                    // Common signature / branding filenames
+                                    const hasSignatureFilename = !!attachment.filename &&
+                                        /^(logo|signature|sig|banner|brand|header|footer|icon|avatar|divider|spacer|separator|bullet|pixel|tracker|tracking|beacon|dot|arrow)\d*[-_]?\w*\.(png|jpe?g|gif|webp|bmp)$/i.test(attachment.filename);
+
+                                    const reason =
+                                        isRelated ? 'related' :
+                                        isTinyPixel ? 'tinyPixel' :
+                                        hasOrphanedCid ? 'orphanedCid' :
+                                        hasSignatureFilename ? 'signatureFilename' :
+                                        'inlineSmall';
+
+                                    if (
+                                        isRelated ||
+                                        isTinyPixel ||
+                                        hasOrphanedCid ||
+                                        hasSignatureFilename ||
+                                        (isInlineDisposition && (isSmall || hasGenericName))
+                                    ) {
                                         isSignatureImage = true;
                                         Logger.info('[checkEmails] Skipping signature image', {
                                             filename: attachment.filename,
                                             disposition: (attachment as any).contentDisposition,
                                             related: (attachment as any).related,
-                                            size: attachSize
+                                            size: attachSize,
+                                            reason
                                         });
                                     }
                                 }

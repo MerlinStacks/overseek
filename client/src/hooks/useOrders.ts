@@ -87,16 +87,19 @@ export function useOrders() {
     // Fetch available tags
     useEffect(() => {
         if (!currentAccount || !token) return;
+        const controller = new AbortController();
         fetch('/api/sync/orders/tags', {
-            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+            signal: controller.signal
         })
             .then(res => res.json())
             .then(data => { setAvailableTags(data.tags || []); setTagColors(data.tagColors || {}); })
-            .catch(() => { setAvailableTags([]); setTagColors({}); });
+            .catch(err => { if (err.name !== 'AbortError') { setAvailableTags([]); setTagColors({}); } });
+        return () => controller.abort();
     }, [currentAccount, token]);
 
     // Fetch orders
-    const fetchOrders = useCallback(async () => {
+    const fetchOrders = useCallback(async (signal?: AbortSignal) => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
@@ -110,7 +113,8 @@ export function useOrders() {
             if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus);
 
             const res = await fetch(`/api/sync/orders/search?${params}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                signal
             });
             if (!res.ok) throw new Error('Failed to fetch orders');
 
@@ -118,13 +122,18 @@ export function useOrders() {
             setOrders(data.orders || data);
             setTotalPages(data.totalPages || 1);
         } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') return;
             Logger.error('Failed to fetch orders', { error: err });
         } finally {
             setIsLoading(false);
         }
     }, [currentAccount, token, page, limit, debouncedSearch, selectedTags, selectedStatus]);
 
-    useEffect(() => { fetchOrders(); }, [fetchOrders]);
+    useEffect(() => {
+        const controller = new AbortController();
+        fetchOrders(controller.signal);
+        return () => controller.abort();
+    }, [fetchOrders]);
 
     // Reset page on filter change
     useEffect(() => { setPage(1); }, [debouncedSearch, selectedTags, selectedStatus]);
@@ -132,6 +141,8 @@ export function useOrders() {
     // Fetch attributions for visible orders in a single batch call
     useEffect(() => {
         if (!orders.length || !token || !currentAccount) return;
+
+        const controller = new AbortController();
 
         const fetchAttributions = async () => {
             // Only fetch for orders we haven't fetched yet
@@ -149,7 +160,8 @@ export function useOrders() {
                         'Authorization': `Bearer ${token}`,
                         'X-Account-ID': currentAccount.id
                     },
-                    body: JSON.stringify({ orderIds: uncachedIds })
+                    body: JSON.stringify({ orderIds: uncachedIds }),
+                    signal: controller.signal
                 });
 
                 if (res.ok) {
@@ -160,7 +172,8 @@ export function useOrders() {
                     }
                     setAttributions(prev => ({ ...prev, ...batchResult }));
                 }
-            } catch {
+            } catch (err) {
+                if (err instanceof Error && err.name === 'AbortError') return;
                 // Mark all as null on failure so we don't retry
                 const fallback: Record<number, null> = {};
                 uncachedIds.forEach(id => { fallback[id] = null; });
@@ -169,6 +182,7 @@ export function useOrders() {
         };
 
         fetchAttributions();
+        return () => controller.abort();
     // Why attributions in deps: without it, the stale closure always sees
     // the initial empty object, causing redundant refetches for every page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,7 +204,10 @@ export function useOrders() {
             const result = await res.json();
             Logger.info('Sync started', { status: result.status });
             // Why ref: so cleanup can cancel if component unmounts during 2s delay
-            syncTimeoutRef.current = setTimeout(fetchOrders, 2000);
+            syncTimeoutRef.current = setTimeout(() => {
+                fetchOrders();
+                setStatusCountsKey(prev => prev + 1);
+            }, 2000);
         } catch (err) {
             Logger.error('Sync failed', { error: err });
         } finally {
