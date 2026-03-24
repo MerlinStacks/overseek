@@ -125,16 +125,28 @@ export interface GoogleAdsClientConfig {
  * Extract a usable error message from gRPC error objects.
  *
  * Why: google-ads-api sometimes throws raw gRPC errors where both
- * `.message` and `.details` are empty. Without this helper every
- * catch block logs "Unknown gRPC error" with zero diagnostics.
+ * `.message` and `.details` are empty. This digs into nested error
+ * structures (AggregateError, .cause chain) to surface diagnostics.
  */
 export function extractGrpcErrorMessage(error: any): string {
     if (error.message) return error.message;
     if (error.details) return error.details;
 
-    // gRPC error code is often the only useful field
     const parts: string[] = [];
     if (error.code !== undefined) parts.push(`gRPC code=${error.code}`);
+
+    // AggregateError from Promise.any() — gRPC DNS/credential resolution
+    if (Array.isArray(error.errors) && error.errors.length > 0) {
+        const inner = error.errors[0];
+        const innerMsg = inner?.message || inner?.details || String(inner);
+        parts.push(`inner=${innerMsg}`);
+    }
+
+    // ES2022 Error.cause chain
+    if (error.cause) {
+        const causeMsg = error.cause?.message || String(error.cause);
+        parts.push(`cause=${causeMsg}`);
+    }
 
     // gRPC metadata sometimes carries error descriptions
     if (error.metadata) {
@@ -147,7 +159,69 @@ export function extractGrpcErrorMessage(error: any): string {
     }
 
     if (parts.length > 0) return parts.join(' ');
+
+    // Last resort: stringify the error object itself
+    try {
+        const str = String(error);
+        if (str && str !== '[object Object]') return str;
+    } catch { /* ignore */ }
+
     return 'Unknown gRPC error (no message/details/code)';
+}
+
+/**
+ * Pre-flight OAuth token refresh.
+ *
+ * Why: google-ads-api delegates token refresh to gRPC's credential
+ * provider, which swallows errors into opaque AggregateErrors with
+ * zero diagnostics. By refreshing proactively via REST we can:
+ * (a) detect revoked tokens immediately and trip the auth breaker,
+ * (b) store a fresh access token so gRPC never needs to refresh.
+ */
+async function refreshAccessToken(
+    adAccountId: string,
+    refreshToken: string,
+    clientId: string,
+    clientSecret: string,
+): Promise<string> {
+    const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+    });
+
+    const resp = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+    });
+
+    const data = await resp.json();
+
+    if (data.error) {
+        // Trip auth breaker so scheduled jobs stop hammering Google
+        tripAuthBreaker(adAccountId);
+        Logger.warn('Google OAuth token refresh failed — auth breaker tripped', {
+            adAccountId,
+            error: data.error,
+            description: data.error_description,
+        });
+        throw new Error(
+            `Google token refresh failed: ${data.error_description || data.error}. ` +
+            'Reconnect your Google Ads account in Settings.',
+        );
+    }
+
+    // Persist the new access token so other services can use it
+    if (data.access_token) {
+        await prisma.adAccount.update({
+            where: { id: adAccountId },
+            data: { accessToken: data.access_token },
+        }).catch(err => Logger.warn('Failed to persist refreshed access token', { error: err.message }));
+    }
+
+    return data.access_token;
 }
 
 /**
@@ -209,10 +283,20 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
         Logger.info('GoogleAdsApi client created (singleton — protobuf loaded)');
     }
 
+    // ── Pre-flight token refresh via REST ──────────────────────────────
+    // Validates the refresh token before gRPC touches it. On failure
+    // the auth breaker is tripped with a clear error message.
+    const freshAccessToken = await refreshAccessToken(
+        adAccountId,
+        adAccount.refreshToken,
+        clientId,
+        clientSecret,
+    );
+
     const loginCustomerId = creds.loginCustomerId;
     const customerConfig: any = {
         customer_id: adAccount.externalId.replace(/-/g, ''),
-        refresh_token: adAccount.refreshToken
+        refresh_token: adAccount.refreshToken,
     };
 
     if (loginCustomerId) {
