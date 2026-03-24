@@ -6,7 +6,7 @@
         "dev": "nodemon -r ts-node/register src/index.ts | pino-pretty --translateTime \"SYS:standard\" --ignore time,pid,hostname",
         "build": "npx tsc",
         "build:typecheck": "npx tsc --noEmit",
-        "start": "node dist/index.js",
+        "start": "node --disable-warning=DEP0040 dist/index.js",
         "test": "vitest run",
         "test:watch": "vitest",
         "build:plugin": "ts-node scripts/build_plugin.ts",
