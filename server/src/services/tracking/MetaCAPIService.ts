@@ -68,7 +68,7 @@ export class MetaCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session);
+        const userData = extractUserData(data.payload, session, data.ipAddress);
         const payload = this.buildPayload(eventName, eventId, data, userData, testEventCode);
 
         // Debug: log user_data fields being sent to Meta (truncate hashes for readability)

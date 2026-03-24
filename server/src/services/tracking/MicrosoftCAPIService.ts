@@ -36,7 +36,7 @@ export class MicrosoftCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session);
+        const userData = extractUserData(data.payload, session, data.ipAddress);
         const payload = this.buildPayload(tagId, eventName, eventId, data, userData);
 
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);

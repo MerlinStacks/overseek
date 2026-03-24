@@ -38,7 +38,7 @@ export class GA4MeasurementService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session);
+        const userData = extractUserData(data.payload, session, data.ipAddress);
 
         // GA4 requires a client_id — use GA cookie value or fall back to visitorId
         const clientId = this.extractGAClientId(userData.gaClientId) || data.visitorId;

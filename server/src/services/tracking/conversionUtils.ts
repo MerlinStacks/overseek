@@ -139,10 +139,14 @@ export function mapEventName(type: string, platform: string): string | undefined
 /**
  * Extract user data from event payload and session for PII matching.
  * Merges data from both sources — payload takes precedence (fresher data).
+ *
+ * @param rawIpAddress - Unmasked IP from the original request. Session IP is
+ *   privacy-masked (last octet replaced with 'xxx') which ad platforms reject.
  */
 export function extractUserData(
     payload: Record<string, any> | undefined,
-    session: { email?: string | null; ipAddress?: string | null; userAgent?: string | null; country?: string | null } | null
+    session: { email?: string | null; ipAddress?: string | null; userAgent?: string | null; country?: string | null } | null,
+    rawIpAddress?: string,
 ): ConversionUserData {
     const p = payload || {};
     return {
@@ -154,7 +158,8 @@ export function extractUserData(
         state: p.billingState || p.state || undefined,
         zip: p.billingZip || p.zip || undefined,
         country: p.billingCountry || session?.country || undefined,
-        ipAddress: session?.ipAddress || undefined,
+        // Prefer raw (unmasked) IP for CAPI; fall back to session IP only if raw unavailable
+        ipAddress: rawIpAddress || session?.ipAddress || undefined,
         userAgent: session?.userAgent || undefined,
         fbc: p.fbc || undefined,
         fbp: p.fbp || undefined,

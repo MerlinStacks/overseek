@@ -54,7 +54,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         }
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session);
+        const userData = extractUserData(data.payload, session, data.ipAddress);
 
         // Must have gclid or email for matching — skip if neither available
         const hasGclid = userData.clickPlatform === 'google' && userData.clickId;
