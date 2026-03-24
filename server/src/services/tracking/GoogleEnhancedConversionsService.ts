@@ -158,6 +158,69 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
     }
 
     /**
+     * Retry failed enhanced conversion deliveries for an account within a time window.
+     * Helpful for recovering from transient API errors or invalid credentials.
+     */
+    async retryFailedDeliveries(accountId: string, hoursBack: number = 8): Promise<{ attempted: number; recovered: number }> {
+        const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+        
+        const failedDeliveries = await prisma.conversionDelivery.findMany({
+            where: {
+                accountId,
+                platform: 'GOOGLE',
+                status: 'FAILED',
+                createdAt: { gte: since }
+            }
+        });
+
+        if (failedDeliveries.length === 0) return { attempted: 0, recovered: 0 };
+
+        // Need the ad account to get the tokens and externalId (customer ID)
+        const adAccount = await prisma.adAccount.findFirst({
+            where: { accountId, platform: 'GOOGLE', refreshToken: { not: null } },
+            select: { id: true, accessToken: true, refreshToken: true, externalId: true },
+        });
+
+        if (!adAccount || !adAccount.externalId) {
+            Logger.warn('[GoogleEnhanced] Cannot retry: missing ad account or credentials', { accountId });
+            return { attempted: failedDeliveries.length, recovered: 0 };
+        }
+
+        Logger.info(`[GoogleEnhanced] Retrying ${failedDeliveries.length} failed conversions`, { accountId });
+
+        let recovered = 0;
+        for (const delivery of failedDeliveries) {
+            try {
+                // Set back to pending so metrics don't double count if it fails again
+                await prisma.conversionDelivery.update({
+                    where: { id: delivery.id },
+                    data: { status: 'PENDING', attempts: delivery.attempts + 1 }
+                });
+
+                await this.sendWithRetry(
+                    adAccount.externalId,
+                    adAccount as any,
+                    delivery.payload as Record<string, any>,
+                    delivery.id
+                );
+
+                const updated = await prisma.conversionDelivery.findUnique({
+                    where: { id: delivery.id },
+                    select: { status: true }
+                });
+
+                if (updated?.status === 'SENT') {
+                    recovered++;
+                }
+            } catch (error) {
+                Logger.error('[GoogleEnhanced] Error retrying delivery', { deliveryId: delivery.id, error });
+            }
+        }
+
+        return { attempted: failedDeliveries.length, recovered };
+    }
+
+    /**
      * Send with exponential backoff retry.
      * Uses Google Ads REST API for conversion adjustment upload.
      */

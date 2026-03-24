@@ -246,6 +246,25 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to export data' });
         }
     });
+    fastify.post('/retry-google-enhanced', async (request, reply) => {
+        try {
+            const accountId = getAccountId(request);
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            
+            const query = request.query as { hours?: string };
+            const hours = parseInt(query.hours || '8', 10);
+
+            // Import dynamically to avoid circular dependencies if any
+            const { GoogleEnhancedConversionsService } = await import('../services/tracking/GoogleEnhancedConversionsService');
+            const service = new GoogleEnhancedConversionsService();
+            const result = await service.retryFailedDeliveries(accountId, hours);
+
+            return { success: true, ...result };
+        } catch (error) {
+            Logger.error('Retry Google Enhanced Error', { error });
+            return reply.code(500).send({ error: 'Failed to retry deliveries' });
+        }
+    });
 };
 
 export default trackingDashboardRoutes;
