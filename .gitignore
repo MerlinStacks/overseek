@@ -56,6 +56,8 @@ logs.txt
 # Agent & Debug (development artifacts)
 .agent/
 .gemini/
+.claude/
+CLAUDE.md
 debug_logs.txt
 bugs.md
 task.md
