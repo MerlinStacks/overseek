@@ -13,6 +13,7 @@ interface SearchConsoleStatus {
     connected: boolean;
     sites: Array<{ id: string; siteUrl: string; createdAt: string }>;
     defaultSiteUrl?: string | null;
+    authError?: boolean;
 }
 
 /** Query-level analytics row */

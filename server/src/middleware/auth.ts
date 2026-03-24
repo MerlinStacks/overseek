@@ -151,6 +151,11 @@ export const requireSuperAdminFastify = async (request: FastifyRequest, reply: F
         return reply.code(401).send({ error: 'Authentication required' });
     }
 
+    // Why: requireAuthFastify already queries User.isSuperAdmin when an
+    // accountId header is present and membership is missing. Reuse that
+    // result to avoid a redundant DB roundtrip.
+    if (request.user.isSuperAdmin) return;
+
     try {
         const user = await prisma.user.findUnique({
             where: { id: request.user.id },

@@ -10,6 +10,7 @@ import { Logger } from '../utils/logger';
 import { IndexingService } from '../services/search/IndexingService';
 import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
+import { redisClient } from '../utils/redis';
 
 /** Standard WooCommerce statuses we track. Others are skipped. */
 const VALID_ORDER_STATUSES = new Set([
@@ -51,7 +52,8 @@ const verifySignature = (
 export async function processWebhookPayload(
     accountId: string,
     topic: string,
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    wcDeliveryId?: string
 ): Promise<void> {
     // Handle Order Events
     if (topic === 'order.created' || topic === 'order.updated') {
@@ -110,15 +112,36 @@ export async function processWebhookPayload(
         }
 
         if (topic === 'order.created') {
-            Logger.info(`[Webhook] New order received via webhook`, {
-                accountId,
-                orderId: body.id,
-                orderNumber: body.number,
-                total: body.total
-            });
+            // Why dedup: WooCommerce retries on timeout, each retry would emit
+            // ORDER.CREATED → duplicate push notifications and inbox alerts.
+            let shouldEmitCreated = true;
+            if (wcDeliveryId) {
+                try {
+                    const dedupKey = `webhook:dedup:${accountId}:${wcDeliveryId}`;
+                    const wasNew = await redisClient.set(dedupKey, '1', 'EX', 3600, 'NX');
+                    if (!wasNew) {
+                        Logger.info('[Webhook] Duplicate delivery detected, skipping ORDER.CREATED emit', {
+                            accountId, wcDeliveryId, orderId: body.id
+                        });
+                        shouldEmitCreated = false;
+                    }
+                } catch (redisErr) {
+                    // Redis down → allow the event through (better to risk a dup than miss)
+                    Logger.warn('[Webhook] Redis dedup check failed, allowing event', { error: redisErr });
+                }
+            }
 
-            // Emit event - NotificationEngine handles in-app, push, and socket
-            EventBus.emit(EVENTS.ORDER.CREATED, { accountId, order: body });
+            if (shouldEmitCreated) {
+                Logger.info(`[Webhook] New order received via webhook`, {
+                    accountId,
+                    orderId: body.id,
+                    orderNumber: body.number,
+                    total: body.total
+                });
+
+                // Emit event - NotificationEngine handles in-app, push, and socket
+                EventBus.emit(EVENTS.ORDER.CREATED, { accountId, order: body });
+            }
         }
 
         // Emit ORDER.SYNCED so BOM consumption triggers immediately on webhook,
@@ -215,6 +238,9 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
         const { accountId } = request.params;
         const signature = request.headers['x-wc-webhook-signature'] as string;
         const topic = request.headers['x-wc-webhook-topic'] as string;
+        /** Why: WooCommerce retries webhook deliveries on timeout. Without dedup,
+         *  each retry fires ORDER.CREATED again → duplicate push notifications. */
+        const wcDeliveryId = request.headers['x-wc-webhook-delivery-id'] as string | undefined;
         const body = request.body as Record<string, unknown> | string;
         const rawBody = (request as any).rawBody as Buffer | undefined;
 
@@ -279,7 +305,7 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Process the webhook
         try {
-            await processWebhookPayload(accountId, topic, body);
+            await processWebhookPayload(accountId, topic, body, wcDeliveryId);
 
             // Mark as processed
             if (deliveryId) {

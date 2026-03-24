@@ -136,6 +136,11 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     // Stats and progress
     const [stats, setStats] = useState<SyncStats>({ total: 0, needsSync: 0, inSync: 0, errors: 0 });
+    /** Why ref: handleSyncAll captures stats in its closure; without a ref
+     *  the progress bar total would be stale if stats changed between click
+     *  and execution. */
+    const statsRef = useRef(stats);
+    statsRef.current = stats;
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
     const [nextSyncIn, setNextSyncIn] = useState<string | null>(null);
 
@@ -279,7 +284,7 @@ export function useBOMSync(): UseBOMSyncReturn {
 
         setIsSyncing(true);
         setSyncResult(null);
-        setSyncProgress({ current: 0, total: stats.needsSync });
+        setSyncProgress({ current: 0, total: statsRef.current.needsSync });
 
         try {
             const res = await fetch('/api/inventory/bom/sync-all', {
@@ -343,7 +348,7 @@ export function useBOMSync(): UseBOMSyncReturn {
             setIsSyncing(false);
             setSyncProgress(null);
         }
-    }, [currentAccount?.id, token, stats.needsSync, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
+    }, [currentAccount?.id, token, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
 
     const handleRetryFailed = useCallback(async () => {
         const failedItems = pendingChanges.filter(item => syncErrors[`${item.productId}-${item.variationId}`]);
@@ -423,7 +428,9 @@ export function useBOMSync(): UseBOMSyncReturn {
         }
     }, [currentAccount?.id, token, fetchDeactivatedItems, fetchPendingChanges]);
 
-    // Initial fetch — only run when account or token changes
+    // Why: fires 5 concurrent fetches. Combined with other page polling,
+    // this can exhaust the rate limit budget. Consider a single API endpoint
+    // that returns all BOM status data if rate limits become an issue.
     useEffect(() => {
         if (currentAccount && token) {
             fetchPendingChanges();

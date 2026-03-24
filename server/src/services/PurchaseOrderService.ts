@@ -458,6 +458,8 @@ export class PurchaseOrderService {
         // Transition PO to RECEIVED after all stock increments have been committed.
         // Why: without this the double-receive guard (line 263) never triggers,
         // allowing every call to re-apply stock — a data-corruption bug.
+        // TODO(improvement): Track wooSyncStatus separately (pending/complete/failed)
+        // so admins can retry just the WooCommerce push without unreceive+re-receive.
         await prisma.purchaseOrder.update({
             where: { id: poId },
             data: { status: 'RECEIVED' }
@@ -679,16 +681,14 @@ export class PurchaseOrderService {
             });
         }
 
-        // Transition PO status back to ORDERED after successful unreceive
-        // Why: without this, the PO stays RECEIVED even though stock was reversed,
-        // which is logically inconsistent and could allow repeat unreceive attempts.
-        if (updated > 0) {
-            await prisma.purchaseOrder.update({
-                where: { id: poId },
-                data: { status: 'ORDERED' }
-            });
-            Logger.info('PO status transitioned to ORDERED after unreceive', { poId });
-        }
+        // Why: always transition away from RECEIVED — even if all items errored,
+        // partial stock decrements may have occurred. Leaving the PO in RECEIVED
+        // would allow repeated unreceive attempts, compounding stock drift.
+        await prisma.purchaseOrder.update({
+            where: { id: poId },
+            data: { status: 'ORDERED' }
+        });
+        Logger.info('PO status transitioned to ORDERED after unreceive', { poId, updated, errorCount: errors.length });
 
         return { updated, errors, updatedProductIds };
     }

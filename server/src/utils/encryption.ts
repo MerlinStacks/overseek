@@ -1,13 +1,22 @@
 import crypto from 'crypto';
+import { Logger } from './logger';
 
 const ALGORITHM = 'aes-256-gcm';
 
-const KEY = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'temporary_dev_key_change_me';
+/**
+ * Why throw: using a hardcoded fallback silently encrypts data with a
+ * well-known key—a DB leak would expose all encrypted secrets.
+ */
+const KEY = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+if (!KEY && process.env.NODE_ENV === 'production') {
+    throw new Error('[encryption] ENCRYPTION_KEY or JWT_SECRET must be set in production');
+}
+const EFFECTIVE_KEY = KEY || 'temporary_dev_key_change_me';
 
 export const encrypt = (text: string): string => {
     const iv = crypto.randomBytes(16);
     // hash to get exactly 32 bytes for AES-256
-    const keyBuf = crypto.createHash('sha256').update(String(KEY)).digest();
+    const keyBuf = crypto.createHash('sha256').update(String(EFFECTIVE_KEY)).digest();
 
     const cipher = crypto.createCipheriv(ALGORITHM, keyBuf, iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
@@ -23,23 +32,20 @@ export const decrypt = (text: string): string => {
 
     // not iv:tag:encrypted format — probably legacy plaintext
     if (parts.length !== 3) {
-
-        console.warn('[encryption] Detected legacy unencrypted value, consider re-saving');
+        Logger.warn('[encryption] Detected legacy unencrypted value, consider re-saving');
         return text;
     }
 
     const [ivHex, tagHex, encryptedHex] = parts;
 
-
     const isValidHex = (s: string) => /^[0-9a-fA-F]+$/.test(s);
     if (!isValidHex(ivHex) || !isValidHex(tagHex) || !isValidHex(encryptedHex)) {
-
-        console.warn('[encryption] Value contains colons but is not encrypted, treating as plain-text');
+        Logger.warn('[encryption] Value contains colons but is not encrypted, treating as plain-text');
         return text;
     }
 
     try {
-        const keyBuf = crypto.createHash('sha256').update(String(KEY)).digest();
+        const keyBuf = crypto.createHash('sha256').update(String(EFFECTIVE_KEY)).digest();
         const decipher = crypto.createDecipheriv(ALGORITHM, keyBuf, Buffer.from(ivHex, 'hex'));
         decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
         let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
@@ -47,7 +53,7 @@ export const decrypt = (text: string): string => {
         return decrypted;
     } catch (e: any) {
         // key probably changed since this was encrypted
-        console.error('[encryption] Decryption failed - ENCRYPTION_KEY may have changed. Value will be unusable.', e?.message);
+        Logger.error('[encryption] Decryption failed - ENCRYPTION_KEY may have changed. Value will be unusable.', { error: e?.message });
         throw new Error('Decryption failed - encryption key mismatch or corrupted data');
     }
 };

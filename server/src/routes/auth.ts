@@ -455,7 +455,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 });
                 transporter.close();
             } else {
-                Logger.debug(`Password Reset Link generated`, { email, resetLink });
+                Logger.debug(`Password Reset Link generated (SMTP not configured, link not sent)`);
             }
 
             return { message: 'If an account exists, a reset link has been sent.' };

@@ -155,11 +155,19 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
         }
     }
 
-    async function handleGoogleOAuth() {
+    /**
+     * Initiate Google OAuth. When existingAccountId is provided, the server
+     * will update that account's tokens instead of creating a new one.
+     */
+    async function handleGoogleOAuth(existingAccountId?: string) {
         if (!currentAccount) return;
 
         try {
-            const res = await fetch(`/api/oauth/google/authorize?redirect=${encodeURIComponent('/marketing?tab=ads')}`, {
+            const params = new URLSearchParams({
+                redirect: '/marketing?tab=ads',
+                ...(existingAccountId && { reconnectId: existingAccountId })
+            });
+            const res = await fetch(`/api/oauth/google/authorize?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             const data = await res.json();
@@ -172,6 +180,38 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
         } catch (err) {
             alert('Error initiating Google OAuth');
         }
+    }
+
+    /**
+     * Initiate Meta OAuth for reconnection.
+     */
+    async function handleMetaOAuth(existingAccountId?: string) {
+        if (!currentAccount) return;
+
+        try {
+            const params = new URLSearchParams({
+                redirect: '/marketing?tab=ads',
+                ...(existingAccountId && { reconnectId: existingAccountId })
+            });
+            const res = await fetch(`/api/oauth/meta/ads/authorize?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            });
+            const data = await res.json();
+
+            if (data.authUrl) {
+                window.location.href = data.authUrl;
+            } else {
+                alert('Failed to initiate Meta OAuth');
+            }
+        } catch (err) {
+            alert('Error initiating Meta OAuth');
+        }
+    }
+
+    /** Reconnect dispatches to the correct platform OAuth flow. */
+    function handleReconnect(acc: AdAccount) {
+        if (acc.platform === 'GOOGLE') handleGoogleOAuth(acc.id);
+        else handleMetaOAuth(acc.id);
     }
 
     async function handleDisconnect(adAccountId: string) {
@@ -226,13 +266,20 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
     // Check for OAuth callback status
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        if (params.get('success') === 'google_connected') {
-            // Show success message and clean URL
+        const success = params.get('success');
+        if (success === 'google_connected') {
             alert('Google Ads account connected successfully!');
             window.history.replaceState({}, '', '/marketing?tab=ads');
             fetchAccounts();
-        } else if (params.get('success') === 'google_pending') {
-            // Show Customer ID input modal
+        } else if (success === 'google_reconnected') {
+            alert('Google Ads account reconnected successfully!');
+            window.history.replaceState({}, '', '/marketing?tab=ads');
+            fetchAccounts();
+        } else if (success === 'meta_ads_reconnected') {
+            alert('Meta Ads account reconnected successfully!');
+            window.history.replaceState({}, '', '/marketing?tab=ads');
+            fetchAccounts();
+        } else if (success === 'google_pending') {
             const pendingId = params.get('pendingId') || '';
             setPendingSetup({ show: true, pendingId, customerId: '', isSubmitting: false });
             window.history.replaceState({}, '', '/marketing?tab=ads');
@@ -358,7 +405,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={handleGoogleOAuth}
+                                            onClick={() => handleGoogleOAuth()}
                                             className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 px-4 py-3 rounded-lg hover:bg-gray-50 font-medium"
                                         >
                                             <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -542,12 +589,21 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                         {/* Error Display */}
                                         {insightErrors[acc.id] && (
                                             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                                <div className="flex items-start gap-2">
-                                                    <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                                                    <div className="text-sm text-red-700">
-                                                        <p className="font-medium">Failed to load data</p>
-                                                        <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex items-start gap-2">
+                                                        <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                                                        <div className="text-sm text-red-700">
+                                                            <p className="font-medium">Failed to load data</p>
+                                                            <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
+                                                        </div>
                                                     </div>
+                                                    <button
+                                                        onClick={() => handleReconnect(acc)}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 shrink-0"
+                                                    >
+                                                        <RefreshCw size={14} />
+                                                        Reconnect
+                                                    </button>
                                                 </div>
                                             </div>
                                         )}

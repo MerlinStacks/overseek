@@ -12,6 +12,7 @@ import { Logger } from '../../utils/logger';
 import { EventBus, EVENTS } from '../events';
 import { AdsService } from '../ads';
 import { MultiPeriodAnalyzer } from './analyzers';
+import { isGrpcBreakerOpen } from '../ads/GoogleAdsClient';
 
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
@@ -69,6 +70,13 @@ export class AdAlertService {
             // Check each platform
             for (const adAccount of adAccounts) {
                 const platform = adAccount.platform.toLowerCase() as 'google' | 'meta';
+
+                // Skip Google accounts whose gRPC circuit-breaker is active
+                // to avoid fanning out calls that will all throw immediately
+                if (platform === 'google' && isGrpcBreakerOpen(adAccount.id)) {
+                    Logger.debug('Skipping ad alert check — gRPC breaker open', { adAccountId: adAccount.id });
+                    continue;
+                }
 
                 try {
                     // Get campaign data
@@ -244,11 +252,26 @@ export class AdAlertService {
 
     /**
      * Get recent alerts for display in dashboard.
+     * Queries stored alerts instead of re-running the full check to avoid
+     * fanning out to all Google Ads endpoints on every dashboard load.
      */
     static async getRecentAlerts(accountId: string, limit: number = 10): Promise<AdAlert[]> {
-        // For now, just run a fresh check
-        // In production, you'd store alerts and query them
-        const alerts = await this.checkForAlerts(accountId);
-        return alerts.slice(0, limit);
+        const rows = await prisma.adAlert.findMany({
+            where: { accountId },
+            orderBy: { createdAt: 'desc' },
+            take: limit
+        });
+
+        return rows.map(row => ({
+            id: row.id,
+            severity: row.severity as AlertSeverity,
+            type: row.type,
+            title: row.title,
+            message: row.message,
+            platform: row.platform?.toLowerCase() as 'google' | 'meta' | undefined,
+            campaignId: row.campaignId || undefined,
+            campaignName: row.campaignName || undefined,
+            data: (row.data as Record<string, unknown>) || {}
+        }));
     }
 }

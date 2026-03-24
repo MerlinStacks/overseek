@@ -99,7 +99,7 @@ export class WebhookDeliveryService {
      * Replay a failed webhook delivery.
      * Returns the delivery data for the caller to re-process.
      */
-    static async replay(deliveryId: string): Promise<{
+    static async replay(deliveryId: string, accountId?: string): Promise<{
         id: string;
         accountId: string;
         topic: string;
@@ -107,9 +107,12 @@ export class WebhookDeliveryService {
         payload: unknown;
         receivedAt: Date;
     } | null> {
-        const delivery = await prisma.webhookDelivery.findUnique({
-            where: { id: deliveryId },
-        });
+        // Why accountId param: without scoping, a super-admin replaying
+        // delivery X could process it under the wrong account context.
+        const where: Record<string, unknown> = { id: deliveryId };
+        if (accountId) where.accountId = accountId;
+
+        const delivery = await prisma.webhookDelivery.findFirst({ where });
 
         if (!delivery) {
             Logger.warn('[Webhook] Replay requested for non-existent delivery', { deliveryId });
@@ -226,7 +229,7 @@ export class WebhookDeliveryService {
     /**
      * Get a single delivery with full payload for replay inspection.
      */
-    static async getDelivery(deliveryId: string): Promise<{
+    static async getDelivery(deliveryId: string, accountId?: string): Promise<{
         id: string;
         accountId: string;
         topic: string;
@@ -238,9 +241,9 @@ export class WebhookDeliveryService {
         receivedAt: Date;
         processedAt: Date | null;
     } | null> {
-        return prisma.webhookDelivery.findUnique({
-            where: { id: deliveryId },
-        });
+        const where: Record<string, unknown> = { id: deliveryId };
+        if (accountId) where.accountId = accountId;
+        return prisma.webhookDelivery.findFirst({ where });
     }
 
     /**

@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import {
     TrendingUp, Target, Search, Sparkles,
-    ArrowUpRight, ArrowDown, ExternalLink, Loader2, Link2
+    ArrowUpRight, ArrowDown, ExternalLink, Loader2, Link2, AlertTriangle
 } from 'lucide-react';
 import {
     useSearchConsoleStatus,
@@ -53,6 +53,7 @@ const ACTION_ICONS = {
 export function SeoKeywordsPanel({ siteUrl }: { siteUrl?: string }) {
     const status = useSearchConsoleStatus();
     const isConnected = status.data?.connected;
+    const hasAuthError = status.data?.authError;
 
     if (status.isLoading) {
         return <LoadingState />;
@@ -60,6 +61,10 @@ export function SeoKeywordsPanel({ siteUrl }: { siteUrl?: string }) {
 
     if (!isConnected) {
         return <ConnectPrompt />;
+    }
+
+    if (hasAuthError) {
+        return <ReconnectPrompt />;
     }
 
     return (
@@ -109,6 +114,49 @@ function ConnectPrompt() {
             >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
                 Connect Search Console
+            </button>
+        </div>
+    );
+}
+
+/**
+ * Prompt shown when Search Console is connected but tokens are revoked/expired.
+ * Why separate from ConnectPrompt: different messaging and warning styling to
+ * clearly indicate this is a recovery action, not initial setup.
+ */
+function ReconnectPrompt() {
+    const api = useApi();
+    const [loading, setLoading] = useState(false);
+
+    const handleReconnect = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
+            window.location.href = res.authUrl;
+        } catch {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center py-20 px-6">
+            <div className="w-20 h-20 bg-gradient-to-br from-amber-500/20 to-red-500/20 dark:from-amber-500/10 dark:to-red-500/10 rounded-3xl flex items-center justify-center mb-6">
+                <AlertTriangle className="w-10 h-10 text-amber-500 dark:text-amber-400" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+                Search Console Disconnected
+            </h3>
+            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md mb-8">
+                Your Google Search Console access has expired or been revoked.
+                Reconnect to resume keyword tracking and SEO insights.
+            </p>
+            <button
+                onClick={handleReconnect}
+                disabled={loading}
+                className="flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-base bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
+            >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
+                Reconnect Search Console
             </button>
         </div>
     );

@@ -38,6 +38,16 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
         const limit = Math.min(parseInt(query.limit || '20', 10), 100);
 
+        // Why: validate BEFORE cacheAside — returning reply.send() inside the
+        // cache callback would cache the Fastify reply object instead of data.
+        let parsedCustomerId: number | undefined;
+        if (query.customerId) {
+            parsedCustomerId = parseInt(query.customerId, 10);
+            if (isNaN(parsedCustomerId)) {
+                return reply.code(400).send({ error: 'customerId must be a numeric value' });
+            }
+        }
+
         try {
             // Build cache key from filter params
             const cacheKey = `orders:list:${accountId}:${limit}:${query.customerId || 'none'}:${query.billingEmail || 'none'}`;
@@ -47,15 +57,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 async () => {
                     let whereClause: any = { accountId };
 
-                    if (query.customerId) {
-                        // Use denormalized column for faster lookups (avoids JSON parsing)
-                        const parsedCustomerId = parseInt(query.customerId, 10);
-                        if (isNaN(parsedCustomerId)) {
-                            return reply.code(400).send({ error: 'customerId must be a numeric value' });
-                        }
+                    if (parsedCustomerId !== undefined) {
                         whereClause.wooCustomerId = parsedCustomerId;
                     } else if (query.billingEmail) {
-                        // Use denormalized column for faster lookups
                         // Emails are normalized to lowercase on sync, so match with lowercase input
                         whereClause.billingEmail = query.billingEmail.toLowerCase().trim();
                     }
@@ -89,7 +93,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get Order by ID (Internal ID or WooID)
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-        const { id } = orderIdParamSchema.parse(request.params);
+        const parsed = orderIdParamSchema.safeParse(request.params);
+        if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message });
+        const { id } = parsed.data;
         const accountId = request.user?.accountId;
 
         if (!accountId) {
@@ -180,7 +186,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get Fraud Score for an Order
     fastify.get<{ Params: { id: string } }>('/:id/fraud-score', async (request, reply) => {
-        const { id } = orderIdParamSchema.parse(request.params);
+        const parsedParams = orderIdParamSchema.safeParse(request.params);
+        if (!parsedParams.success) return reply.code(400).send({ error: parsedParams.error.issues[0].message });
+        const { id } = parsedParams.data;
         const accountId = request.user?.accountId;
 
         if (!accountId) {
@@ -229,6 +237,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Batch attribution lookup — replaces N individual calls with one
+    // TODO(perf): Store orderId as a denormalized column on AnalyticsEvent
+    // to replace this O(N×M) linear scan over 1000 events. For accounts
+    // with high purchase volume this will degrade significantly.
     fastify.post<{ Body: { orderIds: number[] } }>('/batch-attributions', async (request, reply) => {
         const accountId = request.user?.accountId;
         if (!accountId) return reply.code(400).send({ error: 'accountId header is required' });
@@ -297,7 +308,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get Attribution data for an Order
     fastify.get<{ Params: { id: string } }>('/:id/attribution', async (request, reply) => {
-        const { id } = orderIdParamSchema.parse(request.params);
+        const parsedParams = orderIdParamSchema.safeParse(request.params);
+        if (!parsedParams.success) return reply.code(400).send({ error: parsedParams.error.issues[0].message });
+        const { id } = parsedParams.data;
         const accountId = request.user?.accountId;
 
         if (!accountId) {
@@ -382,7 +395,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
     // COGS Breakdown - GET /api/orders/:id/cogs
     // -------------------------------------------------------------------------
     fastify.get<{ Params: { id: string } }>('/:id/cogs', async (request, reply) => {
-        const { id } = orderIdParamSchema.parse(request.params);
+        const parsedParams = orderIdParamSchema.safeParse(request.params);
+        if (!parsedParams.success) return reply.code(400).send({ error: parsedParams.error.issues[0].message });
+        const { id } = parsedParams.data;
         const accountId = request.user?.accountId;
         const userId = request.user?.id;
 
@@ -424,7 +439,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Remove a tag from an order
     fastify.delete<{ Params: { id: string; tag: string } }>('/:id/tags/:tag', async (request, reply) => {
-        const { id } = orderIdParamSchema.parse(request.params);
+        const parsedParams = orderIdParamSchema.safeParse(request.params);
+        if (!parsedParams.success) return reply.code(400).send({ error: parsedParams.error.issues[0].message });
+        const { id } = parsedParams.data;
         const tag = decodeURIComponent(request.params.tag);
         const accountId = request.user?.accountId;
 
@@ -484,7 +501,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Add a tag to an order
     fastify.post<{ Params: { id: string }; Body: { tag: string } }>('/:id/tags', async (request, reply) => {
-        const { id } = orderIdParamSchema.parse(request.params);
+        const parsedParams = orderIdParamSchema.safeParse(request.params);
+        if (!parsedParams.success) return reply.code(400).send({ error: parsedParams.error.issues[0].message });
+        const { id } = parsedParams.data;
         const { tag } = request.body as { tag: string };
         const accountId = request.user?.accountId;
 

@@ -209,6 +209,9 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
                 siteCount: sites.length
             });
 
+            // Clear stale auth validation so the UI reflects the refreshed tokens immediately
+            authValidationCache.delete(stateData.accountId);
+
             return reply.redirect(buildFrontendUrl(frontendRedirect, { success: 'search_console_connected' }));
 
         } catch (error: any) {
@@ -218,7 +221,16 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
-     * GET /search-console/status — Connection status for current account
+     * In-memory cache for token validation results.
+     * Why: avoid hitting Google API on every page load; 5-min TTL is sufficient
+     * to surface revocations promptly without excessive API calls.
+     */
+    const authValidationCache = new Map<string, { valid: boolean; checkedAt: number }>();
+    const VALIDATION_TTL_MS = 5 * 60 * 1000;
+
+    /**
+     * GET /search-console/status — Connection status for current account.
+     * Includes `authError` flag when stored tokens are revoked/expired.
      */
     fastify.get('/search-console/status', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
@@ -228,7 +240,7 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const [accounts, account] = await Promise.all([
                 prisma.searchConsoleAccount.findMany({
                     where: { accountId },
-                    select: { id: true, siteUrl: true, createdAt: true }
+                    select: { id: true, siteUrl: true, createdAt: true, accessToken: true, refreshToken: true }
                 }),
                 prisma.account.findUnique({
                     where: { id: accountId },
@@ -236,10 +248,55 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
                 })
             ]);
 
+            let authError = false;
+
+            if (accounts.length > 0) {
+                const cached = authValidationCache.get(accountId);
+                const now = Date.now();
+
+                if (cached && (now - cached.checkedAt) < VALIDATION_TTL_MS) {
+                    authError = !cached.valid;
+                } else {
+                    // Lightweight validation: try listing sites with stored token
+                    const scAccount = accounts[0];
+                    try {
+                        let tokenToUse = scAccount.accessToken;
+
+                        // Try the access token first, refresh on 401
+                        let response = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+                            headers: { Authorization: `Bearer ${tokenToUse}` }
+                        });
+
+                        if (response.status === 401 && scAccount.refreshToken) {
+                            const { SearchConsoleService } = await import('../services/search-console/SearchConsoleService');
+                            try {
+                                tokenToUse = await SearchConsoleService.refreshAccessToken(scAccount.id);
+                                response = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+                                    headers: { Authorization: `Bearer ${tokenToUse}` }
+                                });
+                            } catch {
+                                // Refresh token itself is invalid
+                                authError = true;
+                            }
+                        }
+
+                        if (!authError && !response.ok) {
+                            authError = true;
+                        }
+
+                        authValidationCache.set(accountId, { valid: !authError, checkedAt: now });
+                    } catch {
+                        // Network error — don't flag as auth error, could be transient
+                        authValidationCache.set(accountId, { valid: true, checkedAt: now });
+                    }
+                }
+            }
+
             return {
                 connected: accounts.length > 0,
-                sites: accounts,
-                defaultSiteUrl: account?.defaultSearchConsoleSiteUrl ?? null
+                sites: accounts.map(a => ({ id: a.id, siteUrl: a.siteUrl, createdAt: a.createdAt })),
+                defaultSiteUrl: account?.defaultSearchConsoleSiteUrl ?? null,
+                authError
             };
         } catch (error: any) {
             Logger.error('Failed to get Search Console status', { error });

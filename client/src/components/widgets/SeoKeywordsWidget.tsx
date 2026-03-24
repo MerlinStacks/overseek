@@ -79,6 +79,26 @@ export function SeoKeywordsWidget({ className }: WidgetProps) {
                     </div>
                 ) : !connected ? (
                     <NotConnectedPrompt onNavigate={() => navigate('/seo')} />
+                ) : status?.authError ? (
+                    <div className="flex flex-col items-center justify-center text-center gap-3 py-6">
+                        <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                            <Search size={20} className="text-amber-500 dark:text-amber-400" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                Search Console needs reconnection
+                            </p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                                Your access has expired or been revoked.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => navigate('/seo')}
+                            className="text-xs font-semibold text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 transition-colors"
+                        >
+                            Reconnect on SEO page <ArrowRight size={12} />
+                        </button>
+                    </div>
                 ) : queries.length === 0 ? (
                     <div className="text-center text-slate-400 dark:text-slate-500 py-4 text-sm">
                         No keyword data yet

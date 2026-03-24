@@ -42,6 +42,7 @@ const SUB_TABS: { id: TrackerSubTab; label: string; icon: React.ElementType }[] 
 export function KeywordTrackerPanel() {
     const status = useSearchConsoleStatus();
     const isConnected = status.data?.connected;
+    const hasAuthError = status.data?.authError;
 
     if (status.isLoading) {
         return (
@@ -60,6 +61,20 @@ export function KeywordTrackerPanel() {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Connect Search Console First</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
                     To track keyword rankings, connect your Google Search Console on the SEO Overview tab.
+                </p>
+            </div>
+        );
+    }
+
+    if (hasAuthError) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 px-6">
+                <div className="w-20 h-20 bg-gradient-to-br from-amber-500/20 to-red-500/20 dark:from-amber-500/10 dark:to-red-500/10 rounded-3xl flex items-center justify-center mb-6">
+                    <Search className="w-10 h-10 text-amber-500 dark:text-amber-400" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Search Console Disconnected</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
+                    Your Google Search Console access has expired. Reconnect on the SEO Overview tab to resume keyword tracking.
                 </p>
             </div>
         );

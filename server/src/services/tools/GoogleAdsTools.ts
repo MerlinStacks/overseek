@@ -51,7 +51,7 @@ export class GoogleAdsTools {
                             });
                         });
                     } catch (err) {
-                        Logger.debug(`No shopping data for ${adAccount.id}`, { error: err });
+                        Logger.debug(`No shopping data for ${adAccount.id}`, { error: (err as Error).message });
                     }
 
                     // Also fetch search keyword data
@@ -64,10 +64,10 @@ export class GoogleAdsTools {
                             });
                         });
                     } catch (err) {
-                        Logger.debug(`No keyword data for ${adAccount.id}`, { error: err });
+                        Logger.debug(`No keyword data for ${adAccount.id}`, { error: (err as Error).message });
                     }
                 } catch (err) {
-                    Logger.warn(`Failed to fetch campaigns for ${adAccount.id}`, { error: err });
+                    Logger.warn(`Failed to fetch campaigns for ${adAccount.id}`, { error: (err as Error).message });
                 }
             }
 

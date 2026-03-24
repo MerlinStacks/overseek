@@ -135,9 +135,10 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             throw new ApiError(response.status, errorMessage, errorCode, isRecoverable);
         }
 
-        // Handle 204 No Content
+        // Handle 204 No Content — return undefined, not {}, so callers
+        // expecting void/null don't get a truthy empty object.
         if (response.status === 204) {
-            return {} as T;
+            return undefined as unknown as T;
         }
 
         return response.json();

@@ -23,7 +23,10 @@ let cachedApiFingerprint = '';
 // ─── Customer object cache (per adAccountId) ────────────────────────────────
 // Reusing the Customer avoids spawning duplicate HTTP/2 channels.
 // Entries expire after CUSTOMER_CACHE_TTL_MS to pick up token refreshes.
+// Capped at MAX_CUSTOMER_CACHE_SIZE to prevent protobuf descriptor trees
+// from accumulating and inflating the heap (each Customer holds ~2–5 MB).
 const CUSTOMER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_CUSTOMER_CACHE_SIZE = 20;
 interface CachedCustomer {
     customer: any;
     currency: string;
@@ -53,6 +56,15 @@ interface GrpcBreakerState {
     cooldownUntil: number;    // 0 = not in cooldown
 }
 const grpcBreakerMap = new Map<string, GrpcBreakerState>();
+
+/**
+ * Check if the gRPC circuit-breaker is currently open for an ad account.
+ * Callers can use this to skip work before constructing full call chains.
+ */
+export function isGrpcBreakerOpen(adAccountId: string): boolean {
+    const state = grpcBreakerMap.get(adAccountId);
+    return !!(state && state.cooldownUntil > Date.now());
+}
 
 /** Mark an ad account as auth-broken. Called from parseGoogleAdsError. */
 export function tripAuthBreaker(adAccountId: string): void {
@@ -129,6 +141,9 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     // ── Return cached Customer if still fresh ────────────────────────────
     const cached = customerCache.get(adAccountId);
     if (cached && now - cached.createdAt < CUSTOMER_CACHE_TTL_MS) {
+        // Promote to end of Map iteration order (LRU touch)
+        customerCache.delete(adAccountId);
+        customerCache.set(adAccountId, cached);
         return { customer: cached.customer, currency: cached.currency };
     }
 
@@ -174,7 +189,11 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     const customer = cachedApiClient.Customer(customerConfig);
     const currency = adAccount.currency || 'USD';
 
-    // Cache for reuse
+    // Cache for reuse — evict oldest if at capacity
+    if (customerCache.size >= MAX_CUSTOMER_CACHE_SIZE) {
+        const oldestKey = customerCache.keys().next().value;
+        if (oldestKey) customerCache.delete(oldestKey);
+    }
     customerCache.set(adAccountId, { customer, currency, createdAt: now });
 
     return { customer, currency };

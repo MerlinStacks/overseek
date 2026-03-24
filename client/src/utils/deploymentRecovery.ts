@@ -178,16 +178,19 @@ export function installDeploymentRecovery(): void {
         }
     });
 
-    // Handle Vite HMR disconnection (dev server restart)
-    window.addEventListener('vite:ws-disconnect', () => {
-        Logger.info('[DeploymentRecovery] Vite WebSocket disconnected');
-        if (canAttemptReload()) {
-            showReloadToast();
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
-        }
-    });
+    // Why: Vite HMR events only fire in dev — but guard explicitly to avoid
+    // the reload handler running from any unrelated WebSocket disconnect.
+    if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        window.addEventListener('vite:ws-disconnect', () => {
+            Logger.info('[DeploymentRecovery] Vite WebSocket disconnected');
+            if (canAttemptReload()) {
+                showReloadToast();
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
+        });
+    }
 
     Logger.info('[DeploymentRecovery] Installed');
 }
