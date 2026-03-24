@@ -49,17 +49,6 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             if (Array.isArray(ip)) ip = ip[0];
             if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
 
-            // Debug: log IP source for first few events to diagnose Meta CAPI rejections
-            if (type === 'product_view' || type === 'purchase') {
-                Logger.info('[TrackingIP] IP resolution', {
-                    type,
-                    visitorIp: visitorIp || '(empty)',
-                    xForwardedFor: request.headers['x-forwarded-for'] || '(empty)',
-                    requestIp: request.ip,
-                    resolvedIp: ip,
-                });
-            }
-
             // Fall back to payload.eventId when top-level is missing (WC plugin nests it)
             const resolvedEventId = eventId || payload?.eventId;
 
