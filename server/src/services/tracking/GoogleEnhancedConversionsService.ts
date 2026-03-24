@@ -100,19 +100,34 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         userData: ReturnType<typeof extractUserData>,
         hasGclid: boolean,
     ): Record<string, any> {
+        // Use the order's actual creation time if provided by the plugin.
+        // Falling back to now is acceptable for real-time events but the
+        // conversionDateTime MUST be close to when the Google Ads tag fired
+        // on the thank-you page so Google can match the enhancement to its
+        // existing conversion record.
+        const orderDate = data.payload?.date || data.payload?.orderDate || data.payload?.dateCreated;
+        const conversionTime = orderDate
+            ? new Date(orderDate).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00')
+            : new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00');
+
+        const orderId = data.payload?.orderId ? String(data.payload.orderId) : eventId;
+
         const adjustment: Record<string, any> = {
             conversionAction: `customers/${customerId.replace(/-/g, '')}/conversionActions/${conversionActionId}`,
             adjustmentType: 'ENHANCEMENT',
-            orderId: data.payload?.orderId ? String(data.payload.orderId) : eventId,
-            adjustmentDateTime: new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00'),
+            orderId,
+            adjustmentDateTime: conversionTime,
             userIdentifiers: [],
         };
 
-        // Add gclid if available — strongest matching signal
+        // Add gclid if available — strongest matching signal.
+        // conversionDateTime must match when the Google Ads tag originally
+        // recorded the conversion (i.e. when the order was placed), not when
+        // this API call is made.
         if (hasGclid && userData.clickId) {
             adjustment.gclidDateTimePair = {
                 gclid: userData.clickId,
-                conversionDateTime: adjustment.adjustmentDateTime,
+                conversionDateTime: conversionTime,
             };
         }
 
@@ -279,6 +294,27 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                             partialFailureError: parsed.partialFailureError,
                         });
                         return;
+                    }
+
+                    // Log whether Google returned results or an empty array.
+                    // An empty results array means no base conversion was found to
+                    // enhance — usually because the Google Ads tag didn't fire on
+                    // the thank-you page, or the orderId doesn't match the tag's
+                    // transaction_id parameter.
+                    const resultCount = parsed?.results?.length ?? 0;
+                    if (resultCount === 0) {
+                        Logger.warn('[GoogleEnhanced] Upload accepted but no conversions matched — check that the Google Ads tag fires on the WooCommerce thank-you page and that transaction_id matches orderId', {
+                            customerId,
+                            orderId: payload.conversionAdjustments?.[0]?.orderId,
+                            hasGclid: !!payload.conversionAdjustments?.[0]?.gclidDateTimePair,
+                            userIdentifierCount: payload.conversionAdjustments?.[0]?.userIdentifiers?.length ?? 0,
+                        });
+                    } else {
+                        Logger.info('[GoogleEnhanced] Conversion enhancement matched successfully', {
+                            customerId,
+                            resultCount,
+                            orderId: payload.conversionAdjustments?.[0]?.orderId,
+                        });
                     }
 
                     await this.markDelivery(deliveryId, 'SENT', response.status, responseBody, attempt);
