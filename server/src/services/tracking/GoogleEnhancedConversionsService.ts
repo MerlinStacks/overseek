@@ -65,9 +65,11 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             return;
         }
 
-        // Look up OAuth tokens from AdAccount linked to this Google Ads customer ID
+        // Look up OAuth tokens from AdAccount linked to this Google Ads customer ID.
+        // Normalize: complete-setup stores externalId without dashes, so strip them here.
+        const normalizedCustomerId = customerId.replace(/-/g, '');
         const adAccount = await prisma.adAccount.findFirst({
-            where: { accountId, platform: 'GOOGLE', externalId: customerId },
+            where: { accountId, platform: 'GOOGLE', externalId: normalizedCustomerId },
             select: { id: true, accessToken: true, refreshToken: true },
         });
 

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { GoogleAdsCampaigns } from './GoogleAdsCampaigns';
-import { Loader2, Megaphone, Plus } from 'lucide-react';
+import { Loader2, Megaphone, Plus, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface AdAccount {
     id: string;
@@ -22,6 +22,31 @@ export function AdPerformanceView() {
     const [accounts, setAccounts] = useState<AdAccount[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+    /**
+     * Initiate OAuth for reconnecting an expired ad account.
+     * Why separate from settings: users land on /ads from the sidebar and
+     * need to reconnect without navigating to settings first.
+     */
+    const handleReconnect = useCallback(async (accountId: string, platform: string) => {
+        if (!currentAccount) return;
+        try {
+            const endpoint = platform === 'GOOGLE'
+                ? '/api/oauth/google/authorize'
+                : '/api/oauth/meta/ads/authorize';
+            const params = new URLSearchParams({
+                redirect: '/ads',
+                reconnectId: accountId
+            });
+            const res = await fetch(`${endpoint}?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            });
+            const data = await res.json();
+            if (data.authUrl) window.location.href = data.authUrl;
+        } catch (err) {
+            Logger.error('Failed to initiate reconnect', { error: err });
+        }
+    }, [currentAccount, token]);
 
     useEffect(() => {
         fetchAccounts();
@@ -123,6 +148,7 @@ export function AdPerformanceView() {
                     accountName={selectedAccount.name}
                     onBack={() => { }} // No back behavior needed in sub-tab mode
                     hideBackButton
+                    onReconnect={() => handleReconnect(selectedAccount.id, selectedAccount.platform)}
                 />
             )}
         </div>

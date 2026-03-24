@@ -17,7 +17,8 @@ import {
     Lightbulb,
     ChevronDown,
     ChevronUp,
-    MessageCirclePlus
+    MessageCirclePlus,
+    AlertCircle
 } from 'lucide-react';
 import { AdContextModal } from './AdContextModal';
 import { CampaignProductsPanel } from './CampaignProductsPanel';
@@ -55,9 +56,11 @@ interface GoogleAdsCampaignsProps {
     accountName: string;
     onBack: () => void;
     hideBackButton?: boolean;
+    /** Callback to initiate OAuth reconnection when tokens are expired */
+    onReconnect?: () => void;
 }
 
-export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackButton }: GoogleAdsCampaignsProps) {
+export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackButton, onReconnect }: GoogleAdsCampaignsProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [campaigns, setCampaigns] = useState<CampaignInsight[]>([]);
@@ -213,8 +216,23 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
             </div>
 
             {error && (
-                <div className="p-4 bg-red-50 text-red-700 rounded-lg">
-                    {error}
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2">
+                        <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={18} />
+                        <div>
+                            <p className="font-medium text-red-700">Failed to load campaign data</p>
+                            <p className="text-sm text-red-600 mt-0.5">{error}</p>
+                        </div>
+                    </div>
+                    {onReconnect && (
+                        <button
+                            onClick={onReconnect}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shrink-0"
+                        >
+                            <RefreshCw size={14} />
+                            Reconnect
+                        </button>
+                    )}
                 </div>
             )}
 

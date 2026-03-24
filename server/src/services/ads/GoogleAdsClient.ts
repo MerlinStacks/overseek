@@ -122,6 +122,35 @@ export interface GoogleAdsClientConfig {
 }
 
 /**
+ * Extract a usable error message from gRPC error objects.
+ *
+ * Why: google-ads-api sometimes throws raw gRPC errors where both
+ * `.message` and `.details` are empty. Without this helper every
+ * catch block logs "Unknown gRPC error" with zero diagnostics.
+ */
+export function extractGrpcErrorMessage(error: any): string {
+    if (error.message) return error.message;
+    if (error.details) return error.details;
+
+    // gRPC error code is often the only useful field
+    const parts: string[] = [];
+    if (error.code !== undefined) parts.push(`gRPC code=${error.code}`);
+
+    // gRPC metadata sometimes carries error descriptions
+    if (error.metadata) {
+        try {
+            const meta = typeof error.metadata.toJSON === 'function'
+                ? JSON.stringify(error.metadata.toJSON())
+                : String(error.metadata);
+            if (meta && meta !== '{}') parts.push(`metadata=${meta}`);
+        } catch { /* ignore serialisation failures */ }
+    }
+
+    if (parts.length > 0) return parts.join(' ');
+    return 'Unknown gRPC error (no message/details/code)';
+}
+
+/**
  * Create (or return cached) Google Ads API customer client for an ad account.
  */
 export async function createGoogleAdsClient(adAccountId: string): Promise<GoogleAdsClientConfig> {

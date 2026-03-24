@@ -104,9 +104,13 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             const updated = await AdsService.updateAccount(adAccountId, updateData);
 
             if (externalId !== undefined) {
+                // Normalize Google externalId: strip dashes for consistency with complete-setup
+                const normalizedExtId = adAccount.platform === 'GOOGLE'
+                    ? externalId.replace(/-/g, '')
+                    : externalId;
                 await prisma.adAccount.update({
                     where: { id: adAccountId },
-                    data: { externalId }
+                    data: { externalId: normalizedExtId }
                 });
             }
 
@@ -136,8 +140,11 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Missing required fields: platform, externalId, accessToken' });
             }
 
+            // Normalize Google externalId: strip dashes for consistency with complete-setup
+            const normalizedExternalId = platform === 'GOOGLE' ? externalId.replace(/-/g, '') : externalId;
+
             const adAccount = await AdsService.connectAccount(accountId, {
-                platform, externalId, accessToken, refreshToken, name, currency
+                platform, externalId: normalizedExternalId, accessToken, refreshToken, name, currency
             });
 
             return {

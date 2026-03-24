@@ -70,6 +70,13 @@ describe('GoogleEnhancedConversionsService', () => {
     it('should use Google Ads API v23', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
+        // Verify externalId is normalized (dashes stripped) before DB query
+        expect(prisma.adAccount.findFirst).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: expect.objectContaining({ externalId: '1234567890' }),
+            }),
+        );
+
         const url = (global.fetch as any).mock.calls[0][0] as string;
         expect(url).toContain('/v23/');
         expect(url).toContain('1234567890'); // Dashes removed

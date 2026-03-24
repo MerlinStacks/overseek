@@ -98,7 +98,7 @@ export function SettingsPage() {
             tabs: [
                 { id: 'email', label: 'Email', icon: Mail },
                 { id: 'channels', label: 'Channels', icon: Share2 },
-                { id: 'ads', label: 'Ad Accounts', icon: Megaphone, hidden: !isAdTrackingEnabled },
+                { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
                 { id: 'conversions', label: 'Tracking Pixels', icon: Zap },
                 { id: 'webhooks', label: 'Webhooks', icon: Webhook },
                 { id: 'sync', label: 'Sync Status', icon: RefreshCw },

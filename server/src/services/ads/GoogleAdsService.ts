@@ -8,7 +8,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, KeywordIdea, formatDateISO, formatDateGAQL } from './types';
-import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure } from './GoogleAdsClient';
+import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
 
 export class GoogleAdsService {
@@ -55,7 +55,7 @@ export class GoogleAdsService {
             };
 
         } catch (error: any) {
-            const msg = error.message || error.details || 'Unknown gRPC error';
+            const msg = extractGrpcErrorMessage(error);
             const adAccount = await prisma.adAccount.findUnique({ where: { id: adAccountId } });
             const userMessage = parseGoogleAdsError(error, adAccount?.externalId || '');
 
@@ -128,7 +128,7 @@ export class GoogleAdsService {
             });
 
         } catch (error: any) {
-            const msg = error.message || error.details || 'Unknown gRPC error';
+            const msg = extractGrpcErrorMessage(error);
             if (!msg.includes('circuit-breaker')) {
                 recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Ads Campaign Insights', { error: msg, adAccountId });
@@ -170,7 +170,7 @@ export class GoogleAdsService {
             }));
 
         } catch (error: any) {
-            const msg = error.message || error.details || 'Unknown gRPC error';
+            const msg = extractGrpcErrorMessage(error);
             if (!msg.includes('circuit-breaker')) {
                 recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Ads Daily Trends', { error: msg, adAccountId });
@@ -232,7 +232,7 @@ export class GoogleAdsService {
             });
 
         } catch (error: any) {
-            const msg = error.message || error.details || 'Unknown gRPC error';
+            const msg = extractGrpcErrorMessage(error);
             if (msg.includes('UNIMPLEMENTED') || msg.includes('not enabled')) {
                 Logger.info('Shopping performance view not available', { adAccountId });
                 return [];
@@ -382,7 +382,7 @@ export class GoogleAdsService {
             });
 
         } catch (error: any) {
-            const msg = error.message || error.details || 'Unknown gRPC error';
+            const msg = extractGrpcErrorMessage(error);
             if (!msg.includes('circuit-breaker')) {
                 recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Search Keywords', { error: msg, adAccountId });
@@ -709,7 +709,7 @@ export class GoogleAdsService {
 
         } catch (error: any) {
             // Handle specific errors gracefully — use details as fallback for gRPC errors
-            const errorMsg = error.message || error.details || '';
+            const errorMsg = extractGrpcErrorMessage(error);
 
             if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('not authorized')) {
                 Logger.warn('Keyword Planner access denied - requires Standard access', { adAccountId });
@@ -723,7 +723,7 @@ export class GoogleAdsService {
 
             if (!errorMsg.includes('circuit-breaker')) {
                 recordGrpcFailure(adAccountId);
-                Logger.warn('Failed to fetch keyword ideas', { error: errorMsg || 'Unknown gRPC error', adAccountId });
+                Logger.warn('Failed to fetch keyword ideas', { error: errorMsg, adAccountId });
             }
             return []; // Return empty to allow graceful fallback
         }
