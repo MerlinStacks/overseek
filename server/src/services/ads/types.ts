@@ -111,22 +111,6 @@ export interface SearchKeywordInsight {
 }
 
 /**
- * Keyword Planner idea result.
- * Contains search volume and CPC estimates from Google Keyword Planner.
- */
-export interface KeywordIdea {
-    keyword: string;
-    avgMonthlySearches: number;
-    competitionLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
-    competitionIndex: number; // 0-100
-    lowTopOfPageBidMicros: number;
-    highTopOfPageBidMicros: number;
-    /** Calculated average CPC in dollars */
-    avgCpc: number;
-}
-
-
-/**
  * Cached credentials to avoid repeated DB lookups.
  * In production, consider using Redis for distributed caching.
  */

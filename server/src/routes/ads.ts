@@ -12,7 +12,6 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { adsActionsRoutes } from './ads/actions';
 import { adCopyRoutes } from './ads/copy';
-import audienceSyncRoutes from './ads/audiences';
 import rebalancerRoutes from './ads/rebalancer';
 import wizardRoutes from './ads/wizard';
 import experimentsRoutes from './ads/experiments';
@@ -37,8 +36,6 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     // Register ad copy generation routes
     await fastify.register(adCopyRoutes, { prefix: '/copy' });
 
-    // Register audience sync routes (Phase 2: Audience Intelligence)
-    await fastify.register(audienceSyncRoutes, { prefix: '/audiences' });
 
     // Register budget rebalancer routes (Phase 3: Campaign Automation)
     await fastify.register(rebalancerRoutes, { prefix: '/rebalancer' });

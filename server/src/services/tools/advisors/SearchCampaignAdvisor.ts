@@ -16,7 +16,6 @@ import {
     BudgetAction
 } from '../types/ActionableTypes';
 import { AdCopyGenerator } from '../AdCopyGenerator';
-import { GoogleAdsService } from '../../ads/GoogleAdsService';
 
 
 interface SearchCampaignData {
@@ -391,66 +390,14 @@ export class SearchCampaignAdvisor {
                 .filter(p => p.name)
                 .map(p => p.name!.split(' ').slice(0, 3).join(' '));
 
-            // Try to get real CPC data from Google Keyword Planner
-            let suggestedCpc: number;
-            let maxCpc: number;
-            let cpcSource: 'keyword_planner' | 'estimated' = 'estimated';
-            let keywordPlannerData: { keyword: string; avgCpc: number; avgMonthlySearches: number; competitionLevel: string }[] = [];
-
-            // Check if there's a connected Google Ads account
-            const adAccount = await prisma.adAccount.findFirst({
-                where: {
-                    accountId,
-                    platform: 'GOOGLE',
-                    refreshToken: { not: null }
-                }
-            });
-
+            // CPC estimation based on AOV — Keyword Planner requires Basic access
+            // which we don't have, so always use the AOV-based estimate.
             const targetRoas = 2.0;
             const estimatedConversionRate = 0.02;
-
-            if (adAccount && productKeywords.length > 0) {
-                try {
-                    const keywordIdeas = await GoogleAdsService.getKeywordIdeas(
-                        adAccount.id,
-                        productKeywords.slice(0, 5)
-                    );
-
-                    if (keywordIdeas.length > 0) {
-                        // Use real CPC data from Keyword Planner
-                        const avgCpcFromPlanner = keywordIdeas.reduce((sum, k) => sum + k.avgCpc, 0) / keywordIdeas.length;
-
-                        if (avgCpcFromPlanner > 0) {
-                            suggestedCpc = avgCpcFromPlanner;
-                            maxCpc = Math.max(...keywordIdeas.map(k => k.highTopOfPageBidMicros / 1_000_000));
-                            cpcSource = 'keyword_planner';
-
-                            // Store for display
-                            keywordPlannerData = keywordIdeas.slice(0, 5).map(k => ({
-                                keyword: k.keyword,
-                                avgCpc: k.avgCpc,
-                                avgMonthlySearches: k.avgMonthlySearches,
-                                competitionLevel: k.competitionLevel
-                            }));
-
-                            Logger.info('[SearchCampaignAdvisor] Using Keyword Planner CPC', {
-                                suggestedCpc,
-                                maxCpc,
-                                keywordCount: keywordIdeas.length
-                            });
-                        }
-                    }
-                } catch (error) {
-                    Logger.warn('[SearchCampaignAdvisor] Keyword Planner lookup failed, using estimate', { error });
-                }
-            }
-
-            // Fallback to AOV-based estimate if no Keyword Planner data
-            if (cpcSource === 'estimated') {
-                // Formula: CPC = AOV * conversion_rate / target_ROAS
-                suggestedCpc = (avgOrderValue * estimatedConversionRate) / targetRoas;
-                maxCpc = suggestedCpc * 2;
-            }
+            // Formula: CPC = AOV * conversion_rate / target_ROAS
+            const suggestedCpc = (avgOrderValue * estimatedConversionRate) / targetRoas;
+            const maxCpc = suggestedCpc * 2;
+            const cpcSource: 'estimated' = 'estimated';
 
             const projectedRevenue = dailyBudget * 30 * targetRoas;
 
@@ -569,12 +516,8 @@ export class SearchCampaignAdvisor {
                     // Data source transparency
                     copySource: adCopy.source,
                     dataSourceNotes: {
-                        cpc: cpcSource === 'keyword_planner'
-                            ? `✓ Validated via Google Keyword Planner. Avg CPC: $${suggestedCpc.toFixed(2)}, Max bid: $${maxCpc.toFixed(2)}`
-                            : `Estimated from your $${avgOrderValue.toFixed(0)} AOV × 2% conversion ÷ 2x ROAS. Connect Google Ads for real market data.`,
-                        keywords: cpcSource === 'keyword_planner'
-                            ? `✓ Validated via Keyword Planner with search volume data.`
-                            : `Derived from top-selling products. Connect Google Ads to validate search volume.`,
+                        cpc: `Estimated from your $${avgOrderValue.toFixed(0)} AOV × 2% conversion ÷ 2x ROAS.`,
+                        keywords: `Derived from top-selling products.`,
                         copy: adCopy.source === 'ai'
                             ? 'AI-generated based on your store and products. Review and customize before use.'
                             : 'Generated from templates. Configure OpenRouter API key in Settings for AI-powered copy.'

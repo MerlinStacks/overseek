@@ -47,13 +47,6 @@ export class MarketingScheduler {
         });
         Logger.info('Scheduled Weekly Performance Digest (Monday at 9 AM UTC)');
 
-        // Weekly Audience Refresh (Sunday at 2 AM UTC)
-        // Refreshes all synced audiences with updated segment members
-        await this.queue.add('audience-refresh', {}, {
-            repeat: { pattern: '0 2 * * 0' },
-            jobId: 'audience-refresh-weekly'
-        });
-        Logger.info('Scheduled Weekly Audience Refresh (Sunday at 2 AM UTC)');
 
         // Budget Rebalancer Analysis (Every 6 hours)
         // Analyzes campaigns and generates ROAS-based recommendations
@@ -422,37 +415,6 @@ export class MarketingScheduler {
         }
     }
 
-    /**
-     * Dispatch weekly audience refresh - updates synced audiences with fresh segment data.
-     * Part of AI Co-Pilot v2 - Phase 2: Audience Intelligence.
-     */
-    static async dispatchAudienceRefresh() {
-        try {
-            const { AudienceSyncService } = await import('../ads/AudienceSyncService');
-
-            // Get all accounts with synced audiences
-            const accountsWithAudiences = await prisma.audienceSync.groupBy({
-                by: ['accountId'],
-                where: {
-                    status: 'SYNCED',
-                    isLookalike: false
-                }
-            });
-
-            Logger.info(`[Scheduler] Refreshing audiences for ${accountsWithAudiences.length} accounts`);
-
-            for (const { accountId } of accountsWithAudiences) {
-                try {
-                    const result = await AudienceSyncService.refreshAllAudiences(accountId);
-                    Logger.info(`[Scheduler] Audience refresh complete for ${accountId}`, result);
-                } catch (error) {
-                    Logger.error(`[Scheduler] Failed to refresh audiences for ${accountId}`, { error });
-                }
-            }
-        } catch (error) {
-            Logger.error('[Scheduler] Audience refresh dispatch failed', { error });
-        }
-    }
 
     /**
      * Dispatch budget rebalancer analysis for all accounts.

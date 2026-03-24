@@ -90,9 +90,7 @@ export class SchedulerService {
                 case 'weekly-digest':
                     await MarketingScheduler.dispatchWeeklyDigests();
                     break;
-                case 'audience-refresh':
-                    await MarketingScheduler.dispatchAudienceRefresh();
-                    break;
+
                 case 'budget-rebalancer':
                     await MarketingScheduler.dispatchBudgetRebalancer();
                     break;
