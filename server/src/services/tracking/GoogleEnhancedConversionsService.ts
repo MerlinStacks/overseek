@@ -310,7 +310,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                             userIdentifierCount: payload.conversionAdjustments?.[0]?.userIdentifiers?.length ?? 0,
                         });
                     } else {
-                        Logger.info('[GoogleEnhanced] Conversion enhancement matched successfully', {
+                        Logger.warn('[GoogleEnhanced] Conversion enhancement matched successfully', {
                             customerId,
                             resultCount,
                             orderId: payload.conversionAdjustments?.[0]?.orderId,
