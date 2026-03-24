@@ -171,6 +171,7 @@ export function CAPISettings() {
     const [showLogs, setShowLogs] = useState(false);
     const [logs, setLogs] = useState<DeliveryLog[]>([]);
     const [logsLoading, setLogsLoading] = useState(false);
+    const [filters, setFilters] = useState({ platform: '', eventName: '', status: '' });
 
     // Consent mode state
     const [consentAutoAccept, setConsentAutoAccept] = useState(false);
@@ -257,6 +258,13 @@ export function CAPISettings() {
         } catch { /* handled */ }
         finally { setLogsLoading(false); }
     };
+
+    const filteredLogs = logs.filter(log => {
+        if (filters.platform && log.platform !== filters.platform) return false;
+        if (filters.eventName && !log.eventName.toLowerCase().includes(filters.eventName.toLowerCase())) return false;
+        if (filters.status && log.status !== filters.status) return false;
+        return true;
+    });
 
     if (loading) {
         return (
@@ -509,35 +517,76 @@ export function CAPISettings() {
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="text-left text-xs font-medium text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                                        <th className="pb-2 pr-4">Platform</th>
-                                        <th className="pb-2 pr-4">Event</th>
-                                        <th className="pb-2 pr-4">Status</th>
-                                        <th className="pb-2 pr-4">HTTP</th>
-                                        <th className="pb-2 pr-4">Attempts</th>
-                                        <th className="pb-2">Time</th>
+                                        <th className="pb-2 pr-4">
+                                            <div className="mb-2">Platform</div>
+                                            <select
+                                                value={filters.platform}
+                                                onChange={(e) => setFilters(f => ({ ...f, platform: e.target.value }))}
+                                                className="w-full min-w-[120px] text-xs px-2 py-1.5 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                            >
+                                                <option value="">All Platforms</option>
+                                                {Array.from(new Set(logs.map(l => l.platform))).map(p => (
+                                                    <option key={p} value={p}>{p}</option>
+                                                ))}
+                                            </select>
+                                        </th>
+                                        <th className="pb-2 pr-4">
+                                            <div className="mb-2">Event</div>
+                                            <input
+                                                type="text"
+                                                placeholder="Filter events..."
+                                                value={filters.eventName}
+                                                onChange={(e) => setFilters(f => ({ ...f, eventName: e.target.value }))}
+                                                className="w-full min-w-[120px] text-xs px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                            />
+                                        </th>
+                                        <th className="pb-2 pr-4">
+                                            <div className="mb-2">Status</div>
+                                            <select
+                                                value={filters.status}
+                                                onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
+                                                className="w-full min-w-[100px] text-xs px-2 py-1.5 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                            >
+                                                <option value="">All Statuses</option>
+                                                <option value="SENT">SENT</option>
+                                                <option value="PENDING">PENDING</option>
+                                                <option value="FAILED">FAILED</option>
+                                            </select>
+                                        </th>
+                                        <th className="pb-2 pr-4 align-top pt-1">HTTP</th>
+                                        <th className="pb-2 pr-4 align-top pt-1 text-center">Attempts</th>
+                                        <th className="pb-2 align-top pt-1">Time</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                    {logs.map(log => (
-                                        <tr key={log.id} className="text-slate-700 dark:text-slate-300">
-                                            <td className="py-2 pr-4 font-mono text-xs">{log.platform}</td>
-                                            <td className="py-2 pr-4">{log.eventName}</td>
-                                            <td className="py-2 pr-4">
-                                                <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                                                    log.status === 'SENT' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                    : log.status === 'PENDING' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                                }`}>
-                                                    {log.status === 'SENT' && <CheckCircle2 size={10} />}
-                                                    {log.status === 'FAILED' && <AlertCircle size={10} />}
-                                                    {log.status}
-                                                </span>
+                                    {filteredLogs.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="py-8 text-center text-sm text-slate-400">
+                                                No logs match your filters.
                                             </td>
-                                            <td className="py-2 pr-4 font-mono text-xs">{log.httpStatus || '—'}</td>
-                                            <td className="py-2 pr-4 text-center">{log.attempts}</td>
-                                            <td className="py-2 text-xs text-slate-400">{new Date(log.createdAt).toLocaleString()}</td>
                                         </tr>
-                                    ))}
+                                    ) : (
+                                        filteredLogs.map(log => (
+                                            <tr key={log.id} className="text-slate-700 dark:text-slate-300">
+                                                <td className="py-2 pr-4 font-mono text-xs">{log.platform}</td>
+                                                <td className="py-2 pr-4">{log.eventName}</td>
+                                                <td className="py-2 pr-4">
+                                                    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                                                        log.status === 'SENT' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                        : log.status === 'PENDING' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                    }`}>
+                                                        {log.status === 'SENT' && <CheckCircle2 size={10} />}
+                                                        {log.status === 'FAILED' && <AlertCircle size={10} />}
+                                                        {log.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 pr-4 font-mono text-xs">{log.httpStatus || '—'}</td>
+                                                <td className="py-2 pr-4 text-center">{log.attempts}</td>
+                                                <td className="py-2 text-xs text-slate-400">{new Date(log.createdAt).toLocaleString()}</td>
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         )}
