@@ -170,6 +170,11 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         const cleanCustomerId = customerId.replace(/-/g, '');
         const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}:uploadConversionAdjustments`;
 
+        // Fetch credentials from the database/environment
+        const creds = await getCredentials('GOOGLE_ADS');
+        const developerToken = creds?.developerToken || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '';
+        const loginCustomerId = creds?.loginCustomerId || process.env.GOOGLE_ADS_MANAGER_ACCOUNT_ID || '';
+
         // Refresh the access token before sending to avoid stale-token 400/401s.
         // GoogleAdsClient's createGoogleAdsClient does this for gRPC calls,
         // but Enhanced Conversions uses REST directly and needs its own refresh.
@@ -177,13 +182,19 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
+                const headers: Record<string, string> = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                    'developer-token': developerToken,
+                };
+                
+                if (loginCustomerId) {
+                    headers['login-customer-id'] = loginCustomerId.replace(/-/g, '');
+                }
+
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${accessToken}`,
-                        'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
-                    },
+                    headers,
                     body: JSON.stringify(payload),
                 });
 
