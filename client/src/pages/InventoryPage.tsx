@@ -3,7 +3,8 @@ import { Logger } from '../utils/logger';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react';
 import { SuppliersList } from '../components/inventory/SuppliersList';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
@@ -13,6 +14,8 @@ import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 
 import { Pagination } from '../components/ui/Pagination';
 import { InternalProductsList } from '../components/inventory/InternalProductsList';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Modal } from '../components/ui/Modal';
 
 interface Product {
     // Updated Product Interface
@@ -57,6 +60,7 @@ export function InventoryPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
 
     // Read initial tab from URL query param, default to 'catalog'
     const tabFromUrl = searchParams.get('tab') as 'catalog' | 'suppliers' | 'purchasing' | 'components' | null;
@@ -92,6 +96,8 @@ export function InventoryPage() {
     // BOM State
     // const [editingBOM, setEditingBOM] = useState<string | null>(null);
     const [viewingSeo, setViewingSeo] = useState<Product | null>(null);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newProductName, setNewProductName] = useState('');
 
     // Debounce search
     useEffect(() => {
@@ -140,17 +146,17 @@ export function InventoryPage() {
     }
 
     async function handleCreateProduct() {
-        if (!currentAccount || !token) return;
-        const name = prompt('Enter new product name:');
-        if (!name) return;
+        if (!currentAccount || !token || !newProductName.trim()) return;
 
         setIsCreating(true);
         try {
-            const newProduct = await ProductService.createProduct({ name }, token, currentAccount.id);
+            const newProduct = await ProductService.createProduct({ name: newProductName.trim() }, token, currentAccount.id);
+            setShowCreateModal(false);
+            setNewProductName('');
             navigate(`/inventory/product/${newProduct.id}`);
         } catch (err) {
             Logger.error('An error occurred', { error: err });
-            alert('Failed to create product');
+            toast.error('Failed to create product');
         } finally {
             setIsCreating(false);
         }
@@ -186,11 +192,10 @@ export function InventoryPage() {
 
                 <div className="flex gap-4">
                     <button
-                        onClick={handleCreateProduct}
-                        disabled={isCreating}
+                        onClick={() => setShowCreateModal(true)}
                         className="flex items-center gap-2 pb-2 -mb-4 px-2 font-medium text-blue-600 hover:text-blue-800 transition-colors"
                     >
-                        {isCreating ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                        <Plus size={18} />
                         New Product
                     </button>
                     <button
@@ -309,11 +314,15 @@ export function InventoryPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {isLoading ? (
-                                        <tr><td colSpan={6} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
+                                        <tr><td colSpan={7} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
                                     ) : products.length === 0 ? (
-                                        <tr><td colSpan={6} className="p-12 text-center text-gray-500 flex flex-col items-center gap-2">
-                                            <Package size={48} className="text-gray-300" />
-                                            <p>No products found.</p>
+                                        <tr><td colSpan={7}>
+                                            <EmptyState
+                                                icon={<Package size={48} />}
+                                                title="No products found"
+                                                description="Products will appear here after syncing your WooCommerce store."
+                                                action={{ label: 'Create Product', onClick: handleCreateProduct, icon: <Plus size={16} /> }}
+                                            />
                                         </td></tr>
                                     ) : (
                                         [...sortedProducts]
@@ -341,12 +350,15 @@ export function InventoryPage() {
                                                                 (() => {
                                                                     const totalStock = product.searchableVariants.reduce((sum, v) => sum + (v.stockQuantity || 0), 0);
                                                                     const breakdown = product.searchableVariants.map(v => v.stockQuantity || 0).join(', ');
+                                                                    const variantTooltip = product.searchableVariants
+                                                                        .map(v => `${v.sku || `#${v.wooId}`}: ${v.stockQuantity ?? 0} (${v.stockStatus === 'instock' ? 'In Stock' : 'Out'})`)
+                                                                        .join('\n');
                                                                     return (
-                                                                        <div className="flex flex-col">
+                                                                        <div className="flex flex-col" title={variantTooltip}>
                                                                             <span className={`text-lg font-bold text-gray-900`}>
                                                                                 {totalStock}
                                                                             </span>
-                                                                            <span className="text-xs text-gray-500 font-mono">
+                                                                            <span className="text-xs text-gray-500 font-mono cursor-default border-b border-dotted border-gray-300 w-fit">
                                                                                 ({breakdown})
                                                                             </span>
                                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 mt-1 w-fit">
@@ -357,7 +369,12 @@ export function InventoryPage() {
                                                                 })()
                                                             ) : (
                                                                 // Simple Product Logic
-                                                                <>
+                                                                <div title={[
+                                                                    product.stock_quantity !== undefined && product.stock_quantity !== null && `Stock: ${product.stock_quantity}`,
+                                                                    product.low_stock_amount && `Low stock threshold: ${product.low_stock_amount}`,
+                                                                    product.stock_quantity !== undefined && product.stock_quantity !== null && product.stock_quantity === 0 && 'Out of stock!',
+                                                                    product.low_stock_amount && product.stock_quantity !== undefined && product.stock_quantity !== null && product.stock_quantity <= product.low_stock_amount && product.stock_quantity > 0 && 'Below low stock threshold',
+                                                                ].filter(Boolean).join('\n') || undefined}>
                                                                     {product.stock_quantity !== undefined && product.stock_quantity !== null && (
                                                                         <span className={`text-lg font-bold ${product.stock_quantity === 0 ? 'text-red-600' :
                                                                             (product.low_stock_amount && product.stock_quantity <= product.low_stock_amount) ? 'text-amber-600' :
@@ -370,7 +387,7 @@ export function InventoryPage() {
                                                                 ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                                                                         {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
                                                                     </span>
-                                                                </>
+                                                                </div>
                                                             )}
                                                         </div>
                                                     </td>
@@ -382,11 +399,16 @@ export function InventoryPage() {
                                                             onClick={() => setViewingSeo(product)}
                                                             className="flex flex-col gap-1 items-start hover:opacity-80 transition-opacity"
                                                         >
-                                                            <SeoScoreBadge score={product.seoScore || 0} size="sm" />
-                                                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${(product.merchantCenterScore || 0) === 100
-                                                                ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                                                : 'bg-orange-50 text-orange-700 border-orange-100'
-                                                                }`}>
+                                                            <SeoScoreBadge score={product.seoScore || 0} size="sm" tests={product.seoData?.tests} />
+                                                            <span
+                                                                className={`text-[10px] font-medium px-2 py-0.5 rounded-full border cursor-help ${(product.merchantCenterScore || 0) === 100
+                                                                    ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                                                    : 'bg-orange-50 text-orange-700 border-orange-100'
+                                                                    }`}
+                                                                title={product.merchantCenterIssues?.length
+                                                                    ? `Issues:\n${product.merchantCenterIssues.map((i: any) => typeof i === 'string' ? i : i.message || i.issue).join('\n')}`
+                                                                    : (product.merchantCenterScore || 0) === 100 ? 'All Google Merchant Center checks passed' : 'Click to view GMC details'}
+                                                            >
                                                                 GMC: {product.merchantCenterScore || 0}%
                                                             </span>
                                                         </button>
@@ -422,15 +444,51 @@ export function InventoryPage() {
                 )
             }
 
-            {
-                viewingSeo && (
-                    <ProductSeoModal
-                        product={viewingSeo}
-                        isOpen={!!viewingSeo}
-                        onClose={() => setViewingSeo(null)}
-                    />
-                )
-            }
+            {viewingSeo && (
+                <ProductSeoModal
+                    product={viewingSeo}
+                    isOpen={!!viewingSeo}
+                    onClose={() => setViewingSeo(null)}
+                />
+            )}
+
+            <Modal
+                isOpen={showCreateModal}
+                onClose={() => { setShowCreateModal(false); setNewProductName(''); }}
+                title="Create New Product"
+            >
+                <form onSubmit={(e) => { e.preventDefault(); handleCreateProduct(); }} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product Name</label>
+                        <input
+                            type="text"
+                            value={newProductName}
+                            onChange={(e) => setNewProductName(e.target.value)}
+                            placeholder="Enter product name..."
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            autoFocus
+                            required
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={() => { setShowCreateModal(false); setNewProductName(''); }}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isCreating || !newProductName.trim()}
+                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {isCreating && <Loader2 size={14} className="animate-spin" />}
+                            Create Product
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div >
     );
 }

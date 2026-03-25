@@ -17,6 +17,7 @@ import { Mail, Megaphone, BarChart2, FlaskConical, FileText, Zap } from 'lucide-
 const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
+import { useToast } from '../context/ToastContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
@@ -32,6 +33,7 @@ interface EditingItem {
 export function MarketingPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const isAdTrackingEnabled = useAccountFeature('AD_TRACKING');
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -92,10 +94,10 @@ export function MarketingPage() {
                 },
                 body: JSON.stringify({ content: html, designJson: design })
             });
-            alert('Design saved!');
+            toast.success('Design saved!');
         } catch (err) {
             Logger.error('An error occurred', { error: err });
-            alert('Failed to save');
+            toast.error('Failed to save design');
         }
     };
 

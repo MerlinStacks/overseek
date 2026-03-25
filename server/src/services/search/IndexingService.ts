@@ -250,6 +250,8 @@ export class IndexingService {
                 net_sales: parseFloat(order.total) - parseFloat(order.total_tax || '0'),
                 currency: order.currency,
                 date_created: IndexingService.formatDateToUTC(order.date_created_gmt || order.date_created),
+                payment_method_title: order.payment_method_title || '',
+                customer_id: order.customer_id || 0,
                 tags: tags || [],
                 billing: order.billing,
                 line_items: order.line_items?.map((item: any) => ({
@@ -316,6 +318,8 @@ export class IndexingService {
                     net_sales: parseFloat(order.total) - parseFloat(order.total_tax || '0'),
                     currency: order.currency,
                     date_created: IndexingService.formatDateToUTC(order.date_created_gmt || order.date_created),
+                    payment_method_title: order.payment_method_title || '',
+                    customer_id: order.customer_id || 0,
                     tags,
                     billing: order.billing,
                     line_items: order.line_items?.map((item: any) => ({

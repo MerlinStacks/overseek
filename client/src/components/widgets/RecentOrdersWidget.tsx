@@ -1,6 +1,7 @@
 import { WidgetProps } from './WidgetRegistry';
 import { Logger } from '../../utils/logger';
 import { formatCurrency } from '../../utils/format';
+import { RelativeTime } from '../ui/RelativeTime';
 import { ShoppingBag, Loader2 } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
@@ -71,9 +72,14 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
                                 ) : (
                                     <p className="font-medium text-slate-900 dark:text-white">{order.billing?.first_name || 'Guest'} {order.billing?.last_name}</p>
                                 )}
-                                <p className="text-xs text-slate-400 dark:text-slate-500">{order.line_items?.length || 0} items</p>
+                                <p className="text-xs text-slate-400 dark:text-slate-500">
+                                    <span title={order.line_items?.map((i: any) => `${i.quantity}x ${i.name}`).join('\n') || 'No items'} className="border-b border-dotted border-slate-300 dark:border-slate-600 cursor-default">
+                                        {order.line_items?.length || 0} item{(order.line_items?.length || 0) !== 1 ? 's' : ''}
+                                    </span>
+                                    {order.date_created && <span className="ml-1.5">· <RelativeTime date={order.date_created} className="text-xs text-slate-400 dark:text-slate-500" /></span>}
+                                </p>
                             </div>
-                            <span className="font-semibold text-slate-900 dark:text-white">
+                            <span className="font-semibold text-slate-900 dark:text-white cursor-default" title={order.payment_method_title || order.status}>
                                 {formatCurrency(order.total, order.currency || 'USD')}
                             </span>
                         </div>

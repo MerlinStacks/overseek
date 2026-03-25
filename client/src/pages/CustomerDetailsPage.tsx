@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import { Logger } from '../utils/logger';
 import { formatCurrency } from '../utils/format';
-import { ArrowLeft, Mail, ShoppingBag, Calendar, Activity, Zap, Users } from 'lucide-react';
+import { Mail, ShoppingBag, Calendar, Activity, Zap, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { MergeCustomerModal } from '../components/customers/MergeCustomerModal';
@@ -74,9 +75,10 @@ export function CustomerDetailsPage() {
         <div className="space-y-6 max-w-7xl mx-auto pb-10">
             {/* Header */}
             <div>
-                <Link to="/customers" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 mb-4">
-                    <ArrowLeft size={16} className="mr-1" /> Back to Customers
-                </Link>
+                <Breadcrumbs items={[
+                    { label: 'Customers', href: '/customers' },
+                    { label: `${customer.firstName} ${customer.lastName}` }
+                ]} />
                 <div className="flex justify-between items-start">
                     <div className="flex items-center gap-4">
                         <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-2xl">

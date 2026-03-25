@@ -281,7 +281,14 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             // 3. Match events to orders by wooId in payload
-            const result: Record<number, { lastTouchSource: string } | null> = {};
+            const result: Record<number, {
+                lastTouchSource: string;
+                firstTouchSource?: string;
+                utmSource?: string;
+                utmMedium?: string;
+                utmCampaign?: string;
+                referrer?: string;
+            } | null> = {};
 
             for (const wooId of ids) {
                 if (!wooIds.has(wooId)) {
@@ -295,7 +302,14 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 });
 
                 result[wooId] = matched
-                    ? { lastTouchSource: matched.session.lastTouchSource || 'direct' }
+                    ? {
+                        lastTouchSource: matched.session.lastTouchSource || 'direct',
+                        firstTouchSource: matched.session.firstTouchSource || undefined,
+                        utmSource: matched.session.utmSource || undefined,
+                        utmMedium: matched.session.utmMedium || undefined,
+                        utmCampaign: matched.session.utmCampaign || undefined,
+                        referrer: matched.session.referrer || undefined,
+                    }
                     : null;
             }
 

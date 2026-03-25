@@ -2,17 +2,21 @@ import { useState, useEffect } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, RefreshCw, Search, Loader2, CheckCircle, ExternalLink, Link2 } from 'lucide-react';
+import { Star, RefreshCw, Search, Loader2, CheckCircle, ExternalLink, Link2, MessageSquare } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { RelativeTime } from '../components/ui/RelativeTime';
+import { useToast } from '../context/ToastContext';
 
 export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const navigate = useNavigate();
+    const toast = useToast();
     const [reviews, setReviews] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -81,17 +85,12 @@ export const ReviewsPage = () => {
 
             if (!res.ok) throw new Error('Sync failed');
 
-            // Just show a simple alert or toast for now since we don't have a global toast context handy in this file
-            // A real implementation would use a toast notification
-            alert('Review sync started in background');
-
-            // Optional: Reload after a short delay or rely on sockets (if implemented)
-            // For now, let's just wait a bit and refresh just in case it's fast
+            toast.success('Review sync started in background');
             setTimeout(fetchReviews, 2000);
 
         } catch (error) {
             Logger.error('Sync failed', { error: error });
-            alert('Failed to start sync');
+            toast.error('Failed to start sync');
         } finally {
             setIsSyncing(false);
         }
@@ -113,11 +112,11 @@ export const ReviewsPage = () => {
 
             if (!res.ok) throw new Error('Rematch failed');
             const result = await res.json();
-            alert(`Rematch complete!\n\nTotal: ${result.totalReviews}\nMatched: ${result.matchedReviews}\nUpdated: ${result.updatedReviews}\nMatch Rate: ${result.matchRate}`);
+            toast.success(`Rematch complete! ${result.matchedReviews}/${result.totalReviews} matched (${result.matchRate})`);
             fetchReviews();
         } catch (error) {
             Logger.error('Rematch failed', { error: error });
-            alert('Failed to rematch reviews');
+            toast.error('Failed to rematch reviews');
         } finally {
             setIsRematching(false);
         }
@@ -204,7 +203,14 @@ export const ReviewsPage = () => {
                         {isLoading ? (
                             <TableSkeleton rows={8} columns={6} />
                         ) : reviews.length === 0 ? (
-                            <tr><td colSpan={6} className="p-12 text-center text-gray-500">No reviews found. Try syncing!</td></tr>
+                            <tr><td colSpan={6}>
+                                <EmptyState
+                                    icon={<MessageSquare size={48} />}
+                                    title="No reviews found"
+                                    description="Reviews will appear here after syncing. Try adjusting your filters or syncing your store."
+                                    action={{ label: 'Sync Reviews', onClick: handleSync, icon: <RefreshCw size={16} /> }}
+                                />
+                            </td></tr>
                         ) : (
                             reviews.map((review) => (
                                 <tr key={review.id} className="hover:bg-gray-50 transition-colors">
@@ -237,16 +243,19 @@ export const ReviewsPage = () => {
                                             <span className="text-xs text-gray-500">{review.reviewerEmail || ''}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-400 flex items-center">
-                                        {Array.from({ length: 5 }).map((_, i) => (
-                                            <Star key={i} size={16} fill={i < review.rating ? "currentColor" : "none"} strokeWidth={1} />
-                                        ))}
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-400">
+                                        <div className="flex items-center cursor-default" title={review.content ? `"${review.content.slice(0, 200)}${review.content.length > 200 ? '...' : ''}"` : 'No review text'}>
+                                            {Array.from({ length: 5 }).map((_, i) => (
+                                                <Star key={i} size={16} fill={i < review.rating ? "currentColor" : "none"} strokeWidth={1} />
+                                            ))}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={review.content}>
                                         {review.content}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {formatDate(review.dateCreated)}
+                                        <div>{formatDate(review.dateCreated)}</div>
+                                        <RelativeTime date={review.dateCreated} />
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 

@@ -3,9 +3,12 @@ import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Users, Loader2, Mail, ShoppingBag, Calendar } from 'lucide-react';
+import { Search, Users, Loader2, Mail, ShoppingBag, Calendar, RefreshCw } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { RelativeTime } from '../components/ui/RelativeTime';
+import { formatDate, formatCurrency } from '../utils/format';
 
 interface Customer {
     id: string;
@@ -30,6 +33,7 @@ export function CustomersPage() {
     const [totalItems, setTotalItems] = useState(0);
 
     const [debouncedQuery, setDebouncedQuery] = useState('');
+    const currency = currentAccount?.currency || 'USD';
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -118,9 +122,12 @@ export function CustomersPage() {
                             {isLoading ? (
                                 <TableSkeleton rows={8} columns={5} showAvatar />
                             ) : customers.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-gray-500 flex flex-col items-center gap-2">
-                                    <Users size={48} className="text-gray-300" />
-                                    <p>No customers found.</p>
+                                <tr><td colSpan={5}>
+                                    <EmptyState
+                                        icon={<Users size={48} />}
+                                        title="No customers found"
+                                        description="Customers will appear here once they place orders. Try syncing your store data."
+                                    />
                                 </td></tr>
                             ) : (
                                 customers.map((customer) => (
@@ -129,7 +136,7 @@ export function CustomersPage() {
                                     }}>
 
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-3" title={customer.email}>
                                                 <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
                                                     {customer.firstName?.[0]}{customer.lastName?.[0]}
                                                 </div>
@@ -145,18 +152,29 @@ export function CustomersPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
-                                            <div className="flex items-center gap-2">
+                                            <div
+                                                className="flex items-center gap-2 cursor-default"
+                                                title={`Total spent: ${formatCurrency(customer.totalSpent, currency)} across ${customer.ordersCount} order${customer.ordersCount !== 1 ? 's' : ''}`}
+                                            >
                                                 <ShoppingBag size={14} />
-                                                {customer.ordersCount} orders
+                                                {customer.ordersCount} order{customer.ordersCount !== 1 ? 's' : ''}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-900">
-                                            ${customer.totalSpent?.toFixed(2)}
+                                            <span
+                                                title={`${customer.ordersCount} order${customer.ordersCount !== 1 ? 's' : ''} · Avg ${formatCurrency(customer.ordersCount > 0 ? customer.totalSpent / customer.ordersCount : 0, currency)}`}
+                                                className="cursor-default border-b border-dotted border-gray-300"
+                                            >
+                                                {formatCurrency(customer.totalSpent, currency)}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             <div className="flex items-center gap-2">
                                                 <Calendar size={14} />
-                                                {new Date(customer.dateCreated).toLocaleDateString()}
+                                                <div>
+                                                    <div>{formatDate(customer.dateCreated)}</div>
+                                                    <RelativeTime date={customer.dateCreated} />
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>

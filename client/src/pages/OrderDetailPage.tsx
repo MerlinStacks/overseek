@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate, fixMojibake, formatCurrency } from '../utils/format';
-import { ArrowLeft, User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings, Truck, ExternalLink, Copy } from 'lucide-react';
+import { User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings, Truck, ExternalLink, Copy } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
@@ -15,6 +15,8 @@ import { OrderTagPanel } from '../components/orders/OrderTagPanel';
 import { OrderMetaSection } from '../components/orders/OrderMetaSection';
 import { OrderCOGSPanel } from '../components/orders/OrderCOGSPanel';
 import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
+import { Breadcrumbs } from '../components/ui/Breadcrumbs';
+import { useToast } from '../context/ToastContext';
 
 interface Attribution {
     firstTouchSource: string;
@@ -36,6 +38,7 @@ export function OrderDetailPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { hasPermission } = usePermissions();
+    const toast = useToast();
 
     const [order, setOrder] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -114,7 +117,7 @@ export function OrderDetailPage() {
             const template = templates.length > 0 ? templates[0] : null;
 
             if (!template) {
-                alert("No invoice template found. Please design one first.");
+                toast.error('No invoice template found. Please design one first.');
                 return;
             }
 
@@ -124,7 +127,7 @@ export function OrderDetailPage() {
         } catch (e: any) {
             const msg = e?.message || String(e);
             Logger.error('Invoice generation error', { error: msg });
-            alert(`Failed to generate invoice: ${msg}`);
+            toast.error(`Failed to generate invoice: ${msg}`);
         } finally {
             setIsGenerating(false);
         }
@@ -152,10 +155,11 @@ export function OrderDetailPage() {
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20">
             {/* Header / Nav */}
+            <Breadcrumbs items={[
+                { label: 'Orders', href: '/orders' },
+                { label: `#${order.id}` }
+            ]} />
             <div className="flex items-center gap-4 mb-6">
-                <button onClick={() => navigate('/orders')} className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
-                    <ArrowLeft size={20} />
-                </button>
                 <div className="flex-1">
                     <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-gray-900">Order #{order.id}</h1>

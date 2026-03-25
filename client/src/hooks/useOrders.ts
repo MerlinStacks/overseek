@@ -26,6 +26,7 @@ export interface Order {
         last_name: string;
         email: string;
     };
+    payment_method_title?: string;
     line_items: Array<{
         name: string;
         quantity: number;
@@ -34,6 +35,11 @@ export interface Order {
 
 interface OrderAttribution {
     lastTouchSource: string;
+    firstTouchSource?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    referrer?: string;
 }
 
 export function useOrders() {

@@ -1,13 +1,15 @@
-
 import { useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
+import { Modal } from '../ui/Modal';
 
 export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, subject?: string) => void }) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -16,6 +18,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
     const [newItem, setNewItem] = useState({ name: '', subject: '' });
 
     const [segments, setSegments] = useState<any[]>([]);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchData();
@@ -90,13 +93,12 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
             } else {
                 const errorData = await res.json().catch(() => ({}));
                 Logger.error('Campaign create error:', { error: errorData });
-                alert(`Failed to create campaign: ${errorData.error || 'Unknown error'} \n\nCheck console for details.`);
+                toast.error(`Failed to create campaign: ${errorData.error || 'Unknown error'}`);
             }
-        } catch (err) { alert('Error creating campaign'); }
+        } catch (err) { toast.error('Error creating campaign'); }
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Are you sure?')) return;
         if (!currentAccount) return;
         try {
             await fetch(`/api/marketing/campaigns/${id}`, {
@@ -106,8 +108,10 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                     'x-account-id': currentAccount.id
                 }
             });
+            setDeletingId(null);
             fetchData();
-        } catch (err) { alert('Failed to delete'); }
+            toast.success('Campaign deleted');
+        } catch (err) { toast.error('Failed to delete campaign'); }
     }
 
     return (
@@ -198,13 +202,28 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         </span>
                                     </td>
                                     <td className="p-4 text-sm text-gray-600">
-                                        {c.sentCount} sent • {c.openedCount} opened
+                                        <span
+                                            title={c.sentCount > 0 ? `Open rate: ${((c.openedCount / c.sentCount) * 100).toFixed(1)}%` : 'No sends yet'}
+                                            className="cursor-default"
+                                        >
+                                            {c.sentCount} sent · {c.openedCount} opened
+                                            {c.sentCount > 0 && (
+                                                <span className="ml-1 text-xs text-gray-400">
+                                                    ({((c.openedCount / c.sentCount) * 100).toFixed(0)}%)
+                                                </span>
+                                            )}
+                                        </span>
                                     </td>
                                     <td className="p-4 text-sm text-gray-600">
-                                        {c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString() : '-'}
+                                        {c.scheduledAt ? (
+                                            <div>
+                                                <div>{new Date(c.scheduledAt).toLocaleDateString()}</div>
+                                                <div className="text-xs text-gray-400">{new Date(c.scheduledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+                                            </div>
+                                        ) : '-'}
                                     </td>
                                     <td className="p-4 text-right">
-                                        <button onClick={() => handleDelete(c.id)} className="text-red-500 hover:text-red-700 p-2">
+                                        <button onClick={() => setDeletingId(c.id)} className="text-red-500 hover:text-red-700 p-2">
                                             <Trash2 size={16} />
                                         </button>
                                         <button onClick={() => onEdit(c.id, c.name, c.subject)} className="text-blue-600 hover:text-blue-800 p-2 font-medium text-sm">
@@ -217,6 +236,38 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                     </table>
                 </div>
             )}
+
+            <Modal
+                isOpen={!!deletingId}
+                onClose={() => setDeletingId(null)}
+                title="Delete Campaign"
+                maxWidth="max-w-sm"
+            >
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg">
+                            <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                            Are you sure you want to delete this campaign? This action cannot be undone.
+                        </p>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                        <button
+                            onClick={() => setDeletingId(null)}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={() => deletingId && handleDelete(deletingId)}
+                            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }

@@ -6,7 +6,7 @@
  */
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2 } from 'lucide-react';
+import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { SeoAnalysisPanel } from '../components/Seo/SeoAnalysisPanel';
@@ -24,9 +24,9 @@ import { Tabs } from '../components/ui/Tabs';
 import { ImageGallery } from '../components/products/ImageGallery';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
 import { ProductSalesHistory } from '../components/products/ProductSalesHistory';
-import { Toast } from '../components/ui/Toast';
 import { PresenceAvatars } from '../components/common/PresenceAvatars';
 import { useProductEdit } from '../hooks/useProductEdit';
+import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 
 export function ProductEditPage() {
     const { id } = useParams<{ id: string }>();
@@ -44,7 +44,6 @@ export function ProductEditPage() {
         suppliers,
         productViews,
         mainImageFailed,
-        toast,
         seoResult,
         activeUsers,
         currentAccount,
@@ -54,7 +53,6 @@ export function ProductEditPage() {
         updateFormData,
         setVariants,
         setMainImageFailed,
-        hideToast,
         handleSave,
         handleSync,
         fetchProduct,
@@ -254,11 +252,12 @@ export function ProductEditPage() {
             {/* Header Sticky Bar */}
             <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-xs transition-all">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                    <Breadcrumbs items={[
+                        { label: 'Inventory', href: '/inventory' },
+                        { label: product.name }
+                    ]} />
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
-                            <button onClick={() => navigate('/inventory')} className="p-2 hover:bg-gray-100/80 rounded-full text-gray-500 transition-colors">
-                                <ArrowLeft size={20} />
-                            </button>
                             <div>
                                 <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     {product.name}
@@ -328,12 +327,6 @@ export function ProductEditPage() {
                 <Tabs tabs={tabs} />
             </div>
 
-            <Toast
-                message={toast.message}
-                isVisible={toast.isVisible}
-                type={toast.type}
-                onClose={hideToast}
-            />
         </div>
     );
 }

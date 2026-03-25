@@ -15,6 +15,19 @@ export function formatDate(dateString: string): string {
 }
 
 /**
+ * Format a date string into a time-only format.
+ * @param dateString - ISO date string to format
+ * @returns Formatted time string (e.g., "3:30 pm")
+ */
+export function formatTime(dateString: string): string {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleTimeString(DEFAULT_LOCALE, {
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+/**
  * Format a date string into a date-time format.
  * @param dateString - ISO date string to format
  * @returns Formatted date string (e.g., "Jan 15, 2026, 3:30 pm")

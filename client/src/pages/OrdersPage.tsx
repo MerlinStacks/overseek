@@ -6,13 +6,16 @@
  */
 
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye } from 'lucide-react';
-import { formatDate, formatCurrency } from '../utils/format';
+import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye, ShoppingBag } from 'lucide-react';
+import { formatDate, formatTime, formatCurrency } from '../utils/format';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderPreviewModal } from '../components/orders/OrderPreviewModal';
 import { OrderStatusTabs } from '../components/orders/OrderStatusTabs';
 import { FraudIcon } from '../components/orders/FraudIcon';
 import { useOrders } from '../hooks/useOrders';
+import { EmptyState } from '../components/ui/EmptyState';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { RelativeTime } from '../components/ui/RelativeTime';
 
 export function OrdersPage() {
     const {
@@ -149,9 +152,16 @@ export function OrdersPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
-                                <tr><td colSpan={8} className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-600" /></td></tr>
+                                <TableSkeleton rows={8} columns={8} />
                             ) : orders.length === 0 ? (
-                                <tr><td colSpan={8} className="p-12 text-center text-gray-500">No orders found. Try syncing!</td></tr>
+                                <tr><td colSpan={8}>
+                                    <EmptyState
+                                        icon={<ShoppingBag size={48} />}
+                                        title="No orders found"
+                                        description="Orders will appear here once customers make purchases, or try adjusting your filters."
+                                        action={{ label: 'Sync Orders', onClick: handleSync, icon: <RefreshCw size={16} /> }}
+                                    />
+                                </td></tr>
                             ) : (
                                 orders.map((order) => (
                                     <tr key={order.id} className="hover:bg-gray-50 transition-colors">
@@ -166,7 +176,11 @@ export function OrdersPage() {
                                                 </Link>
                                             </div>
                                         </td>
-                                        <td className="px-3 md:px-6 py-3 md:py-4 text-gray-600 text-sm">{formatDate(order.date_created)}</td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-gray-600 text-sm">
+                                            <div>{formatDate(order.date_created)}</div>
+                                            <div className="text-xs text-gray-400">{formatTime(order.date_created)}</div>
+                                            <RelativeTime date={order.date_created} />
+                                        </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
                                                 ${order.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -177,18 +191,25 @@ export function OrdersPage() {
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-900">
                                             {order.customer_id && order.customer_id > 0 ? (
-                                                <Link to={`/customers/${order.customer_id}`} className="block hover:text-blue-600" onClick={(e) => e.stopPropagation()}>
+                                                <Link to={`/customers/${order.customer_id}`} className="block hover:text-blue-600" onClick={(e) => e.stopPropagation()} title={order.billing.email}>
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
                                                 </Link>
                                             ) : (
-                                                <>
+                                                <div title={order.billing.email}>
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
-                                                </>
+                                                </div>
                                             )}
                                         </td>
-                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm font-medium">{formatCurrency(order.total, order.currency)}</td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm font-medium">
+                                            <span
+                                                title={order.payment_method_title || 'Unknown payment method'}
+                                                className="cursor-default border-b border-dotted border-gray-300"
+                                            >
+                                                {formatCurrency(order.total, order.currency)}
+                                            </span>
+                                        </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             <div className="flex flex-wrap gap-1 max-w-[180px]">
                                                 {(order.tags || []).slice(0, 3).map(tag => (
@@ -208,7 +229,16 @@ export function OrdersPage() {
                                         </td>
                                         <td className="px-3 md:px-6 py-3 md:py-4">
                                             {attributions[order.id] ? (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                                <span
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 cursor-default"
+                                                    title={[
+                                                        attributions[order.id]!.firstTouchSource && `First touch: ${attributions[order.id]!.firstTouchSource}`,
+                                                        attributions[order.id]!.utmSource && `UTM Source: ${attributions[order.id]!.utmSource}`,
+                                                        attributions[order.id]!.utmMedium && `UTM Medium: ${attributions[order.id]!.utmMedium}`,
+                                                        attributions[order.id]!.utmCampaign && `UTM Campaign: ${attributions[order.id]!.utmCampaign}`,
+                                                        attributions[order.id]!.referrer && `Referrer: ${attributions[order.id]!.referrer}`,
+                                                    ].filter(Boolean).join('\n') || 'Direct traffic'}
+                                                >
                                                     <TrendingUp size={10} />
                                                     {attributions[order.id]!.lastTouchSource}
                                                 </span>
@@ -218,7 +248,14 @@ export function OrdersPage() {
                                                 <span className="text-xs text-gray-300">...</span>
                                             )}
                                         </td>
-                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-500">{order.line_items.length} items</td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4 text-sm text-gray-500">
+                                            <span
+                                                title={order.line_items.map(item => `${item.quantity}x ${item.name}`).join('\n') || 'No items'}
+                                                className="cursor-default border-b border-dotted border-gray-300"
+                                            >
+                                                {order.line_items.length} item{order.line_items.length !== 1 ? 's' : ''}
+                                            </span>
+                                        </td>
                                     </tr>
                                 ))
                             )}

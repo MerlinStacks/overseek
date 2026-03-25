@@ -13,7 +13,7 @@ import { ProductService } from '../services/ProductService';
 import { InventoryService } from '../services/InventoryService';
 import { calculateSeoScore } from '../utils/seoScoring';
 import { Logger } from '../utils/logger';
-import { ToastType } from '../components/ui/Toast';
+import { useToast } from '../context/ToastContext';
 import type { BOMPanelRef } from '../components/products/BOMPanel';
 import type { VariationsPanelRef } from '../components/products/VariationsPanel';
 import type { StockManagementPanelRef } from '../components/products/StockManagementPanel';
@@ -114,6 +114,7 @@ export function useProductEdit(productId: string | undefined) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { activeUsers } = useCollaboration(productId || '');
+    const globalToast = useToast();
 
     // Core state
     const [isLoading, setIsLoading] = useState(true);
@@ -127,13 +128,6 @@ export function useProductEdit(productId: string | undefined) {
     const [mainImageFailed, setMainImageFailed] = useState(false);
     /** Whether a draft was restored — drives the "Discard Draft" button visibility */
     const [hasDraft, setHasDraft] = useState(false);
-
-    // Toast state
-    const [toast, setToast] = useState<{ isVisible: boolean; message: string; type: ToastType }>({
-        isVisible: false,
-        message: '',
-        type: 'success'
-    });
 
     // Refs for child panels
     const bomPanelRef = useRef<BOMPanelRef>(null);
@@ -175,13 +169,9 @@ export function useProductEdit(productId: string | undefined) {
         price: formData.price
     }, formData.focusKeyword);
 
-    const showToast = useCallback((message: string, type: ToastType = 'success') => {
-        setToast({ isVisible: true, message, type });
-    }, []);
-
-    const hideToast = useCallback(() => {
-        setToast(prev => ({ ...prev, isVisible: false }));
-    }, []);
+    const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+        globalToast.toast(message, type);
+    }, [globalToast]);
 
     const updateFormData = useCallback((updates: Partial<ProductFormData>) => {
         isDirtyRef.current = true;
@@ -467,7 +457,6 @@ export function useProductEdit(productId: string | undefined) {
         productViews,
         mainImageFailed,
         hasDraft,
-        toast,
         seoResult,
         activeUsers,
         currentAccount,
@@ -481,8 +470,6 @@ export function useProductEdit(productId: string | undefined) {
         updateFormData,
         setVariants,
         setMainImageFailed,
-        showToast,
-        hideToast,
         handleSave,
         handleSync,
         fetchProduct,

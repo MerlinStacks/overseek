@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import { AccountProvider, useAccount } from './context/AccountContext';
 import { SocketProvider } from './context/SocketContext';
 import { SyncStatusProvider } from './context/SyncStatusContext';
+import { ToastProvider } from './context/ToastContext';
 
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { AdminLayout } from './components/layout/AdminLayout';
@@ -183,6 +184,7 @@ function App() {
                 <AccountProvider>
                     <SocketProvider>
                         <SyncStatusProvider>
+                        <ToastProvider>
                             <MobileRedirect>
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>
@@ -284,6 +286,7 @@ function App() {
                                 </Suspense>
                             </MobileRedirect>
 
+                        </ToastProvider>
                         </SyncStatusProvider>
                     </SocketProvider>
                 </AccountProvider>

@@ -42,7 +42,7 @@ export function Toast({ message, isVisible, onClose, duration = 3000, type = 'su
     };
 
     return (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+        <div className="animate-in slide-in-from-bottom-5 fade-in duration-300" role="alert">
             <div className={`${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]`}>
                 <div className={`${iconBgColors[type]} rounded-full p-1`}>
                     {icons[type]}

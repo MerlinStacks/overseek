@@ -89,12 +89,15 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
                         <div className="flex items-center gap-2 mt-3 text-slate-400"><Loader2 className="animate-spin" size={20} /></div>
                     ) : (
                         <>
-                            <p className="text-3xl font-bold text-slate-900 dark:text-white mt-3 tracking-tight">
+                            <p
+                                className="text-3xl font-bold text-slate-900 dark:text-white mt-3 tracking-tight cursor-default"
+                                title={orderCount && orderCount > 0 ? `AOV: $${((sales || 0) / orderCount).toFixed(2)}` : undefined}
+                            >
                                 {new Intl.NumberFormat('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(sales || 0)}
                             </p>
                             {orderCount !== null && (
                                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                                    {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''}
+                                    {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''} · AOV ${orderCount > 0 ? ((sales || 0) / orderCount).toFixed(2) : '0.00'}
                                 </p>
                             )}
                         </>
