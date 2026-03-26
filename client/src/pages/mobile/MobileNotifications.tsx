@@ -25,7 +25,7 @@ export function MobileNotifications() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const { isSupported, isSubscribed, subscribe, unsubscribe, preferences, updatePreferences } = usePushNotifications();
+    const { isSupported, isSubscribed, isLoading, permissionState, subscribe, unsubscribe, preferences, updatePreferences } = usePushNotifications();
 
     const [settings, setSettings] = useState<NotificationSetting[]>([
         { id: 'newOrders', label: 'New Orders', description: 'Get notified when new orders come in', icon: Package, color: 'text-blue-600', enabled: true },
@@ -57,28 +57,43 @@ export function MobileNotifications() {
         if (!setting) return;
 
         const newEnabled = !setting.enabled;
+        // Optimistically update UI
         setSettings(prev => prev.map(s => s.id === id ? { ...s, enabled: newEnabled } : s));
 
         // Update backend for push preferences
-        if (id === 'newOrders') {
-            await updatePreferences({ notifyNewOrders: newEnabled });
-        } else if (id === 'newMessages') {
-            await updatePreferences({ notifyNewMessages: newEnabled });
-        } else if (id === 'lowStock') {
-            await updatePreferences({ notifyLowStock: newEnabled });
-        } else if (id === 'dailySummary') {
-            await updatePreferences({ notifyDailySummary: newEnabled });
+        const prefMap: Record<string, Partial<typeof preferences>> = {
+            newOrders: { notifyNewOrders: newEnabled },
+            newMessages: { notifyNewMessages: newEnabled },
+            lowStock: { notifyLowStock: newEnabled },
+            dailySummary: { notifyDailySummary: newEnabled },
+        };
+
+        const prefUpdate = prefMap[id];
+        if (prefUpdate) {
+            const success = await updatePreferences(prefUpdate);
+            if (!success) {
+                // Revert on failure
+                setSettings(prev => prev.map(s => s.id === id ? { ...s, enabled: !newEnabled } : s));
+            }
         }
     };
 
+    const [toggling, setToggling] = useState(false);
+
     const handlePushToggle = async () => {
+        if (toggling) return;
         if ('vibrate' in navigator) {
             navigator.vibrate(10);
         }
-        if (isSubscribed) {
-            await unsubscribe();
-        } else {
-            await subscribe();
+        setToggling(true);
+        try {
+            if (isSubscribed) {
+                await unsubscribe();
+            } else {
+                await subscribe();
+            }
+        } finally {
+            setToggling(false);
         }
     };
 
@@ -179,6 +194,16 @@ export function MobileNotifications() {
                 </div>
             )}
 
+            {/* Permission Denied Warning */}
+            {permissionState === 'denied' && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+                    <p className="font-medium text-red-300">Notifications Blocked</p>
+                    <p className="text-sm text-red-400/80 mt-1">
+                        You've blocked notifications for this site. To fix this, open your browser settings, find this site, and allow notifications. Then refresh the page.
+                    </p>
+                </div>
+            )}
+
             {/* Push Notifications Master Toggle */}
             <div className="pwa-card p-4">
                 <div className="flex items-center justify-between">
@@ -191,16 +216,18 @@ export function MobileNotifications() {
                             <p className="text-sm text-slate-400">
                                 {!isSupported
                                     ? (isIOS ? 'Requires iOS 16.4+ and Home Screen install' : 'Not supported on this device')
-                                    : (isSubscribed ? 'Enabled' : 'Disabled')
+                                    : isLoading
+                                        ? 'Setting up...'
+                                        : (isSubscribed ? 'Enabled' : 'Disabled')
                                 }
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={handlePushToggle}
-                        disabled={!isSupported}
+                        disabled={!isSupported || isLoading || toggling}
                         className={`w-14 h-8 rounded-full transition-colors relative ${isSubscribed ? 'bg-indigo-600' : 'bg-slate-600'
-                            } ${!isSupported ? 'opacity-50' : ''}`}
+                            } ${!isSupported || isLoading || toggling ? 'opacity-50' : ''}`}
                     >
                         <div className={`w-6 h-6 bg-white rounded-full shadow-md absolute top-1 transition-all ${isSubscribed ? 'right-1' : 'left-1'
                             }`} />
@@ -247,7 +274,8 @@ export function MobileNotifications() {
                         <button
                             key={setting.id}
                             onClick={() => toggleSetting(setting.id)}
-                            className="w-full flex items-center justify-between p-4 text-left active:bg-white/5 transition-colors"
+                            disabled={!isSubscribed}
+                            className={`w-full flex items-center justify-between p-4 text-left active:bg-white/5 transition-colors ${!isSubscribed ? 'opacity-50' : ''}`}
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-xl ${darkColors.bg}`}>
