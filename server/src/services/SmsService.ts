@@ -20,9 +20,16 @@ interface SmsResult {
     error?: string;
 }
 
+const SMS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+interface CachedCreds {
+    creds: TwilioCredentials | null;
+    cachedAt: number;
+}
+
 export class SmsService {
-    // Cache credentials per account to avoid repeated DB lookups
-    private credentialsCache: Map<string, TwilioCredentials | null> = new Map();
+    // Cache credentials per account to avoid repeated DB lookups (TTL: 1 hour)
+    private credentialsCache: Map<string, CachedCreds> = new Map();
 
     /**
      * Send an SMS message.
@@ -103,9 +110,10 @@ export class SmsService {
      * Fetch Twilio credentials for a specific account.
      */
     private async getCredentials(accountId: string): Promise<TwilioCredentials | null> {
-        // Check cache first
-        if (this.credentialsCache.has(accountId)) {
-            return this.credentialsCache.get(accountId) || null;
+        // Check cache first (with TTL)
+        const cached = this.credentialsCache.get(accountId);
+        if (cached && Date.now() - cached.cachedAt < SMS_CACHE_TTL_MS) {
+            return cached.creds;
         }
 
         try {
@@ -114,7 +122,7 @@ export class SmsService {
             });
 
             if (!settings || !settings.enabled) {
-                this.credentialsCache.set(accountId, null);
+                this.credentialsCache.set(accountId, { creds: null, cachedAt: Date.now() });
                 return null;
             }
 
@@ -124,7 +132,7 @@ export class SmsService {
                 fromNumber: settings.fromNumber
             };
 
-            this.credentialsCache.set(accountId, creds);
+            this.credentialsCache.set(accountId, { creds, cachedAt: Date.now() });
             return creds;
 
         } catch (error) {

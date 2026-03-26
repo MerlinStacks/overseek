@@ -19,6 +19,7 @@ import { bomSyncRoutes } from './inventory/bomSync';
 import { bomManagementRoutes } from './inventory/bomManagement';
 
 /** In-memory progress tracker for long-running reprocess operations */
+const MAX_REPROCESS_ERRORS = 200;
 const reprocessProgress = new Map<string, {
     status: 'running' | 'completed' | 'failed';
     startedAt: string;
@@ -27,6 +28,7 @@ const reprocessProgress = new Map<string, {
     processed: number;
     variationsBackfilled: number;
     errors: string[];
+    errorCount: number;
 }>();
 
 const poService = new PurchaseOrderService();
@@ -637,7 +639,8 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
             totalPOs: poCount,
             processed: 0,
             variationsBackfilled: 0,
-            errors: []
+            errors: [],
+            errorCount: 0
         });
 
         reply.code(202).send({
@@ -714,7 +717,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         // Step 4: Re-receive stock with backfilled variation links
                         const result = await poService.receiveStock(accountId, po.id);
                         if (result.errors.length > 0) {
-                            progress.errors.push(...result.errors.map(e => `PO ${poLabel}: ${e}`));
+                            progress.errorCount += result.errors.length;
+                            if (progress.errors.length < MAX_REPROCESS_ERRORS) {
+                                progress.errors.push(...result.errors.slice(0, MAX_REPROCESS_ERRORS - progress.errors.length).map(e => `PO ${poLabel}: ${e}`));
+                            }
                         }
 
                         // Step 5: Restore RECEIVED status
@@ -729,7 +735,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         Logger.error(`[Reprocess] Failed processing PO ${poLabel}, restoring status`, {
                             error: (err as Error).message
                         });
-                        progress.errors.push(`PO ${poLabel} failed: ${(err as Error).message}`);
+                        progress.errorCount++;
+                        if (progress.errors.length < MAX_REPROCESS_ERRORS) {
+                            progress.errors.push(`PO ${poLabel} failed: ${(err as Error).message}`);
+                        }
                         try {
                             await prisma.purchaseOrder.update({
                                 where: { id: po.id },
@@ -786,7 +795,10 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 if (progress) {
                     progress.status = 'failed';
                     progress.completedAt = new Date().toISOString();
-                    progress.errors.push(`Fatal: ${(error as Error).message}`);
+                    progress.errorCount++;
+                    if (progress.errors.length < MAX_REPROCESS_ERRORS) {
+                        progress.errors.push(`Fatal: ${(error as Error).message}`);
+                    }
                 }
             });
         });

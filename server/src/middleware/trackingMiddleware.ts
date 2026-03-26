@@ -72,6 +72,17 @@ export async function cleanupRateLimits() {
             accountRateLimits.delete(accountId);
         }
     }
+
+    // Also clean expired account validation cache entries
+    for (const [accountId, timestamp] of accountCache.entries()) {
+        if (++count % batchSize === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+
+        if (now - timestamp >= CACHE_TTL) {
+            accountCache.delete(accountId);
+        }
+    }
 }
 
 setInterval(() => {

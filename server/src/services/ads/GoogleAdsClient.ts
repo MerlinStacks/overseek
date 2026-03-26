@@ -58,6 +58,20 @@ interface GrpcBreakerState {
 }
 const grpcBreakerMap = new Map<string, GrpcBreakerState>();
 
+// Periodically purge expired breaker entries to prevent unbounded Map growth
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, ts] of authBreakerMap.entries()) {
+        if (now - ts >= AUTH_BREAKER_TTL_MS) authBreakerMap.delete(id);
+    }
+    for (const [id, state] of grpcBreakerMap.entries()) {
+        // Remove if cooldown has expired AND no recent failures
+        if (state.cooldownUntil <= now && state.failures.length === 0) {
+            grpcBreakerMap.delete(id);
+        }
+    }
+}, 15 * 60 * 1000); // every 15 minutes
+
 /**
  * Check if the gRPC circuit-breaker is currently open for an ad account.
  * Callers can use this to skip work before constructing full call chains.
