@@ -26,12 +26,16 @@
   ],
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "packages/overseek-core",
+    "packages/overseek-mcp",
+    "packages/overseek-cli"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
     "db:migrate": "cd server && npx prisma migrate deploy",
-    "db:generate": "cd server && npx prisma generate"
+    "db:generate": "cd server && npx prisma generate",
+    "build:packages": "npm run build -w packages/overseek-core && npm run build -w packages/overseek-mcp && npm run build -w packages/overseek-cli"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

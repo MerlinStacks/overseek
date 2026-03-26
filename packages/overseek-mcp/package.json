@@ -1,0 +1,21 @@
+{
+  "name": "@overseek/mcp",
+  "version": "1.0.0",
+  "description": "OverSeek MCP server — expose store data to AI assistants",
+  "main": "dist/index.js",
+  "bin": {
+    "overseek-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@overseek/core": "*",
+    "zod": "^3.24.0"
+  },
+  "files": ["dist"],
+  "license": "UNLICENSED"
+}

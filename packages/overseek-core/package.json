@@ -1,0 +1,13 @@
+{
+  "name": "@overseek/core",
+  "version": "1.0.0",
+  "description": "Shared API client and types for OverSeek MCP + CLI",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "files": ["dist"],
+  "license": "UNLICENSED"
+}

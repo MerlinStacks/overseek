@@ -1,0 +1,20 @@
+{
+  "name": "@overseek/cli",
+  "version": "1.0.0",
+  "description": "OverSeek CLI — query your store from the terminal",
+  "main": "dist/index.js",
+  "bin": {
+    "overseek": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@overseek/core": "*",
+    "commander": "^13.1.0"
+  },
+  "files": ["dist"],
+  "license": "UNLICENSED"
+}
