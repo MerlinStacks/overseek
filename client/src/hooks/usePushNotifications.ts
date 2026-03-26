@@ -196,7 +196,10 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
             // Get VAPID public key from backend
             const keyRes = await fetch('/api/notifications/vapid-public-key', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
             });
 
             if (!keyRes.ok) {
@@ -274,7 +277,8 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
                 },
                 body: JSON.stringify({ endpoint: currentEndpoint })
             });
@@ -289,7 +293,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
         setIsLoading(false);
         return false;
-    }, [swRegistration, token, currentEndpoint]);
+    }, [swRegistration, token, currentEndpoint, currentAccount]);
 
     /**
      * Update notification preferences.
@@ -306,7 +310,8 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
                 },
                 body: JSON.stringify({
                     endpoint: currentEndpoint,
@@ -323,7 +328,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         }
 
         return false;
-    }, [token, currentEndpoint, preferences]);
+    }, [token, currentEndpoint, preferences, currentAccount]);
 
     return {
         isSupported,

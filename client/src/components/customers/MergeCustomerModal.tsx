@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Users, ArrowRight, AlertTriangle, Check, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
 import { Modal } from '../ui/Modal';
 import { formatCurrency } from '../../utils/format';
 
@@ -26,6 +27,7 @@ interface MergeCustomerModalProps {
 
 export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplete }: MergeCustomerModalProps) {
     const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [target, setTarget] = useState<Customer | null>(null);
     const [duplicates, setDuplicates] = useState<Customer[]>([]);
     const [selectedSource, setSelectedSource] = useState<Customer | null>(null);
@@ -44,7 +46,7 @@ export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplet
         setError('');
         try {
             const res = await fetch(`/api/customers/${customerId}/duplicates`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
             });
             if (res.ok) {
                 const data = await res.json();
@@ -67,7 +69,8 @@ export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplet
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
                 },
                 body: JSON.stringify({ sourceId: selectedSource.id })
             });

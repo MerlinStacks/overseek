@@ -133,7 +133,8 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
             const res = await fetch(`/api/chat/canned-responses/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
                 }
             });
 
