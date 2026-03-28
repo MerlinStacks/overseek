@@ -903,6 +903,11 @@ class OverSeek_Server_Tracking
         // Only store if under max retries (3)
         if ($data['_retry_count'] < 3) {
             $data['_retry_count']++;
+
+            // Exponential backoff: don't retry until enough time has passed.
+            // Retry 1 → eligible after 30s, Retry 2 → 120s, Retry 3 → 480s
+            $data['_retry_after'] = time() + (30 * pow(4, $data['_retry_count'] - 1));
+
             $failed_events[] = $data;
 
             // Limit queue size to prevent memory issues
@@ -929,10 +934,27 @@ class OverSeek_Server_Tracking
             return array();
         }
 
-        // Clear the transient - we'll re-add any that fail again
-        delete_transient($transient_key);
+        // Separate events that are eligible for retry from those still in backoff
+        $now = time();
+        $ready = array();
+        $deferred = array();
 
-        return $failed_events;
+        foreach ($failed_events as $event) {
+            if (empty($event['_retry_after']) || $event['_retry_after'] <= $now) {
+                $ready[] = $event;
+            } else {
+                $deferred[] = $event;
+            }
+        }
+
+        // Keep deferred events in the transient; clear only the ones we're retrying
+        if (!empty($deferred)) {
+            set_transient($transient_key, $deferred, HOUR_IN_SECONDS);
+        } else {
+            delete_transient($transient_key);
+        }
+
+        return $ready;
     }
 
     /**
@@ -1031,17 +1053,16 @@ class OverSeek_Server_Tracking
             return;
         }
 
-        // During AJAX, use blocking with short timeout to ensure delivery
-        // before wp_die() terminates the request
+        // During AJAX/REST, use blocking with short timeout to ensure delivery
+        // before wp_die() terminates the request.
+        // For regular page loads, use non-blocking to avoid adding latency
+        // to customer-facing pages (even in shutdown, PHP-FPM and caching
+        // layers can delay output until the shutdown handler completes).
         $is_ajax = wp_doing_ajax();
         $is_rest = defined('REST_REQUEST') && REST_REQUEST;
 
-        // RELIABILITY FIX: Always use blocking requests with reasonable timeout
-        // Non-blocking wp_remote_post is unreliable - requests can be dropped
-        // before the HTTP connection is established. The shutdown hook runs
-        // AFTER output is sent, so blocking here doesn't affect user experience.
-        $timeout = 2; // 2 seconds is enough for local/fast connections
-        $blocking = true; // Always blocking for reliable delivery
+        $blocking = $is_ajax || $is_rest;
+        $timeout = $blocking ? 2 : 0.5;
 
         // Debug: Log queue flush attempt
         if (defined('WP_DEBUG') && WP_DEBUG && defined('OVERSEEK_DEBUG') && OVERSEEK_DEBUG) {
@@ -1054,6 +1075,7 @@ class OverSeek_Server_Tracking
             $event_type = $data['type'] ?? 'unknown';
             unset($data['visitorIp']); // Don't send in body, use headers
             unset($data['_retry_count']); // Don't send retry metadata
+            unset($data['_retry_after']); // Don't send backoff metadata
 
             // Get the real visitor UA from the event data (before it was unset)
             $visitor_ua = $data['userAgent'] ?? '';

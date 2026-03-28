@@ -273,6 +273,9 @@ export class ProductSync extends BaseSync {
             }
 
             page++;
+
+            // Throttle API pagination to avoid overwhelming the WooCommerce store
+            if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
         // Reconciliation

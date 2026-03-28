@@ -23,12 +23,15 @@ export class SyncScheduler {
         });
         Logger.info('Scheduled Global Sync Orchestrator (Every 5 mins)');
 
-        // Fast Order Sync (Every 30 seconds)
+        // Fast Order Sync (Every 2 minutes)
+        // Webhooks handle real-time order events; this is a safety-net
+        // to catch anything webhooks miss. 30s was too aggressive and
+        // put unnecessary load on WooCommerce stores (especially shared hosting).
         await this.queue.add('fast-order-sync', {}, {
-            repeat: { every: 30000 },
+            repeat: { every: 120000 },
             jobId: 'fast-order-sync'
         });
-        Logger.info('Scheduled Fast Order Sync (Every 30 seconds)');
+        Logger.info('Scheduled Fast Order Sync (Every 2 minutes)');
     }
 
     /**

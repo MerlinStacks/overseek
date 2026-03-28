@@ -131,7 +131,7 @@ class OverSeek_Frontend
 		$response = wp_remote_get(
 			$api_url . '/api/chat/config/' . $account_id,
 			[
-				'timeout' => 3,
+				'timeout' => 1,
 				'headers' => ['Accept' => 'application/json'],
 			]
 		);
@@ -148,8 +148,9 @@ class OverSeek_Frontend
 			return [];
 		}
 
-		// Cache for 5 minutes to reduce API calls.
-		set_transient($transient_key, $data, 5 * MINUTE_IN_SECONDS);
+		// Cache for 30 minutes — config rarely changes and cache misses add
+		// up to 3 seconds of blocking latency on customer-facing pages.
+		set_transient($transient_key, $data, 30 * MINUTE_IN_SECONDS);
 
 		return $data;
 	}

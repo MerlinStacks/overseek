@@ -676,7 +676,7 @@ JS;
         $response = wp_remote_get(
             $this->api_url . '/api/capi/pixels/' . $this->account_id,
             array(
-                'timeout' => 3,
+                'timeout' => 1,
                 'headers' => array('Accept' => 'application/json'),
             )
         );
@@ -694,7 +694,7 @@ JS;
             return $this->config;
         }
 
-        set_transient($transient_key, $data, 5 * MINUTE_IN_SECONDS);
+        set_transient($transient_key, $data, 30 * MINUTE_IN_SECONDS);
         $this->config = $data;
         return $this->config;
     }
