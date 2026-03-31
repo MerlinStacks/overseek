@@ -3,7 +3,7 @@
  * Plugin Name: OverSeek Integration for WooCommerce
  * Plugin URI:  https://github.com/MerlinStacks/overseek
  * Description: Connects your WooCommerce store to your self-hosted OverSeek server. Server-side tracking, live chat, and full data sync. Requires OverSeek server.
- * Version:     2.6.1
+ * Version:     2.7.0
  * Author:      OverSeek Contributors
  * Author URI:  https://github.com/MerlinStacks/overseek
  * Text Domain: overseek-wc
@@ -24,7 +24,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants.
-define('OVERSEEK_WC_VERSION', '2.6.1');
+define('OVERSEEK_WC_VERSION', '2.7.0');
 define('OVERSEEK_WC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('OVERSEEK_WC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('OVERSEEK_WC_PLUGIN_FILE', __FILE__);
@@ -55,6 +55,32 @@ add_action('before_woocommerce_init', static function (): void {
 		);
 	}
 });
+
+/**
+ * Clean up transients on deactivation.
+ *
+ * Removes cached pixel config, chat config, and failed event queue so they
+ * don't sit in wp_options while the plugin is inactive. Options are preserved
+ * so the user doesn't lose their configuration — full cleanup happens in
+ * uninstall.php on deletion.
+ *
+ * @since 2.7.0
+ */
+function overseek_wc_deactivate(): void
+{
+	delete_transient('_overseek_failed_events');
+
+	// Dynamic transients keyed by account ID hash.
+	global $wpdb;
+	$wpdb->query(
+		"DELETE FROM {$wpdb->options}
+		 WHERE option_name LIKE '_transient_overseek_pixels_%'
+		    OR option_name LIKE '_transient_timeout_overseek_pixels_%'
+		    OR option_name LIKE '_transient_overseek_chat_config_%'
+		    OR option_name LIKE '_transient_timeout_overseek_chat_config_%'"
+	);
+}
+register_deactivation_hook(__FILE__, 'overseek_wc_deactivate');
 
 /**
  * Main Plugin Class Initialization.

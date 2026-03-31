@@ -62,9 +62,11 @@ describe('conversionUtils', () => {
             expect(mapEventName('purchase', 'UNKNOWN_PLATFORM')).toBeUndefined();
         });
 
-        it('should return undefined for events not supported by specific platforms', () => {
-            // Google only supports purchase
-            expect(mapEventName('add_to_cart', 'GOOGLE')).toBeUndefined();
+        it('should map Google Ads events correctly', () => {
+            expect(mapEventName('add_to_cart', 'GOOGLE')).toBe('add_to_cart');
+            expect(mapEventName('checkout_start', 'GOOGLE')).toBe('begin_checkout');
+            expect(mapEventName('product_view', 'GOOGLE')).toBe('view_item');
+            // Google doesn't support search as a conversion action
             expect(mapEventName('search', 'GOOGLE')).toBeUndefined();
         });
     });

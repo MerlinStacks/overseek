@@ -272,6 +272,9 @@ class OverSeek_Pixels
         if (!empty($config['ga4']['measurementId'])) {
             $js .= "gtag('event','view_item'," . wp_json_encode(['items' => [['item_id' => $content_id, 'item_name' => $name, 'price' => $value]], 'value' => $value, 'currency' => $currency]) . ");";
         }
+        if (!empty($config['google']['conversionId']) && !empty($config['google']['conversionLabelViewItem'])) {
+            $js .= "gtag('event','conversion',{send_to:'" . esc_js($config['google']['conversionId'] . '/' . $config['google']['conversionLabelViewItem']) . "',value:" . $value . ",currency:'" . esc_js($currency) . "'});";
+        }
         if (!empty($config['microsoft']['tagId'])) {
             $js .= "window.uetq=window.uetq||[];window.uetq.push('event','page_view',{ecomm_prodid:'" . esc_js($content_id) . "',ecomm_pagetype:'product',revenue_value:" . $value . ",currency:'" . esc_js($currency) . "'});";
         }
@@ -320,6 +323,8 @@ class OverSeek_Pixels
      */
     private function build_add_to_cart_listener(array $config): string
     {
+        $google_atc_label = $config['google']['conversionLabelAddToCart'] ?? '';
+        $google_conv_id = $config['google']['conversionId'] ?? '';
         $platforms = wp_json_encode([
             'meta' => !empty($config['meta']['pixelId']),
             'tiktok' => !empty($config['tiktok']['pixelCode']),
@@ -327,6 +332,7 @@ class OverSeek_Pixels
             'snapchat' => !empty($config['snapchat']['pixelId']),
             'ga4' => !empty($config['ga4']['measurementId']),
             'googleAds' => !empty($config['google']['conversionId']),
+            'googleAdsAtc' => (!empty($google_conv_id) && !empty($google_atc_label)) ? esc_js($google_conv_id . '/' . $google_atc_label) : false,
             'bing' => !empty($config['microsoft']['tagId']),
             'twitter' => !empty($config['twitter']['pixelId']),
         ]);
@@ -341,6 +347,7 @@ class OverSeek_Pixels
         if(p.pinterest) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency});
         if(p.snapchat) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency});
         if(p.ga4) gtag('event','add_to_cart',{items:[{item_id:productId,item_name:productName,price:value}],value:value,currency:currency});
+        if(p.googleAdsAtc) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency});
         if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency});}
         if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1});
     }
@@ -431,6 +438,9 @@ JS;
         }
         if (!empty($config['ga4']['measurementId'])) {
             $js .= "gtag('event','begin_checkout'," . wp_json_encode(['value' => $value, 'currency' => $currency]) . ");";
+        }
+        if (!empty($config['google']['conversionId']) && !empty($config['google']['conversionLabelBeginCheckout'])) {
+            $js .= "gtag('event','conversion',{send_to:'" . esc_js($config['google']['conversionId'] . '/' . $config['google']['conversionLabelBeginCheckout']) . "',value:" . $value . ",currency:'" . esc_js($currency) . "'});";
         }
         if (!empty($config['microsoft']['tagId'])) {
             $js .= "window.uetq=window.uetq||[];window.uetq.push('event','begin_checkout',{revenue_value:" . $value . ",currency:'" . esc_js($currency) . "'});";

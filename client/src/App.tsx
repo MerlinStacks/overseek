@@ -45,6 +45,7 @@ const GoldPriceMarginReportPage = lazy(() => import('./pages/GoldPriceMarginRepo
 const InboxPage = lazy(() => import('./pages/InboxPage').then(m => ({ default: m.InboxPage })));
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 const PaidAdsPage = lazy(() => import('./pages/PaidAdsPage').then(m => ({ default: m.PaidAdsPage })));
+const CAPIHealthPage = lazy(() => import('./pages/CAPIHealthPage').then(m => ({ default: m.CAPIHealthPage })));
 const AdAIPage = lazy(() => import('./pages/AdAIPage').then(m => ({ default: m.AdAIPage })));
 const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.SeoPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
@@ -228,6 +229,7 @@ function App() {
                                                 <Route path="/customers/:id" element={<AccountGuard><CustomerDetailsPage /></AccountGuard>} />
                                                 <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
                                                 <Route path="/ads" element={<AccountGuard><PaidAdsPage /></AccountGuard>} />
+                                                <Route path="/conversions/health" element={<AccountGuard><CAPIHealthPage /></AccountGuard>} />
                                                 <Route path="/marketing/ai" element={<AccountGuard><AdAIPage /></AccountGuard>} />
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><BroadcastsPage /></AccountGuard>} />

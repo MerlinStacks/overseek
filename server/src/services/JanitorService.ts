@@ -3,12 +3,13 @@ import { Logger } from '../utils/logger';
 
 /**
  * The Janitor - Automated Data Pruning Service
- * 
+ *
  * Runs on a schedule to clean old data based on retention policies:
  * - Analytics sessions > 90 days (includes events and visits)
- * - Audit logs > 365 days  
+ * - Audit logs > 365 days
  * - Notifications > 30 days (read only)
  * - Sync logs > 30 days
+ * - Conversion deliveries: SENT > 30 days, FAILED > 90 days
  */
 export class JanitorService {
 
@@ -35,6 +36,9 @@ export class JanitorService {
 
             // 5. Prune notification delivery logs (> 30 days)
             deleted.notificationDeliveries = await this.pruneNotificationDeliveries(30);
+
+            // 6. Prune CAPI conversion delivery logs (SENT > 30 days, FAILED > 90 days)
+            deleted.conversionDeliveries = await this.pruneConversionDeliveries(30, 90);
 
             Logger.info('Janitor cleanup complete', { deleted });
         } catch (error) {
@@ -152,6 +156,36 @@ export class JanitorService {
 
         Logger.debug(`Pruned ${result.count} notification delivery logs older than ${daysOld} days`);
         return result.count;
+    }
+
+    /**
+     * Prune CAPI conversion delivery logs.
+     * Successful deliveries are debug/audit data — safe to drop after sentDaysOld.
+     * Failed deliveries are kept longer for troubleshooting stale integrations.
+     * PENDING records older than failedDaysOld are also pruned (likely orphaned).
+     */
+    private static async pruneConversionDeliveries(sentDaysOld: number, failedDaysOld: number): Promise<number> {
+        const sentCutoff = new Date();
+        sentCutoff.setDate(sentCutoff.getDate() - sentDaysOld);
+
+        const failedCutoff = new Date();
+        failedCutoff.setDate(failedCutoff.getDate() - failedDaysOld);
+
+        const [sent, failed, pending] = await Promise.all([
+            prisma.conversionDelivery.deleteMany({
+                where: { status: 'SENT', createdAt: { lt: sentCutoff } },
+            }),
+            prisma.conversionDelivery.deleteMany({
+                where: { status: 'FAILED', createdAt: { lt: failedCutoff } },
+            }),
+            prisma.conversionDelivery.deleteMany({
+                where: { status: 'PENDING', createdAt: { lt: failedCutoff } },
+            }),
+        ]);
+
+        const total = sent.count + failed.count + pending.count;
+        Logger.debug(`Pruned ${total} conversion deliveries (${sent.count} sent, ${failed.count} failed, ${pending.count} stale pending)`);
+        return total;
     }
 }
 

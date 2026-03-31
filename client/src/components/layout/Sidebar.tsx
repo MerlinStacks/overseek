@@ -87,6 +87,7 @@ const navItems = [
         children: [
             { icon: Brain, label: 'AI Co-Pilot', path: '/marketing/ai' },
             { icon: Megaphone, label: 'Paid Ads', path: '/ads' },
+            { icon: Activity, label: 'CAPI Health', path: '/conversions/health' },
             { icon: Zap, label: 'Flows', path: '/flows' },
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
             { icon: Star, label: 'Reviews', path: '/reviews' },

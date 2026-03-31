@@ -9,8 +9,10 @@
  * the standard Google Ads conversion tag. They use hashed customer data
  * to improve attribution when click IDs are missing or expired.
  *
- * Only purchase events are supported — Google Enhanced Conversions are
- * designed for transaction-level data, not micro-conversions.
+ * Supports per-event conversion actions: purchase, add_to_cart,
+ * begin_checkout, and view_item. Each event type can have its own
+ * conversionActionId. Falls back to the single `conversionActionId`
+ * for backward compatibility.
  */
 
 import { prisma } from '../../utils/prisma';
@@ -36,8 +38,11 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
     readonly platform = 'GOOGLE';
 
     /**
-     * Send a purchase conversion to Google Ads Enhanced Conversions.
-     * Only processes purchase events — others are silently skipped.
+     * Send a conversion to Google Ads Enhanced Conversions.
+     * Supports purchase, add_to_cart, begin_checkout, and view_item events.
+     * Each event type can have its own conversionActionId via per-event config
+     * (e.g. conversionActionIdAddToCart). Falls back to the single
+     * conversionActionId for backward compatibility (purchase only).
      */
     async sendEvent(
         accountId: string,
@@ -45,12 +50,14 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         data: TrackingEventPayload,
         session: { id: string; email?: string | null; ipAddress?: string | null; userAgent?: string | null; country?: string | null } | null,
     ): Promise<void> {
-        // Google Enhanced Conversions only supports purchase events
-        if (data.type !== 'purchase') return;
+        const eventName = mapEventName(data.type, 'GOOGLE');
+        if (!eventName) return;
 
-        const { conversionActionId, customerId } = config;
+        const conversionActionId = this.getConversionActionId(config, data.type);
+        const { customerId } = config;
+
         if (!conversionActionId || !customerId) {
-            Logger.warn('[GoogleEnhanced] Missing conversionActionId or customerId', { accountId });
+            Logger.debug('[GoogleEnhanced] No conversionActionId for event type or missing customerId', { accountId, eventType: data.type });
             return;
         }
 
@@ -82,17 +89,42 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             return;
         }
 
-        const payload = this.buildPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid);
-        const deliveryId = await this.logDelivery(accountId, 'purchase', eventId, payload);
+        const isPurchase = data.type === 'purchase';
+        const payload = isPurchase
+            ? this.buildEnhancementPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid)
+            : this.buildConversionPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid);
 
-        await this.sendWithRetry(customerId, adAccount, payload, deliveryId);
+        const googleEventName = mapEventName(data.type, 'GOOGLE')!;
+        const deliveryId = await this.logDelivery(accountId, googleEventName, eventId, payload);
+
+        await this.sendWithRetry(customerId, adAccount, payload, deliveryId, isPurchase);
     }
 
     /**
-     * Build Google Ads ConversionAdjustment payload.
+     * Resolve the conversionActionId for a given event type.
+     * Per-event IDs (e.g. conversionActionIdAddToCart) take precedence.
+     * Falls back to the single conversionActionId for purchase only.
+     */
+    private getConversionActionId(config: Record<string, any>, eventType: string): string | undefined {
+        const PER_EVENT_KEY: Record<string, string> = {
+            // purchase maps to the legacy single field for backward compatibility
+            purchase: 'conversionActionId',
+            add_to_cart: 'conversionActionIdAddToCart',
+            checkout_start: 'conversionActionIdBeginCheckout',
+            product_view: 'conversionActionIdViewItem',
+        };
+
+        const key = PER_EVENT_KEY[eventType];
+        if (!key) return undefined;
+
+        return config[key] || undefined;
+    }
+
+    /**
+     * Build Google Ads ConversionAdjustment payload (purchase enhancements).
      * Spec: https://developers.google.com/google-ads/api/docs/conversions/upload-adjustments
      */
-    private buildPayload(
+    private buildEnhancementPayload(
         conversionActionId: string,
         customerId: string,
         eventId: string,
@@ -173,6 +205,72 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
     }
 
     /**
+     * Build Google Ads ClickConversion payload for non-purchase events
+     * (add_to_cart, begin_checkout, view_item).
+     * These use the standard conversion upload API, not the adjustment API,
+     * because there is no existing browser-side conversion to enhance.
+     * Spec: https://developers.google.com/google-ads/api/docs/conversions/upload-online
+     */
+    private buildConversionPayload(
+        conversionActionId: string,
+        customerId: string,
+        eventId: string,
+        data: TrackingEventPayload,
+        userData: ReturnType<typeof extractUserData>,
+        hasGclid: boolean,
+    ): Record<string, any> {
+        const conversionTime = new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00');
+        const cleanCustomerId = customerId.replace(/-/g, '');
+
+        const conversion: Record<string, any> = {
+            conversionAction: `customers/${cleanCustomerId}/conversionActions/${conversionActionId}`,
+            conversionDateTime: conversionTime,
+            // orderId used for deduplication between browser pixel and server CAPI
+            orderId: eventId,
+            userIdentifiers: [],
+        };
+
+        // gclid is the strongest matching signal
+        if (hasGclid && userData.clickId) {
+            conversion.gclid = userData.clickId;
+        }
+
+        // Hashed email
+        if (userData.email) {
+            conversion.userIdentifiers.push({
+                hashedEmail: hashSHA256(userData.email),
+            });
+        }
+
+        // Hashed phone
+        if (userData.phone) {
+            conversion.userIdentifiers.push({
+                hashedPhoneNumber: hashSHA256(userData.phone),
+            });
+        }
+
+        // Address info for improved match rates (if available from session/cookies)
+        if (userData.firstName || userData.lastName) {
+            const addressInfo: Record<string, any> = {};
+            if (userData.firstName) addressInfo.hashedFirstName = hashSHA256(userData.firstName);
+            if (userData.lastName) addressInfo.hashedLastName = hashSHA256(userData.lastName);
+            if (userData.country) addressInfo.countryCode = userData.country;
+            conversion.userIdentifiers.push({ addressInfo });
+        }
+
+        // Conversion value (e.g. cart value for add_to_cart)
+        if (data.payload?.total !== undefined || data.payload?.value !== undefined) {
+            conversion.conversionValue = data.payload.total ?? data.payload.value;
+            conversion.currencyCode = data.payload.currency || 'USD';
+        }
+
+        return {
+            conversions: [conversion],
+            partialFailure: true,
+        };
+    }
+
+    /**
      * Retry failed enhanced conversion deliveries for an account within a time window.
      * Helpful for recovering from transient API errors or invalid credentials.
      */
@@ -232,11 +330,17 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                     data: { status: 'PENDING', attempts: delivery.attempts + 1 }
                 });
 
+                // Detect whether this was a purchase enhancement or click conversion
+                // by checking which key the payload uses
+                const deliveryPayload = delivery.payload as Record<string, any>;
+                const isEnhancement = !!deliveryPayload.conversionAdjustments;
+
                 await this.sendWithRetry(
                     adAccount.externalId,
                     adAccount as any,
-                    delivery.payload as Record<string, any>,
-                    delivery.id
+                    deliveryPayload,
+                    delivery.id,
+                    isEnhancement,
                 );
 
                 const updated = await prisma.conversionDelivery.findUnique({
@@ -257,16 +361,19 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
     /**
      * Send with exponential backoff retry.
-     * Uses Google Ads REST API for conversion adjustment upload.
+     * Uses Google Ads REST API — adjustment endpoint for purchase enhancements,
+     * click conversion upload endpoint for other events.
      */
     private async sendWithRetry(
         customerId: string,
         adAccount: { id: string; accessToken: string; refreshToken: string | null },
         payload: Record<string, any>,
         deliveryId: string,
+        isPurchase: boolean = true,
     ): Promise<void> {
         const cleanCustomerId = customerId.replace(/-/g, '');
-        const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}:uploadConversionAdjustments`;
+        const action = isPurchase ? 'uploadConversionAdjustments' : 'uploadClickConversions';
+        const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}:${action}`;
 
         // Fetch credentials from the database/environment
         const creds = await getCredentials('GOOGLE_ADS');
@@ -317,23 +424,25 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                     }
 
                     // Log whether Google returned results or an empty array.
-                    // An empty results array means no base conversion was found to
-                    // enhance — usually because the Google Ads tag didn't fire on
-                    // the thank-you page, or the orderId doesn't match the tag's
-                    // transaction_id parameter.
                     const resultCount = parsed?.results?.length ?? 0;
-                    if (resultCount === 0) {
+                    const conversionData = payload.conversionAdjustments?.[0] || payload.conversions?.[0];
+                    if (resultCount === 0 && isPurchase) {
+                        // An empty results array for enhancements means no base conversion
+                        // was found — usually because the Google Ads tag didn't fire on
+                        // the thank-you page, or the orderId doesn't match the tag's
+                        // transaction_id parameter.
                         Logger.warn('[GoogleEnhanced] Upload accepted but no conversions matched — check that the Google Ads tag fires on the WooCommerce thank-you page and that transaction_id matches orderId', {
                             customerId,
-                            orderId: payload.conversionAdjustments?.[0]?.orderId,
-                            hasGclid: !!payload.conversionAdjustments?.[0]?.gclidDateTimePair,
-                            userIdentifierCount: payload.conversionAdjustments?.[0]?.userIdentifiers?.length ?? 0,
+                            orderId: conversionData?.orderId,
+                            hasGclid: !!conversionData?.gclidDateTimePair,
+                            userIdentifierCount: conversionData?.userIdentifiers?.length ?? 0,
                         });
                     } else {
-                        Logger.warn('[GoogleEnhanced] Conversion enhancement matched successfully', {
+                        Logger.info('[GoogleEnhanced] Conversion uploaded successfully', {
                             customerId,
                             resultCount,
-                            orderId: payload.conversionAdjustments?.[0]?.orderId,
+                            isPurchase,
+                            orderId: conversionData?.orderId,
                         });
                     }
 

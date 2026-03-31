@@ -37,6 +37,9 @@ const EVENT_NAME_MAP: Record<string, Record<string, string>> = {
     },
     GOOGLE: {
         purchase: 'purchase',
+        add_to_cart: 'add_to_cart',
+        checkout_start: 'begin_checkout',
+        product_view: 'view_item',
     },
     PINTEREST: {
         purchase: 'checkout',

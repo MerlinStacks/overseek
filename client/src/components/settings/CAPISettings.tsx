@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApi } from '../../hooks/useApi';
 import {
     Save, Loader2, CheckCircle2, XCircle, Eye, EyeOff, Zap, ChevronDown, ChevronUp,
-    Clock, AlertCircle, RefreshCw, Shield
+    Clock, AlertCircle, RefreshCw, Shield, Activity
 } from 'lucide-react';
 
 interface PlatformConfig {
@@ -81,13 +81,19 @@ const PLATFORMS: PlatformDef[] = [
     {
         key: 'google',
         label: 'Google Ads',
-        description: 'Conversion tracking pixel + Enhanced Conversions API (purchase only).',
+        description: 'Conversion tracking pixel + Enhanced Conversions API with per-event labels.',
         color: 'bg-green-500',
         fields: [
             { name: 'conversionId', label: 'Conversion ID (AW-)', type: 'text', placeholder: 'AW-123456789', section: 'pixel' },
-            { name: 'conversionLabel', label: 'Conversion Label', type: 'text', placeholder: 'AbCdEf...', section: 'pixel' },
+            { name: 'conversionLabel', label: 'Purchase Label', type: 'text', placeholder: 'AbCdEf...', help: 'Conversion label for purchase events.', section: 'pixel' },
+            { name: 'conversionLabelAddToCart', label: 'Add to Cart Label', type: 'text', placeholder: 'GhIjKl...', help: 'Optional. Create a separate conversion action in Google Ads for add-to-cart.', section: 'pixel' },
+            { name: 'conversionLabelBeginCheckout', label: 'Begin Checkout Label', type: 'text', placeholder: 'MnOpQr...', help: 'Optional. Create a separate conversion action in Google Ads for checkout.', section: 'pixel' },
+            { name: 'conversionLabelViewItem', label: 'View Item Label', type: 'text', placeholder: 'StUvWx...', help: 'Optional. Create a separate conversion action in Google Ads for product views.', section: 'pixel' },
             { name: 'customerId', label: 'Customer ID (for CAPI)', type: 'text', placeholder: '123-456-7890', section: 'capi' },
-            { name: 'conversionActionId', label: 'Conversion Action ID', type: 'text', placeholder: '123456789', help: 'Found in Google Ads under Conversions.', section: 'capi' },
+            { name: 'conversionActionId', label: 'Purchase Action ID', type: 'text', placeholder: '123456789', help: 'Found in Google Ads under Conversions.', section: 'capi' },
+            { name: 'conversionActionIdAddToCart', label: 'Add to Cart Action ID', type: 'text', placeholder: '123456789', help: 'Optional. Server-side conversion action for add-to-cart.', section: 'capi' },
+            { name: 'conversionActionIdBeginCheckout', label: 'Begin Checkout Action ID', type: 'text', placeholder: '123456789', help: 'Optional. Server-side conversion action for begin-checkout.', section: 'capi' },
+            { name: 'conversionActionIdViewItem', label: 'View Item Action ID', type: 'text', placeholder: '123456789', help: 'Optional. Server-side conversion action for product views.', section: 'capi' },
         ],
     },
     {
@@ -276,6 +282,16 @@ export function CAPISettings() {
 
     return (
         <div className="space-y-4">
+            {/* Delivery Health Link */}
+            <a
+                href="/conversions/health"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium text-indigo-600 dark:text-indigo-400"
+            >
+                <Activity className="w-4 h-4" />
+                View Delivery Health Dashboard
+                <span className="ml-auto text-slate-400">&rarr;</span>
+            </a>
+
             {/* Google Consent Mode v2 */}
             <div id="consent-mode" className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 p-5">
                 <div className="flex items-start gap-3">

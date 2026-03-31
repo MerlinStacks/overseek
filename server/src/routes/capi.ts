@@ -231,6 +231,89 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         };
     });
     /**
+     * GET /api/capi/health — Delivery health dashboard aggregations.
+     * Returns per-platform success/failure rates, daily failure trend,
+     * event type breakdown, and recent failures in a single request.
+     */
+    fastify.get('/health', async (request, reply) => {
+        const { accountId, range = '7d' } = request.query as { accountId: string; range?: string };
+        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+
+        const rangeMs: Record<string, number> = {
+            '24h': 24 * 60 * 60 * 1000,
+            '7d': 7 * 24 * 60 * 60 * 1000,
+            '30d': 30 * 24 * 60 * 60 * 1000,
+        };
+        const ms = rangeMs[range] || rangeMs['7d'];
+        const rangeStart = new Date(Date.now() - ms);
+        const trendStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        const [platformSummary, failureTrend, eventBreakdown, recentFailures] = await Promise.all([
+            // 1. Per-platform × status counts
+            prisma.conversionDelivery.groupBy({
+                by: ['platform', 'status'],
+                where: { accountId, createdAt: { gte: rangeStart } },
+                _count: { _all: true },
+            }),
+
+            // 2. Daily failure counts (always 30 days for stable chart)
+            prisma.$queryRaw<Array<{ date: string; count: bigint }>>`
+                SELECT DATE("createdAt") as date, COUNT(*)::bigint as count
+                FROM "ConversionDelivery"
+                WHERE "accountId" = ${accountId}
+                  AND "status" = 'FAILED'
+                  AND "createdAt" >= ${trendStart}
+                GROUP BY DATE("createdAt")
+                ORDER BY date
+            `,
+
+            // 3. Per-platform × event × status counts
+            prisma.conversionDelivery.groupBy({
+                by: ['platform', 'eventName', 'status'],
+                where: { accountId, createdAt: { gte: rangeStart } },
+                _count: { _all: true },
+            }),
+
+            // 4. Recent failures (most recent 20)
+            prisma.conversionDelivery.findMany({
+                where: { accountId, status: 'FAILED' },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                select: {
+                    id: true,
+                    platform: true,
+                    eventName: true,
+                    eventId: true,
+                    httpStatus: true,
+                    lastError: true,
+                    attempts: true,
+                    createdAt: true,
+                },
+            }),
+        ]);
+
+        return {
+            platformSummary: platformSummary.map(r => ({
+                platform: r.platform,
+                status: r.status,
+                count: r._count._all,
+            })),
+            failureTrend: failureTrend.map(r => ({
+                date: String(r.date),
+                count: Number(r.count),
+            })),
+            eventBreakdown: eventBreakdown.map(r => ({
+                platform: r.platform,
+                eventName: r.eventName,
+                status: r.status,
+                count: r._count._all,
+            })),
+            recentFailures,
+            range,
+        };
+    });
+
+    /**
      * GET /api/capi/pixels/:accountId — Public endpoint for WC plugin.
      *
      * Why public: The WC plugin fetches pixel IDs via wp_remote_get and caches
@@ -254,7 +337,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
             META_CAPI: ['pixelId', 'events', 'advancedMatching', 'contentIdFormat', 'contentIdPrefix', 'contentIdSuffix', 'excludeShipping', 'excludeTax'],
             TIKTOK_EVENTS_API: ['pixelCode', 'events', 'advancedMatching'],
             GA4_MEASUREMENT: ['measurementId', 'events'],
-            GOOGLE_ENHANCED_CONVERSIONS: ['conversionId', 'conversionLabel', 'events'],
+            GOOGLE_ENHANCED_CONVERSIONS: ['conversionId', 'conversionLabel', 'conversionLabelAddToCart', 'conversionLabelBeginCheckout', 'conversionLabelViewItem', 'events'],
             PINTEREST_CAPI: ['tagId', 'events'],
             SNAPCHAT_CAPI: ['pixelId', 'events'],
             MICROSOFT_CAPI: ['tagId', 'events'],
