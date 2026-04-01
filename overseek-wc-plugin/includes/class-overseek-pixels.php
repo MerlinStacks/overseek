@@ -45,6 +45,19 @@ class OverSeek_Pixels
 
         add_action('wp_head', array($this, 'inject_base_codes'), 1);
         add_action('wp_footer', array($this, 'inject_page_events'), 50);
+
+        // Background refresh handler for stale-while-revalidate caching
+        add_action('overseek_refresh_pixel_config', array($this, 'handle_background_refresh'));
+    }
+
+    /**
+     * WP-Cron callback: refresh pixel config in the background (non-blocking).
+     */
+    public function handle_background_refresh(string $account_id = ''): void
+    {
+        if (empty($account_id)) $account_id = $this->account_id;
+        if (empty($account_id) || empty($this->api_url)) return;
+        $this->fetch_pixel_config_from_api();
     }
 
     /**
@@ -439,9 +452,9 @@ JS;
         if (!empty($config['ga4']['measurementId'])) {
             $js .= "gtag('event','begin_checkout'," . wp_json_encode(['value' => $value, 'currency' => $currency]) . ");";
         }
-        if (!empty($config['google']['conversionId']) && !empty($config['google']['conversionLabelBeginCheckout'])) {
-            $js .= "gtag('event','conversion',{send_to:'" . esc_js($config['google']['conversionId'] . '/' . $config['google']['conversionLabelBeginCheckout']) . "',value:" . $value . ",currency:'" . esc_js($currency) . "'});";
-        }
+        // Note: begin_checkout conversion is handled server-side via CAPI to avoid
+        // blocking Stripe.js on the checkout page. Do NOT add a client-side gtag
+        // conversion call here.
         if (!empty($config['microsoft']['tagId'])) {
             $js .= "window.uetq=window.uetq||[];window.uetq.push('event','begin_checkout',{revenue_value:" . $value . ",currency:'" . esc_js($currency) . "'});";
         }
@@ -669,44 +682,83 @@ JS;
     }
 
     /**
-     * Fetch pixel config from OverSeek API with transient caching.
+     * Fetch pixel config from OverSeek API with stale-while-revalidate caching.
+     *
+     * Uses two transients:
+     *   - Primary (30 min TTL): when fresh, returned immediately.
+     *   - Stale fallback (24 h TTL): returned instantly while a background
+     *     refresh is scheduled, so checkout/page rendering is NEVER blocked
+     *     by an external HTTP call.
      */
     private function get_pixel_config(): array
     {
         if ($this->config !== null) return $this->config;
 
-        $transient_key = 'overseek_pixels_' . md5($this->account_id);
-        $cached = get_transient($transient_key);
+        $hash          = md5($this->account_id);
+        $transient_key = 'overseek_pixels_' . $hash;
+        $stale_key     = 'overseek_pixels_stale_' . $hash;
 
+        // 1. Fresh cache hit — fast path
+        $cached = get_transient($transient_key);
         if ($cached !== false && is_array($cached)) {
             $this->config = $cached;
             return $this->config;
         }
 
+        // 2. Stale cache hit — serve immediately, schedule background refresh
+        $stale = get_transient($stale_key);
+        if ($stale !== false && is_array($stale)) {
+            $this->config = $stale;
+            $this->schedule_background_refresh();
+            return $this->config;
+        }
+
+        // 3. Cold start (no cache at all) — must fetch, but with generous timeout
+        $data = $this->fetch_pixel_config_from_api();
+        $this->config = $data;
+        return $this->config;
+    }
+
+    /**
+     * Perform the actual API call and update both cache layers.
+     */
+    private function fetch_pixel_config_from_api(): array
+    {
         $response = wp_remote_get(
             $this->api_url . '/api/capi/pixels/' . $this->account_id,
             array(
-                'timeout' => 1,
+                'timeout' => 5,
                 'headers' => array('Accept' => 'application/json'),
             )
         );
 
         if (is_wp_error($response)) {
-            $this->config = array();
-            return $this->config;
+            return array();
         }
 
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
 
         if (!is_array($data)) {
-            $this->config = array();
-            return $this->config;
+            return array();
         }
 
-        set_transient($transient_key, $data, 30 * MINUTE_IN_SECONDS);
-        $this->config = $data;
-        return $this->config;
+        $hash = md5($this->account_id);
+        set_transient('overseek_pixels_' . $hash, $data, 30 * MINUTE_IN_SECONDS);
+        set_transient('overseek_pixels_stale_' . $hash, $data, DAY_IN_SECONDS);
+        return $data;
+    }
+
+    /**
+     * Schedule a non-blocking background refresh via WP Cron.
+     * Ensures at most one refresh per 5 minutes.
+     */
+    private function schedule_background_refresh(): void
+    {
+        $hook = 'overseek_refresh_pixel_config';
+        if (!wp_next_scheduled($hook, array($this->account_id))) {
+            wp_schedule_single_event(time(), $hook, array($this->account_id));
+        }
     }
 
     private function get_currency(): string
