@@ -1,5 +1,5 @@
 export type DateRangeOption = 'today' | 'yesterday' | '7d' | '30d' | '90d' | 'ytd' | 'all';
-export type ComparisonOption = 'none' | 'previous_period' | 'previous_year';
+export type ComparisonOption = 'none' | 'previous_period' | 'previous_year' | 'smart';
 
 export interface DateRange {
     startDate: string; // ISO Date string YYYY-MM-DD
@@ -67,39 +67,44 @@ export const getDateRange = (option: DateRangeOption | string): DateRange => {
     };
 };
 
+/**
+ * Resolve 'smart' comparison into a concrete strategy based on the range length.
+ *   ≤2 days  → same weekday last week  (removes day-of-week noise)
+ *   3–14 days → previous period         (week-over-week)
+ *   >14 days  → same period last year   (YoY — the standard for monthly+)
+ */
+export function resolveSmartComparison(current: DateRange): { resolved: 'previous_week_same_day' | 'previous_period' | 'previous_year' | 'none' } {
+    const start = new Date(current.startDate);
+    const end = new Date(current.endDate);
+    const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 2)  return { resolved: 'previous_week_same_day' };
+    if (diffDays <= 14) return { resolved: 'previous_period' };
+    return { resolved: 'previous_year' };
+}
+
 export const getComparisonRange = (current: DateRange, type: ComparisonOption): DateRange | null => {
     if (type === 'none') return null;
 
+    // Resolve 'smart' into a concrete type
+    const effectiveType: string = type === 'smart' ? resolveSmartComparison(current).resolved : type;
+
     const start = new Date(current.startDate);
     const end = new Date(current.endDate);
-
-    // Calculate duration in milliseconds
     const duration = end.getTime() - start.getTime();
 
     const compStart = new Date(start);
     const compEnd = new Date(end);
 
-    if (type === 'previous_year') {
+    if (effectiveType === 'previous_year') {
         compStart.setFullYear(start.getFullYear() - 1);
         compEnd.setFullYear(end.getFullYear() - 1);
-    } else if (type === 'previous_period') {
-        // Subtract duration
-        // We add 1 day to duration usually because inclusive dates? 
-        // e.g. Jan 1 to Jan 7 is 7 days.
-        // Jan 1ms - Jan 7ms diff is 6 days * 24h. 
-        // Let's rely on simple date subtraction for now.
-        // If range is Today (Jan 1), duration is 0. Previous is Jan 0 (Dec 31).
-
-        // Better approach: subtract (duration + 1 day) from start and end?
-        // Let's just subtract the difference.
-        const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        // If diff is 0 (today to today), we subtract 1 day.
-        const daysToShift = diffDays === 0 ? 1 : diffDays;
-
-        compEnd.setDate(compEnd.getDate() - daysToShift); // End of prev period is roughly start of current
-        // Actually, typically prev period ends the day before current start.
+    } else if (effectiveType === 'previous_week_same_day') {
+        // Shift back exactly 7 days — same weekday
+        compStart.setDate(start.getDate() - 7);
+        compEnd.setDate(end.getDate() - 7);
+    } else if (effectiveType === 'previous_period') {
         compEnd.setTime(start.getTime() - (24 * 60 * 60 * 1000));
-
         compStart.setTime(compEnd.getTime() - duration);
     }
 
@@ -108,6 +113,33 @@ export const getComparisonRange = (current: DateRange, type: ComparisonOption): 
         endDate: compEnd.toISOString().split('T')[0]
     };
 };
+
+/**
+ * Returns a human-readable label describing what the comparison is against.
+ * e.g. "vs same day last week", "vs previous 7 days", "vs last year"
+ */
+export function getComparisonLabel(current: DateRange, type: ComparisonOption): string {
+    if (type === 'none') return '';
+
+    let effectiveType: string = type;
+    if (type === 'smart') {
+        effectiveType = resolveSmartComparison(current).resolved;
+    }
+
+    switch (effectiveType) {
+        case 'previous_week_same_day': return 'vs same day last week';
+        case 'previous_period': {
+            const start = new Date(current.startDate);
+            const end = new Date(current.endDate);
+            const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays === 0) return 'vs previous day';
+            if (diffDays === 7) return 'vs previous 7 days';
+            return `vs previous ${diffDays} days`;
+        }
+        case 'previous_year': return 'vs last year';
+        default: return 'vs last period';
+    }
+}
 
 export const formatDateOption = (option: string): string => {
     switch (option) {

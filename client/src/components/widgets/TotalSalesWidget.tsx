@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
 
-export function TotalSalesWidget({ className, dateRange, comparison }: WidgetProps) {
+export function TotalSalesWidget({ className, dateRange, comparison, comparisonLabel }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [sales, setSales] = useState<number | null>(null);
@@ -114,7 +114,7 @@ export function TotalSalesWidget({ className, dateRange, comparison }: WidgetPro
                         {isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                         {Math.abs(percentChange).toFixed(1)}%
                     </span>
-                    <span className="text-slate-400 dark:text-slate-500">vs last period</span>
+                    <span className="text-slate-400 dark:text-slate-500">{comparisonLabel || 'vs last period'}</span>
                 </div>
             )}
             {!hasComparison && !loading && (

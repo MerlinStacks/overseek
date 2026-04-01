@@ -11,7 +11,7 @@ import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
 import { debounce, isEqual } from '../utils/debounce';
 import { useRef, useLayoutEffect, useState, useEffect, useMemo, useCallback } from 'react';
 import { useMobile } from '../hooks/useMobile';
-import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
+import { getDateRange, getComparisonRange, getComparisonLabel, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 import { api } from '../services/api';
 
 // Custom WidthProvider HOC since the library's export is broken in ESM
@@ -84,7 +84,7 @@ export function DashboardPage() {
 
     // Date State
     const [dateOption, setDateOption] = useState<DateRangeOption>('today');
-    const [comparisonOption, setComparisonOption] = useState<ComparisonOption>('previous_period');
+    const [comparisonOption, setComparisonOption] = useState<ComparisonOption>('smart');
 
     useEffect(() => {
         fetchLayout();
@@ -250,6 +250,7 @@ export function DashboardPage() {
     // Memoize date calculations to prevent all widgets re-rendering on every resize
     const dateRange = useMemo(() => getDateRange(dateOption), [dateOption]);
     const comparisonRange = useMemo(() => getComparisonRange(dateRange, comparisonOption), [dateRange, comparisonOption]);
+    const comparisonLabel = useMemo(() => getComparisonLabel(dateRange, comparisonOption), [dateRange, comparisonOption]);
 
     if (isLoading) return <DashboardPageSkeleton />;
 
@@ -283,6 +284,7 @@ export function DashboardPage() {
                             className="bg-transparent px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer"
                         >
                             <option value="none">No Comparison</option>
+                            <option value="smart">Smart Comparison</option>
                             <option value="previous_period">vs Previous Period</option>
                             <option value="previous_year">vs Previous Year</option>
                         </select>
@@ -379,7 +381,8 @@ export function DashboardPage() {
                                 settings: w.settings,
                                 className: "h-full",
                                 dateRange,
-                                comparison: comparisonRange
+                                comparison: comparisonRange,
+                                comparisonLabel
                             })}
                         </div>
                     ))}

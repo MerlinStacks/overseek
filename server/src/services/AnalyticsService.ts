@@ -60,6 +60,9 @@ export class AnalyticsService {
                     totalVisits: true,
                     firstTouchSource: true,
                     firstTouchAt: true,
+                    cartValue: true,
+                    cartItems: true,
+                    currency: true,
                     _count: { select: { events: true } },
                     events: {
                         orderBy: { createdAt: 'desc' },

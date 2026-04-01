@@ -43,6 +43,7 @@ export interface WidgetProps {
     className?: string;
     dateRange: { startDate: string, endDate: string };
     comparison?: { startDate: string, endDate: string } | null;
+    comparisonLabel?: string;
 }
 
 type LazyWidget = React.LazyExoticComponent<ComponentType<WidgetProps>>;
