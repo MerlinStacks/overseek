@@ -441,7 +441,12 @@ JS;
             $js .= "fbq('track','InitiateCheckout'," . wp_json_encode(['value' => $value, 'currency' => $currency, 'num_items' => $num_items]) . ",{eventID:'{$event_id}'});";
         }
         if (!empty($config['tiktok']['pixelCode'])) {
-            $js .= "ttq.track('InitiateCheckout'," . wp_json_encode(['value' => $value, 'currency' => $currency]) . ");";
+            $tt_content_ids = [];
+            foreach ($cart->get_cart() as $item) {
+                $product = $item['data'] ?? null;
+                if ($product) $tt_content_ids[] = (string) $this->get_content_id($product, $config);
+            }
+            $js .= "ttq.track('InitiateCheckout'," . wp_json_encode(['content_id' => implode(',', $tt_content_ids), 'content_type' => 'product', 'value' => $value, 'currency' => $currency]) . ");";
         }
         if (!empty($config['pinterest']['tagId'])) {
             $js .= "pintrk('track','checkout'," . wp_json_encode(['value' => $value, 'currency' => $currency, 'order_quantity' => $num_items]) . ");";
@@ -556,7 +561,8 @@ JS;
         }
         // TikTok
         if (!empty($config['tiktok']['pixelCode'])) {
-            $js .= "ttq.track('CompletePayment'," . wp_json_encode(['value' => $total, 'currency' => $currency, 'content_type' => 'product']) . ");";
+            $tt_content_ids = array_column($items, 'id');
+            $js .= "ttq.track('CompletePayment'," . wp_json_encode(['content_id' => implode(',', $tt_content_ids), 'content_type' => 'product', 'value' => $total, 'currency' => $currency]) . ");";
         }
         // Pinterest
         if (!empty($config['pinterest']['tagId'])) {

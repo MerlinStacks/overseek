@@ -3,7 +3,7 @@
  * Plugin Name: OverSeek Integration for WooCommerce
  * Plugin URI:  https://github.com/MerlinStacks/overseek
  * Description: Connects your WooCommerce store to your self-hosted OverSeek server. Server-side tracking, live chat, and full data sync. Requires OverSeek server.
- * Version:     2.7.0
+ * Version:     2.7.1
  * Author:      OverSeek Contributors
  * Author URI:  https://github.com/MerlinStacks/overseek
  * Text Domain: overseek-wc
@@ -24,7 +24,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants.
-define('OVERSEEK_WC_VERSION', '2.7.0');
+define('OVERSEEK_WC_VERSION', '2.7.1');
 define('OVERSEEK_WC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('OVERSEEK_WC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('OVERSEEK_WC_PLUGIN_FILE', __FILE__);
@@ -64,7 +64,7 @@ add_action('before_woocommerce_init', static function (): void {
  * so the user doesn't lose their configuration — full cleanup happens in
  * uninstall.php on deletion.
  *
- * @since 2.7.0
+ * @since 2.7.1
  */
 function overseek_wc_deactivate(): void
 {
