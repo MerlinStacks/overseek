@@ -49,6 +49,7 @@ interface VisitorData {
         deviceType?: string;
         browser?: string;
         os?: string;
+        userAgent?: string;
         referrer?: string;
         utmSource?: string;
         utmMedium?: string;
@@ -349,6 +350,17 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                                             {data.session.os ? ` on ${data.session.os}` : ''}
                                         </span>
                                     </div>
+                                    {data.session.userAgent && (
+                                        <div className="pl-6">
+                                            <span className="text-xs text-gray-400 block mb-0.5">User Agent</span>
+                                            <span
+                                                className="text-xs text-gray-500 font-mono break-all leading-relaxed"
+                                                title={data.session.userAgent}
+                                            >
+                                                {data.session.userAgent}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-2 text-gray-600">
