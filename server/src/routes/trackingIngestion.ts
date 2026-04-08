@@ -236,6 +236,36 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Internal Server Error' });
         }
     });
+
+    /**
+     * POST /bot-hit - Unknown bot/crawler report from the WC plugin.
+     *
+     * Receives fire-and-forget beacons from the PHP crawler guard when an
+     * unrecognised but bot-like UA is detected. Populates Bot Shield without
+     * requiring JS execution on the store.
+     *
+     * Why respond-then-process: WC plugin sends with blocking:false and doesn't
+     * read the response. We still 202 immediately so the OS-level socket closes
+     * cleanly, then do the async work after reply is flushed.
+     */
+    fastify.post('/bot-hit', async (request, reply) => {
+        reply.code(202).send({ ok: true });
+
+        try {
+            const body = request.body as { accountId?: string; userAgent?: string; url?: string; ip?: string };
+
+            if (!body.accountId || !body.userAgent) return;
+            if (body.userAgent.length > 1000) return;
+
+            if (!(await isValidAccount(body.accountId))) return;
+            if (isRateLimited(body.accountId)) return;
+
+            const { logHitIfIdentifiable } = await import('../services/tracking/CrawlerService');
+            await logHitIfIdentifiable(body.accountId, body.userAgent, body.url, body.ip);
+        } catch (error) {
+            Logger.debug('[BotHit] Failed (non-fatal)', { error });
+        }
+    });
 };
 
 export default trackingIngestionRoutes;

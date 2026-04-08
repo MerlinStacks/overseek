@@ -57,7 +57,16 @@ export async function logHitIfIdentifiable(
 ): Promise<void> {
     try {
         const crawler = identifyCrawler(userAgent);
-        if (!crawler) return; // Unknown bot patterns — skip logging
+
+        // For unknown bots: only log if the UA contains a recognisable bot signal word.
+        // Why: real browsers that don't match the registry should never appear here
+        // since EventProcessor filters them via isBot() first. But isBot() uses a
+        // broad heuristic — we guard again here to avoid logging edge-case browsers.
+        const BOT_SIGNALS = ['bot', 'crawler', 'spider', 'scraper', 'fetcher', 'scan', 'curl', 'wget', 'python', 'java/', 'go-http', 'headless'];
+        const ua = userAgent.toLowerCase();
+        const looksLikeBot = BOT_SIGNALS.some(signal => ua.includes(signal));
+
+        if (!crawler && !looksLikeBot) return;
 
         // Resolve country from IP using existing GeoIP service (sync, ~0.1ms)
         let country: string | null = null;
@@ -70,6 +79,11 @@ export async function logHitIfIdentifiable(
             }
         }
 
+        // For unknown bots, derive a stable slug from the first 40 chars of the UA.
+        // Stored as-is so admins can read the raw UA and decide whether to block.
+        const slug = crawler?.slug ?? ('unknown:' + userAgent.substring(0, 40).toLowerCase().replace(/[^a-z0-9-_]/g, '_'));
+        const category = crawler?.category ?? 'unknown';
+
         // Truncate to midnight UTC for daily bucketing
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
@@ -79,14 +93,14 @@ export async function logHitIfIdentifiable(
             where: {
                 accountId_crawlerName_date: {
                     accountId,
-                    crawlerName: crawler.slug,
+                    crawlerName: slug,
                     date: today,
                 }
             },
             create: {
                 accountId,
-                crawlerName: crawler.slug,
-                category: crawler.category,
+                crawlerName: slug,
+                category,
                 sampleAgent: userAgent.substring(0, 500),
                 hitCount: 1,
                 date: today,
@@ -95,7 +109,6 @@ export async function logHitIfIdentifiable(
             },
             update: {
                 hitCount: { increment: 1 },
-                // Update sample agent and geo on each hit (latest wins)
                 sampleAgent: userAgent.substring(0, 500),
                 ...(country ? { country } : {}),
                 ...(city ? { city } : {}),

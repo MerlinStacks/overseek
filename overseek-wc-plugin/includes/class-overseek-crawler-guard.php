@@ -100,23 +100,112 @@ class OverSeek_Crawler_Guard
 
         $cached = get_transient($this->transient_key);
         if (empty($cached) || !is_array($cached)) {
-            return; // Fail-open: no cache = no blocking
-        }
-
-        $patterns  = isset($cached['patterns']) && is_array($cached['patterns']) ? $cached['patterns'] : array();
-        $block_html = isset($cached['blockPageHtml']) ? $cached['blockPageHtml'] : '';
-
-        if (empty($patterns)) {
+            // Fail-open: no cache = no blocking, but still report unknown bots
+            $this->maybe_report_bot($user_agent);
             return;
         }
 
-        // Check UA against blocked patterns
+        $patterns   = isset($cached['patterns']) && is_array($cached['patterns']) ? $cached['patterns'] : array();
+        $block_html = isset($cached['blockPageHtml']) ? $cached['blockPageHtml'] : '';
+
+        // Check UA against blocked patterns — only block what was set in OverSeek
         foreach ($patterns as $pattern) {
             if (!empty($pattern) && strpos($user_agent, $pattern) !== false) {
                 $this->serve_block_page($block_html, $pattern);
                 return;
             }
         }
+
+        // Not blocked — report to OverSeek if it looks like an unknown bot
+        $this->maybe_report_bot($user_agent);
+    }
+
+    /**
+     * Fire-and-forget report of an unknown bot UA to the OverSeek server.
+     *
+     * Why blocking:false + 0.01s timeout: wp_remote_post writes the TCP payload
+     * and returns immediately without waiting for a response. The OS handles
+     * connection teardown in the background. Real visitors are never in this
+     * code path (browser UAs never contain bot signal words), so there is zero
+     * performance impact on the store.
+     *
+     * Deduplication: A 5-minute transient per unique UA prevents the same bot
+     * crawling 100 pages from generating 100 HTTP calls to the OverSeek server.
+     *
+     * @param string $user_agent Lowercased user-agent string.
+     */
+    private function maybe_report_bot(string $user_agent): void
+    {
+        // Signal words that indicate automated/bot traffic.
+        // Real browsers (Chrome, Firefox, Safari, Edge) never contain these.
+        static $signals = [
+            'bot', 'crawler', 'spider', 'scraper', 'fetcher',
+            'scan', 'curl', 'wget', 'python', 'java/', 'go-http', 'headless',
+        ];
+
+        $is_bot_like = false;
+        foreach ($signals as $signal) {
+            if (strpos($user_agent, $signal) !== false) {
+                $is_bot_like = true;
+                break;
+            }
+        }
+
+        if (!$is_bot_like) {
+            return;
+        }
+
+        // Dedup: only report this UA once per 5 minutes per account
+        $dedup_key = 'os_bh_' . substr(md5($this->account_id . $user_agent), 0, 16);
+        if (false !== get_transient($dedup_key)) {
+            return;
+        }
+        set_transient($dedup_key, 1, 5 * MINUTE_IN_SECONDS);
+
+        // Retrieve raw UA for the server (we lowercased for matching, send original)
+        $raw_ua  = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : $user_agent;
+        $raw_url = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+
+        // Bug fix: REMOTE_ADDR returns the load-balancer/proxy IP on most production
+        // setups (Cloudflare, nginx, AWS ELB). Prefer forwarded headers in priority order.
+        // CF-Connecting-IP is set by Cloudflare (most reliable when present).
+        // HTTP_X_FORWARDED_FOR may contain a comma-separated list — take the first.
+        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            $raw_ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $raw_ip = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
+        } else {
+            $raw_ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+        }
+
+        // Bug fix: wp_json_encode returns false on failure (e.g. invalid UTF-8 in UA).
+        // Abort rather than send a malformed body.
+        $body = wp_json_encode(array(
+            'accountId' => $this->account_id,
+            'userAgent' => substr($raw_ua, 0, 500),
+            'url'       => substr($raw_url, 0, 500),
+            'ip'        => $raw_ip,
+        ));
+        if (false === $body) {
+            return;
+        }
+
+        // Bug fix: 0.01s (10ms) timeout was too aggressive — TCP handshake to a
+        // geographically distant server can take 20-100ms, silently dropping reports.
+        // 3s is the connection setup budget. With blocking:false, the page response
+        // is NOT held — PHP returns as soon as cURL starts the connection attempt.
+        wp_remote_post(
+            $this->api_url . '/api/t/bot-hit',
+            array(
+                'blocking' => false,
+                'timeout'  => 3,
+                'headers'  => array(
+                    'Content-Type'     => 'application/json',
+                    'X-Plugin-Version' => defined('OVERSEEK_WC_VERSION') ? OVERSEEK_WC_VERSION : 'unknown',
+                ),
+                'body'     => $body,
+            )
+        );
     }
 
     /**

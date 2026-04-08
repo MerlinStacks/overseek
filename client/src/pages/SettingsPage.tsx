@@ -20,8 +20,6 @@ import { WebhookSettings } from '../components/settings/WebhookSettings';
 import { AdAccountSettings } from '../components/settings/AdAccountSettings';
 import { CannedResponsesSettings } from '../components/settings/CannedResponsesSettings';
 import { TrackingExclusionSettings } from '../components/settings/TrackingExclusionSettings';
-import { CrawlerManagement } from '../components/settings/CrawlerManagement';
-import { CrawlerBlockPageEditor } from '../components/settings/CrawlerBlockPageEditor';
 import { CAPISettings } from '../components/settings/CAPISettings';
 import {
     LayoutGrid, Palette, MessageSquare, Bot, Activity, RefreshCw,
@@ -154,8 +152,6 @@ export function SettingsPage() {
                             <TrackingScriptHelper />
                         </SettingsCard>
                         <TrackingExclusionSettings />
-                        <CrawlerManagement />
-                        <CrawlerBlockPageEditor />
                     </div>
                 );
             case 'inventory':

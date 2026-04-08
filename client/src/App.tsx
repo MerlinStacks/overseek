@@ -56,6 +56,7 @@ const ProductEditPage = lazy(() => import('./pages/ProductEditPage').then(m => (
 const PurchaseOrderEditPage = lazy(() => import('./pages/PurchaseOrderEditPage').then(m => ({ default: m.PurchaseOrderEditPage })));
 const InvoiceDesigner = lazy(() => import('./pages/InvoiceDesigner').then(m => ({ default: m.InvoiceDesigner })));
 const PoliciesPage = lazy(() => import('./pages/PoliciesPage').then(m => ({ default: m.PoliciesPage })));
+const CrawlersPage = lazy(() => import('./pages/CrawlersPage').then(m => ({ default: m.CrawlersPage })));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
 
 // Analytics Sub-Pages
@@ -255,6 +256,7 @@ function App() {
                                                 <Route path="/invoices/design" element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />
                                                 <Route path="/invoices/design/:id" element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />
                                                 <Route path="/policies" element={<AccountGuard><PoliciesPage /></AccountGuard>} />
+                                                <Route path="/crawlers" element={<AccountGuard><CrawlersPage /></AccountGuard>} />
                                             </Route>
                                         </Route>
 

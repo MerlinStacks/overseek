@@ -33,7 +33,8 @@ import {
     TrendingDown,
     RefreshCw,
     Activity,
-    Search
+    Search,
+    Bot
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -78,6 +79,7 @@ const navItems = [
             { icon: TrendingUp, label: 'Cohorts', path: '/analytics/cohorts' },
             { icon: BarChart3, label: 'Acquisition', path: '/live' },
             { icon: BarChart3, label: 'Reports', path: '/reports' },
+            { icon: Bot, label: 'Bot Shield', path: '/crawlers' },
         ]
     },
     {
