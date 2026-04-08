@@ -235,6 +235,16 @@ const VisitSection: React.FC<{ visit: AnalyticsVisit; isFirst: boolean; displayN
     );
 };
 
+/**
+ * Safely cleans messy user agent strings like:
+ * Mozilla/5.0... Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone14,2;...]
+ * by stripping bracketed tracker/app data.
+ */
+function cleanUserAgent(ua: string): string {
+    if (!ua) return '';
+    return ua.replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, accountId, onClose }) => {
     const [data, setData] = useState<VisitorData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -354,10 +364,10 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                                         <div className="pl-6">
                                             <span className="text-xs text-gray-400 block mb-0.5">User Agent</span>
                                             <span
-                                                className="text-xs text-gray-500 font-mono break-all leading-relaxed"
+                                                className="text-xs text-gray-500 font-mono break-all leading-relaxed line-clamp-3"
                                                 title={data.session.userAgent}
                                             >
-                                                {data.session.userAgent}
+                                                {cleanUserAgent(data.session.userAgent)}
                                             </span>
                                         </div>
                                     )}
