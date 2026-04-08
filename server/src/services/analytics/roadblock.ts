@@ -39,6 +39,8 @@ export class RoadblockAnalytics {
 
             // Get all exit events (last pageview before session goes inactive)
             // We identify exits by finding the last page view event per session
+            // Why take: 5000: without a cap, large accounts can load 22K+ sessions
+            // into memory, causing OOM and Prisma bind-parameter overflows.
             const sessions = await prisma.analyticsSession.findMany({
                 where: {
                     accountId,
@@ -50,7 +52,9 @@ export class RoadblockAnalytics {
                         take: 1,
                         where: { type: 'pageview' }
                     }
-                }
+                },
+                orderBy: { lastActiveAt: 'desc' },
+                take: 5000
             });
 
             // Group by exit page URL

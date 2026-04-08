@@ -248,18 +248,20 @@ class OverSeek_API {
 		$query_account_id = $request->get_param( 'account_id' );
 		$account_match    = empty( $query_account_id ) || $query_account_id === $account_id;
 
+		// Only expose sensitive fields when caller proves they know the account ID.
+		// Without the correct account_id param, the endpoint is an info-leak vector.
 		return new WP_REST_Response( [
 			'success'            => true,
 			'plugin'             => 'overseek-wc',
 			'version'            => OVERSEEK_WC_VERSION,
 			'configured'         => ! empty( $account_id ) && ! empty( $api_url ),
-			'accountId'          => $account_id ?: null,
+			'accountId'          => $account_match ? $account_id : null,
 			'accountMatch'       => $account_match,
 			'trackingEnabled'    => (bool) $tracking_enabled,
 			'chatEnabled'        => (bool) $chat_enabled,
 			'woocommerceActive'  => class_exists( 'WooCommerce' ),
-			'woocommerceVersion' => defined( 'WC_VERSION' ) ? WC_VERSION : null,
-			'phpVersion'         => PHP_VERSION,
+			'woocommerceVersion' => $account_match && defined( 'WC_VERSION' ) ? WC_VERSION : null,
+			'phpVersion'         => $account_match ? PHP_VERSION : null,
 			'siteUrl'            => home_url(),
 			'timestamp'          => gmdate( 'c' ),
 		], 200 );

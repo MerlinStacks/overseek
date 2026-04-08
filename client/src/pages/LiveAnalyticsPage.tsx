@@ -4,7 +4,8 @@ import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
-import { Globe, LayoutDashboard, Link, FileText, MousePointer, LogOut, LogIn, History, Search, AlertTriangle } from 'lucide-react';
+import { Globe, LayoutDashboard, Link, FileText, MousePointer, LogOut, LogIn, History, Search, AlertTriangle, Gauge } from 'lucide-react';
+import { WebVitalsView } from '../components/analytics/WebVitalsView';
 import { getDateRange } from '../utils/dateUtils';
 import { LiveSession } from '../types/analytics';
 import { VisitorsTable } from '../components/analytics/VisitorsTable';
@@ -34,6 +35,12 @@ const MENUS = [
             { id: 'exit', label: 'Exit Pages', icon: LogOut },
             { id: 'roadblocks', label: 'Roadblocks', icon: AlertTriangle },
             { id: 'search', label: 'Site Search', icon: Search },
+        ]
+    },
+    {
+        title: 'Performance',
+        items: [
+            { id: 'performance', label: 'Web Vitals', icon: Gauge },
         ]
     }
 ];
@@ -77,7 +84,7 @@ export function LiveAnalyticsPage() {
 
     useEffect(() => {
         // Fetch Report Data when view changes
-        if (activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder') {
+        if (activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'performance') {
             fetchReport(activeView);
         }
     }, [activeView, dateRange, currentAccount]);
@@ -116,7 +123,7 @@ export function LiveAnalyticsPage() {
                     <h1 className="text-xl font-bold text-gray-900 capitalize">{activeView.replace('-', ' ')}</h1>
 
                     {/* Date Range Picker (Only for reports) */}
-                    {activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && (
+                    {activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'performance' && (
                         <select
                             value={dateRange}
                             onChange={e => setDateRange(e.target.value)}
@@ -172,9 +179,10 @@ export function LiveAnalyticsPage() {
                 )}
                 {activeView === 'url-builder' && <UrlBuilder />}
                 {activeView === 'roadblocks' && <RoadblocksView dateRange={dateRange} />}
+                {activeView === 'performance' && <WebVitalsView />}
 
                 {/* Render Generic Report Table for others */}
-                {activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'roadblocks' && (
+                {activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'roadblocks' && activeView !== 'performance' && (
                     <ReportsTable
                         data={reportData}
                         loading={loadingReport}

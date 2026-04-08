@@ -112,6 +112,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(goldPriceReportRoutes, { prefix: '/api/reports' });
     const trackingRoutes = (await import('../routes/tracking')).default;
     await fastify.register(trackingRoutes, { prefix: '/api/tracking' });
+    const crawlerRoutes = (await import('../routes/crawlers')).default;
+    await fastify.register(crawlerRoutes, { prefix: '/api/crawlers' });
+    const webVitalsRoutes = (await import('../routes/webVitals')).default;
+    await fastify.register(webVitalsRoutes, { prefix: '/api/web-vitals' });
 
     // CAPI / Server-Side Conversion Tracking
     const capiRoutes = (await import('../routes/capi')).default;

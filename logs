@@ -1,0 +1,909 @@
+2026-04-01T01:16:04.665555282Z [Startup] Starting deployment script...
+2026-04-01T01:16:04.668362161Z [Startup] URL config (auto-derived where not explicitly set):
+2026-04-01T01:16:04.668371081Z   APP_URL=https://overseek.com.au
+2026-04-01T01:16:04.668373701Z   API_URL=https://api.overseek.com.au
+2026-04-01T01:16:04.668376111Z   CLIENT_URL=https://overseek.com.au
+2026-04-01T01:16:04.668378511Z   CORS_ORIGINS=https://overseek.com.au
+2026-04-01T01:16:04.668380841Z [Startup] DATABASE_URL constructed from env vars (host: postgres)
+2026-04-01T01:16:04.668382831Z [Startup] Running database migrations...
+2026-04-01T01:16:06.202514130Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-01T01:16:06.235949419Z 
+2026-04-01T01:16:06.235973909Z 25 migrations found in prisma/migrations
+2026-04-01T01:16:06.235979299Z 
+2026-04-01T01:16:06.343997804Z [Startup] migrate deploy failed, using db push to sync schema...
+2026-04-01T01:16:07.481350795Z Loaded Prisma config from prisma/prisma.config.ts.
+2026-04-01T01:16:07.481379745Z 
+2026-04-01T01:16:07.588051420Z Prisma schema loaded from prisma/schema.prisma.
+2026-04-01T01:16:07.597038578Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-01T01:16:07.758999142Z 
+2026-04-01T01:16:07.759022450Z The database is already in sync with the Prisma schema.
+2026-04-01T01:16:07.759216318Z 
+2026-04-01T01:16:07.788637206Z [Startup] Schema synced via db push.
+2026-04-01T01:16:07.788658066Z [Startup] Database ready.
+2026-04-01T01:16:07.788661566Z [Startup] Starting Node.js application...
+2026-04-01T01:16:07.925531677Z 
+2026-04-01T01:16:07.925560547Z > overseek-server@1.0.0 start
+2026-04-01T01:16:07.925565047Z > node --disable-warning=DEP0040 dist/index.js
+2026-04-01T01:16:07.925568147Z 
+2026-04-01T01:16:07.965061167Z [dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+2026-04-01T01:16:08.863997087Z 2026-04-01T01:16:08.863Z 40 | variables=["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"] msg=[ENV] Using default values 
+2026-04-01T01:16:10.007491717Z 
+2026-04-01T01:16:10.007523148Z   ╔══════════════════════════════════════════════╗
+2026-04-01T01:16:10.007527908Z   ║           OverSeek API Server Ready          ║
+2026-04-01T01:16:10.007530648Z   ╠══════════════════════════════════════════════╣
+2026-04-01T01:16:10.007533017Z   ║  Local:    http://localhost:3000             ║
+2026-04-01T01:16:10.007547516Z   ║  Network:  http://172.18.0.5:3000            ║
+2026-04-01T01:16:10.007550716Z   ╚══════════════════════════════════════════════╝
+2026-04-01T01:16:10.007552996Z 
+2026-04-01T01:17:30.895865663Z 2026-04-01T01:17:30.895Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=924 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:17:32.651398636Z 2026-04-01T01:17:32.650Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1980 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:17:36.064251415Z 2026-04-01T01:17:36.063Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4231 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:17:40.480058081Z 2026-04-01T01:17:40.479Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:17:40.481578769Z 2026-04-01T01:17:40.480Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=f46cb06f error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:17:40.488207981Z 2026-04-01T01:17:40.488Z 50 | error=Request failed with status code 500 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-01T01:17:43.265490777Z 2026-04-01T01:17:43.265Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=992 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:17:44.418438354Z 2026-04-01T01:17:44.418Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1960 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:17:46.556179179Z 2026-04-01T01:17:46.555Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=3642 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:17:50.385210529Z 2026-04-01T01:17:50.384Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:17:50.386440091Z 2026-04-01T01:17:50.385Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=1c2ce1c3 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:17:50.391835692Z 2026-04-01T01:17:50.391Z 50 | error=Request failed with status code 500 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-01T01:17:54.661814000Z 2026-04-01T01:17:54.661Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1082 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:17:55.892102430Z 2026-04-01T01:17:55.891Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1981 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:17:58.036617991Z 2026-04-01T01:17:58.036Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=3806 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:18:02.253812991Z 2026-04-01T01:18:02.253Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:18:02.254775927Z 2026-04-01T01:18:02.253Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=498e4380 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:18:02.260593511Z 2026-04-01T01:18:02.260Z 50 | error=Request failed with status code 500 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-01T01:18:02.452248048Z 2026-04-01T01:18:02.452Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=975 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:18:03.585667923Z 2026-04-01T01:18:03.585Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1920 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:18:05.687102455Z 2026-04-01T01:18:05.686Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4051 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:18:09.921109276Z 2026-04-01T01:18:09.920Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:18:09.922101961Z 2026-04-01T01:18:09.920Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=120379ee error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:18:09.931761320Z 2026-04-01T01:18:09.931Z 50 | error=Request failed with status code 500 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-01T01:18:12.092501104Z 2026-04-01T01:18:12.092Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1006 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:18:13.255509402Z 2026-04-01T01:18:13.255Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1860 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:18:15.286488170Z 2026-04-01T01:18:15.286Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4195 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:18:19.661212366Z 2026-04-01T01:18:19.660Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:18:19.662261041Z 2026-04-01T01:18:19.661Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=c13b3a60 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:18:19.668431300Z 2026-04-01T01:18:19.668Z 50 | error=Request failed with status code 500 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-01T01:18:23.845920068Z 2026-04-01T01:18:23.845Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1043 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:18:25.025572372Z 2026-04-01T01:18:25.025Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1833 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:18:27.033143773Z 2026-04-01T01:18:27.032Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4297 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:18:31.511927617Z 2026-04-01T01:18:31.511Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:18:31.512945002Z 2026-04-01T01:18:31.511Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=666df465 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:18:31.518231515Z 2026-04-01T01:18:31.518Z 50 | error=Request failed with status code 500 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-01T01:18:31.716666613Z 2026-04-01T01:18:31.716Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1065 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:18:32.922555110Z 2026-04-01T01:18:32.922Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1888 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:18:34.985039851Z 2026-04-01T01:18:34.984Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4115 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:18:39.270836702Z 2026-04-01T01:18:39.270Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:18:39.271790447Z 2026-04-01T01:18:39.270Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=0b57bf54 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:18:39.277067900Z 2026-04-01T01:18:39.276Z 50 | error=Request failed with status code 500 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-01T01:18:41.490920370Z 2026-04-01T01:18:41.490Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1068 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:18:42.725284047Z 2026-04-01T01:18:42.725Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=2116 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:18:44.987062004Z 2026-04-01T01:18:44.986Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=3609 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:18:48.768467007Z 2026-04-01T01:18:48.768Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:18:48.769360934Z 2026-04-01T01:18:48.768Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=eddcdf63 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:18:48.775037091Z 2026-04-01T01:18:48.774Z 50 | error=Request failed with status code 500 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-01T01:18:52.951814064Z 2026-04-01T01:18:52.951Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=965 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:18:54.074346058Z 2026-04-01T01:18:54.074Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=2024 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:18:56.268978280Z 2026-04-01T01:18:56.268Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4074 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:19:00.493047536Z 2026-04-01T01:19:00.492Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:19:00.494642913Z 2026-04-01T01:19:00.492Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=1c218e91 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:19:00.499515661Z 2026-04-01T01:19:00.499Z 50 | error=Request failed with status code 500 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-01T01:19:00.707708856Z 2026-04-01T01:19:00.707Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=984 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:19:01.871132787Z 2026-04-01T01:19:01.870Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=2080 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:19:04.092147831Z 2026-04-01T01:19:04.091Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4334 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:19:08.563261036Z 2026-04-01T01:19:08.563Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:19:08.564183883Z 2026-04-01T01:19:08.563Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=53b3bc28 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:19:08.569737931Z 2026-04-01T01:19:08.569Z 50 | error=Request failed with status code 500 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-01T01:19:10.815205356Z 2026-04-01T01:19:10.815Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=919 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:19:11.871647927Z 2026-04-01T01:19:11.871Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1857 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:19:13.888867593Z 2026-04-01T01:19:13.888Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=4198 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:19:18.280274647Z 2026-04-01T01:19:18.280Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:19:18.281811554Z 2026-04-01T01:19:18.280Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=60bfaa35 error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:19:18.288835341Z 2026-04-01T01:19:18.288Z 50 | error=Request failed with status code 500 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-01T01:19:22.559821005Z 2026-04-01T01:19:22.559Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=1026 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-01T01:19:23.749039315Z 2026-04-01T01:19:23.748Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=2052 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 2/4 
+2026-04-01T01:19:25.977915378Z 2026-04-01T01:19:25.977Z 40 | error=Request failed with status code 500 code=ERR_BAD_RESPONSE nextRetryMs=3964 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 3/4 
+2026-04-01T01:19:30.128283085Z 2026-04-01T01:19:30.128Z 50 | error=Request failed with status code 500 msg=[RetryWithBackoff] WooCommerce:orders failed after 4 attempts 
+2026-04-01T01:19:30.128953365Z 2026-04-01T01:19:30.128Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=2ff3a76f error=Request failed with status code 500 msg=Sync Failed: orders 
+2026-04-01T01:19:30.134146519Z 2026-04-01T01:19:30.134Z 50 | error=Request failed with status code 500 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-01T01:28:17.033864400Z 2026-04-01T01:28:17.033Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13180571 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:29:17.023174487Z 2026-04-01T01:29:17.022Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13181804 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:29:47.025858657Z 2026-04-01T01:29:47.025Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:30:17.021676812Z 2026-04-01T01:30:17.021Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:30:47.034102167Z 2026-04-01T01:30:47.033Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:31:17.030859778Z 2026-04-01T01:31:17.030Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:31:32.150357997Z 2026-04-01T01:31:32.150Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:31:47.024353513Z 2026-04-01T01:31:47.024Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:32:17.022646423Z 2026-04-01T01:32:17.022Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:32:47.016370154Z 2026-04-01T01:32:47.016Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:33:17.016014028Z 2026-04-01T01:33:17.015Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:33:47.032836295Z 2026-04-01T01:33:47.032Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:34:17.022840043Z 2026-04-01T01:34:17.022Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:34:47.019049708Z 2026-04-01T01:34:47.018Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:35:17.016561966Z 2026-04-01T01:35:17.016Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:35:47.018759436Z 2026-04-01T01:35:47.018Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:36:17.007388339Z 2026-04-01T01:36:17.007Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:36:47.023846823Z 2026-04-01T01:36:47.023Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:37:17.024629774Z 2026-04-01T01:37:17.024Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:37:47.021032358Z 2026-04-01T01:37:47.020Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:37:55.660822221Z 2026-04-01T01:37:55.660Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-01T01:38:17.016304090Z 2026-04-01T01:38:17.016Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:38:47.030343596Z 2026-04-01T01:38:47.030Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:39:17.005998451Z 2026-04-01T01:39:17.005Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:39:47.025452323Z 2026-04-01T01:39:47.025Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:40:17.015469536Z 2026-04-01T01:40:17.015Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:40:47.023531847Z 2026-04-01T01:40:47.023Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:41:17.010298606Z 2026-04-01T01:41:17.009Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:41:36.593242517Z 2026-04-01T01:41:36.592Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:41:52.852430073Z 2026-04-01T01:41:52.852Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:42:22.353429130Z 2026-04-01T01:42:22.353Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:42:52.349830509Z 2026-04-01T01:42:52.349Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:43:22.346174074Z 2026-04-01T01:43:22.345Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:43:52.341790461Z 2026-04-01T01:43:52.341Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13184450 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:44:52.356710988Z 2026-04-01T01:44:52.352Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:45:22.338538953Z 2026-04-01T01:45:22.338Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:45:52.333082351Z 2026-04-01T01:45:52.332Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:46:15.563073853Z 2026-04-01T01:46:15.562Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:46:22.328438695Z 2026-04-01T01:46:22.328Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:46:52.326345788Z 2026-04-01T01:46:52.326Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:47:22.341091734Z 2026-04-01T01:47:22.340Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:47:52.339597855Z 2026-04-01T01:47:52.339Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:48:22.335300412Z 2026-04-01T01:48:22.334Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:48:52.346720094Z 2026-04-01T01:48:52.346Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:49:22.331978734Z 2026-04-01T01:49:22.331Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:49:52.323730335Z 2026-04-01T01:49:52.323Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:50:22.328643702Z 2026-04-01T01:50:22.328Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:50:52.337291259Z 2026-04-01T01:50:52.336Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:51:22.327595977Z 2026-04-01T01:51:22.327Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:51:52.324531334Z 2026-04-01T01:51:52.324Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:52:22.323273645Z 2026-04-01T01:52:22.322Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:52:52.323128002Z 2026-04-01T01:52:52.322Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:53:22.323516101Z 2026-04-01T01:53:22.323Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:53:52.333514771Z 2026-04-01T01:53:52.333Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:54:22.326025515Z 2026-04-01T01:54:22.325Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:54:52.324043560Z 2026-04-01T01:54:52.323Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:55:22.318966178Z 2026-04-01T01:55:22.318Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:55:35.835769544Z 2026-04-01T01:55:35.835Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:55:59.267279391Z 2026-04-01T01:55:59.266Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:56:05.027569297Z 2026-04-01T01:56:05.027Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:56:18.589125573Z 2026-04-01T01:56:18.588Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:56:35.037378459Z 2026-04-01T01:56:35.037Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:57:05.043580154Z 2026-04-01T01:57:05.043Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:57:35.040163981Z 2026-04-01T01:57:35.039Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:58:05.033006516Z 2026-04-01T01:58:05.032Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:58:35.032839953Z 2026-04-01T01:58:35.032Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:59:05.026845261Z 2026-04-01T01:59:05.025Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T01:59:35.028827466Z 2026-04-01T01:59:35.028Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:00:05.035253200Z 2026-04-01T02:00:05.034Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:00:35.017818113Z 2026-04-01T02:00:35.017Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:01:05.027907133Z 2026-04-01T02:01:05.027Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:01:35.023553064Z 2026-04-01T02:01:35.023Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:02:05.026152765Z 2026-04-01T02:02:05.025Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:02:35.127293590Z 2026-04-01T02:02:35.127Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:03:05.029976594Z 2026-04-01T02:03:05.029Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:03:35.101048252Z 2026-04-01T02:03:35.100Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:04:05.070263352Z 2026-04-01T02:04:05.069Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:04:35.065357839Z 2026-04-01T02:04:35.065Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:05:05.030058454Z 2026-04-01T02:05:05.029Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:05:35.079269512Z 2026-04-01T02:05:35.079Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:06:05.080149151Z 2026-04-01T02:06:05.079Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:06:35.034266686Z 2026-04-01T02:06:35.033Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:07:05.020148823Z 2026-04-01T02:07:05.019Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:07:35.056545033Z 2026-04-01T02:07:35.055Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:08:05.062381332Z 2026-04-01T02:08:05.062Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:08:35.079029921Z 2026-04-01T02:08:35.078Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:09:05.027250097Z 2026-04-01T02:09:05.026Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:09:34.606537853Z 2026-04-01T02:09:34.606Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:10:04.013319336Z 2026-04-01T02:10:04.013Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:10:34.011616614Z 2026-04-01T02:10:34.011Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:11:04.009054495Z 2026-04-01T02:11:04.008Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:11:34.022460144Z 2026-04-01T02:11:34.022Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:12:04.021707628Z 2026-04-01T02:12:04.021Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:12:34.005706148Z 2026-04-01T02:12:34.005Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:13:04.014421415Z 2026-04-01T02:13:04.014Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:13:34.004725811Z 2026-04-01T02:13:34.004Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:14:04.022207061Z 2026-04-01T02:14:04.021Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:14:34.020684890Z 2026-04-01T02:14:34.020Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:15:04.014119161Z 2026-04-01T02:15:04.013Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:15:34.017603207Z 2026-04-01T02:15:34.017Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:15:35.479658805Z 2026-04-01T02:15:35.479Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98251 
+2026-04-01T02:15:35.597217204Z 2026-04-01T02:15:35.595Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97642 
+2026-04-01T02:15:35.652598795Z 2026-04-01T02:15:35.652Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97591 
+2026-04-01T02:15:35.828775892Z 2026-04-01T02:15:35.828Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=019b638f error=connect ECONNREFUSED 172.18.0.3:9200 msg=Bulk index customers failed 
+2026-04-01T02:15:35.842335950Z 2026-04-01T02:15:35.842Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98136 
+2026-04-01T02:15:35.870647675Z 2026-04-01T02:15:35.870Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96837 
+2026-04-01T02:15:35.917501466Z 2026-04-01T02:15:35.917Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99852 
+2026-04-01T02:15:35.984986087Z 2026-04-01T02:15:35.984Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97741 
+2026-04-01T02:15:35.985729805Z 2026-04-01T02:15:35.985Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96628 
+2026-04-01T02:15:36.005862064Z 2026-04-01T02:15:36.005Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98610 
+2026-04-01T02:15:36.083423691Z 2026-04-01T02:15:36.083Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99014 
+2026-04-01T02:15:36.087470295Z 2026-04-01T02:15:36.087Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98608 
+2026-04-01T02:15:36.147386121Z 2026-04-01T02:15:36.147Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97987 
+2026-04-01T02:15:36.230861471Z 2026-04-01T02:15:36.230Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97614 
+2026-04-01T02:15:36.345266072Z 2026-04-01T02:15:36.345Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122173 
+2026-04-01T02:15:36.407665498Z 2026-04-01T02:15:36.407Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122665 
+2026-04-01T02:15:36.452838977Z 2026-04-01T02:15:36.452Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 107368 
+2026-04-01T02:15:36.521562979Z 2026-04-01T02:15:36.521Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99182 
+2026-04-01T02:15:36.571205164Z 2026-04-01T02:15:36.571Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 107379 
+2026-04-01T02:15:36.682833591Z 2026-04-01T02:15:36.682Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 102199 
+2026-04-01T02:15:36.741454979Z 2026-04-01T02:15:36.741Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96208 
+2026-04-01T02:15:36.758054607Z 2026-04-01T02:15:36.757Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98747 
+2026-04-01T02:15:36.772277873Z 2026-04-01T02:15:36.772Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122603 
+2026-04-01T02:15:36.790536762Z 2026-04-01T02:15:36.790Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99292 
+2026-04-01T02:15:36.794779533Z 2026-04-01T02:15:36.794Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97671 
+2026-04-01T02:15:36.795379074Z 2026-04-01T02:15:36.795Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97681 
+2026-04-01T02:15:36.797382261Z 2026-04-01T02:15:36.797Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97113 
+2026-04-01T02:15:36.829325277Z 2026-04-01T02:15:36.829Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98142 
+2026-04-01T02:15:36.835309038Z 2026-04-01T02:15:36.835Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96915 
+2026-04-01T02:15:36.877398166Z 2026-04-01T02:15:36.877Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122597 
+2026-04-01T02:15:36.889308920Z 2026-04-01T02:15:36.889Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97747 
+2026-04-01T02:15:36.892355361Z 2026-04-01T02:15:36.892Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97716 
+2026-04-01T02:15:36.892831134Z 2026-04-01T02:15:36.892Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96540 
+2026-04-01T02:15:36.895619257Z 2026-04-01T02:15:36.895Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122199 
+2026-04-01T02:15:36.897390568Z 2026-04-01T02:15:36.897Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96481 
+2026-04-01T02:15:36.905344577Z 2026-04-01T02:15:36.905Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96897 
+2026-04-01T02:15:36.909158145Z 2026-04-01T02:15:36.909Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 102236 
+2026-04-01T02:15:36.923964902Z 2026-04-01T02:15:36.923Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97773 
+2026-04-01T02:15:36.992527286Z 2026-04-01T02:15:36.992Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97682 
+2026-04-01T02:15:37.007349254Z 2026-04-01T02:15:37.007Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96975 
+2026-04-01T02:15:37.013099089Z 2026-04-01T02:15:37.012Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99015 
+2026-04-01T02:15:37.013112179Z 2026-04-01T02:15:37.012Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97701 
+2026-04-01T02:15:37.015937753Z 2026-04-01T02:15:37.015Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99084 
+2026-04-01T02:15:37.029808246Z 2026-04-01T02:15:37.029Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122659 
+2026-04-01T02:15:37.033642273Z 2026-04-01T02:15:37.033Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98260 
+2026-04-01T02:15:37.041550253Z 2026-04-01T02:15:37.041Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99180 
+2026-04-01T02:15:37.053506077Z 2026-04-01T02:15:37.053Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97131 
+2026-04-01T02:15:37.062483569Z 2026-04-01T02:15:37.062Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97687 
+2026-04-01T02:15:37.072395437Z 2026-04-01T02:15:37.072Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97596 
+2026-04-01T02:15:37.182838284Z 2026-04-01T02:15:37.174Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122600 
+2026-04-01T02:15:37.249269473Z 2026-04-01T02:15:37.249Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97619 
+2026-04-01T02:15:37.249707836Z 2026-04-01T02:15:37.249Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98497 
+2026-04-01T02:15:37.334522254Z 2026-04-01T02:15:37.334Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98155 
+2026-04-01T02:15:37.335154914Z 2026-04-01T02:15:37.335Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98149 
+2026-04-01T02:15:37.338035327Z 2026-04-01T02:15:37.337Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98131 
+2026-04-01T02:15:37.367739299Z 2026-04-01T02:15:37.367Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96183 
+2026-04-01T02:15:37.369522130Z 2026-04-01T02:15:37.369Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99312 
+2026-04-01T02:15:37.378448293Z 2026-04-01T02:15:37.378Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99158 
+2026-04-01T02:15:37.415585733Z 2026-04-01T02:15:37.415Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96654 
+2026-04-01T02:15:37.424575256Z 2026-04-01T02:15:37.424Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98558 
+2026-04-01T02:15:37.443691333Z 2026-04-01T02:15:37.443Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99829 
+2026-04-01T02:15:37.452486028Z 2026-04-01T02:15:37.452Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96827 
+2026-04-01T02:15:37.476269838Z 2026-04-01T02:15:37.476Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97593 
+2026-04-01T02:15:37.484081520Z 2026-04-01T02:15:37.483Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97632 
+2026-04-01T02:15:37.507418276Z 2026-04-01T02:15:37.507Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122602 
+2026-04-01T02:15:37.555548576Z 2026-04-01T02:15:37.555Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98233 
+2026-04-01T02:15:37.576505712Z 2026-04-01T02:15:37.576Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97474 
+2026-04-01T02:15:37.623035689Z 2026-04-01T02:15:37.622Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99287 
+2026-04-01T02:15:37.630098453Z 2026-04-01T02:15:37.629Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122662 
+2026-04-01T02:15:37.639905652Z 2026-04-01T02:15:37.639Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96207 
+2026-04-01T02:15:37.671046781Z 2026-04-01T02:15:37.670Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97655 
+2026-04-01T02:15:37.671886277Z 2026-04-01T02:15:37.671Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96301 
+2026-04-01T02:15:37.727221548Z 2026-04-01T02:15:37.727Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98652 
+2026-04-01T02:15:37.782392413Z 2026-04-01T02:15:37.782Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97886 
+2026-04-01T02:15:37.789240011Z 2026-04-01T02:15:37.789Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97881 
+2026-04-01T02:15:37.825367868Z 2026-04-01T02:15:37.825Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97603 
+2026-04-01T02:15:37.905649791Z 2026-04-01T02:15:37.905Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97880 
+2026-04-01T02:15:37.910614929Z 2026-04-01T02:15:37.910Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98151 
+2026-04-01T02:15:37.966959084Z 2026-04-01T02:15:37.966Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96223 
+2026-04-01T02:15:38.023559405Z 2026-04-01T02:15:38.023Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98779 
+2026-04-01T02:15:38.128076920Z 2026-04-01T02:15:38.127Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122601 
+2026-04-01T02:15:38.133186096Z 2026-04-01T02:15:38.132Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97984 
+2026-04-01T02:15:38.165135582Z 2026-04-01T02:15:38.164Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 102215 
+2026-04-01T02:15:38.171767114Z 2026-04-01T02:15:38.171Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98611 
+2026-04-01T02:15:38.262419276Z 2026-04-01T02:15:38.262Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96163 
+2026-04-01T02:15:38.314047449Z 2026-04-01T02:15:38.313Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 102238 
+2026-04-01T02:15:38.418408326Z 2026-04-01T02:15:38.418Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122655 
+2026-04-01T02:15:38.442550950Z 2026-04-01T02:15:38.442Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 99178 
+2026-04-01T02:15:38.452525326Z 2026-04-01T02:15:38.452Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122605 
+2026-04-01T02:15:38.500762425Z 2026-04-01T02:15:38.500Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96813 
+2026-04-01T02:15:38.542300913Z 2026-04-01T02:15:38.542Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97890 
+2026-04-01T02:15:38.549722222Z 2026-04-01T02:15:38.549Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122599 
+2026-04-01T02:15:38.551709078Z 2026-04-01T02:15:38.551Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122604 
+2026-04-01T02:15:38.554727159Z 2026-04-01T02:15:38.554Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98156 
+2026-04-01T02:15:38.584431541Z 2026-04-01T02:15:38.584Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96920 
+2026-04-01T02:15:38.623847655Z 2026-04-01T02:15:38.623Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122663 
+2026-04-01T02:15:38.857865175Z 2026-04-01T02:15:38.857Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 98860 
+2026-04-01T02:15:38.970850500Z 2026-04-01T02:15:38.970Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 97108 
+2026-04-01T02:15:39.051742044Z 2026-04-01T02:15:39.051Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 122598 
+2026-04-01T02:15:39.125439395Z 2026-04-01T02:15:39.125Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 107367 
+2026-04-01T02:15:39.196613747Z 2026-04-01T02:15:39.196Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c055a082 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to index review 96220 
+2026-04-01T02:15:39.374414551Z 2026-04-01T02:15:39.374Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=1a27221d error=connect ECONNREFUSED 172.18.0.3:9200 msg=Bulk index orders failed, skipping ES indexing for this page 
+2026-04-01T02:16:04.015111195Z 2026-04-01T02:16:04.014Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:16:34.006511662Z 2026-04-01T02:16:34.006Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:17:04.019545653Z 2026-04-01T02:17:04.019Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:17:34.016440386Z 2026-04-01T02:17:34.016Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:18:04.015591658Z 2026-04-01T02:18:04.015Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:18:34.006172851Z 2026-04-01T02:18:34.005Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:19:04.000200382Z 2026-04-01T02:19:03.999Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:19:34.004542853Z 2026-04-01T02:19:34.004Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:20:04.022341924Z 2026-04-01T02:20:04.022Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:20:34.018616487Z 2026-04-01T02:20:34.018Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:21:04.006195159Z 2026-04-01T02:21:04.005Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:21:34.049407806Z 2026-04-01T02:21:34.049Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:22:03.998994796Z 2026-04-01T02:22:03.998Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:22:33.998009420Z 2026-04-01T02:22:33.997Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:23:04.010637008Z 2026-04-01T02:23:04.010Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:23:33.501752024Z 2026-04-01T02:23:33.501Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:24:03.004412909Z 2026-04-01T02:24:03.004Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:24:33.002527030Z 2026-04-01T02:24:33.002Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:25:02.996582506Z 2026-04-01T02:25:02.996Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:25:32.992901371Z 2026-04-01T02:25:32.992Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:26:03.003602869Z 2026-04-01T02:26:03.003Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:26:33.007345200Z 2026-04-01T02:26:33.007Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:27:03.004215091Z 2026-04-01T02:27:03.003Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:27:33.048174741Z 2026-04-01T02:27:33.047Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:28:03.040306536Z 2026-04-01T02:28:03.039Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185674 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:31:05.922623111Z 2026-04-01T02:31:05.922Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13185566 sizeMB=12.57 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T02:31:29.522638207Z 2026-04-01T02:31:29.522Z 40 | msg=[GeoIP] Could not download current month (dbip-city-lite-2026-04.mmdb.gz): Failed to download: Status 404 
+2026-04-01T05:10:58.682899493Z 2026-04-01T05:10:58.682Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13024179 sizeMB=12.42 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T05:11:28.679771284Z 2026-04-01T05:11:28.679Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=13024179 sizeMB=12.42 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T05:56:20.446548101Z 2026-04-01T05:56:20.446Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12990316 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T05:56:50.455974949Z 2026-04-01T05:56:50.455Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12990316 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T05:57:20.461891276Z 2026-04-01T05:57:20.461Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12990316 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T06:00:00.050390630Z 2026-04-01T06:00:00.050Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-01T06:00:00.504900622Z 2026-04-01T06:00:00.504Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-01T06:00:00.506664916Z 2026-04-01T06:00:00.504Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1063.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-01T06:41:44.438240496Z 2026-04-01T06:41:44.437Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12990316 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T06:42:44.440298743Z 2026-04-01T06:42:44.440Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12987121 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T06:43:14.435572299Z 2026-04-01T06:43:14.435Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12987121 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T06:43:44.443500099Z 2026-04-01T06:43:44.443Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12987121 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T06:44:44.446362052Z 2026-04-01T06:44:44.445Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=12987023 sizeMB=12.39 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T12:51:47.018597679Z 2026-04-01T12:51:47.018Z 50 | customerId=363-598-9203 partialFailureError={"code":3,"message":"The conversion action specified in the upload request isn't set up for uploading conversions., at conversions[0].conversion_action","details":[{"@type":"type.googleapis.com/google.ads.googleads.v23.errors.GoogleAdsFailure","errors":[{"errorCode":{"conversionUploadError":"INVALID_CONVERSION_ACTION_TYPE"},"message":"The conversion action specified in the upload request isn't set up for uploading conversions.","trigger":{"stringValue":"customers/3635989203/conversionActions/7386423035"},"location":{"fieldPathElements":[{"fieldName":"conversions","index":0},{"fieldName":"conversion_action"}]}}],"requestId":"DM0Pn67-OhwkUMSlcY4CWw"}]} msg=[GoogleEnhanced] Partial failure — conversion rejected by Google 
+2026-04-01T18:52:37.069403906Z 2026-04-01T18:52:37.069Z 40 | userId=dcf54f54-9b0f-4392-ae9f-34dfa1fcb375 accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 hasBody=true msg=[notifications] Subscribe request received 
+2026-04-01T18:52:37.069996278Z 2026-04-01T18:52:37.069Z 40 | userId=dcf54f54-9b0f-4392-ae9f-34dfa1fcb375 accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 endpoint=https://fcm.googleapis.com/fcm/send/fx9If-RvS-k:AP... hasP256dh=true hasAuth=true msg=[notifications] Calling PushNotificationService.subscribe 
+2026-04-01T18:52:37.074438818Z 2026-04-01T18:52:37.074Z 40 | result={"success":true,"id":"3acac378-51d8-408b-a790-e46f8c9de316"} msg=[notifications] Subscribe result 
+2026-04-01T20:25:07.724132409Z 2026-04-01T20:25:07.723Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14878647 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T20:25:08.510938263Z 2026-04-01T20:25:08.510Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14878647 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T20:26:48.458051469Z 2026-04-01T20:26:48.457Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14878654 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:24:06.215342378Z 2026-04-01T21:24:06.215Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14874278 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:24:35.742142659Z 2026-04-01T21:24:35.741Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14874277 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:25:05.727925777Z 2026-04-01T21:25:05.727Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14874277 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:25:35.710143715Z 2026-04-01T21:25:35.709Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14874277 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:26:05.720029011Z 2026-04-01T21:26:05.719Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14874277 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:43:21.101981721Z 2026-04-01T21:43:21.101Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14874277 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:51:28.107490846Z 2026-04-01T21:51:28.107Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14877465 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:51:51.102672728Z 2026-04-01T21:51:51.102Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14877465 sizeMB=14.19 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:52:21.099572256Z 2026-04-01T21:52:21.099Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814848 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T21:52:23.114253632Z 2026-04-01T21:52:23.113Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814847 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:00:13.076142975Z 2026-04-01T22:00:13.074Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=912 msg=[RetryWithBackoff] WooCommerce:products/31188 failed, attempt 1/4 
+2026-04-01T22:12:36.216534249Z 2026-04-01T22:12:36.216Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811645 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:48:24.036644873Z 2026-04-01T22:48:24.036Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:48:37.164037660Z 2026-04-01T22:48:37.163Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:48:57.879476581Z 2026-04-01T22:48:57.879Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:49:06.667840810Z 2026-04-01T22:49:06.667Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:49:08.816652762Z 2026-04-01T22:49:08.816Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:49:27.389277739Z 2026-04-01T22:49:27.389Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:49:51.737158381Z 2026-04-01T22:49:51.736Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:49:57.385401410Z 2026-04-01T22:49:57.385Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:50:27.378805776Z 2026-04-01T22:50:27.378Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:50:57.410826328Z 2026-04-01T22:50:57.409Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:51:27.393886485Z 2026-04-01T22:51:27.393Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:51:57.390435255Z 2026-04-01T22:51:57.390Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:52:08.493208453Z 2026-04-01T22:52:08.492Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:52:08.913214439Z 2026-04-01T22:52:08.912Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:52:27.388427249Z 2026-04-01T22:52:27.388Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:52:38.310465756Z 2026-04-01T22:52:38.310Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:52:57.385837778Z 2026-04-01T22:52:57.385Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:53:02.166410880Z 2026-04-01T22:53:02.166Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:53:09.071835979Z 2026-04-01T22:53:09.071Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:53:27.379409914Z 2026-04-01T22:53:27.379Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:53:39.095010590Z 2026-04-01T22:53:39.094Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14811852 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:54:27.390504375Z 2026-04-01T22:54:27.390Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:54:57.393378487Z 2026-04-01T22:54:57.393Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:55:27.392616433Z 2026-04-01T22:55:27.392Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:55:57.382981718Z 2026-04-01T22:55:57.382Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:56:27.376723469Z 2026-04-01T22:56:27.376Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:56:57.373836846Z 2026-04-01T22:56:57.373Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:57:27.390575998Z 2026-04-01T22:57:27.390Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:57:57.401717189Z 2026-04-01T22:57:57.401Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:58:27.389234898Z 2026-04-01T22:58:27.388Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:58:29.513821550Z 2026-04-01T22:58:29.513Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:58:56.598542110Z 2026-04-01T22:58:56.598Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:58:59.011577823Z 2026-04-01T22:58:59.011Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:59:09.069288512Z 2026-04-01T22:59:09.068Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:59:29.001349547Z 2026-04-01T22:59:29.001Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:59:39.071342297Z 2026-04-01T22:59:39.070Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T22:59:59.021397436Z 2026-04-01T22:59:59.019Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:00:09.069316913Z 2026-04-01T23:00:09.069Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:00:10.332865534Z 2026-04-01T23:00:10.332Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14814333 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:00:39.833133099Z 2026-04-01T23:00:39.832Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:00:59.010401040Z 2026-04-01T23:00:59.010Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:01:29.019279226Z 2026-04-01T23:01:29.018Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:01:59.004442024Z 2026-04-01T23:01:59.004Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:02:28.997744643Z 2026-04-01T23:02:28.997Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:02:59.018198541Z 2026-04-01T23:02:59.017Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:03:29.012522538Z 2026-04-01T23:03:29.012Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:03:59.008733626Z 2026-04-01T23:03:59.008Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:04:28.999624762Z 2026-04-01T23:04:28.999Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:04:59.000790786Z 2026-04-01T23:04:59.000Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:05:28.999107582Z 2026-04-01T23:05:28.998Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:05:59.029605577Z 2026-04-01T23:05:59.029Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813064 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:11:09.276452245Z 2026-04-01T23:11:09.276Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813066 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:11:39.293515355Z 2026-04-01T23:11:39.292Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813066 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-01T23:12:09.277563042Z 2026-04-01T23:12:09.275Z 50 | key=cache:inbox:conversations:a03315be-5bf4-47fa-bc5f-e8e5df59e8d5:all:all:51:start sizeBytes=14813066 sizeMB=14.13 limitMB=10 msg=[Cache] DANGEROUS: Cached value exceeds safe size limit 
+2026-04-02T06:00:00.098807689Z 2026-04-02T06:00:00.093Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-02T06:00:00.512189828Z 2026-04-02T06:00:00.511Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-02T06:00:00.513383044Z 2026-04-02T06:00:00.512Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1087.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-02T14:30:30.226252367Z Killed
+2026-04-02T14:30:30.232999267Z npm error Lifecycle script `start` failed with error:
+2026-04-02T14:30:30.233121125Z npm error code 137
+2026-04-02T14:30:30.233155314Z npm error path /app/server
+2026-04-02T14:30:30.233291223Z npm error workspace overseek-server@1.0.0
+2026-04-02T14:30:30.233322563Z npm error location /app/server
+2026-04-02T14:30:30.233416441Z npm error command failed
+2026-04-02T14:30:30.233504330Z npm error command sh -c node --disable-warning=DEP0040 dist/index.js
+2026-04-02T15:15:23.313443404Z [Startup] Starting deployment script...
+2026-04-02T15:15:23.317592884Z [Startup] URL config (auto-derived where not explicitly set):
+2026-04-02T15:15:23.317607854Z   APP_URL=https://overseek.com.au
+2026-04-02T15:15:23.317610914Z   API_URL=https://api.overseek.com.au
+2026-04-02T15:15:23.317613654Z   CLIENT_URL=https://overseek.com.au
+2026-04-02T15:15:23.317616054Z   CORS_ORIGINS=https://overseek.com.au
+2026-04-02T15:15:23.317618584Z [Startup] DATABASE_URL constructed from env vars (host: postgres)
+2026-04-02T15:15:23.317620754Z [Startup] Running database migrations...
+2026-04-02T15:15:25.080244018Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-02T15:15:25.117618005Z 
+2026-04-02T15:15:25.117643496Z 25 migrations found in prisma/migrations
+2026-04-02T15:15:25.117647965Z 
+2026-04-02T15:15:25.178303439Z [Startup] migrate deploy failed, using db push to sync schema...
+2026-04-02T15:15:26.251202698Z Loaded Prisma config from prisma/prisma.config.ts.
+2026-04-02T15:15:26.251250487Z 
+2026-04-02T15:15:26.356548896Z Prisma schema loaded from prisma/schema.prisma.
+2026-04-02T15:15:26.367650859Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-02T15:15:26.547018297Z 
+2026-04-02T15:15:26.547039986Z The database is already in sync with the Prisma schema.
+2026-04-02T15:15:26.548101039Z ┌─────────────────────────────────────────────────────────┐
+2026-04-02T15:15:26.548124038Z │  Update available 7.2.0 -> 7.6.0                        │
+2026-04-02T15:15:26.548128438Z │  Run the following to update                            │
+2026-04-02T15:15:26.548130938Z │    npm i --save-dev prisma@latest                       │
+2026-04-02T15:15:26.548133428Z │    npm i @prisma/client@latest                          │
+2026-04-02T15:15:26.548136038Z └─────────────────────────────────────────────────────────┘
+2026-04-02T15:15:26.548263136Z 
+2026-04-02T15:15:26.577964614Z [Startup] Schema synced via db push.
+2026-04-02T15:15:26.577984913Z [Startup] Database ready.
+2026-04-02T15:15:26.577988593Z [Startup] Starting Node.js application...
+2026-04-02T15:15:26.710583663Z 
+2026-04-02T15:15:26.710613202Z > overseek-server@1.0.0 start
+2026-04-02T15:15:26.710616991Z > node --disable-warning=DEP0040 dist/index.js
+2026-04-02T15:15:26.710619891Z 
+2026-04-02T15:15:26.752081910Z [dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  override existing env vars with { override: true }
+2026-04-02T15:15:28.103321863Z 2026-04-02T15:15:28.102Z 40 | variables=["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"] msg=[ENV] Using default values 
+2026-04-02T15:15:29.513399621Z 
+2026-04-02T15:15:29.513433220Z   ╔══════════════════════════════════════════════╗
+2026-04-02T15:15:29.513437920Z   ║           OverSeek API Server Ready          ║
+2026-04-02T15:15:29.513441420Z   ╠══════════════════════════════════════════════╣
+2026-04-02T15:15:29.513444170Z   ║  Local:    http://localhost:3000             ║
+2026-04-02T15:15:29.513447140Z   ║  Network:  http://172.18.0.5:3000            ║
+2026-04-02T15:15:29.513450070Z   ╚══════════════════════════════════════════════╝
+2026-04-02T15:15:29.513463960Z 
+2026-04-02T22:45:44.464487951Z 2026-04-02T22:45:44.464Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=992 msg=[RetryWithBackoff] WooCommerce:customers failed, attempt 1/4 
+2026-04-03T02:06:11.200777706Z 2026-04-03T02:06:11.200Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=1061 msg=[RetryWithBackoff] WooCommerce:customers failed, attempt 1/4 
+2026-04-03T03:18:46.668822230Z 2026-04-03T03:18:46.668Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T03:18:46.673264882Z 2026-04-03T03:18:46.673Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T03:21:42.853600489Z 2026-04-03T03:21:42.853Z 50 | error=Request failed with status code 400 productWooId=26501 status=400 responseData={"code":"product_invalid_sku","message":"Invalid or duplicated SKU.","data":{"status":400,"resource_id":26501,"unique_sku":"LSBB2003H-1"}} msg=Failed to process variation 50618 
+2026-04-03T03:21:42.939780499Z 2026-04-03T03:21:42.939Z 50 | error=Request failed with status code 400 productWooId=26501 status=400 responseData={"code":"product_invalid_sku","message":"Invalid or duplicated SKU.","data":{"status":400,"resource_id":26501,"unique_sku":"LSBB2003H-1"}} msg=Failed to process variation 50617 
+2026-04-03T03:22:04.417072030Z 2026-04-03T03:22:04.416Z 50 | error=Request failed with status code 400 productWooId=26501 status=400 responseData={"code":"product_invalid_sku","message":"Invalid or duplicated SKU.","data":{"status":400,"resource_id":26501,"unique_sku":"LSBB2003H-1"}} msg=Failed to process variation 50617 
+2026-04-03T03:22:04.482483453Z 2026-04-03T03:22:04.482Z 50 | error=Request failed with status code 400 productWooId=26501 status=400 responseData={"code":"product_invalid_sku","message":"Invalid or duplicated SKU.","data":{"status":400,"resource_id":26501,"unique_sku":"LSBB2003H-1"}} msg=Failed to process variation 50618 
+2026-04-03T04:00:46.612193937Z 2026-04-03T04:00:46.611Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.615569460Z 2026-04-03T04:00:46.615Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.619558265Z 2026-04-03T04:00:46.619Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.620225273Z 2026-04-03T04:00:46.620Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.626475900Z 2026-04-03T04:00:46.626Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.628231531Z 2026-04-03T04:00:46.627Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.628717572Z 2026-04-03T04:00:46.628Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.630113019Z 2026-04-03T04:00:46.629Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.632026297Z 2026-04-03T04:00:46.631Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.632738705Z 2026-04-03T04:00:46.632Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.638974801Z 2026-04-03T04:00:46.638Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.639715270Z 2026-04-03T04:00:46.639Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T04:00:46.641353022Z 2026-04-03T04:00:46.641Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-03T05:15:45.449284873Z 2026-04-03T05:15:45.449Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=1031 msg=[RetryWithBackoff] WooCommerce:customers failed, attempt 1/4 
+2026-04-03T06:00:00.124716898Z 2026-04-03T06:00:00.124Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-03T06:00:00.485452540Z 2026-04-03T06:00:00.485Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-03T06:00:00.487283475Z 2026-04-03T06:00:00.485Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1111.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-03T15:30:30.248813270Z Killed
+2026-04-03T15:30:30.258970766Z npm error Lifecycle script `start` failed with error:
+2026-04-03T15:30:30.259057675Z npm error code 137
+2026-04-03T15:30:30.259131863Z npm error path /app/server
+2026-04-03T15:30:30.259186403Z npm error workspace overseek-server@1.0.0
+2026-04-03T15:30:30.259328750Z npm error location /app/server
+2026-04-03T15:30:30.259370890Z npm error command failed
+2026-04-03T15:30:30.259415789Z npm error command sh -c node --disable-warning=DEP0040 dist/index.js
+2026-04-03T16:15:23.337883879Z [Startup] Starting deployment script...
+2026-04-03T16:15:23.341502008Z [Startup] URL config (auto-derived where not explicitly set):
+2026-04-03T16:15:23.341514407Z   APP_URL=https://overseek.com.au
+2026-04-03T16:15:23.341517877Z   API_URL=https://api.overseek.com.au
+2026-04-03T16:15:23.341520417Z   CLIENT_URL=https://overseek.com.au
+2026-04-03T16:15:23.341522907Z   CORS_ORIGINS=https://overseek.com.au
+2026-04-03T16:15:23.341524997Z [Startup] DATABASE_URL constructed from env vars (host: postgres)
+2026-04-03T16:15:23.341527017Z [Startup] Running database migrations...
+2026-04-03T16:15:25.129053988Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-03T16:15:25.164669999Z 
+2026-04-03T16:15:25.164730318Z 25 migrations found in prisma/migrations
+2026-04-03T16:15:25.164735288Z 
+2026-04-03T16:15:25.225333659Z [Startup] migrate deploy failed, using db push to sync schema...
+2026-04-03T16:15:26.323571398Z Loaded Prisma config from prisma/prisma.config.ts.
+2026-04-03T16:15:26.323606677Z 
+2026-04-03T16:15:26.419419693Z Prisma schema loaded from prisma/schema.prisma.
+2026-04-03T16:15:26.432161174Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-03T16:15:26.607842431Z 
+2026-04-03T16:15:26.607877880Z The database is already in sync with the Prisma schema.
+2026-04-03T16:15:26.609177883Z ┌─────────────────────────────────────────────────────────┐
+2026-04-03T16:15:26.609212451Z │  Update available 7.2.0 -> 7.6.0                        │
+2026-04-03T16:15:26.609216811Z │  Run the following to update                            │
+2026-04-03T16:15:26.609219142Z │    npm i --save-dev prisma@latest                       │
+2026-04-03T16:15:26.609221511Z │    npm i @prisma/client@latest                          │
+2026-04-03T16:15:26.609223622Z └─────────────────────────────────────────────────────────┘
+2026-04-03T16:15:26.609308430Z 
+2026-04-03T16:15:26.638802897Z [Startup] Schema synced via db push.
+2026-04-03T16:15:26.638820106Z [Startup] Database ready.
+2026-04-03T16:15:26.638823556Z [Startup] Starting Node.js application...
+2026-04-03T16:15:26.764478334Z 
+2026-04-03T16:15:26.764501984Z > overseek-server@1.0.0 start
+2026-04-03T16:15:26.764505644Z > node --disable-warning=DEP0040 dist/index.js
+2026-04-03T16:15:26.764507884Z 
+2026-04-03T16:15:26.806886429Z [dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+2026-04-03T16:15:28.172163353Z 2026-04-03T16:15:28.171Z 40 | variables=["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"] msg=[ENV] Using default values 
+2026-04-03T16:15:29.349897447Z 
+2026-04-03T16:15:29.349921876Z   ╔══════════════════════════════════════════════╗
+2026-04-03T16:15:29.349926566Z   ║           OverSeek API Server Ready          ║
+2026-04-03T16:15:29.349928906Z   ╠══════════════════════════════════════════════╣
+2026-04-03T16:15:29.349931526Z   ║  Local:    http://localhost:3000             ║
+2026-04-03T16:15:29.349939306Z   ║  Network:  http://172.18.0.5:3000            ║
+2026-04-03T16:15:29.349952126Z   ╚══════════════════════════════════════════════╝
+2026-04-03T16:15:29.349955266Z 
+2026-04-04T04:16:00.991138565Z 2026-04-04T04:16:00.990Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-04T06:00:00.109305640Z 2026-04-04T06:00:00.108Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-04T06:00:00.472096193Z 2026-04-04T06:00:00.471Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-04T06:00:00.473399820Z 2026-04-04T06:00:00.471Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1135.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-04T07:16:04.371981559Z 2026-04-04T07:16:04.371Z 50 | error=Request failed with status code 404 productWooId=80598 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 80610 
+2026-04-04T07:17:35.558982166Z 2026-04-04T07:17:35.558Z 50 | error=Request failed with status code 404 productWooId=80598 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 80610 
+2026-04-04T07:18:51.239847866Z 2026-04-04T07:18:51.239Z 50 | error=Request failed with status code 404 productWooId=80598 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 80610 
+2026-04-04T07:19:55.695800501Z 2026-04-04T07:19:55.695Z 50 | error=Request failed with status code 404 productWooId=80598 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 80610 
+2026-04-04T07:22:10.643523692Z 2026-04-04T07:22:10.642Z 50 | error=Request failed with status code 404 productWooId=80598 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 80610 
+2026-04-04T07:23:51.540704715Z 2026-04-04T07:23:51.540Z 50 | error=Request failed with status code 404 productWooId=80598 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 80610 
+2026-04-04T07:24:02.559040541Z 2026-04-04T07:24:02.558Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=925 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-04T09:23:08.001758254Z 2026-04-04T09:23:08.001Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:23:09.001040245Z 2026-04-04T09:23:09.000Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:25:19.021824624Z 2026-04-04T09:25:19.021Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:25:21.044146601Z 2026-04-04T09:25:21.043Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:27:21.384723399Z 2026-04-04T09:27:21.384Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:27:23.492884684Z 2026-04-04T09:27:23.492Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:30:19.986208574Z 2026-04-04T09:30:19.985Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:30:22.349710069Z 2026-04-04T09:30:22.349Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:32:16.137502547Z 2026-04-04T09:32:16.137Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:32:20.623615072Z 2026-04-04T09:32:20.623Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:34:09.943123792Z 2026-04-04T09:34:09.942Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:34:12.029602109Z 2026-04-04T09:34:12.029Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:35:57.485067159Z 2026-04-04T09:35:57.484Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:35:59.408810687Z 2026-04-04T09:35:59.408Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:36:14.868405491Z 2026-04-04T09:36:14.868Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:36:14.999535443Z 2026-04-04T09:36:14.999Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:37:51.093871552Z 2026-04-04T09:37:51.093Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:37:51.193920092Z 2026-04-04T09:37:51.193Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:39:35.536603806Z 2026-04-04T09:39:35.536Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:39:37.834057537Z 2026-04-04T09:39:37.833Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:42:34.230598669Z 2026-04-04T09:42:34.230Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-04T09:42:36.087127004Z 2026-04-04T09:42:36.086Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-04T09:49:29.249808634Z 2026-04-04T09:49:29.249Z 50 | error=Request failed with status code 404 productWooId=85346 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85351 
+2026-04-04T09:51:35.170031783Z 2026-04-04T09:51:35.169Z 50 | error=Request failed with status code 404 productWooId=85346 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85351 
+2026-04-04T10:07:32.291028204Z 2026-04-04T10:07:32.290Z 50 | error=Request failed with status code 404 productWooId=76616 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 86447 
+2026-04-04T10:09:58.157355403Z 2026-04-04T10:09:58.156Z 50 | error=Request failed with status code 404 productWooId=76616 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 86447 
+2026-04-04T10:10:33.837467442Z 2026-04-04T10:10:33.837Z 50 | error=Request failed with status code 404 productWooId=76616 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 86447 
+2026-04-04T10:12:14.215117218Z 2026-04-04T10:12:14.214Z 50 | error=Request failed with status code 404 productWooId=76616 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 86447 
+2026-04-04T10:12:47.611521408Z 2026-04-04T10:12:47.611Z 50 | error=Request failed with status code 404 productWooId=76616 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 86447 
+2026-04-04T10:40:35.220669682Z 2026-04-04T10:40:35.220Z 50 | error=socket hang up productWooId=85429 msg=Failed to process variation 85434 
+2026-04-04T16:30:29.301037360Z Killed
+2026-04-04T16:30:29.314206281Z npm error Lifecycle script `start` failed with error:
+2026-04-04T16:30:29.314313080Z npm error code 137
+2026-04-04T16:30:29.314318568Z npm error path /app/server
+2026-04-04T16:30:29.314438968Z npm error workspace overseek-server@1.0.0
+2026-04-04T16:30:29.314535096Z npm error location /app/server
+2026-04-04T16:30:29.314562886Z npm error command failed
+2026-04-04T16:30:29.314566686Z npm error command sh -c node --disable-warning=DEP0040 dist/index.js
+2026-04-04T17:15:23.332416791Z [Startup] Starting deployment script...
+2026-04-04T17:15:23.336963608Z [Startup] URL config (auto-derived where not explicitly set):
+2026-04-04T17:15:23.336977078Z   APP_URL=https://overseek.com.au
+2026-04-04T17:15:23.336980587Z   API_URL=https://api.overseek.com.au
+2026-04-04T17:15:23.336982678Z   CLIENT_URL=https://overseek.com.au
+2026-04-04T17:15:23.336985018Z   CORS_ORIGINS=https://overseek.com.au
+2026-04-04T17:15:23.336987407Z [Startup] DATABASE_URL constructed from env vars (host: postgres)
+2026-04-04T17:15:23.336989778Z [Startup] Running database migrations...
+2026-04-04T17:15:25.144038467Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-04T17:15:25.181943386Z 
+2026-04-04T17:15:25.181961106Z 25 migrations found in prisma/migrations
+2026-04-04T17:15:25.181964716Z 
+2026-04-04T17:15:25.245976308Z [Startup] migrate deploy failed, using db push to sync schema...
+2026-04-04T17:15:26.331187569Z Loaded Prisma config from prisma/prisma.config.ts.
+2026-04-04T17:15:26.331221979Z 
+2026-04-04T17:15:26.434042837Z Prisma schema loaded from prisma/schema.prisma.
+2026-04-04T17:15:26.442245742Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-04T17:15:26.630084468Z 
+2026-04-04T17:15:26.630113347Z The database is already in sync with the Prisma schema.
+2026-04-04T17:15:26.631015905Z ┌─────────────────────────────────────────────────────────┐
+2026-04-04T17:15:26.631027075Z │  Update available 7.2.0 -> 7.6.0                        │
+2026-04-04T17:15:26.631030695Z │  Run the following to update                            │
+2026-04-04T17:15:26.631032985Z │    npm i --save-dev prisma@latest                       │
+2026-04-04T17:15:26.631035055Z │    npm i @prisma/client@latest                          │
+2026-04-04T17:15:26.631037455Z └─────────────────────────────────────────────────────────┘
+2026-04-04T17:15:26.631122073Z 
+2026-04-04T17:15:26.660938795Z [Startup] Schema synced via db push.
+2026-04-04T17:15:26.660964885Z [Startup] Database ready.
+2026-04-04T17:15:26.660968925Z [Startup] Starting Node.js application...
+2026-04-04T17:15:26.788031733Z 
+2026-04-04T17:15:26.788055003Z > overseek-server@1.0.0 start
+2026-04-04T17:15:26.788058603Z > node --disable-warning=DEP0040 dist/index.js
+2026-04-04T17:15:26.788061392Z 
+2026-04-04T17:15:26.830203451Z [dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+2026-04-04T17:15:28.228005438Z 2026-04-04T17:15:28.227Z 40 | variables=["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"] msg=[ENV] Using default values 
+2026-04-04T17:15:29.394536899Z 
+2026-04-04T17:15:29.394570829Z   ╔══════════════════════════════════════════════╗
+2026-04-04T17:15:29.394576158Z   ║           OverSeek API Server Ready          ║
+2026-04-04T17:15:29.394579068Z   ╠══════════════════════════════════════════════╣
+2026-04-04T17:15:29.394582418Z   ║  Local:    http://localhost:3000             ║
+2026-04-04T17:15:29.394585368Z   ║  Network:  http://172.20.0.4:3000            ║
+2026-04-04T17:15:29.394588548Z   ╚══════════════════════════════════════════════╝
+2026-04-04T17:15:29.394591288Z 
+2026-04-04T20:47:53.664567585Z 2026-04-04T20:47:53.664Z 50 | error={"message":"bind message has 22078 parameter formats but 0 parameters","stack":"DriverAdapterError: bind message has 22078 parameter formats but 0 parameters\n    at PrismaPgAdapter.onError (/app/node_modules/@prisma/adapter-pg/dist/index.js:687:11)\n    at PrismaPgAdapter.performIO (/app/node_modules/@prisma/adapter-pg/dist/index.js:682:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async PrismaPgAdapter.queryRaw (/app/node_modules/@prisma/adapter-pg/dist/index.js:602:30)\n    at async /app/node_modules/@prisma/client/runtime/client.js:11:24331\n    at async fr (/app/node_modules/@prisma/client/runtime/client.js:11:24170)\n    at async e.interpretNode (/app/node_modules/@prisma/client/runtime/client.js:11:42277)\n    at async e.interpretNode (/app/node_modules/@prisma/client/runtime/client.js:11:44618)\n    at async /app/node_modules/@prisma/client/runtime/client.js:11:43428\n    at async Promise.all (index 0)","name":"DriverAdapterError","cause":{"originalCode":"08P01","originalMessage":"bind message has 22078 parameter formats but 0 parameters","kind":"postgres","code":"08P01","severity":"ERROR","message":"bind message has 22078 parameter formats but 0 parameters"},"clientVersion":"7.2.0"} msg=Roadblock Analytics Error 
+2026-04-04T23:52:01.409573869Z 2026-04-04T23:52:01.409Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=971 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-05T02:00:00.111742257Z 2026-04-05T02:00:00.111Z 40 | msg=[Scheduler] Unknown job type: audience-refresh 
+2026-04-05T06:00:00.126294797Z 2026-04-05T06:00:00.125Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-05T06:00:00.495563604Z 2026-04-05T06:00:00.495Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-05T06:00:00.496813441Z 2026-04-05T06:00:00.495Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1159.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-05T08:39:29.341358269Z 2026-04-05T08:39:29.340Z 50 | error=Request failed with status code 404 productWooId=83492 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83493 
+2026-04-05T08:41:30.471284842Z 2026-04-05T08:41:30.470Z 50 | error=Request failed with status code 404 productWooId=83492 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83493 
+2026-04-05T08:48:51.935890359Z 2026-04-05T08:48:51.935Z 50 | error=Request failed with status code 404 productWooId=83491 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83501 
+2026-04-05T08:53:19.381987348Z 2026-04-05T08:53:19.381Z 50 | error=Request failed with status code 404 productWooId=83490 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85740 
+2026-04-05T08:55:57.323709107Z 2026-04-05T08:55:57.323Z 50 | error=Request failed with status code 404 productWooId=83490 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85740 
+2026-04-05T08:58:40.143209181Z 2026-04-05T08:58:40.142Z 50 | error=Request failed with status code 404 productWooId=83490 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85740 
+2026-04-05T08:59:09.059086705Z 2026-04-05T08:59:09.058Z 50 | error=Request failed with status code 404 productWooId=83490 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85740 
+2026-04-05T08:59:49.564466531Z 2026-04-05T08:59:49.564Z 50 | error=Request failed with status code 404 productWooId=83490 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85740 
+2026-04-05T09:14:40.458015214Z 2026-04-05T09:14:40.457Z 50 | error=Request failed with status code 404 productWooId=83488 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83551 
+2026-04-05T09:21:52.529146468Z 2026-04-05T09:21:52.528Z 50 | error=Request failed with status code 404 productWooId=83488 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83551 
+2026-04-05T09:25:39.795371327Z 2026-04-05T09:25:39.794Z 50 | error=Request failed with status code 404 productWooId=83488 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83551 
+2026-04-05T09:38:55.819604263Z 2026-04-05T09:38:55.819Z 50 | error=Request failed with status code 404 productWooId=83365 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83371 
+2026-04-05T09:39:10.771006211Z 2026-04-05T09:39:10.770Z 50 | error=Request failed with status code 404 productWooId=83365 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83371 
+2026-04-05T10:32:05.115233109Z 2026-04-05T10:32:05.114Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=1011 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-06T00:48:19.385709103Z 2026-04-06T00:48:19.385Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T00:48:19.425399300Z 2026-04-06T00:48:19.425Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T00:48:21.491823142Z 2026-04-06T00:48:21.491Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T00:49:20.335714241Z 2026-04-06T00:49:20.335Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T00:49:22.317214861Z 2026-04-06T00:49:22.316Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T00:49:23.932279260Z 2026-04-06T00:49:23.931Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T00:50:49.320469776Z 2026-04-06T00:50:49.320Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T00:50:50.695412444Z 2026-04-06T00:50:50.695Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T00:50:50.805722419Z 2026-04-06T00:50:50.805Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T00:52:20.498765767Z 2026-04-06T00:52:20.498Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T00:52:20.648568082Z 2026-04-06T00:52:20.648Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T00:52:22.615779645Z 2026-04-06T00:52:22.615Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T00:54:49.962686086Z 2026-04-06T00:54:49.962Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T00:54:50.029260115Z 2026-04-06T00:54:50.029Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T00:54:50.142249754Z 2026-04-06T00:54:50.142Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:00:08.090269718Z 2026-04-06T01:00:08.089Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:00:10.124282155Z 2026-04-06T01:00:10.124Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:00:11.981829941Z 2026-04-06T01:00:11.981Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:01:37.111703623Z 2026-04-06T01:01:37.111Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:01:39.156318580Z 2026-04-06T01:01:39.156Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:01:40.938959537Z 2026-04-06T01:01:40.938Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:03:12.036159751Z 2026-04-06T01:03:12.035Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:03:12.036713702Z 2026-04-06T01:03:12.036Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:03:14.129659845Z 2026-04-06T01:03:14.129Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:04:24.959133189Z 2026-04-06T01:04:24.958Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:04:25.016407019Z 2026-04-06T01:04:25.016Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:04:26.822877421Z 2026-04-06T01:04:26.822Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:06:20.240903497Z 2026-04-06T01:06:20.240Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:06:22.012242502Z 2026-04-06T01:06:22.012Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:06:24.082107236Z 2026-04-06T01:06:24.081Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:07:53.089951877Z 2026-04-06T01:07:53.089Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:07:55.048872539Z 2026-04-06T01:07:55.048Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:07:55.106759911Z 2026-04-06T01:07:55.106Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:10:34.982375986Z 2026-04-06T01:10:34.982Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83481 
+2026-04-06T01:10:35.041141730Z 2026-04-06T01:10:35.040Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83428 
+2026-04-06T01:10:35.066062725Z 2026-04-06T01:10:35.065Z 50 | error=Request failed with status code 404 productWooId=83421 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83432 
+2026-04-06T01:39:32.172320887Z 2026-04-06T01:39:32.172Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-06T02:21:32.169840294Z 2026-04-06T02:21:32.169Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-06T02:34:45.501862764Z 2026-04-06T02:34:45.501Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83250 
+2026-04-06T02:34:47.323557809Z 2026-04-06T02:34:47.323Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83216 
+2026-04-06T02:34:47.541255073Z 2026-04-06T02:34:47.541Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83251 
+2026-04-06T02:34:47.577806571Z 2026-04-06T02:34:47.577Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83249 
+2026-04-06T02:36:26.041907382Z 2026-04-06T02:36:26.041Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83216 
+2026-04-06T02:36:28.204819046Z 2026-04-06T02:36:28.204Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83251 
+2026-04-06T02:36:28.205789282Z 2026-04-06T02:36:28.205Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83250 
+2026-04-06T02:36:28.268081341Z 2026-04-06T02:36:28.267Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83249 
+2026-04-06T02:42:30.516136248Z 2026-04-06T02:42:30.515Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83251 
+2026-04-06T02:42:30.536975017Z 2026-04-06T02:42:30.536Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83216 
+2026-04-06T02:42:32.500310257Z 2026-04-06T02:42:32.500Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83250 
+2026-04-06T02:42:32.520034140Z 2026-04-06T02:42:32.519Z 50 | error=Request failed with status code 404 productWooId=83200 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 83249 
+2026-04-06T03:14:22.864724517Z 2026-04-06T03:14:22.864Z 40 | reason=revoked msg=Refresh token validation failed 
+2026-04-06T04:20:17.205439146Z 2026-04-06T04:20:17.205Z 50 | error=Request failed with status code 404 productWooId=76890 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76895 
+2026-04-06T04:21:46.784124378Z 2026-04-06T04:21:46.783Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76871 
+2026-04-06T04:21:46.848915202Z 2026-04-06T04:21:46.848Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76875 
+2026-04-06T04:21:46.874134239Z 2026-04-06T04:21:46.873Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76878 
+2026-04-06T04:21:46.884086417Z 2026-04-06T04:21:46.883Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76868 
+2026-04-06T04:22:55.416405123Z 2026-04-06T04:22:55.416Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76875 
+2026-04-06T04:22:55.426632835Z 2026-04-06T04:22:55.426Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76868 
+2026-04-06T04:22:55.427961769Z 2026-04-06T04:22:55.427Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76871 
+2026-04-06T04:22:55.468163324Z 2026-04-06T04:22:55.467Z 50 | error=Request failed with status code 404 productWooId=76867 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 76878 
+2026-04-06T05:13:32.808501403Z 2026-04-06T05:13:32.808Z 50 | error=Request failed with status code 404 productWooId=85346 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 85351 
+2026-04-06T05:42:23.489860093Z 2026-04-06T05:42:23.489Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-06T05:42:23.842382423Z 2026-04-06T05:42:23.842Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-06T05:44:48.488582153Z 2026-04-06T05:44:48.488Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81374 
+2026-04-06T05:44:50.603966777Z 2026-04-06T05:44:50.603Z 50 | error=Request failed with status code 404 productWooId=81343 status=404 responseData={"code":"woocommerce_rest_product_variation_invalid_id","message":"Invalid ID.","data":{"status":404}} msg=Failed to process variation 81344 
+2026-04-06T06:00:00.041800048Z 2026-04-06T06:00:00.041Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-06T06:00:00.425508997Z 2026-04-06T06:00:00.425Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-06T06:00:00.426941899Z 2026-04-06T06:00:00.425Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1183.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-06T06:37:04.150746520Z 2026-04-06T06:37:04.150Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=908 msg=[RetryWithBackoff] WooCommerce:orders failed, attempt 1/4 
+2026-04-06T08:00:14.894953393Z 2026-04-06T08:00:14.892Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=1038 msg=[RetryWithBackoff] WooCommerce:customers failed, attempt 1/4 
+2026-04-06T09:00:00.034824108Z 2026-04-06T09:00:00.034Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 msg=No SMTP-enabled email account for digest 
+2026-04-06T09:00:00.037109397Z 2026-04-06T09:00:00.036Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a msg=No SMTP-enabled email account for digest 
+2026-04-06T18:30:31.235673154Z Killed
+2026-04-06T18:30:31.245685813Z npm error Lifecycle script `start` failed with error:
+2026-04-06T18:30:31.245762881Z npm error code 137
+2026-04-06T18:30:31.245817291Z npm error path /app/server
+2026-04-06T18:30:31.245886930Z npm error workspace overseek-server@1.0.0
+2026-04-06T18:30:31.245915310Z npm error location /app/server
+2026-04-06T18:30:31.245978089Z npm error command failed
+2026-04-06T18:30:31.246015398Z npm error command sh -c node --disable-warning=DEP0040 dist/index.js
+2026-04-06T18:44:03.978878656Z [Startup] Starting deployment script...
+2026-04-06T18:44:03.982089040Z [Startup] URL config (auto-derived where not explicitly set):
+2026-04-06T18:44:03.982114180Z   APP_URL=https://overseek.com.au
+2026-04-06T18:44:03.982117800Z   API_URL=https://api.overseek.com.au
+2026-04-06T18:44:03.982120400Z   CLIENT_URL=https://overseek.com.au
+2026-04-06T18:44:03.982122309Z   CORS_ORIGINS=https://overseek.com.au
+2026-04-06T18:44:03.982124740Z [Startup] DATABASE_URL constructed from env vars (host: postgres)
+2026-04-06T18:44:03.982126799Z [Startup] Running database migrations...
+2026-04-06T18:44:06.246508378Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-06T18:44:06.297752137Z 
+2026-04-06T18:44:06.297776596Z 25 migrations found in prisma/migrations
+2026-04-06T18:44:06.297780096Z 
+2026-04-06T18:44:06.375501028Z [Startup] migrate deploy failed, using db push to sync schema...
+2026-04-06T18:44:07.568297972Z Loaded Prisma config from prisma/prisma.config.ts.
+2026-04-06T18:44:07.568324902Z 
+2026-04-06T18:44:07.722411914Z Prisma schema loaded from prisma/schema.prisma.
+2026-04-06T18:44:07.735881002Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-06T18:44:07.942135509Z 
+2026-04-06T18:44:07.942186298Z The database is already in sync with the Prisma schema.
+2026-04-06T18:44:07.943178344Z ┌─────────────────────────────────────────────────────────┐
+2026-04-06T18:44:07.943189684Z │  Update available 7.2.0 -> 7.6.0                        │
+2026-04-06T18:44:07.943192894Z │  Run the following to update                            │
+2026-04-06T18:44:07.943195134Z │    npm i --save-dev prisma@latest                       │
+2026-04-06T18:44:07.943197554Z │    npm i @prisma/client@latest                          │
+2026-04-06T18:44:07.943199664Z └─────────────────────────────────────────────────────────┘
+2026-04-06T18:44:07.943206314Z 
+2026-04-06T18:44:07.989197928Z [Startup] Schema synced via db push.
+2026-04-06T18:44:07.989234708Z [Startup] Database ready.
+2026-04-06T18:44:07.989238798Z [Startup] Starting Node.js application...
+2026-04-06T18:44:08.140548509Z 
+2026-04-06T18:44:08.140580909Z > overseek-server@1.0.0 start
+2026-04-06T18:44:08.140587249Z > node --disable-warning=DEP0040 dist/index.js
+2026-04-06T18:44:08.140592489Z 
+2026-04-06T18:44:08.188657773Z [dotenv@17.2.3] injecting env (0) from .env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+2026-04-06T18:44:09.702248781Z 2026-04-06T18:44:09.701Z 40 | variables=["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"] msg=[ENV] Using default values 
+2026-04-06T18:44:18.177256630Z 2026-04-06T18:44:18.177Z 50 | error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to create/update index customers 
+2026-04-06T18:44:19.636849547Z 2026-04-06T18:44:19.636Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=a7a6f8d0 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Bulk index orders failed, skipping ES indexing for this page 
+2026-04-06T18:44:20.780339105Z 2026-04-06T18:44:20.780Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=81a9eec9 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Bulk index customers failed 
+2026-04-06T18:44:25.001598284Z 
+2026-04-06T18:44:25.001623393Z   ╔══════════════════════════════════════════════╗
+2026-04-06T18:44:25.001627964Z   ║           OverSeek API Server Ready          ║
+2026-04-06T18:44:25.001630664Z   ╠══════════════════════════════════════════════╣
+2026-04-06T18:44:25.001632944Z   ║  Local:    http://localhost:3000             ║
+2026-04-06T18:44:25.001641533Z   ║  Network:  http://172.20.0.5:3000            ║
+2026-04-06T18:44:25.001644044Z   ╚══════════════════════════════════════════════╝
+2026-04-06T18:44:25.001646244Z 
+2026-04-07T01:25:25.548338421Z 2026-04-07T01:25:25.547Z 50 | customerId=363-598-9203 partialFailureError={"code":3,"message":"The conversion action specified in the upload request isn't set up for uploading conversions., at conversions[0].conversion_action","details":[{"@type":"type.googleapis.com/google.ads.googleads.v23.errors.GoogleAdsFailure","errors":[{"errorCode":{"conversionUploadError":"INVALID_CONVERSION_ACTION_TYPE"},"message":"The conversion action specified in the upload request isn't set up for uploading conversions.","trigger":{"stringValue":"customers/3635989203/conversionActions/7386423032"},"location":{"fieldPathElements":[{"fieldName":"conversions","index":0},{"fieldName":"conversion_action"}]}}],"requestId":"rq9Xz5TDD-u2tTeYwBQyFw"}]} msg=[GoogleEnhanced] Partial failure — conversion rejected by Google 
+2026-04-07T01:31:18.921381864Z 2026-04-07T01:31:18.920Z 50 | customerId=363-598-9203 partialFailureError={"code":3,"message":"The conversion action specified in the upload request isn't set up for uploading conversions., at conversions[0].conversion_action","details":[{"@type":"type.googleapis.com/google.ads.googleads.v23.errors.GoogleAdsFailure","errors":[{"errorCode":{"conversionUploadError":"INVALID_CONVERSION_ACTION_TYPE"},"message":"The conversion action specified in the upload request isn't set up for uploading conversions.","trigger":{"stringValue":"customers/3635989203/conversionActions/7386423035"},"location":{"fieldPathElements":[{"fieldName":"conversions","index":0},{"fieldName":"conversion_action"}]}}],"requestId":"iM_nPTJtqB5dizjW63EV2g"}]} msg=[GoogleEnhanced] Partial failure — conversion rejected by Google 
+2026-04-07T02:00:09.594845490Z 2026-04-07T02:00:09.584Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=922 msg=[RetryWithBackoff] WooCommerce:customers failed, attempt 1/4 
+2026-04-07T06:00:00.083635526Z 2026-04-07T06:00:00.083Z 40 | error=HTTP 403 msg=GoldPriceService: Primary public endpoint failed, trying fallback 
+2026-04-07T06:00:00.453101531Z 2026-04-07T06:00:00.452Z 50 | primaryError=HTTP 403 fallbackError=HTTP 401 msg=GoldPriceService: Error fetching public price (both endpoints failed) 
+2026-04-07T06:00:00.454264765Z 2026-04-07T06:00:00.452Z 40 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a priceAgeHours=1207.4 cachedPrice=228.95 msg=[GoldPriceService] API unavailable, using stale cached price 
+2026-04-07T11:26:01.638827689Z 2026-04-07T11:26:01.638Z 40 | componentType=ProductVariation wooId=180 dbStock=-1 wooStock=0 deducted=1 msg=[BOM] Component stock went negative after deduction 
+2026-04-07T19:30:30.743748979Z Killed
+2026-04-07T19:30:30.755750153Z npm error Lifecycle script `start` failed with error:
+2026-04-07T19:30:30.755793352Z npm error code 137
+2026-04-07T19:30:30.755878942Z npm error path /app/server
+2026-04-07T19:30:30.755951390Z npm error workspace overseek-server@1.0.0
+2026-04-07T19:30:30.755995101Z npm error location /app/server
+2026-04-07T19:30:30.756104799Z npm error command failed
+2026-04-07T19:30:30.756117628Z npm error command sh -c node --disable-warning=DEP0040 dist/index.js
+2026-04-07T19:43:57.183626466Z [Startup] Starting deployment script...
+2026-04-07T19:43:57.187659114Z [Startup] URL config (auto-derived where not explicitly set):
+2026-04-07T19:43:57.188063439Z   APP_URL=https://overseek.com.au
+2026-04-07T19:43:57.188070399Z   API_URL=https://api.overseek.com.au
+2026-04-07T19:43:57.188073659Z   CLIENT_URL=https://overseek.com.au
+2026-04-07T19:43:57.188076308Z   CORS_ORIGINS=https://overseek.com.au
+2026-04-07T19:43:57.188078699Z [Startup] DATABASE_URL constructed from env vars (host: postgres)
+2026-04-07T19:43:57.188080808Z [Startup] Running database migrations...
+2026-04-07T19:43:59.447712296Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-07T19:43:59.505871959Z 
+2026-04-07T19:43:59.505896809Z 25 migrations found in prisma/migrations
+2026-04-07T19:43:59.505900569Z 
+2026-04-07T19:43:59.577545027Z [Startup] migrate deploy failed, using db push to sync schema...
+2026-04-07T19:44:00.714698609Z Loaded Prisma config from prisma/prisma.config.ts.
+2026-04-07T19:44:00.714780928Z 
+2026-04-07T19:44:00.895404269Z Prisma schema loaded from prisma/schema.prisma.
+2026-04-07T19:44:00.908355511Z Datasource "db": PostgreSQL database "overseek", schema "public" at "postgres:5432"
+2026-04-07T19:44:01.113037909Z 
+2026-04-07T19:44:01.113075149Z The database is already in sync with the Prisma schema.
+2026-04-07T19:44:01.114304983Z ┌─────────────────────────────────────────────────────────┐
+2026-04-07T19:44:01.114317443Z │  Update available 7.2.0 -> 7.7.0                        │
+2026-04-07T19:44:01.114320683Z │  Run the following to update                            │
+2026-04-07T19:44:01.114322943Z │    npm i --save-dev prisma@latest                       │
+2026-04-07T19:44:01.114325372Z │    npm i @prisma/client@latest                          │
+2026-04-07T19:44:01.114327383Z └─────────────────────────────────────────────────────────┘
+2026-04-07T19:44:01.114551840Z 
+2026-04-07T19:44:01.142688383Z [Startup] Schema synced via db push.
+2026-04-07T19:44:01.142727243Z [Startup] Database ready.
+2026-04-07T19:44:01.142731153Z [Startup] Starting Node.js application...
+2026-04-07T19:44:01.279804111Z 
+2026-04-07T19:44:01.279838651Z > overseek-server@1.0.0 start
+2026-04-07T19:44:01.279842851Z > node --disable-warning=DEP0040 dist/index.js
+2026-04-07T19:44:01.279845260Z 
+2026-04-07T19:44:01.324877414Z [dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+2026-04-07T19:44:02.869752644Z 2026-04-07T19:44:02.869Z 40 | variables=["REDIS_PORT not set, using default: 6379","ELASTICSEARCH_NODE not set, using default: http://localhost:9200"] msg=[ENV] Using default values 
+2026-04-07T19:44:11.176473237Z 2026-04-07T19:44:11.176Z 50 | error=connect ECONNREFUSED 172.18.0.3:9200 msg=Failed to create/update index customers 
+2026-04-07T19:44:13.169090804Z 2026-04-07T19:44:13.168Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=9217f504 error=connect ECONNREFUSED 172.18.0.3:9200 msg=Bulk index orders failed, skipping ES indexing for this page 
+2026-04-07T19:44:13.169800996Z 2026-04-07T19:44:13.169Z 40 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=c4ef6feb error=connect ECONNREFUSED 172.18.0.3:9200 msg=Bulk index customers failed 
+2026-04-07T19:44:16.992217664Z 
+2026-04-07T19:44:16.992386431Z   ╔══════════════════════════════════════════════╗
+2026-04-07T19:44:16.992517680Z   ║           OverSeek API Server Ready          ║
+2026-04-07T19:44:16.992526629Z   ╠══════════════════════════════════════════════╣
+2026-04-07T19:44:16.992638529Z   ║  Local:    http://localhost:3000             ║
+2026-04-07T19:44:16.992657938Z   ║  Network:  http://172.18.0.6:3000            ║
+2026-04-07T19:44:16.992660938Z   ╚══════════════════════════════════════════════╝
+2026-04-07T19:44:16.992663148Z 
+2026-04-07T19:45:00.918205885Z 2026-04-07T19:45:00.917Z 40 | error=socket hang up code=ECONNRESET nextRetryMs=984 msg=[RetryWithBackoff] WooCommerce:products/reviews failed, attempt 1/4 
+2026-04-07T19:45:58.496014748Z 2026-04-07T19:45:58.495Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:customers - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:45:58.497662697Z 2026-04-07T19:45:58.495Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=52f8ed2c error=Request failed with status code 503 msg=Sync Failed: customers 
+2026-04-07T19:45:58.502984578Z 2026-04-07T19:45:58.502Z 50 | error=Request failed with status code 503 msg=Job sync_customers_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:45:58.573579767Z 2026-04-07T19:45:58.573Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:customers - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:45:58.574669073Z 2026-04-07T19:45:58.573Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=1a602c89 error=Request failed with status code 503 msg=Sync Failed: customers 
+2026-04-07T19:45:58.578490632Z 2026-04-07T19:45:58.578Z 50 | error=Request failed with status code 503 msg=Job sync_customers_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:45:59.124627745Z 2026-04-07T19:45:59.124Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:products/reviews - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:45:59.126194784Z 2026-04-07T19:45:59.124Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=452070fb error=Request failed with status code 503 msg=Sync Failed: reviews 
+2026-04-07T19:45:59.128882520Z 2026-04-07T19:45:59.128Z 50 | error=Request failed with status code 503 msg=Job sync_reviews_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:45:59.163353730Z 2026-04-07T19:45:59.163Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:products/reviews - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:45:59.163993451Z 2026-04-07T19:45:59.163Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=f84a0dbf error=Request failed with status code 503 msg=Sync Failed: reviews 
+2026-04-07T19:45:59.168447903Z 2026-04-07T19:45:59.168Z 50 | error=Request failed with status code 503 msg=Job sync_reviews_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:00.044798357Z 2026-04-07T19:46:00.044Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:orders - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:00.046179638Z 2026-04-07T19:46:00.044Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=433bd8ea error=Request failed with status code 503 msg=Sync Failed: orders 
+2026-04-07T19:46:00.052556796Z 2026-04-07T19:46:00.052Z 50 | error=Request failed with status code 503 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:00.084586328Z 2026-04-07T19:46:00.084Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:orders - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:00.085302148Z 2026-04-07T19:46:00.084Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=2c92ee33 error=Request failed with status code 503 msg=Sync Failed: orders 
+2026-04-07T19:46:00.089573112Z 2026-04-07T19:46:00.089Z 50 | error=Request failed with status code 503 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:00.531686113Z 2026-04-07T19:46:00.531Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:customers - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:00.598668929Z 2026-04-07T19:46:00.531Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=96d0f2fc error=Request failed with status code 503 msg=Sync Failed: customers 
+2026-04-07T19:46:00.604648160Z 2026-04-07T19:46:00.604Z 50 | error=Request failed with status code 503 msg=Job sync_customers_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:00.635052733Z 2026-04-07T19:46:00.634Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:customers - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:00.635589937Z 2026-04-07T19:46:00.634Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=c8b0d22e error=Request failed with status code 503 msg=Sync Failed: customers 
+2026-04-07T19:46:00.640647571Z 2026-04-07T19:46:00.640Z 50 | error=Request failed with status code 503 msg=Job sync_customers_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:01.246060940Z 2026-04-07T19:46:01.245Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:products/reviews - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:01.246830280Z 2026-04-07T19:46:01.245Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=9472fe14 error=Request failed with status code 503 msg=Sync Failed: reviews 
+2026-04-07T19:46:01.251554667Z 2026-04-07T19:46:01.251Z 50 | error=Request failed with status code 503 msg=Job sync_reviews_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:01.280943574Z 2026-04-07T19:46:01.280Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:products/reviews - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:01.282478455Z 2026-04-07T19:46:01.280Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=05fd53af error=Request failed with status code 503 msg=Sync Failed: reviews 
+2026-04-07T19:46:01.285661412Z 2026-04-07T19:46:01.285Z 50 | error=Request failed with status code 503 msg=Job sync_reviews_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:02.159513878Z 2026-04-07T19:46:02.159Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:orders - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:02.160171220Z 2026-04-07T19:46:02.159Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=ea947744 error=Request failed with status code 503 msg=Sync Failed: orders 
+2026-04-07T19:46:02.164748740Z 2026-04-07T19:46:02.164Z 50 | error=Request failed with status code 503 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:02.196907409Z 2026-04-07T19:46:02.196Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:orders - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:02.197479502Z 2026-04-07T19:46:02.196Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=247f7a99 error=Request failed with status code 503 msg=Sync Failed: orders 
+2026-04-07T19:46:02.201292403Z 2026-04-07T19:46:02.201Z 50 | error=Request failed with status code 503 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:04.656695845Z 2026-04-07T19:46:04.656Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:customers - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:04.657425266Z 2026-04-07T19:46:04.656Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=4759126e error=Request failed with status code 503 msg=Sync Failed: customers 
+2026-04-07T19:46:04.662767806Z 2026-04-07T19:46:04.662Z 50 | error=Request failed with status code 503 msg=Job sync_customers_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:04.705891503Z 2026-04-07T19:46:04.705Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:customers - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:04.707318864Z 2026-04-07T19:46:04.705Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=33a81b3b error=Request failed with status code 503 msg=Sync Failed: customers 
+2026-04-07T19:46:04.712957371Z 2026-04-07T19:46:04.712Z 50 | error=Request failed with status code 503 msg=Job sync_customers_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:05.416337490Z 2026-04-07T19:46:05.416Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:products/reviews - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:05.418048878Z 2026-04-07T19:46:05.416Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=8bc4c7e9 error=Request failed with status code 503 msg=Sync Failed: reviews 
+2026-04-07T19:46:05.426231582Z 2026-04-07T19:46:05.426Z 50 | error=Request failed with status code 503 msg=Job sync_reviews_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:05.457307826Z 2026-04-07T19:46:05.457Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:products/reviews - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:05.458880815Z 2026-04-07T19:46:05.457Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=f8aab325 error=Request failed with status code 503 msg=Sync Failed: reviews 
+2026-04-07T19:46:05.466556265Z 2026-04-07T19:46:05.466Z 50 | error=Request failed with status code 503 msg=Job sync_reviews_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T19:46:06.322744879Z 2026-04-07T19:46:06.322Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:orders - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:06.324140892Z 2026-04-07T19:46:06.322Z 50 | accountId=a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 syncId=5c9e7d5a error=Request failed with status code 503 msg=Sync Failed: orders 
+2026-04-07T19:46:06.329747399Z 2026-04-07T19:46:06.329Z 50 | error=Request failed with status code 503 msg=Job sync_orders_a03315be-5bf4-47fa-bc5f-e8e5df59e8d5 Failed 
+2026-04-07T19:46:06.361886439Z 2026-04-07T19:46:06.361Z 50 | error=Request failed with status code 503 msg=[RetryWithBackoff] WooCommerce:orders - site is in maintenance mode (Retry-After: 600s). Skipping retries. 
+2026-04-07T19:46:06.362439202Z 2026-04-07T19:46:06.361Z 50 | accountId=17fed050-e5ca-4b90-8ce4-5b975cd90b4a syncId=8d3689ed error=Request failed with status code 503 msg=Sync Failed: orders 
+2026-04-07T19:46:06.367341447Z 2026-04-07T19:46:06.367Z 50 | error=Request failed with status code 503 msg=Job sync_orders_17fed050-e5ca-4b90-8ce4-5b975cd90b4a Failed 
+2026-04-07T23:11:06.878964535Z 2026-04-07T23:11:06.878Z 40 | error=internal_failure msg=[GoogleEnhanced] Token refresh returned no access_token 

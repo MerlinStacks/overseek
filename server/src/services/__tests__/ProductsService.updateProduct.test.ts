@@ -35,12 +35,21 @@ vi.mock('../../utils/logger', () => ({
     }
 }));
 
+// Mock Redis — variation sync clears 404 tracking keys on success
+vi.mock('../../utils/redis', () => ({
+    redisClient: {
+        del: vi.fn().mockResolvedValue(0),
+        get: vi.fn().mockResolvedValue(null),
+        setex: vi.fn().mockResolvedValue('OK'),
+    }
+}));
+
 describe('ProductsService.updateProduct Performance', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('processes variations in parallel (fast)', async () => {
+    it('processes variations in batches (fast)', async () => {
         const accountId = 'acc_123';
         const wooId = 123;
         const variations = Array.from({ length: 10 }, (_, i) => ({
@@ -76,10 +85,10 @@ describe('ProductsService.updateProduct Performance', () => {
         const end = Date.now();
         const duration = end - start;
 
-        console.log(`Duration (Parallel): ${duration}ms`);
+        console.log(`Duration (Batched, size=5): ${duration}ms`);
 
-        // Should be close to 100ms (e.g. < 300ms overhead) because variations are processed in parallel
-        expect(duration).toBeLessThan(300);
+        // Batched (5 at a time): 10 variations = 2 batches × 100ms ≈ 200ms
+        expect(duration).toBeLessThan(500);
         expect(mockUpdateProductVariation).toHaveBeenCalledTimes(10);
     });
 });

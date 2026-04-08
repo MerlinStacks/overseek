@@ -63,7 +63,22 @@ export async function cacheSet<T>(
     const ttl = options?.ttl ?? DEFAULT_TTL;
 
     try {
-        await redisClient.setex(fullKey, ttl, JSON.stringify(value));
+        const serialized = JSON.stringify(value);
+
+        // Why: prevent storing payloads that will be rejected on read anyway.
+        // Without this guard, cacheAside() enters an infinite write-delete loop:
+        // cacheGet detects oversized → deletes → cacheAside refetches → cacheSet writes it back.
+        if (serialized.length > MAX_SAFE_CACHE_SIZE) {
+            Logger.warn('[Cache] Skipping write: payload exceeds safe size limit', {
+                key: fullKey,
+                sizeBytes: serialized.length,
+                sizeMB: (serialized.length / 1024 / 1024).toFixed(2),
+                limitMB: (MAX_SAFE_CACHE_SIZE / 1024 / 1024).toFixed(0)
+            });
+            return;
+        }
+
+        await redisClient.setex(fullKey, ttl, serialized);
     } catch (error) {
         Logger.debug('[Cache] Set failed', { key: fullKey, error });
     }

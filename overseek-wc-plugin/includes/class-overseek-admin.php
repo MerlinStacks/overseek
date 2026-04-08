@@ -54,6 +54,17 @@ class OverSeek_Admin
 			'type' => 'string',
 			'sanitize_callback' => 'sanitize_text_field',
 		));
+
+		// Web Vitals settings
+		register_setting('overseek_options_group', 'overseek_enable_vitals');
+		register_setting('overseek_options_group', 'overseek_vitals_sample_rate', array(
+			'type'              => 'integer',
+			'default'           => 100,
+			'sanitize_callback' => function($val) {
+				$val = absint($val);
+				return max(1, min(100, $val));
+			},
+		));
 	}
 
 	/**
@@ -140,6 +151,26 @@ class OverSeek_Admin
 							<p class="description">Show the OverSeek live chat widget to visitors.</p>
 						</td>
 					</tr>
+					<tr valign="top">
+						<th scope="row">Enable Web Vitals Collection</th>
+						<td>
+							<input type="checkbox" id="overseek_enable_vitals" name="overseek_enable_vitals" value="1" <?php checked(1, get_option('overseek_enable_vitals', '1'), true); ?> />
+							<p class="description">Collect Core Web Vitals (LCP, CLS, INP, FCP, TTFB) from real visitors and display them in your OverSeek performance dashboard. Zero impact on page load speed.</p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Web Vitals Sampling Rate</th>
+						<td>
+							<?php $sample_rate = get_option('overseek_vitals_sample_rate', 100); ?>
+							<select id="overseek_vitals_sample_rate" name="overseek_vitals_sample_rate">
+								<option value="100" <?php selected($sample_rate, 100); ?>>100% &mdash; All page loads (recommended for low-traffic stores)</option>
+								<option value="50"  <?php selected($sample_rate, 50);  ?>>50% &mdash; Every other page load</option>
+								<option value="25"  <?php selected($sample_rate, 25);  ?>>25% &mdash; 1 in 4 page loads</option>
+								<option value="10"  <?php selected($sample_rate, 10);  ?>>10% &mdash; High-traffic stores only</option>
+							</select>
+							<p class="description">Lower sampling reduces data volume for high-traffic stores. At 100%, ~5 data points are sent per page load via sendBeacon (no extra page load delay).</p>
+						</td>
+					</tr>
 				</table>
 
 				<h2>Email Relay Settings</h2>
@@ -179,6 +210,8 @@ class OverSeek_Admin
 							<p class="description">Only track visitors who have given consent via WP Consent API (GDPR compliance). Requires a compatible consent plugin.</p>
 						</td>
 					</tr>
+
+					</table>
 
 				<?php submit_button(); ?>
 			</form>

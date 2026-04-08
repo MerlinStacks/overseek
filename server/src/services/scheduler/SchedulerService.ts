@@ -104,6 +104,12 @@ export class SchedulerService {
                     await MarketingScheduler.dispatchExperimentSignificanceCheck();
                     break;
 
+                // Why: stale repeatable job from a previous deployment persists
+                // in Redis. No-op until the job is properly removed or re-implemented.
+                case 'audience-refresh':
+                    Logger.debug('[Scheduler] audience-refresh is deprecated, skipping');
+                    break;
+
                 default:
                     Logger.warn(`[Scheduler] Unknown job type: ${job.name}`);
             }

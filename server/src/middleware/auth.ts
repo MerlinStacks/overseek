@@ -55,6 +55,7 @@ const STRICT_ACCOUNT_ROUTES = [
     '/help',
     '/notifications',
     '/tracking',
+    '/crawlers',
     '/labels',
     '/ads',
     '/sms',

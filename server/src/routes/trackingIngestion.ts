@@ -204,6 +204,39 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to track custom event' });
         }
     });
+
+    /**
+     * POST /vitals - Core Web Vitals ingestion
+     * Receives batched measurements from the WC plugin via sendBeacon.
+     * No session upsert or attribution needed — pure metric storage.
+     */
+    fastify.post('/vitals', async (request, reply) => {
+        try {
+            const body = request.body as { accountId?: string; samples?: any[] };
+
+            if (!body.accountId || !Array.isArray(body.samples) || !body.samples.length) {
+                return reply.code(400).send({ error: 'accountId and samples required' });
+            }
+
+            if (!(await isValidAccount(body.accountId))) {
+                return reply.code(400).send({ error: 'Invalid account' });
+            }
+
+            if (isRateLimited(body.accountId)) {
+                return reply.code(429).send({ error: 'Rate limit exceeded' });
+            }
+
+            const { ingestVitals } = await import('../services/tracking/WebVitalsService');
+            await ingestVitals(body.accountId, body.samples);
+
+            return { success: true };
+        } catch (error) {
+            Logger.error('Web Vitals ingestion error', { error });
+            // Never reveal error details — endpoint is public
+            return reply.code(500).send({ error: 'Internal Server Error' });
+        }
+    });
 };
 
 export default trackingIngestionRoutes;
+

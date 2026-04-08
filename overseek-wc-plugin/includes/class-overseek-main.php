@@ -56,6 +56,8 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-server-tracking.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixels.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-web-vitals.php';
 	}
 
 	/**
@@ -85,6 +87,14 @@ class OverSeek_Main
 
 		// Initialize Client-Side Pixel Tracking (fetches config from API).
 		new OverSeek_Pixels();
+
+		// Initialize Crawler Guard (blocks blacklisted bots at application level).
+		// Not gated by tracking toggle — admins may want bot blocking without analytics.
+		new OverSeek_Crawler_Guard();
+
+		// Initialize Web Vitals Collector.
+		// Not gated by tracking toggle — performance data is independent of behavioural analytics.
+		new OverSeek_Web_Vitals();
 	}
 
 	/**

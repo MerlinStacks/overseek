@@ -10,6 +10,7 @@ import { geoipLookupSync } from './GeoIPService';
 import { parseTrafficSource, isBot, maskIpAddress } from './TrafficAnalyzer';
 import { isExcludedIp } from './IpExclusionService';
 import { ConversionForwarder } from './ConversionForwarder';
+import * as CrawlerService from './CrawlerService';
 
 const UAParser = require('ua-parser-js');
 
@@ -70,7 +71,11 @@ export interface TrackingEventPayload {
 export async function processEvent(data: TrackingEventPayload) {
     // Filter out bots/crawlers - they shouldn't be tracked
     if (data.userAgent && isBot(data.userAgent)) {
-        return null; // Silently skip bot traffic
+        // Fire-and-forget: log for dashboard visibility, never blocks the response
+        void CrawlerService.logHitIfIdentifiable(
+            data.accountId, data.userAgent, data.url, data.ipAddress
+        );
+        return null;
     }
 
     // Filter out excluded IPs (admins, team members, etc.)

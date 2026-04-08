@@ -46,25 +46,27 @@ describe('TikTokEventsService', () => {
         });
     });
 
-    it('should use TikTok Events API v2.0', async () => {
+    it('should use TikTok Events API v1.3', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
         const url = (global.fetch as any).mock.calls[0][0] as string;
-        expect(url).toContain('/v2/event/track');
+        expect(url).toContain('/v1.3/event/track');
     });
 
     it('should map purchase to CompletePayment', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-        expect(body.event).toBe('CompletePayment');
+        // v1.3 nests events inside a data array
+        expect(body.data[0].event).toBe('CompletePayment');
     });
 
     it('should hash email in user context', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-        const email = body.context?.email;
+        // v1.3 places user data inside data[0].user, not body.context
+        const email = body.data[0].user?.email;
 
         if (email) {
             expect(email).not.toBe('buyer@test.com');
@@ -76,7 +78,8 @@ describe('TikTokEventsService', () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-        expect(body.context?.ttclid).toBe('tiktok-click-id-1');
+        // v1.3 places ttclid inside the user object, not body.context
+        expect(body.data[0].user?.ttclid).toBe('tiktok-click-id-1');
     });
 
     it('should include Access-Token header', async () => {

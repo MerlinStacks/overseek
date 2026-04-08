@@ -108,6 +108,9 @@ model Account {
   // Format: ["192.168.1.1", "10.0.0.0/24", "2001:db8::1"]
   excludedIps Json? @default("[]")
 
+  // Crawler block page template (HTML). Served to blocked bots instead of bare 403.
+  crawlerBlockPageHtml String? @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -207,6 +210,13 @@ model Account {
   trackedKeywords       TrackedKeyword[]
   keywordGroups         KeywordGroup[]
   competitorDomains     CompetitorDomain[]
+
+  // Crawler Detection & Blocking
+  crawlerLogs           CrawlerLog[]
+  crawlerRules          CrawlerRule[]
+
+  // Real User Monitoring
+  webVitalSamples       WebVitalSample[]
 }
 
 // --------------------------------------
@@ -2498,4 +2508,77 @@ model CompetitorRankHistory {
 
   @@unique([competitorKeywordId, date])
   @@index([competitorKeywordId, date(sort: Desc)])
+}
+
+// ------------------------------------
+// Crawler Detection & Blocking
+// ------------------------------------
+
+/// Daily-aggregated log of detected crawler visits for monitoring.
+/// One row per crawler per day per account — prevents unbounded growth.
+model CrawlerLog {
+  id        String   @id @default(uuid())
+  accountId String
+
+  crawlerName String              // Normalized: "googlebot", "gptbot", etc.
+  category    String  @default("unknown") // "search_engine", "ai_crawler", "seo_tool", "social_preview", "monitor", "security_scanner", "http_client", "unknown"
+  sampleAgent String? @db.Text    // One sample UA string for display
+  hitCount    Int     @default(1) // Aggregated daily hit count
+  date        DateTime @db.Date   // Calendar date (truncated to midnight)
+  country     String?             // GeoIP country of crawler IP
+  city        String?             // GeoIP city (optional)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, crawlerName, date])
+  @@index([accountId, date])
+  @@index([accountId, crawlerName])
+}
+
+/// Per-account rules for blocking/allowing specific crawlers.
+model CrawlerRule {
+  id        String   @id @default(uuid())
+  accountId String
+
+  crawlerName String              // e.g. "gptbot", "semrushbot"
+  pattern     String              // UA pattern to match (lowercase)
+  action      String  @default("ALLOW") // "BLOCK" or "ALLOW"
+  reason      String?             // Admin note for why it was blocked
+  blockedBy   String?             // User ID who created the rule (plain FK, no Prisma relation)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, crawlerName])
+  @@index([accountId, action])
+}
+
+// ------------------------------------
+// Real User Monitoring — Web Vitals
+// ------------------------------------
+
+/// Individual Core Web Vital measurement from a real page load.
+/// One row per metric per page load. p75/p90 are queried ad-hoc.
+/// Retained for 90 days — cleaned up by nightly MaintenanceScheduler job.
+model WebVitalSample {
+  id        String   @id @default(uuid())
+  accountId String
+
+  metric    String              // "LCP" | "CLS" | "INP" | "FCP" | "TTFB"
+  value     Float               // ms for timing metrics; unitless for CLS
+  rating    String              // "good" | "needs-improvement" | "poor"
+  url       String   @db.VarChar(500) // Page path (no query string)
+  pageType  String   @default("other") // "product" | "category" | "cart" | "checkout" | "home" | "other"
+  device    String   @default("desktop") // "mobile" | "tablet" | "desktop"
+  effectiveType String?         // "4g" | "3g" | "2g" | "slow-2g" (navigator.connection)
+
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, metric, createdAt])
+  @@index([accountId, pageType, metric])
+  @@index([createdAt])  // For 90-day cleanup job
 }

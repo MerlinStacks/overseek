@@ -8,6 +8,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { WooService, WooProductData } from './woo';
 import { ProductSearchService } from './productSearch';
+import { redisClient } from '../utils/redis';
 
 export class ProductsService {
     /**
@@ -209,77 +210,147 @@ export class ProductsService {
         if (variations && Array.isArray(variations)) {
             const wooService = await WooService.forAccount(accountId);
 
-            await Promise.all(variations.map(async (v) => {
-                if (!v.id || typeof v.id !== 'number' || v.id <= 0) {
-                    Logger.warn(`Skipping variation with invalid ID`, { variationData: v, productWooId: wooId });
-                    return;
-                }
+            // Why: process in batches of 5 instead of Promise.all to cap
+            // concurrent HTTP connections. Hundred-variation products with
+            // Promise.all cause memory spikes and socket exhaustion.
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < variations.length; i += BATCH_SIZE) {
+                const batch = variations.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(async (v) => {
+                    if (!v.id || typeof v.id !== 'number' || v.id <= 0) {
+                        Logger.warn(`Skipping variation with invalid ID`, { variationData: v, productWooId: wooId });
+                        return;
+                    }
 
-                try {
-                    // Update local DB
-                    await prisma.productVariation.upsert({
-                        where: { productId_wooId: { productId: updated.id, wooId: v.id } },
-                        update: {
-                            cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
-                            miscCosts: v.miscCosts || undefined,
-                            binLocation: v.binLocation,
-                            isGoldPriceApplied: v.isGoldPriceApplied,
-                            goldPriceType: v.goldPriceType,
-                            sku: v.sku,
-                            price: v.price ? parseFloat(v.price) : undefined,
-                            salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
-                            stockStatus: v.stockStatus,
-                            weight: v.weight ? parseFloat(v.weight) : undefined,
-                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
-                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
-                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
-                        },
-                        create: {
-                            productId: updated.id,
-                            wooId: v.id,
-                            cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
-                            miscCosts: v.miscCosts || undefined,
-                            binLocation: v.binLocation,
-                            isGoldPriceApplied: v.isGoldPriceApplied || false,
-                            goldPriceType: v.goldPriceType || null,
-                            sku: v.sku,
-                            price: v.price ? parseFloat(v.price) : undefined,
-                            salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
-                            stockStatus: v.stockStatus,
-                            weight: v.weight ? parseFloat(v.weight) : undefined,
-                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
-                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
-                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
-                        }
-                    });
+                    try {
+                        // Update local DB
+                        await prisma.productVariation.upsert({
+                            where: { productId_wooId: { productId: updated.id, wooId: v.id } },
+                            update: {
+                                cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
+                                miscCosts: v.miscCosts || undefined,
+                                binLocation: v.binLocation,
+                                isGoldPriceApplied: v.isGoldPriceApplied,
+                                goldPriceType: v.goldPriceType,
+                                sku: v.sku,
+                                price: v.price ? parseFloat(v.price) : undefined,
+                                salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
+                                stockStatus: v.stockStatus,
+                                weight: v.weight ? parseFloat(v.weight) : undefined,
+                                length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
+                                width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
+                                height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
+                            },
+                            create: {
+                                productId: updated.id,
+                                wooId: v.id,
+                                cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
+                                miscCosts: v.miscCosts || undefined,
+                                binLocation: v.binLocation,
+                                isGoldPriceApplied: v.isGoldPriceApplied || false,
+                                goldPriceType: v.goldPriceType || null,
+                                sku: v.sku,
+                                price: v.price ? parseFloat(v.price) : undefined,
+                                salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
+                                stockStatus: v.stockStatus,
+                                weight: v.weight ? parseFloat(v.weight) : undefined,
+                                length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
+                                width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
+                                height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
+                            }
+                        });
 
-                    // Sync to WooCommerce
-                    await wooService.updateProductVariation(wooId, v.id, {
-                        sku: v.sku,
-                        regular_price: v.price,
-                        sale_price: v.salePrice,
-                        stock_status: v.stockStatus,
-                        manage_stock: v.manageStock,
-                        backorders: v.backorders,
-                        weight: v.weight || '',
-                        dimensions: {
-                            length: v.dimensions?.length || '',
-                            width: v.dimensions?.width || '',
-                            height: v.dimensions?.height || ''
+                        // Sync to WooCommerce
+                        await wooService.updateProductVariation(wooId, v.id, {
+                            sku: v.sku,
+                            regular_price: v.price,
+                            sale_price: v.salePrice,
+                            stock_status: v.stockStatus,
+                            manage_stock: v.manageStock,
+                            backorders: v.backorders,
+                            weight: v.weight || '',
+                            dimensions: {
+                                length: v.dimensions?.length || '',
+                                width: v.dimensions?.width || '',
+                                height: v.dimensions?.height || ''
+                            }
+                        });
+
+                        // Clear any previous 404 tracking on success
+                        const notFoundKey = `variation:404:${updated.id}:${v.id}`;
+                        await redisClient.del(notFoundKey);
+                    } catch (err: any) {
+                        const status = err?.response?.status;
+
+                        if (status === 404) {
+                            // Why: delayed delete — only purge after 1 hour of sustained 404s.
+                            // This prevents accidental deletion during short WooCommerce
+                            // maintenance windows while cleaning up genuinely deleted variations.
+                            await this.handleVariation404(updated.id, v.id, wooId);
+                        } else {
+                            Logger.error(`Failed to process variation ${v.id}`, {
+                                error: err.message,
+                                productWooId: wooId,
+                                status,
+                                responseData: err?.response?.data,
+                            });
                         }
-                    });
-                } catch (err: any) {
-                    Logger.error(`Failed to process variation ${v.id}`, {
-                        error: err.message,
-                        productWooId: wooId,
-                        status: err?.response?.status,
-                        responseData: err?.response?.data,
-                    });
-                }
-            }));
+                    }
+                }));
+            }
         }
 
         return updated;
+    }
+
+    /**
+     * Handle a WooCommerce 404 for a variation with delayed deletion.
+     *
+     * Why delayed: a transient 404 during WooCommerce maintenance should not
+     * destroy the local record. We record the first 404 timestamp in Redis
+     * (TTL 24h). Only after 1 hour of sustained 404s do we delete.
+     */
+    private static async handleVariation404(productId: string, variationWooId: number, parentWooId: number) {
+        const GRACE_PERIOD_MS = 60 * 60 * 1000; // 1 hour
+        const redisKey = `variation:404:${productId}:${variationWooId}`;
+
+        try {
+            const firstSeen = await redisClient.get(redisKey);
+
+            if (!firstSeen) {
+                // First 404 — record timestamp, wait for next cycle
+                await redisClient.setex(redisKey, 86400, Date.now().toString());
+                Logger.warn(`Variation ${variationWooId} returned 404, tracking for delayed delete`, {
+                    productWooId: parentWooId,
+                    variationWooId
+                });
+                return;
+            }
+
+            const elapsed = Date.now() - parseInt(firstSeen, 10);
+            if (elapsed < GRACE_PERIOD_MS) {
+                // Still within grace period — skip silently
+                return;
+            }
+
+            // Grace period exceeded — variation is genuinely deleted in WooCommerce
+            await prisma.productVariation.deleteMany({
+                where: { productId, wooId: variationWooId }
+            });
+            await redisClient.del(redisKey);
+
+            Logger.info(`Deleted local variation ${variationWooId} after sustained 404`, {
+                productWooId: parentWooId,
+                variationWooId,
+                elapsedMs: elapsed
+            });
+        } catch (error) {
+            Logger.error(`Failed to handle variation 404 cleanup`, {
+                error,
+                productWooId: parentWooId,
+                variationWooId
+            });
+        }
     }
 
     /**

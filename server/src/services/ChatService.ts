@@ -34,52 +34,67 @@ export class ChatService {
         accountId: string,
         status?: string,
         assignedTo?: string,
-        limit: number = 50,
+        limit: number = 25,
         cursor?: string
     ) {
         const cacheKey = `conversations:${accountId}:${status || 'all'}:${assignedTo || 'all'}:${limit}:${cursor || 'start'}`;
 
         return cacheAside(
             cacheKey,
-            async () => prisma.conversation.findMany({
-                take: limit,
-                skip: cursor ? 1 : 0,
-                cursor: cursor ? { id: cursor } : undefined,
-                where: {
-                    accountId: String(accountId),
-                    status: status || undefined,
-                    assignedTo: assignedTo || undefined,
-                    mergedIntoId: null
-                },
-                include: {
-                    // Only fetch fields needed for display
-                    wooCustomer: {
-                        select: {
-                            firstName: true,
-                            lastName: true,
-                            email: true,
-                            ordersCount: true,
-                            totalSpent: true,
-                            wooId: true
-                        }
+            async () => {
+                const conversations = await prisma.conversation.findMany({
+                    take: limit,
+                    skip: cursor ? 1 : 0,
+                    cursor: cursor ? { id: cursor } : undefined,
+                    where: {
+                        accountId: String(accountId),
+                        status: status || undefined,
+                        assignedTo: assignedTo || undefined,
+                        mergedIntoId: null
                     },
-                    assignee: { select: { id: true, fullName: true, avatarUrl: true } },
-                    // Only need last 2 messages for preview and timing
-                    messages: {
-                        orderBy: { createdAt: 'desc' },
-                        take: 2,
-                        select: { content: true, createdAt: true, senderType: true }
-                    },
-                    labels: {
-                        select: {
-                            label: {
-                                select: { id: true, name: true, color: true }
+                    include: {
+                        // Only fetch fields needed for display
+                        wooCustomer: {
+                            select: {
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                ordersCount: true,
+                                totalSpent: true,
+                                wooId: true
+                            }
+                        },
+                        assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                        // Only need last 2 messages for preview and timing
+                        messages: {
+                            orderBy: { createdAt: 'desc' },
+                            take: 2,
+                            select: { content: true, createdAt: true, senderType: true }
+                        },
+                        labels: {
+                            select: {
+                                label: {
+                                    select: { id: true, name: true, color: true }
+                                }
                             }
                         }
-                    }
-                },
-                orderBy: { updatedAt: 'desc' }
-            }),
+                    },
+                    orderBy: { updatedAt: 'desc' }
+                });
+
+                // Why: truncate message content before caching. Full message
+                // bodies can be KBs each; list previews only need a snippet.
+                // This dramatically reduces the serialized cache payload size.
+                return conversations.map(c => ({
+                    ...c,
+                    messages: c.messages.map(m => ({
+                        ...m,
+                        content: m.content.length > 200
+                            ? m.content.slice(0, 200) + '...'
+                            : m.content
+                    }))
+                }));
+            },
             { ttl: CacheTTL.SHORT, namespace: 'inbox' }
         );
     }

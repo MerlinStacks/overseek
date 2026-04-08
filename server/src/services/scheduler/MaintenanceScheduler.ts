@@ -87,6 +87,10 @@ export class MaintenanceScheduler {
             24 * 60 * 60 * 1000
         );
 
+        // Nightly Web Vitals cleanup (90-day retention)
+        this.runWebVitalsCleanup();
+        setInterval(() => this.runWebVitalsCleanup(), 24 * 60 * 60 * 1000);
+
         // Run queue depth check on startup then every 5 minutes
         this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e }));
         this.queueDepthInterval = setInterval(
@@ -100,6 +104,17 @@ export class MaintenanceScheduler {
         }).catch(() => {
             // Script may not exist in older deployments - safe to ignore
         });
+    }
+
+    /**
+     * Delete Web Vital samples older than 90 days.
+     * Why here: Vitals accumulate fast (~5 rows/visitor/day). Without cleanup
+     * the table grows ~2.5K rows/day for a modest-traffic store.
+     */
+    private static runWebVitalsCleanup(): void {
+        import('../tracking/WebVitalsService').then(({ cleanupOldSamples }) => {
+            cleanupOldSamples().catch((e: Error) => Logger.error('[Scheduler] Web Vitals cleanup failed', { error: e }));
+        }).catch(() => { /* service may not be initialised on first boot */ });
     }
 
     /**
