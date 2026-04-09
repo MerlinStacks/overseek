@@ -10,6 +10,7 @@ import { SearchQueryService } from '../services/search/SearchQueryService';
 import { IndexingService } from '../services/search/IndexingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { mapSyncError } from '../services/sync/syncErrors';
+import { SyncScheduler } from '../services/scheduler/SyncScheduler';
 
 const syncService = new SyncService();
 
@@ -201,7 +202,16 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                     lastSuccessAt: lastSuccess?.completedAt || null,
                     lastFailureAt: lastFailure?.completedAt || null,
                     failureRate24h: total24h === 0 ? 0 : Number((failed24h / total24h).toFixed(3)),
-                    activeJobs: activeJobsCount
+                    activeJobs: activeJobsCount,
+                    circuitBreaker: {
+                        isOpen: await SyncScheduler.isAccountCircuitBroken(String(accountId)),
+                        byEntity: {
+                            orders: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'orders'),
+                            products: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'products'),
+                            customers: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'customers'),
+                            reviews: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'reviews'),
+                        }
+                    }
                 },
                 recent: enriched,
                 state
@@ -242,6 +252,60 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         return { message: 'Retry scheduled', status: 'IN_PROGRESS' };
+    });
+
+    /**
+     * Reset circuit breaker for an account.
+     *
+     * Why: The circuit breaker opens when a store returns persistent 500/404 errors.
+     * Once the store recovers, the user needs a UI path to unblock scheduled syncs
+     * without waiting for the 90-minute window to expire naturally.
+     *
+     * Mechanism: We write a synthetic SUCCESS log entry. This breaks the consecutive-
+     * failure streak that the circuit breaker looks for, allowing the scheduler to
+     * resume normal dispatch on the next tick. No schema changes required.
+     */
+    fastify.post('/reset-circuit', async (request, reply) => {
+        const accountId = request.accountId;
+        const { entityType } = (request.body as any) || {};
+
+        if (!accountId) return reply.code(400).send({ error: 'accountId is required' });
+
+        const entityTypes = entityType
+            ? [entityType]
+            : ['orders', 'products', 'customers', 'reviews'];
+
+        if (!entityTypes.every(e => allowedEntities.has(e))) {
+            return reply.code(400).send({ error: 'Invalid entityType' });
+        }
+
+        // Write synthetic SUCCESS markers to break the consecutive-failure streak
+        await Promise.all(entityTypes.map(type =>
+            prisma.syncLog.create({
+                data: {
+                    accountId: String(accountId),
+                    entityType: type,
+                    status: 'SUCCESS',
+                    triggerSource: 'MANUAL',
+                    itemsProcessed: 0,
+                    completedAt: new Date(),
+                    retryCount: 0
+                }
+            })
+        ));
+
+        Logger.info('[SyncRoute] Circuit breaker reset by user', { accountId, entityTypes });
+
+        // Optionally kick off an immediate sync so the user sees immediate results
+        syncService.runSync(String(accountId), {
+            types: entityType ? [entityType] : ['orders', 'products', 'customers', 'reviews'],
+            incremental: true,
+            triggerSource: 'MANUAL'
+        }).catch(err => {
+            Logger.error('Reset-circuit sync failed to enqueue', { error: err });
+        });
+
+        return { message: 'Circuit breaker reset. Sync resuming.', entityTypes };
     });
 
     // Search Orders

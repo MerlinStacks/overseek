@@ -46,6 +46,10 @@ export interface SyncHealthSummary {
     lastFailureAt: string | null;
     failureRate24h: number;
     activeJobs: number;
+    circuitBreaker?: {
+        isOpen: boolean;
+        byEntity: Record<string, boolean>;
+    };
 }
 
 
@@ -59,6 +63,7 @@ interface SyncStatusContextType {
     controlSync: (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => Promise<void>;
     runSync: (types?: string[], incremental?: boolean) => Promise<void>;
     retrySync: (entityType: string, logId?: string) => Promise<void>;
+    resetCircuit: (entityType?: string) => Promise<void>;
     reindexOrders: () => Promise<{ totalIndexed: number }>;
     refreshStatus: () => void;
 }
@@ -218,6 +223,34 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    /**
+     * Reset the circuit breaker for the current account.
+     * Writes synthetic SUCCESS logs to break the consecutive-failure streak,
+     * then kicks off an immediate incremental sync.
+     */
+    const resetCircuit = async (entityType?: string) => {
+        const h = headers();
+        if (!h || !currentAccount?.id) return;
+
+        try {
+            const res = await fetch('/api/sync/reset-circuit', {
+                method: 'POST',
+                headers: h,
+                body: JSON.stringify({ entityType })
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || res.statusText);
+            }
+
+            fetchStatus();
+        } catch (error) {
+            Logger.error('Failed to reset circuit breaker', { error });
+            throw error;
+        }
+    };
+
     /** Rebuild ES search index from Postgres source of truth */
     const reindexOrders = async (): Promise<{ totalIndexed: number }> => {
         const h = headers();
@@ -242,7 +275,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     return (
         <SyncStatusContext.Provider value={{
             isSyncing, activeJobs, syncState, logs, healthSummary,
-            controlSync, runSync, retrySync, reindexOrders, refreshStatus: fetchStatus
+            controlSync, runSync, retrySync, resetCircuit, reindexOrders, refreshStatus: fetchStatus
         }}>
             {children}
         </SyncStatusContext.Provider>

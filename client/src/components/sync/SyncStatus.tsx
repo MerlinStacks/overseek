@@ -6,7 +6,7 @@ import {
     ShoppingCart, Users, Star, Layers, Filter,
     ChevronDown, ChevronUp, AlertTriangle, Loader2,
     Pause, Play, X, RotateCcw, Database, Activity,
-    TrendingDown, Zap
+    TrendingDown, Zap, WifiOff, PlayCircle
 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 
@@ -48,7 +48,7 @@ const STALENESS_LABELS = {
 export function SyncStatus() {
     const {
         isSyncing, syncState, logs, activeJobs, healthSummary,
-        runSync, controlSync, retrySync, reindexOrders, refreshStatus
+        runSync, controlSync, retrySync, resetCircuit, reindexOrders, refreshStatus
     } = useSyncStatus();
 
     // Per-entity full-sync toggles
@@ -152,6 +152,14 @@ export function SyncStatus() {
 
     return (
         <div className="space-y-6">
+            {/* ── Circuit Breaker Banner ───────────────────── */}
+            {healthSummary?.circuitBreaker?.isOpen && (
+                <CircuitBreakerBanner
+                    byEntity={healthSummary.circuitBreaker.byEntity}
+                    onReset={() => resetCircuit()}
+                />
+            )}
+
             {/* ── Health Summary Bar ──────────────────────── */}
             {healthSummary && <HealthSummaryBar summary={healthSummary} />}
 
@@ -315,6 +323,78 @@ export function SyncStatus() {
 }
 
 /* ─── Sub-components ─────────────────────────────────────────────── */
+
+/**
+ * Circuit Breaker Banner — shown when scheduled syncs are suppressed
+ * due to consecutive failures. Gives the user a clear explanation and
+ * a single "Resume Syncing" action.
+ */
+function CircuitBreakerBanner({
+    byEntity,
+    onReset
+}: {
+    byEntity: Record<string, boolean>;
+    onReset: () => void;
+}) {
+    const [resetting, setResetting] = useState(false);
+    const [done, setDone] = useState(false);
+
+    const brokenEntities = Object.entries(byEntity)
+        .filter(([, open]) => open)
+        .map(([type]) => type);
+
+    const handleReset = async () => {
+        setResetting(true);
+        try {
+            await onReset();
+            setDone(true);
+            setTimeout(() => setDone(false), 4000);
+        } catch (err) {
+            Logger.error('Circuit breaker reset failed', { error: err });
+        } finally {
+            setResetting(false);
+        }
+    };
+
+    return (
+        <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50/60 dark:bg-red-500/8 p-4">
+            <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-red-100 dark:bg-red-500/20 flex items-center justify-center shrink-0">
+                    <WifiOff size={18} className="text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                        Scheduled syncs paused — store unreachable
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                        {brokenEntities.length > 0
+                            ? <>Consecutive failures on: <span className="font-medium capitalize">{brokenEntities.join(', ')}</span>. Scheduler is holding off to prevent memory pressure.</>
+                            : 'Too many consecutive failures. Scheduler is holding off to prevent memory pressure.'
+                        }
+                    </p>
+                    {done && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">
+                            ✓ Resume requested — syncs will begin shortly
+                        </p>
+                    )}
+                </div>
+                <button
+                    id="resume-syncing-btn"
+                    onClick={handleReset}
+                    disabled={resetting || done}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                    {resetting
+                        ? <><Loader2 size={12} className="animate-spin" /> Resuming…</>
+                        : done
+                            ? <>✓ Done</>
+                            : <><PlayCircle size={12} /> Resume Syncing</>
+                    }
+                </button>
+            </div>
+        </div>
+    );
+}
 
 /** Health summary bar showing 24h stats */
 function HealthSummaryBar({ summary }: { summary: { lastSuccessAt: string | null; lastFailureAt: string | null; failureRate24h: number; activeJobs: number } }) {
