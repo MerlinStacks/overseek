@@ -142,5 +142,5 @@ jobs:
 
       # Optional: Ping Portainer webhook for instant redeploy
       - name: Trigger Portainer redeploy (Web)
-        if: vars.PORTAINER_WEBHOOK_API != ''
+        if: vars.PORTAINER_WEBHOOK_WEB != ''
         run: curl -sS -X POST "${{ vars.PORTAINER_WEBHOOK_WEB }}" || true
