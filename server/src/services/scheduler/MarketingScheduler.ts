@@ -125,6 +125,7 @@ export class MarketingScheduler {
         if (abandonedSessions.length > 0) {
             Logger.info(`[Scheduler] Found ${abandonedSessions.length} abandoned carts`);
 
+            // Run automation triggers sequentially (side-effectful: sends emails)
             for (const session of abandonedSessions) {
                 await automationEngine.processTrigger(session.accountId, 'ABANDONED_CART', {
                     email: session.email,
@@ -137,12 +138,15 @@ export class MarketingScheduler {
                     },
                     visitorId: session.visitorId
                 });
-
-                await prisma.analyticsSession.update({
-                    where: { id: session.id },
-                    data: { abandonedNotificationSentAt: new Date() }
-                });
             }
+
+            // Mark all processed sessions in one updateMany — all get the same timestamp
+            // Why: avoids N individual update() calls inside the loop (N+1)
+            const sentAt = new Date();
+            await prisma.analyticsSession.updateMany({
+                where: { id: { in: abandonedSessions.map(s => s.id) } },
+                data: { abandonedNotificationSentAt: sentAt }
+            });
         }
     }
 
@@ -168,18 +172,25 @@ export class MarketingScheduler {
         const { QUEUES } = await import('../queue/QueueFactory');
         const queue = QueueFactory.getQueue(QUEUES.REPORTS);
 
+        // Enqueue all report jobs sequentially (BullMQ add is fast, no DB involved)
         for (const schedule of schedules) {
             await queue.add('generate-report', {
                 accountId: schedule.accountId,
                 scheduleId: schedule.id
             });
-
-            const nextRun = this.calculateNextRun(schedule);
-            await prisma.reportSchedule.update({
-                where: { id: schedule.id },
-                data: { nextRunAt: nextRun }
-            });
         }
+
+        // Flush all nextRunAt updates in parallel.
+        // Why Promise.all not updateMany: each schedule has a unique nextRunAt value.
+        await Promise.all(
+            schedules.map(schedule => {
+                const nextRun = this.calculateNextRun(schedule);
+                return prisma.reportSchedule.update({
+                    where: { id: schedule.id },
+                    data: { nextRunAt: nextRun }
+                });
+            })
+        );
     }
 
     /**
@@ -264,25 +275,24 @@ export class MarketingScheduler {
                         );
 
                         if (newAlerts.length > 0) {
-                            for (const alert of newAlerts) {
-                                const sanitizedData = alert.data && Object.keys(alert.data).length > 0
+                            // Sanitize data payloads, then bulk-insert in one createMany
+                            const alertRows = newAlerts.map(alert => ({
+                                accountId,
+                                severity: alert.severity,
+                                type: alert.type,
+                                title: alert.title,
+                                message: alert.message,
+                                platform: alert.platform,
+                                campaignId: alert.campaignId,
+                                campaignName: alert.campaignName,
+                                // Why sanitize: Prisma rejects undefined/circular refs in JSON fields
+                                data: (alert.data && Object.keys(alert.data).length > 0)
                                     ? JSON.parse(JSON.stringify(alert.data))
-                                    : {};
+                                    : {}
+                            }));
 
-                                await prisma.adAlert.create({
-                                    data: {
-                                        accountId,
-                                        severity: alert.severity,
-                                        type: alert.type,
-                                        title: alert.title,
-                                        message: alert.message,
-                                        platform: alert.platform,
-                                        campaignId: alert.campaignId,
-                                        campaignName: alert.campaignName,
-                                        data: sanitizedData
-                                    }
-                                });
-                            }
+                            // Single createMany replaces N individual create() calls
+                            await prisma.adAlert.createMany({ data: alertRows });
 
                             await AdAlertService.sendCriticalAlerts(accountId, newAlerts);
                             Logger.info(`[Scheduler] Created ${newAlerts.length} new ad alerts`, { accountId });

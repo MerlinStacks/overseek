@@ -290,6 +290,21 @@ export class MaintenanceScheduler {
             let refreshed = 0;
             let failed = 0;
 
+            // Stage results — flushed after loop to avoid N sequential awaits
+            const successUpdates: Array<{
+                id: string;
+                tokenExpiry: Date;
+                metadata: object;
+            }> = [];
+
+            const failureNotifications: Array<{
+                accountId: string;
+                type: string;
+                title: string;
+                message: string;
+                link: string;
+            }> = [];
+
             for (const account of expiringAccounts) {
                 try {
                     // Get user access token from metadata (stored during OAuth)
@@ -307,17 +322,14 @@ export class MaintenanceScheduler {
                         'META_MESSAGING'
                     );
 
-                    // Update the social account with new token expiry
-                    await prisma.socialAccount.update({
-                        where: { id: account.id },
-                        data: {
-                            tokenExpiry: refreshResult.expiresAt,
-                            metadata: {
-                                ...metadata,
-                                userAccessToken: refreshResult.accessToken,
-                                tokenExpiresAt: refreshResult.expiresAt.toISOString(),
-                                lastRefreshed: new Date().toISOString()
-                            }
+                    successUpdates.push({
+                        id: account.id,
+                        tokenExpiry: refreshResult.expiresAt,
+                        metadata: {
+                            ...metadata,
+                            userAccessToken: refreshResult.accessToken,
+                            tokenExpiresAt: refreshResult.expiresAt.toISOString(),
+                            lastRefreshed: new Date().toISOString()
                         }
                     });
 
@@ -332,19 +344,35 @@ export class MaintenanceScheduler {
                         error: error.message
                     });
 
-                    // Create notification for failed refresh
-                    await prisma.notification.create({
-                        data: {
-                            accountId: account.accountId,
-                            type: 'WARNING',
-                            title: `${account.platform} Token Refresh Failed`,
-                            message: `Unable to refresh access token for ${account.name}. Please reconnect the account in Settings > Connected Accounts to prevent service interruption.`,
-                            link: '/settings?tab=channels'
-                        }
-                    }).catch((notifyErr: any) => {
-                        Logger.error('[Scheduler] Failed to create token refresh notification', { error: notifyErr.message });
+                    // Stage notification for failed refresh
+                    failureNotifications.push({
+                        accountId: account.accountId,
+                        type: 'WARNING',
+                        title: `${account.platform} Token Refresh Failed`,
+                        message: `Unable to refresh access token for ${account.name}. Please reconnect the account in Settings > Connected Accounts to prevent service interruption.`,
+                        link: '/settings?tab=channels'
                     });
                 }
+            }
+
+            // Flush all social account updates in parallel.
+            // Why parallel not updateMany: each account has unique metadata — no shared value.
+            if (successUpdates.length > 0) {
+                await Promise.all(
+                    successUpdates.map(u =>
+                        prisma.socialAccount.update({
+                            where: { id: u.id },
+                            data: { tokenExpiry: u.tokenExpiry, metadata: u.metadata }
+                        })
+                    )
+                );
+            }
+
+            // Flush failure notifications in one bulk INSERT
+            if (failureNotifications.length > 0) {
+                await prisma.notification.createMany({ data: failureNotifications }).catch((notifyErr: any) => {
+                    Logger.error('[Scheduler] Failed to create token refresh notifications', { error: notifyErr.message });
+                });
             }
 
             Logger.info('[Scheduler] Meta token refresh complete', { refreshed, failed });

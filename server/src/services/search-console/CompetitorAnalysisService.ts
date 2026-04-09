@@ -186,12 +186,25 @@ export class CompetitorAnalysisService {
 
         let created = 0;
 
+        // Pre-fetch all existing keywords for every competitor in one query.
+        // Why: the original code issued one findMany per competitor (N+1).
+        const competitorIds = competitors.map(c => c.id);
+        const allExisting = await prisma.competitorKeyword.findMany({
+            where: { competitorId: { in: competitorIds } },
+            select: { competitorId: true, keyword: true }
+        });
+
+        // Bucket existing keywords by competitorId for O(1) lookup
+        const existingByCompetitor = new Map<string, Set<string>>();
+        for (const row of allExisting) {
+            if (!existingByCompetitor.has(row.competitorId)) {
+                existingByCompetitor.set(row.competitorId, new Set());
+            }
+            existingByCompetitor.get(row.competitorId)!.add(row.keyword);
+        }
+
         for (const comp of competitors) {
-            const existing = await prisma.competitorKeyword.findMany({
-                where: { competitorId: comp.id },
-                select: { keyword: true }
-            });
-            const existingSet = new Set(existing.map(e => e.keyword));
+            const existingSet = existingByCompetitor.get(comp.id) ?? new Set<string>();
 
             const newKeywords = trackedKeywords
                 .filter(tk => !existingSet.has(tk.keyword))
@@ -246,14 +259,20 @@ export class CompetitorAnalysisService {
             const keywords = comp.keywords.map(k => k.keyword);
             const results = await SerpCheckService.checkPositionsBulk(keywords, comp.domain);
 
+            // Stage DB ops per competitor, flush in one transaction.
+            // Why: avoids 2 round-trips per keyword (upsert + update) — mirrors
+            // the pattern used by KeywordTrackingService.refreshPositions.
+            const ops: any[] = [];
+            const now = new Date();
+
             for (const kw of comp.keywords) {
                 const result = results.get(kw.keyword);
                 if (!result) continue;
 
                 const previousPosition = kw.currentPosition;
 
-                // Upsert history for today (idempotent — safe to re-run)
-                await prisma.competitorRankHistory.upsert({
+                // Stage: upsert history for today (idempotent — safe to re-run)
+                ops.push(prisma.competitorRankHistory.upsert({
                     where: {
                         competitorKeywordId_date: {
                             competitorKeywordId: kw.id,
@@ -272,27 +291,32 @@ export class CompetitorAnalysisService {
                         previousPosition,
                         rankingUrl: result.rankingUrl,
                     }
-                });
+                }));
 
-                // Update denormalized fields on CompetitorKeyword
-                await prisma.competitorKeyword.update({
+                // Stage: update denormalized fields on CompetitorKeyword
+                ops.push(prisma.competitorKeyword.update({
                     where: { id: kw.id },
                     data: {
                         currentPosition: result.position,
                         rankingUrl: result.rankingUrl,
-                        lastCheckedAt: new Date(),
+                        lastCheckedAt: now,
                     }
-                });
+                }));
 
                 checked++;
 
-                // Detect significant movement
+                // Detect significant movement (pure in-memory, no DB)
                 const movement = this.classifyMovement(
                     comp.domain, kw.keyword, previousPosition, result.position, today
                 );
                 if (movement) {
                     movements.push(movement);
                 }
+            }
+
+            // Flush all staged ops for this competitor in one transaction
+            if (ops.length > 0) {
+                await prisma.$transaction(ops);
             }
         }
 

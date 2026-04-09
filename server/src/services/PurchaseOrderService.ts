@@ -340,6 +340,28 @@ export class PurchaseOrderService {
             Logger.warn('Unable to connect to WooCommerce for stock sync', { error: err, accountId });
         }
 
+        // Pre-fetch all ProductVariation rows this PO touches in a single query.
+        // Why: avoids a separate findUnique per item inside the loop (N+1).
+        const variationWooIds = po.items
+            .filter(i => i.variationWooId != null)
+            .map(i => ({ productId: i.product!.id, wooId: i.variationWooId! }));
+
+        const variationRows = variationWooIds.length > 0
+            ? await prisma.productVariation.findMany({
+                where: {
+                    OR: variationWooIds.map(v => ({
+                        productId: v.productId,
+                        wooId: v.wooId
+                    }))
+                }
+            })
+            : [];
+
+        // Key: `${productId}:${wooId}` — unique per variation
+        const variationMap = new Map(
+            variationRows.map(v => [`${v.productId}:${v.wooId}`, v])
+        );
+
         for (const item of po.items) {
             if (!item.productId || !item.product) {
                 continue; // Skip items without linked product
@@ -358,10 +380,8 @@ export class PurchaseOrderService {
 
                 // Check if this item targets a specific variation
                 if (item.variationWooId) {
-                    // Find the local ProductVariation record
-                    const variation = await prisma.productVariation.findUnique({
-                        where: { productId_wooId: { productId: product.id, wooId: item.variationWooId } }
-                    });
+                    // Look up variation from pre-fetched Map — no per-item DB query
+                    const variation = variationMap.get(`${product.id}:${item.variationWooId}`) ?? null;
 
                     if (variation) {
                         // Atomic increment + status in single query to prevent crash-induced drift
@@ -564,6 +584,27 @@ export class PurchaseOrderService {
             Logger.warn('Unable to connect to WooCommerce for stock unreceive', { error: err, accountId });
         }
 
+        // Pre-fetch all ProductVariation rows this PO touches in a single query.
+        // Why: avoids a separate findUnique per item inside the loop (N+1).
+        const unreceiveVariationIds = po.items
+            .filter(i => i.variationWooId != null && i.product != null)
+            .map(i => ({ productId: i.product!.id, wooId: i.variationWooId! }));
+
+        const unreceiveVariationRows = unreceiveVariationIds.length > 0
+            ? await prisma.productVariation.findMany({
+                where: {
+                    OR: unreceiveVariationIds.map(v => ({
+                        productId: v.productId,
+                        wooId: v.wooId
+                    }))
+                }
+            })
+            : [];
+
+        const unreceiveVariationMap = new Map(
+            unreceiveVariationRows.map(v => [`${v.productId}:${v.wooId}`, v])
+        );
+
         for (const item of po.items) {
             if (!item.productId || !item.product) continue;
 
@@ -574,10 +615,8 @@ export class PurchaseOrderService {
                 const product = item.product;
 
                 if (item.variationWooId) {
-                    // Reverse variation stock
-                    const variation = await prisma.productVariation.findUnique({
-                        where: { productId_wooId: { productId: product.id, wooId: item.variationWooId } }
-                    });
+                    // Look up variation from pre-fetched Map — no per-item DB query
+                    const variation = unreceiveVariationMap.get(`${product.id}:${item.variationWooId}`) ?? null;
 
                     if (variation) {
                         // Atomic decrement + status in single query to prevent crash-induced drift

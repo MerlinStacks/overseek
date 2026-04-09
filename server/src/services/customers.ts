@@ -274,16 +274,19 @@ export class CustomersService {
             select: { id: true, rawData: true }
         });
 
-        let ordersTransferred = 0;
-        for (const order of sourceOrders) {
+        // Parallelise rawData updates — each order has a unique blob so updateMany
+        // can't be used, but Promise.all avoids N sequential round-trips.
+        // Why: sequential awaits inside loop = N DB round-trips; parallel = ~1 wait
+        const orderUpdates = sourceOrders.map(order => {
             const rawData = order.rawData as any;
             rawData.customer_id = target.wooId;
-            await prisma.wooOrder.update({
+            return prisma.wooOrder.update({
                 where: { id: order.id },
                 data: { rawData }
             });
-            ordersTransferred++;
-        }
+        });
+        await Promise.all(orderUpdates);
+        const ordersTransferred = sourceOrders.length;
 
         // 2. Transfer Conversations
         await prisma.conversation.updateMany({

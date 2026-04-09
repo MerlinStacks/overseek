@@ -213,6 +213,46 @@ export class BOMInventorySyncService {
             });
         }
 
+        // Pre-fetch all child product and variation stock needed by this BOM in a single pass.
+        // Why: the items loop below issues a findUnique/findUnique per item for fallback stock
+        // and local-vs-live comparison — an N+1 pattern over the number of BOM components.
+        const childProductIds = bom.items
+            .filter(i => i.childProductId != null)
+            .map(i => i.childProductId!);
+
+        const childVariationPairs = bom.items
+            .filter(i => i.childVariationId != null && i.childProduct != null)
+            .map(i => ({ productId: i.childProduct!.id, wooId: i.childVariation!.wooId }));
+
+        const [prefetchedProducts, prefetchedVariations] = await Promise.all([
+            childProductIds.length > 0
+                ? prisma.wooProduct.findMany({
+                    where: { id: { in: childProductIds } },
+                    select: { id: true, stockQuantity: true }
+                })
+                : [],
+            childVariationPairs.length > 0
+                ? prisma.productVariation.findMany({
+                    where: {
+                        OR: childVariationPairs.map(p => ({
+                            productId: p.productId,
+                            wooId: p.wooId
+                        }))
+                    },
+                    select: { id: true, productId: true, wooId: true, stockQuantity: true }
+                })
+                : []
+        ]);
+
+        const localProductStockMap = new Map(
+            (prefetchedProducts as Array<{ id: string; stockQuantity: number | null }>)
+                .map(p => [p.id, p.stockQuantity])
+        );
+        const localVariationStockMap = new Map(
+            (prefetchedVariations as Array<{ productId: string; wooId: number; stockQuantity: number | null }>)
+                .map(v => [`${v.productId}:${v.wooId}`, v.stockQuantity])
+        );
+
         // Calculate effective stock based on each child component
         const components: EffectiveStockResult['components'] = [];
         let minBuildableUnits = Infinity;
@@ -285,8 +325,8 @@ export class BOMInventorySyncService {
                                 }
                             }
                         } else {
-                            // API unavailable (503/timeout) — fall back to local data
-                            childStock = bomItem.childVariation.stockQuantity ?? 0;
+                            // API unavailable (503/timeout) — fall back to pre-fetched local Map
+                            childStock = localVariationStockMap.get(`${bomItem.childProduct.id}:${childWooId}`) ?? bomItem.childVariation.stockQuantity ?? 0;
                             Logger.debug(`[BOMInventorySync] API unavailable, using local stock for variation`, {
                                 accountId, childWooId, parentWooId, localStock: childStock
                             });
@@ -297,12 +337,10 @@ export class BOMInventorySyncService {
                             const childWooProduct = await wooService.getProduct(childWooId);
                             childStock = childWooProduct.stock_quantity ?? 0;
 
-                            // Update local DB with live stock so UI calculations match
+                            // Update local DB with live stock so UI calculations match.
+                            // Use pre-fetched Map for local stock — no per-item findUnique.
                             const liveStock = childWooProduct.stock_quantity;
-                            const localStock = (await prisma.wooProduct.findUnique({
-                                where: { id: bomItem.childProduct.id },
-                                select: { stockQuantity: true }
-                            }))?.stockQuantity;
+                            const localStock = localProductStockMap.get(bomItem.childProduct.id) ?? null;
 
                             if (liveStock !== null && liveStock !== undefined && liveStock !== localStock) {
                                 await prisma.wooProduct.update({
@@ -328,12 +366,8 @@ export class BOMInventorySyncService {
                                 });
                                 continue;
                             }
-                            // Non-404 failure — fall back to local stock
-                            const localProduct = await prisma.wooProduct.findUnique({
-                                where: { id: bomItem.childProduct.id },
-                                select: { stockQuantity: true }
-                            });
-                            childStock = localProduct?.stockQuantity ?? 0;
+                            // Non-404 failure — fall back to pre-fetched local Map
+                            childStock = localProductStockMap.get(bomItem.childProduct.id) ?? 0;
                             Logger.warn(`[BOMInventorySync] Using local stock for child product`, {
                                 accountId,
                                 childWooId,

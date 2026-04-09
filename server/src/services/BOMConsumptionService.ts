@@ -172,24 +172,38 @@ export class BOMConsumptionService {
             const modifiedComponents: { productId: string; variationId?: number; isInternal?: boolean }[] = [];
             const wooService = await WooService.forAccount(accountId);
 
+            // Stage ledger payloads — flushed as a single createMany after the loop.
+            // Why: N individual create() calls inside the loop cause N round-trips;
+            // createMany batches them into one INSERT for the price of one round-trip.
+            const ledgerRows: Array<{
+                accountId: string;
+                orderId: number;
+                componentType: string;
+                componentId: string;
+                componentName: string;
+                wooId?: number;
+                parentWooId?: number;
+                quantityDeducted: number;
+                previousStock: number;
+                newStock: number;
+            }> = [];
+
             for (const deduction of deductionPlan) {
                 try {
                     await this.executeDeduction(accountId, deduction, wooService);
 
-                    // Write deterministic ledger entry — recovery uses this instead of heuristic stock checks
-                    await prisma.bOMDeductionLedger.create({
-                        data: {
-                            accountId,
-                            orderId,
-                            componentType: deduction.componentType,
-                            componentId: deduction.componentId,
-                            componentName: deduction.componentName,
-                            wooId: deduction.wooId,
-                            parentWooId: deduction.parentWooId,
-                            quantityDeducted: deduction.quantityDeducted,
-                            previousStock: deduction.previousStock,
-                            newStock: deduction.newStock
-                        }
+                    // Stage ledger entry — will be flushed below if all succeed
+                    ledgerRows.push({
+                        accountId,
+                        orderId,
+                        componentType: deduction.componentType,
+                        componentId: deduction.componentId,
+                        componentName: deduction.componentName,
+                        wooId: deduction.wooId,
+                        parentWooId: deduction.parentWooId,
+                        quantityDeducted: deduction.quantityDeducted,
+                        previousStock: deduction.previousStock,
+                        newStock: deduction.newStock
                     });
 
                     consumed.push(deduction);
@@ -215,6 +229,11 @@ export class BOMConsumptionService {
                     await this.rollbackDeductions(accountId, consumed);
                     throw err;
                 }
+            }
+
+            // Flush all ledger entries in a single bulk INSERT — N→1 DB round-trip
+            if (ledgerRows.length > 0) {
+                await prisma.bOMDeductionLedger.createMany({ data: ledgerRows });
             }
 
             // PHASE 4: CASCADE SYNC

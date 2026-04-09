@@ -184,34 +184,37 @@ export class MessageScheduler {
         const { getIO } = await import('../../socket');
         const io = getIO();
 
-        for (const conversation of expiredSnoozes) {
-            try {
-                await prisma.conversation.update({
-                    where: { id: conversation.id },
-                    data: { status: 'OPEN', snoozedUntil: null },
+        // All expired conversations get identical values — one updateMany replaces N updates
+        // Why: avoids a separate conversation.update() per row inside the loop (N+1)
+        try {
+            await prisma.conversation.updateMany({
+                where: { id: { in: expiredSnoozes.map(c => c.id) } },
+                data: { status: 'OPEN', snoozedUntil: null },
+            });
+            Logger.info(`[Scheduler] Reopened ${expiredSnoozes.length} snoozed conversation(s)`);
+        } catch (error) {
+            Logger.error('[Scheduler] Failed to bulk-reopen snoozed conversations', { error });
+            return;
+        }
+
+        // Socket emits are in-process (no DB) — loop is fine
+        if (io) {
+            for (const conversation of expiredSnoozes) {
+                const customerName = conversation.wooCustomer
+                    ? `${conversation.wooCustomer.firstName || ''} ${conversation.wooCustomer.lastName || ''}`.trim()
+                    : conversation.guestName || conversation.guestEmail || 'Unknown';
+
+                io.to(`account:${conversation.accountId}`).emit('snooze:expired', {
+                    conversationId: conversation.id,
+                    assignedToId: conversation.assignedTo,
+                    customerName,
                 });
 
-                if (io) {
-                    const customerName = conversation.wooCustomer
-                        ? `${conversation.wooCustomer.firstName || ''} ${conversation.wooCustomer.lastName || ''}`.trim()
-                        : conversation.guestName || conversation.guestEmail || 'Unknown';
-
-                    io.to(`account:${conversation.accountId}`).emit('snooze:expired', {
-                        conversationId: conversation.id,
-                        assignedToId: conversation.assignedTo,
-                        customerName,
-                    });
-
-                    io.to(`conversation:${conversation.id}`).emit('conversation:updated', {
-                        id: conversation.id,
-                        status: 'OPEN',
-                        snoozedUntil: null,
-                    });
-                }
-
-                Logger.info(`[Scheduler] Reopened snoozed conversation ${conversation.id}`);
-            } catch (error) {
-                Logger.error(`[Scheduler] Failed to reopen conversation ${conversation.id}`, { error });
+                io.to(`conversation:${conversation.id}`).emit('conversation:updated', {
+                    id: conversation.id,
+                    status: 'OPEN',
+                    snoozedUntil: null,
+                });
             }
         }
     }

@@ -304,6 +304,8 @@ export class PushNotificationService {
 
         let sent = 0;
         let failed = 0;
+        // Collect stale endpoint IDs — delete in one batch after loop to avoid N individual DELETEs
+        const staleIds: string[] = [];
 
         for (const sub of subscriptions) {
             try {
@@ -322,15 +324,21 @@ export class PushNotificationService {
                 sent++;
             } catch (error: unknown) {
                 failed++;
-                // If subscription is invalid (410 Gone), remove it
+                // If subscription is invalid (410 Gone), queue for batch removal
                 const statusCode = (error as { statusCode?: number })?.statusCode;
                 if (statusCode === 410 || statusCode === 404) {
-                    await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => { });
-                    Logger.info('[PushNotificationService] Removed stale subscription', { subId: sub.id });
+                    staleIds.push(sub.id);
+                    Logger.info('[PushNotificationService] Queued stale subscription for removal', { subId: sub.id });
                 } else {
                     Logger.error('[PushNotificationService] Send failed', { error, subId: sub.id });
                 }
             }
+        }
+
+        // Single deleteMany replaces N individual delete() calls inside the loop
+        if (staleIds.length > 0) {
+            await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
+            Logger.info('[PushNotificationService] Removed stale subscriptions', { count: staleIds.length });
         }
 
         if (sent > 0) {
@@ -397,6 +405,7 @@ export class PushNotificationService {
 
         let sent = 0;
         let failed = 0;
+        const staleIds: string[] = [];
 
         for (const sub of subscriptions) {
             try {
@@ -411,9 +420,13 @@ export class PushNotificationService {
                 failed++;
                 const statusCode = (error as { statusCode?: number })?.statusCode;
                 if (statusCode === 410 || statusCode === 404) {
-                    await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => { });
+                    staleIds.push(sub.id);
                 }
             }
+        }
+
+        if (staleIds.length > 0) {
+            await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
         }
 
         diagnostics.sent = sent;
@@ -473,6 +486,7 @@ export class PushNotificationService {
 
         let sent = 0;
         let failed = 0;
+        const staleIds: string[] = [];
 
         for (const sub of subscriptions) {
             try {
@@ -493,12 +507,16 @@ export class PushNotificationService {
                 failed++;
                 const statusCode = (error as { statusCode?: number })?.statusCode;
                 if (statusCode === 410 || statusCode === 404) {
-                    await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => { });
-                    Logger.info('[PushNotificationService] Removed stale subscription during test', { subId: sub.id });
+                    staleIds.push(sub.id);
                 } else {
                     Logger.error('[PushNotificationService] Test notification failed', { error, subId: sub.id });
                 }
             }
+        }
+
+        if (staleIds.length > 0) {
+            await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
+            Logger.info('[PushNotificationService] Removed stale subscriptions during test', { count: staleIds.length });
         }
 
         Logger.info('[PushNotificationService] Test notification sent', { userId, sent, failed });
@@ -528,6 +546,7 @@ export class PushNotificationService {
 
         let sent = 0;
         let failed = 0;
+        const staleIds: string[] = [];
 
         for (const sub of subscriptions) {
             try {
@@ -541,10 +560,15 @@ export class PushNotificationService {
                 // Cleanup invalid subscriptions
                 const statusCode = (error as { statusCode?: number })?.statusCode;
                 if (statusCode === 410 || statusCode === 404) {
-                    await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => { });
+                    staleIds.push(sub.id);
                 }
             }
         }
+
+        if (staleIds.length > 0) {
+            await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
+        }
+
         return { sent, failed };
     }
 
@@ -582,6 +606,7 @@ export class PushNotificationService {
 
         let sent = 0;
         let failed = 0;
+        const staleIds: string[] = [];
 
         for (const sub of subscriptions) {
             try {
@@ -602,12 +627,16 @@ export class PushNotificationService {
                 failed++;
                 const statusCode = (error as { statusCode?: number })?.statusCode;
                 if (statusCode === 410 || statusCode === 404) {
-                    await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => { });
-                    Logger.info('[PushNotificationService] Removed stale subscription during broadcast', { subId: sub.id });
+                    staleIds.push(sub.id);
                 } else {
                     Logger.error('[PushNotificationService] Broadcast send failed', { error, subId: sub.id });
                 }
             }
+        }
+
+        if (staleIds.length > 0) {
+            await prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } }).catch(() => { });
+            Logger.info('[PushNotificationService] Removed stale subscriptions during broadcast', { count: staleIds.length });
         }
 
         Logger.info('[PushNotificationService] Broadcast complete', { sent, failed });

@@ -38,6 +38,9 @@ services:
       - "ES_JAVA_OPTS=-Xms${ES_HEAP_MIN:-256m} -Xmx${ES_HEAP_MAX:-512m}"
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
+      # Disable Elastic Inference Service — OverSeek uses standard search only.
+      # Prevents the EIS auth handler from racing cluster state recovery on boot.
+      - xpack.inference.enabled=false
     # Ports removed to prevent external access
     # ports:
     #   - "9200:9200"

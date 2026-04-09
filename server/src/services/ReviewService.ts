@@ -99,6 +99,21 @@ export class ReviewService {
             include: { customer: true }
         });
 
+        // Pre-fetch all customers for this account to avoid N+1 per review and per order.
+        // Why: rematchAllReviews iterates every review and inner-loops every order;
+        // customer lookups inside those loops would issue hundreds of DB queries.
+        const allCustomers = await prisma.wooCustomer.findMany({
+            where: { accountId }
+        });
+        // Maps for O(1) lookup — same customer may appear under multiple normalized emails
+        const customerByEmail = new Map<string, typeof allCustomers[0]>();
+        const customerById = new Map<string, typeof allCustomers[0]>();
+        for (const c of allCustomers) {
+            customerById.set(c.id, c);
+            const norm = this.normalizeEmail(c.email);
+            if (norm) customerByEmail.set(norm, c);
+        }
+
         let matchedReviews = 0;
         let updatedReviews = 0;
 
@@ -113,13 +128,8 @@ export class ReviewService {
             if (!wooCustomerId && reviewerEmail) {
                 const normalizedEmail = this.normalizeEmail(reviewerEmail);
                 if (normalizedEmail) {
-                    // Use case-insensitive email matching
-                    const customer = await prisma.wooCustomer.findFirst({
-                        where: {
-                            accountId,
-                            email: { equals: normalizedEmail, mode: 'insensitive' }
-                        }
-                    });
+                    // Map lookup — no DB query per review
+                    const customer = customerByEmail.get(normalizedEmail) ?? null;
                     if (customer) {
                         newCustomerId = customer.id;
                     }
@@ -162,9 +172,9 @@ export class ReviewService {
                 const billingFirst = data.billing?.first_name;
                 const billingLast = data.billing?.last_name;
 
-                // Priority 1: Customer ID match (100)
+                // Priority 1: Customer ID match (100) — Map lookup, no DB query
                 if (newCustomerId) {
-                    const customer = await prisma.wooCustomer.findUnique({ where: { id: newCustomerId } });
+                    const customer = customerById.get(newCustomerId) ?? null;
                     if (customer && orderCustomerId === customer.wooId) {
                         matchScore = 100;
                     } else if (customer && normalizedOrderEmail === this.normalizeEmail(customer.email)) {

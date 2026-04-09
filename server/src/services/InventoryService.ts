@@ -105,13 +105,33 @@ export class InventoryService {
         }
 
         if (product.variations.length > 0) {
+            // Pre-fetch all variant BOMs for this product in one query.
+            // Why: the original loop issued one bOM.findUnique per variation (N+1).
+            const variationWooIds = product.variations.map(v => v.wooId);
+            const variantBOMs = await prisma.bOM.findMany({
+                where: {
+                    productId,
+                    variationId: { in: variationWooIds }
+                },
+                include: {
+                    items: {
+                        where: {
+                            isActive: true,
+                            OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }]
+                        },
+                        select: { id: true }
+                    }
+                }
+            });
+            // Key: variationId (wooId) → BOM row
+            const bomByVariationId = new Map(
+                variantBOMs.map(b => [b.variationId, b])
+            );
+
             const variants = [];
             for (const v of product.variations) {
-                // Check if this specific variant has its own BOM
-                const variantBOM = await prisma.bOM.findUnique({
-                    where: { productId_variationId: { productId, variationId: v.wooId } },
-                    include: { items: { where: { isActive: true, OR: [{ childProductId: { not: null } }, { internalProductId: { not: null } }] }, select: { id: true } } }
-                });
+                // Map lookup — no per-variation DB query
+                const variantBOM = bomByVariationId.get(v.wooId) ?? null;
 
                 let stockQty: number | null = null;
                 const isBOMVariant = variantBOM && variantBOM.items.length > 0;

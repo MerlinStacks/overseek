@@ -111,6 +111,17 @@ export class KeywordTrackingService {
     static async addKeywordsBulk(accountId: string, keywords: string[], targetUrl?: string): Promise<BulkImportResult> {
         const result: BulkImportResult = { added: 0, skipped: 0, failed: 0, errors: [] };
 
+        // Pre-fetch all existing keywords for this account in one query.
+        // Why: avoids a findUnique + count per keyword in the loop (N+1).
+        const existingKeywords = await prisma.trackedKeyword.findMany({
+            where: { accountId }
+        });
+        const existingMap = new Map(
+            existingKeywords.map(kw => [kw.keyword, kw])
+        );
+        // Track running active count locally so we don't call count() per keyword
+        let activeCount = existingKeywords.filter(kw => kw.isActive).length;
+
         for (const kw of keywords) {
             const normalized = kw.toLowerCase().trim();
             if (!normalized || normalized.length > 200) {
@@ -120,9 +131,7 @@ export class KeywordTrackingService {
             }
 
             try {
-                const existing = await prisma.trackedKeyword.findUnique({
-                    where: { accountId_keyword: { accountId, keyword: normalized } }
-                });
+                const existing = existingMap.get(normalized) ?? null;
 
                 if (existing && existing.isActive) {
                     result.skipped++;
@@ -134,21 +143,21 @@ export class KeywordTrackingService {
                         where: { id: existing.id },
                         data: { isActive: true, targetUrl }
                     });
+                    // Update Map so subsequent dedup checks reflect reactivation
+                    existingMap.set(normalized, { ...existing, isActive: true });
+                    activeCount++;
                     result.added++;
                     continue;
                 }
 
-                // Check limit before each add
-                const activeCount = await prisma.trackedKeyword.count({
-                    where: { accountId, isActive: true }
-                });
+                // Guard: enforce limit using local counter — no per-keyword count() query
                 if (activeCount >= MAX_KEYWORDS_PER_ACCOUNT) {
                     result.failed++;
                     result.errors.push(`Limit reached (${MAX_KEYWORDS_PER_ACCOUNT}). "${normalized}" not added.`);
                     continue;
                 }
 
-                await prisma.trackedKeyword.create({
+                const created = await prisma.trackedKeyword.create({
                     data: {
                         accountId,
                         keyword: normalized,
@@ -156,6 +165,8 @@ export class KeywordTrackingService {
                         isActive: true,
                     }
                 });
+                existingMap.set(normalized, created);
+                activeCount++;
                 result.added++;
             } catch (error: any) {
                 result.failed++;
