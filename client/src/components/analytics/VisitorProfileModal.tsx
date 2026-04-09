@@ -236,13 +236,41 @@ const VisitSection: React.FC<{ visit: AnalyticsVisit; isFirst: boolean; displayN
 };
 
 /**
- * Safely cleans messy user agent strings like:
- * Mozilla/5.0... Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone14,2;...]
- * by stripping bracketed tracker/app data.
+ * Parse browser and OS version numbers from a raw user-agent string.
+ * Returns only the major version to keep the display compact.
+ *
+ * Why client-side: the server already stores parsed browser/os NAME,
+ * but not versions. Avoids another round-trip.
  */
-function cleanUserAgent(ua: string): string {
-    if (!ua) return '';
-    return ua.replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
+function parseUAVersions(ua: string, browser?: string, os?: string): { browserVer?: string; osVer?: string } {
+    if (!ua) return {};
+    const b = (browser || '').toLowerCase();
+    const o = (os || '').toLowerCase();
+
+    let browserVer: string | undefined;
+    const edgeM  = ua.match(/Edg(?:e)?\/(\d+)/);
+    const chromeM = ua.match(/Chrome\/(\d+)/);
+    const safariM = ua.match(/Version\/(\d+)[.\d]*.*Safari/);
+    const ffM     = ua.match(/Firefox\/(\d+)/);
+
+    if (b.includes('edge') && edgeM)         browserVer = edgeM[1];
+    else if (b.includes('chrome') && chromeM) browserVer = chromeM[1];
+    else if (b.includes('safari') && safariM) browserVer = safariM[1];
+    else if (b.includes('firefox') && ffM)    browserVer = ffM[1];
+
+    let osVer: string | undefined;
+    const iosM  = ua.match(/(?:iPhone|iPad) OS ([\d_]+)/);
+    const macM  = ua.match(/Mac OS X ([\d_]+)/);
+    const andM  = ua.match(/Android ([\d.]+)/);
+    const winM  = ua.match(/Windows NT ([\d.]+)/);
+    const ntMap: Record<string, string> = { '10.0': '10 / 11', '6.3': '8.1', '6.2': '8', '6.1': '7' };
+
+    if (o.includes('ios') && iosM)            osVer = iosM[1].replace(/_/g, '.').split('.').slice(0, 2).join('.');
+    else if (o.includes('mac') && macM)       osVer = macM[1].replace(/_/g, '.').split('.').slice(0, 2).join('.');
+    else if (o.includes('android') && andM)   osVer = andM[1];
+    else if (o.includes('windows') && winM)   osVer = ntMap[winM[1]] ?? winM[1];
+
+    return { browserVer, osVer };
 }
 
 const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, accountId, onClose }) => {
@@ -349,7 +377,10 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                                         )}
                                         <span className="capitalize font-medium">{data.session.deviceType || 'Desktop'}</span>
                                     </div>
-                                    <div className="flex items-center gap-2 text-gray-500 pl-6">
+                                    <div
+                                        className="flex items-center gap-2 text-gray-500 pl-6"
+                                        title={data.session.userAgent || undefined}
+                                    >
                                         <DeviceBrowserBadge
                                             browser={data.session.browser}
                                             os={data.session.os}
@@ -359,18 +390,29 @@ const VisitorProfileModal: React.FC<VisitorProfileModalProps> = ({ visitorId, ac
                                             {data.session.browser || 'Unknown Browser'}
                                             {data.session.os ? ` on ${data.session.os}` : ''}
                                         </span>
+                                        {/* Version badges — parsed from raw UA, avoids another server field */}
+                                        {data.session.userAgent && (() => {
+                                            const { browserVer, osVer } = parseUAVersions(
+                                                data.session.userAgent!,
+                                                data.session.browser,
+                                                data.session.os,
+                                            );
+                                            return (
+                                                <>
+                                                    {browserVer && (
+                                                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                                                            v{browserVer}
+                                                        </span>
+                                                    )}
+                                                    {osVer && (
+                                                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                                                            {osVer}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                     </div>
-                                    {data.session.userAgent && (
-                                        <div className="pl-6">
-                                            <span className="text-xs text-gray-400 block mb-0.5">User Agent</span>
-                                            <span
-                                                className="text-xs text-gray-500 font-mono break-all leading-relaxed line-clamp-3"
-                                                title={data.session.userAgent}
-                                            >
-                                                {cleanUserAgent(data.session.userAgent)}
-                                            </span>
-                                        </div>
-                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-2 text-gray-600">
