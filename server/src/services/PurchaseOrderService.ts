@@ -656,12 +656,17 @@ export class PurchaseOrderService {
                         continue;
                     }
 
-                    // Atomic decrement + status in single query to prevent crash-induced drift
-                    // No Math.max(0) clamping — keep local DB truthful so WooCommerce stays in sync
-                    const productResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
-                        `UPDATE "WooProduct" SET "stockQuantity" = "stockQuantity" - $1, "stockStatus" = CASE WHEN "stockQuantity" - $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
-                        item.quantity, product.id
-                    );
+                    // Atomic decrement + status in single query to prevent crash-induced drift.
+                    // $queryRaw (tagged template) — parameterized, no SQL injection risk.
+                    // No Math.max(0) clamping — keep local DB truthful so WooCommerce stays in sync.
+                    const productResult = await prisma.$queryRaw<Array<{ stock_quantity: number }>>`
+                        UPDATE "WooProduct"
+                        SET "stockQuantity" = "stockQuantity" - ${item.quantity},
+                            "stockStatus" = CASE WHEN "stockQuantity" - ${item.quantity} > 0
+                                                 THEN 'instock' ELSE 'outofstock' END
+                        WHERE "id" = ${product.id}
+                        RETURNING "stockQuantity" AS stock_quantity
+                    `;
                     const newStock = productResult[0]?.stock_quantity ?? 0;
 
                     // Queue WooCommerce sync for background with retry

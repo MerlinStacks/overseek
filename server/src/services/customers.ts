@@ -275,8 +275,9 @@ export class CustomersService {
         });
 
         // All writes are atomic — if any step fails the whole merge rolls back.
-        // Why: a crash between steps (e.g. after order transfer but before customer delete)
-        // would leave a partially-merged record that is very hard to recover from.
+        // Why: a crash between steps would leave a partially-merged record.
+        // timeout: 30s — customers with large order histories can have 50+ concurrent
+        // order updates inside the transaction; the default 5s is too tight.
         const result = await prisma.$transaction(async (tx) => {
             // 1. Transfer Orders (unique rawData per order — parallel within transaction)
             const orderUpdates = sourceOrders.map(order => {
@@ -315,7 +316,12 @@ export class CustomersService {
             await tx.wooCustomer.delete({ where: { id: source.id } });
 
             return sourceOrders.length;
+        }, {
+            // Default Prisma interactive tx timeout is 5s — too tight for customers with
+            // 50+ orders doing parallel updates inside the transaction.
+            timeout: 30_000
         });
+
 
         Logger.info(`Customer merge complete`, {
             targetId,

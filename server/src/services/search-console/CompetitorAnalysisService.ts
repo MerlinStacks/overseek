@@ -314,7 +314,9 @@ export class CompetitorAnalysisService {
                 }
             }
 
-            // Flush all staged ops for this competitor in one transaction
+            // Flush all staged ops for this competitor in one transaction.
+            // Note: batch $transaction (array form) does not hold connections open like
+            // the interactive callback form, so no timeout risk here.
             if (ops.length > 0) {
                 await prisma.$transaction(ops);
             }

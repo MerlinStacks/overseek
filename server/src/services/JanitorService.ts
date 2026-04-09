@@ -61,8 +61,6 @@ export class JanitorService {
         const BATCH = 5_000;
         let totalDeleted = 0;
 
-        // Delete child rows first in the same batched pattern to avoid FK violations.
-        // Events: paginate via session relation filter.
         while (true) {
             const expiredSessionIds = await prisma.analyticsSession.findMany({
                 where: { lastActiveAt: { lt: cutoff } },
@@ -73,16 +71,21 @@ export class JanitorService {
 
             const ids = expiredSessionIds.map(s => s.id);
 
-            // Delete dependent rows first
-            await prisma.analyticsEvent.deleteMany({ where: { sessionId: { in: ids } } });
-            await prisma.analyticsVisit.deleteMany({ where: { sessionId: { in: ids } } });
+            // Per-batch try/catch: a transient DB error on one batch should not abort
+            // the entire cleanup run. The next Janitor tick will retry the remaining rows.
+            try {
+                await prisma.analyticsEvent.deleteMany({ where: { sessionId: { in: ids } } });
+                await prisma.analyticsVisit.deleteMany({ where: { sessionId: { in: ids } } });
 
-            const { count } = await prisma.analyticsSession.deleteMany({
-                where: { id: { in: ids } }
-            });
-            totalDeleted += count;
+                const { count } = await prisma.analyticsSession.deleteMany({
+                    where: { id: { in: ids } }
+                });
+                totalDeleted += count;
+            } catch (err) {
+                Logger.error('Janitor: batch session prune failed', { err, batchSize: ids.length });
+                break; // Stop looping — next Janitor run will retry
+            }
 
-            // All rows in this batch are gone — stop looping
             if (expiredSessionIds.length < BATCH) break;
         }
 
