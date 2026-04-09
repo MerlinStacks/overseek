@@ -56,35 +56,38 @@ export class JanitorService {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - daysOld);
 
-        // First delete related events
-        const eventsDeleted = await prisma.analyticsEvent.deleteMany({
-            where: {
-                session: {
-                    lastActiveAt: { lt: cutoff }
-                }
-            }
-        });
-        Logger.debug(`Pruned ${eventsDeleted.count} analytics events`);
+        // Why paginated: a single deleteMany on millions of rows holds a long Postgres lock
+        // and generates excessive WAL. Batching at 5000 keeps lock windows short.
+        const BATCH = 5_000;
+        let totalDeleted = 0;
 
-        // Then delete related visits (prevents orphaned records)
-        const visitsDeleted = await prisma.analyticsVisit.deleteMany({
-            where: {
-                session: {
-                    lastActiveAt: { lt: cutoff }
-                }
-            }
-        });
-        Logger.debug(`Pruned ${visitsDeleted.count} analytics visits`);
+        // Delete child rows first in the same batched pattern to avoid FK violations.
+        // Events: paginate via session relation filter.
+        while (true) {
+            const expiredSessionIds = await prisma.analyticsSession.findMany({
+                where: { lastActiveAt: { lt: cutoff } },
+                select: { id: true },
+                take: BATCH
+            });
+            if (expiredSessionIds.length === 0) break;
 
-        // Finally delete sessions
-        const result = await prisma.analyticsSession.deleteMany({
-            where: {
-                lastActiveAt: { lt: cutoff }
-            }
-        });
+            const ids = expiredSessionIds.map(s => s.id);
 
-        Logger.debug(`Pruned ${result.count} analytics sessions older than ${daysOld} days`);
-        return result.count;
+            // Delete dependent rows first
+            await prisma.analyticsEvent.deleteMany({ where: { sessionId: { in: ids } } });
+            await prisma.analyticsVisit.deleteMany({ where: { sessionId: { in: ids } } });
+
+            const { count } = await prisma.analyticsSession.deleteMany({
+                where: { id: { in: ids } }
+            });
+            totalDeleted += count;
+
+            // All rows in this batch are gone — stop looping
+            if (expiredSessionIds.length < BATCH) break;
+        }
+
+        Logger.debug(`Pruned ${totalDeleted} analytics sessions older than ${daysOld} days`);
+        return totalDeleted;
     }
 
     /**

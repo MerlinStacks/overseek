@@ -119,7 +119,10 @@ export class MarketingScheduler {
                 lastActiveAt: { lt: cutOffTime, gt: windowStart },
                 email: { not: null },
                 abandonedNotificationSentAt: null
-            }
+            },
+            // Guard: cap at 100 per cycle to prevent loading a huge backlog into memory.
+            // The next scheduler tick will process the remainder.
+            take: 100
         });
 
         if (abandonedSessions.length > 0) {

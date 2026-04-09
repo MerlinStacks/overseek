@@ -109,6 +109,18 @@ export class MessageScheduler {
 
         Logger.info(`[Scheduler] Processing ${dueMessages.length} scheduled message(s)`);
 
+        // Pre-fetch email accounts once per accountId to avoid N repeated DB lookups.
+        // Why: getDefaultEmailAccount queries the DB each call; messages for the same
+        // account would hit the DB once per message without this cache.
+        const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
+        const emailAccountCache = new Map<string, any>();
+        const emailMessages = dueMessages.filter(m => m.conversation.channel === 'EMAIL');
+        const uniqueAccountIds = [...new Set(emailMessages.map(m => m.conversation.accountId))];
+        await Promise.all(uniqueAccountIds.map(async (aid) => {
+            const account = await getDefaultEmailAccount(aid);
+            emailAccountCache.set(aid, account);
+        }));
+
         for (const message of dueMessages) {
             try {
                 if (message.conversation.channel === 'EMAIL') {
@@ -118,8 +130,8 @@ export class MessageScheduler {
                         || message.conversation.guestEmail;
 
                     if (recipientEmail) {
-                        const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
-                        const emailAccount = await getDefaultEmailAccount(message.conversation.accountId);
+                        // Use cached account — no per-message DB query
+                        const emailAccount = emailAccountCache.get(message.conversation.accountId);
 
                         if (emailAccount) {
                             // Parse stored attachments (JSON array of { filename, path, contentType })

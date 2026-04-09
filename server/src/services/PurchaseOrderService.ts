@@ -619,12 +619,17 @@ export class PurchaseOrderService {
                     const variation = unreceiveVariationMap.get(`${product.id}:${item.variationWooId}`) ?? null;
 
                     if (variation) {
-                        // Atomic decrement + status in single query to prevent crash-induced drift
-                        // No Math.max(0) clamping — keep local DB truthful so WooCommerce stays in sync
-                        const variationResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
-                            `UPDATE "ProductVariation" SET "stockQuantity" = "stockQuantity" - $1, "stockStatus" = CASE WHEN "stockQuantity" - $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
-                            item.quantity, variation.id
-                        );
+                        // Atomic decrement + status in single query to prevent crash-induced drift.
+                        // $queryRaw (tagged template) — Prisma parameterizes all values; eliminates
+                        // SQL injection risk vs $queryRawUnsafe with string interpolation.
+                        const variationResult = await prisma.$queryRaw<Array<{ stock_quantity: number }>>`
+                            UPDATE "ProductVariation"
+                            SET "stockQuantity" = "stockQuantity" - ${item.quantity},
+                                "stockStatus" = CASE WHEN "stockQuantity" - ${item.quantity} > 0
+                                                     THEN 'instock' ELSE 'outofstock' END
+                            WHERE "id" = ${variation.id}
+                            RETURNING "stockQuantity" AS stock_quantity
+                        `;
                         const newStock = variationResult[0]?.stock_quantity ?? 0;
 
                         // Queue WooCommerce sync for background with retry

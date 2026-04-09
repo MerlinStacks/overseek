@@ -257,7 +257,7 @@ export class CustomersService {
     static async mergeCustomers(accountId: string, targetId: string, sourceId: string) {
         Logger.info(`Merging customer ${sourceId} into ${targetId}`, { accountId });
 
-        // Get both customers
+        // Get both customers before entering the transaction
         const target = await prisma.wooCustomer.findFirst({ where: { accountId, id: targetId } });
         const source = await prisma.wooCustomer.findFirst({ where: { accountId, id: sourceId } });
 
@@ -265,7 +265,7 @@ export class CustomersService {
             throw new Error('Customer not found');
         }
 
-        // 1. Transfer Orders - use JSON path filter instead of loading all orders
+        // Fetch orders to update before the transaction (read-only, no lock needed)
         const sourceOrders = await prisma.wooOrder.findMany({
             where: {
                 accountId,
@@ -274,54 +274,58 @@ export class CustomersService {
             select: { id: true, rawData: true }
         });
 
-        // Parallelise rawData updates — each order has a unique blob so updateMany
-        // can't be used, but Promise.all avoids N sequential round-trips.
-        // Why: sequential awaits inside loop = N DB round-trips; parallel = ~1 wait
-        const orderUpdates = sourceOrders.map(order => {
-            const rawData = order.rawData as any;
-            rawData.customer_id = target.wooId;
-            return prisma.wooOrder.update({
-                where: { id: order.id },
-                data: { rawData }
+        // All writes are atomic — if any step fails the whole merge rolls back.
+        // Why: a crash between steps (e.g. after order transfer but before customer delete)
+        // would leave a partially-merged record that is very hard to recover from.
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Transfer Orders (unique rawData per order — parallel within transaction)
+            const orderUpdates = sourceOrders.map(order => {
+                const rawData = order.rawData as any;
+                rawData.customer_id = target.wooId;
+                return tx.wooOrder.update({
+                    where: { id: order.id },
+                    data: { rawData }
+                });
             });
-        });
-        await Promise.all(orderUpdates);
-        const ordersTransferred = sourceOrders.length;
+            await Promise.all(orderUpdates);
 
-        // 2. Transfer Conversations
-        await prisma.conversation.updateMany({
-            where: { accountId, wooCustomerId: source.id },
-            data: { wooCustomerId: target.id }
-        });
+            // 2. Transfer Conversations
+            await tx.conversation.updateMany({
+                where: { accountId, wooCustomerId: source.id },
+                data: { wooCustomerId: target.id }
+            });
 
-        // 3. Transfer Automation Enrollments
-        await prisma.automationEnrollment.updateMany({
-            where: { email: source.email },
-            data: { email: target.email }
-        });
+            // 3. Transfer Automation Enrollments
+            await tx.automationEnrollment.updateMany({
+                where: { email: source.email },
+                data: { email: target.email }
+            });
 
-        // 4. Update target totals (convert Decimal to number for arithmetic)
-        const newTotalSpent = Number(target.totalSpent) + Number(source.totalSpent);
-        await prisma.wooCustomer.update({
-            where: { id: target.id },
-            data: {
-                ordersCount: target.ordersCount + source.ordersCount,
-                totalSpent: newTotalSpent
-            }
-        });
+            // 4. Update target totals
+            const newTotalSpent = Number(target.totalSpent) + Number(source.totalSpent);
+            await tx.wooCustomer.update({
+                where: { id: target.id },
+                data: {
+                    ordersCount: target.ordersCount + source.ordersCount,
+                    totalSpent: newTotalSpent
+                }
+            });
 
-        // 5. Delete source customer
-        await prisma.wooCustomer.delete({ where: { id: source.id } });
+            // 5. Delete source customer
+            await tx.wooCustomer.delete({ where: { id: source.id } });
+
+            return sourceOrders.length;
+        });
 
         Logger.info(`Customer merge complete`, {
             targetId,
             sourceId,
-            ordersTransferred
+            ordersTransferred: result
         });
 
         return {
             success: true,
-            ordersTransferred,
+            ordersTransferred: result,
             targetId
         };
     }

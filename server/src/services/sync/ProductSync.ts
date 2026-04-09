@@ -114,11 +114,17 @@ export class ProductSync extends BaseSync {
                 });
             });
 
-            // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
-            await Promise.all(upsertOperations.map(op => op.catch((err) => {
-                totalSkipped++;
-                Logger.warn('Failed to upsert product', { accountId, syncId, error: err.message });
-            })));
+            // Execute upserts in chunks of 10 — prevents saturating the Prisma connection
+            // pool. OrderSync and CustomerSync already use similar chunking (BATCH_SIZE=50);
+            // products use 10 because each upsert carries a larger payload (images, rawData).
+            const UPSERT_CHUNK = 10;
+            for (let i = 0; i < upsertOperations.length; i += UPSERT_CHUNK) {
+                const ops = upsertOperations.slice(i, i + UPSERT_CHUNK);
+                await Promise.all(ops.map(op => op.catch((err) => {
+                    totalSkipped++;
+                    Logger.warn('Failed to upsert product', { accountId, syncId, error: err.message });
+                })));
+            }
 
             // Batch-fetch all upserted products once (avoids N+1 queries)
             const upsertedProducts = await prisma.wooProduct.findMany({
@@ -164,8 +170,11 @@ export class ProductSync extends BaseSync {
                 }
             }
 
-            if (scoreUpdateOperations.length > 0) {
-                await Promise.all(scoreUpdateOperations.map(op => op.catch((err) => {
+            // Score/SEO updates chunked at 10 — same rationale as upserts above.
+            const SCORE_CHUNK = 10;
+            for (let i = 0; i < scoreUpdateOperations.length; i += SCORE_CHUNK) {
+                const ops = scoreUpdateOperations.slice(i, i + SCORE_CHUNK);
+                await Promise.all(ops.map(op => op.catch((err) => {
                     Logger.warn('Failed to update product scores', { accountId, syncId, error: err.message });
                 })));
             }
