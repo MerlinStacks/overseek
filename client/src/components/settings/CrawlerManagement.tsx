@@ -189,10 +189,10 @@ export function CrawlerManagement() {
                 {/* Stats Bar */}
                 {data && (
                     <div className="grid grid-cols-4 gap-4">
-                        <StatCard icon={<BarChart3 size={18} />} label="Hits (24h)" value={data.totalHits24h.toLocaleString()} color="blue" />
-                        <StatCard icon={<ShieldOff size={18} />} label="Blocked (24h)" value={data.totalBlockedHits24h.toLocaleString()} color="red" />
-                        <StatCard icon={<Bot size={18} />} label="Unique Crawlers" value={data.uniqueCrawlers.toString()} color="purple" />
-                        <StatCard icon={<ShieldOff size={18} />} label="Rules Active" value={data.blockedCount.toString()} color="red" />
+                        <StatCard icon={<BarChart3 size={18} />} label="Hits (24h)" value={(data.totalHits24h ?? 0).toLocaleString()} color="blue" />
+                        <StatCard icon={<ShieldOff size={18} />} label="Blocked (24h)" value={(data.totalBlockedHits24h ?? 0).toLocaleString()} color="red" />
+                        <StatCard icon={<Bot size={18} />} label="Unique Crawlers" value={(data.uniqueCrawlers ?? 0).toString()} color="purple" />
+                        <StatCard icon={<ShieldOff size={18} />} label="Rules Active" value={(data.blockedCount ?? 0).toString()} color="red" />
                     </div>
                 )}
 
@@ -335,14 +335,14 @@ function CrawlerRow({ crawler, isToggling, onToggle }: {
 
             {/* Hit Count */}
             <div className="text-right shrink-0">
-                <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">{crawler.totalHits.toLocaleString()}</p>
+                <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">{(crawler.totalHits ?? 0).toLocaleString()}</p>
                 <p className="text-[10px] text-gray-400 dark:text-slate-500">hits</p>
             </div>
 
             {/* Blocked Hit Count — only shown when there are blocked hits */}
             {crawler.blockedHits > 0 && (
                 <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">{crawler.blockedHits.toLocaleString()}</p>
+                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">{(crawler.blockedHits ?? 0).toLocaleString()}</p>
                     <p className="text-[10px] text-red-400 dark:text-red-500">blocked</p>
                 </div>
             )}
