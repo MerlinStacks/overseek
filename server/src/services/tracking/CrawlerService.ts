@@ -6,6 +6,7 @@
  * All methods are designed to never block the tracking hot path.
  */
 
+
 import { prisma } from '../../utils/prisma';
 import { cacheAside, cacheDelete, CacheTTL } from '../../utils/cache';
 import { Logger } from '../../utils/logger';
@@ -68,6 +69,11 @@ export async function logHitIfIdentifiable(
 
         if (!crawler && !looksLikeBot) return;
 
+        // Check if this crawler is blocked — route to blockedHitCount if so.
+        // Uses the cached block patterns (same source the WC plugin syncs from).
+        const blockedPatterns = await getBlockedPatterns(accountId);
+        const isBlocked = blockedPatterns.some(pattern => ua.includes(pattern.toLowerCase()));
+
         // Resolve country from IP using existing GeoIP service (sync, ~0.1ms)
         let country: string | null = null;
         let city: string | null = null;
@@ -80,7 +86,6 @@ export async function logHitIfIdentifiable(
         }
 
         // For unknown bots, derive a stable slug from the first 40 chars of the UA.
-        // Stored as-is so admins can read the raw UA and decide whether to block.
         const slug = crawler?.slug ?? ('unknown:' + userAgent.substring(0, 40).toLowerCase().replace(/[^a-z0-9-_]/g, '_'));
         const category = crawler?.category ?? 'unknown';
 
@@ -88,7 +93,8 @@ export async function logHitIfIdentifiable(
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
 
-        // Upsert: one row per crawler per day per account
+        // Upsert: one row per crawler per day per account.
+        // Blocked hits go to blockedHitCount, unblocked to hitCount.
         await prisma.crawlerLog.upsert({
             where: {
                 accountId_crawlerName_date: {
@@ -102,13 +108,18 @@ export async function logHitIfIdentifiable(
                 crawlerName: slug,
                 category,
                 sampleAgent: userAgent.substring(0, 500),
-                hitCount: 1,
+                hitCount: isBlocked ? 0 : 1,
+                blockedHitCount: isBlocked ? 1 : 0,
                 date: today,
                 country,
                 city,
             },
             update: {
-                hitCount: { increment: 1 },
+                ...(isBlocked
+                    ? { blockedHitCount: { increment: 1 } }
+                    : { hitCount: { increment: 1 } }
+                ),
+                category: crawler?.category ?? 'unknown',
                 sampleAgent: userAgent.substring(0, 500),
                 ...(country ? { country } : {}),
                 ...(city ? { city } : {}),
@@ -176,6 +187,60 @@ export async function getBlockPageHtml(accountId: string): Promise<string | null
 }
 
 /**
+ * Derive a human-readable display name from an unknown crawler slug.
+ * Extracts recognisable bot/tool names from slugified UA strings.
+ *
+ * Examples:
+ *   "unknown:mozilla_5_0_x11_linux_x86_64__storebot" → "Storebot"
+ *   "unknown:python_3_12_aiohttp_3_13_3"             → "Python aiohttp"
+ *   "unknown:duckassistbot_1_2____http___duckduckgo"  → "Duckassistbot"
+ */
+function humanizeUnknownSlug(slug: string): string {
+    if (!slug.startsWith('unknown:')) return slug;
+
+    const raw = slug.substring('unknown:'.length);
+
+    // Try to find a recognisable bot/tool keyword in the slug
+    const BOT_KEYWORDS = [
+        'bot', 'spider', 'crawler', 'scraper', 'fetcher', 'scanner',
+        'curl', 'wget', 'python', 'aiohttp', 'http', 'monitor',
+    ];
+
+    // Split on underscores (our slug separator) and find the first meaningful token
+    const tokens = raw.split('_').filter(Boolean);
+
+    // Strategy 1: Find a token containing a bot keyword
+    for (const token of tokens) {
+        if (BOT_KEYWORDS.some(kw => token.includes(kw))) {
+            // Capitalise first letter, strip version-like suffixes
+            const clean = token.replace(/[_\d.]+$/, '');
+            if (clean.length >= 3) {
+                return clean.charAt(0).toUpperCase() + clean.slice(1);
+            }
+        }
+    }
+
+    // Strategy 2: If slug starts with a recognisable non-mozilla prefix, use it
+    if (!raw.startsWith('mozilla')) {
+        // Take tokens up to the first version number or URL fragment
+        const nameTokens: string[] = [];
+        for (const token of tokens) {
+            if (/^\d+$/.test(token) || token.startsWith('http') || token.startsWith('www')) break;
+            nameTokens.push(token);
+            if (nameTokens.length >= 3) break;
+        }
+        if (nameTokens.length > 0) {
+            return nameTokens
+                .map(t => t.charAt(0).toUpperCase() + t.slice(1))
+                .join(' ');
+        }
+    }
+
+    // Strategy 3: Fallback — return slug without the "unknown:" prefix, truncated
+    return raw.substring(0, 30).replace(/_/g, ' ').trim();
+}
+
+/**
  * Get aggregated crawler stats for the dashboard.
  * On-demand query — not cached (admin-only, infrequent).
  *
@@ -193,7 +258,7 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
         prisma.crawlerLog.groupBy({
             by: ['crawlerName', 'category'],
             where: { accountId, date: { gte: since } },
-            _sum: { hitCount: true },
+            _sum: { hitCount: true, blockedHitCount: true },
             orderBy: { _sum: { hitCount: 'desc' } },
         }),
         prisma.crawlerRule.findMany({
@@ -205,7 +270,7 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
                 accountId,
                 date: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
             },
-            _sum: { hitCount: true }
+            _sum: { hitCount: true, blockedHitCount: true }
         }),
         // Fetch latest known country per crawler (most recent log entry)
         prisma.$queryRaw<Array<{ crawlerName: string; country: string | null }>>`
@@ -223,9 +288,10 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
     const crawlers = logs.map(log => {
         const identity = CRAWLER_REGISTRY.find(c => c.slug === log.crawlerName);
         const rule = ruleMap.get(log.crawlerName);
+        const displayName = identity?.name || humanizeUnknownSlug(log.crawlerName);
 
         return {
-            name: identity?.name || log.crawlerName,
+            name: displayName,
             slug: log.crawlerName,
             category: log.category,
             categoryLabel: CATEGORY_META[log.category as keyof typeof CATEGORY_META]?.label || 'Unknown',
@@ -236,6 +302,7 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
             intent: identity?.intent || 'neutral',
             country: countryMap.get(log.crawlerName) || null,
             totalHits: log._sum.hitCount || 0,
+            blockedHits: log._sum.blockedHitCount || 0,
             action: rule?.action || 'ALLOW',
             ruleReason: rule?.reason || null,
         };
@@ -244,6 +311,7 @@ export async function getCrawlerStats(accountId: string, days: number = 30) {
     return {
         crawlers,
         totalHits24h: totalHits24h._sum.hitCount || 0,
+        totalBlockedHits24h: totalHits24h._sum.blockedHitCount || 0,
         uniqueCrawlers: new Set(logs.map(l => l.crawlerName)).size,
         blockedCount: rules.filter(r => r.action === 'BLOCK').length,
         rules,

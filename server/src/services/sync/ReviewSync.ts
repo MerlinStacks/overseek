@@ -113,8 +113,6 @@ export class ReviewSync extends BaseSync {
                 continue;
             }
 
-            const indexPromises: Promise<any>[] = [];
-
             // --- OOM FIX: Pre-fetch orders ONCE per batch with lightweight projection ---
             // Instead of querying all orders per review (N+1), compute the widest
             // date window across the entire batch and fetch matching orders once.
@@ -176,20 +174,41 @@ export class ReviewSync extends BaseSync {
                 }
             }
 
+            // --- N+1 FIX: Batch-fetch customers by email ---
+            const reviewerEmails = [...new Set(
+                reviews
+                    .map(r => (r as any).reviewer_email as string | undefined)
+                    .filter((e): e is string => !!e)
+            )];
+            const batchCustomers = reviewerEmails.length > 0
+                ? await prisma.wooCustomer.findMany({
+                    where: { accountId, email: { in: reviewerEmails } },
+                    select: { id: true, wooId: true, email: true }
+                })
+                : [];
+            const customerByEmail = new Map<string, { id: string; wooId: number; email: string }>(
+                batchCustomers.map(c => [c.email, c])
+            );
+
+            // --- N+1 FIX: Batch-check existing reviews for isRecent detection ---
+            const batchWooIds = reviews.map(r => r.id);
+            const existingReviews = await prisma.wooReview.findMany({
+                where: { wooId: { in: batchWooIds }, accountId },
+                select: { wooId: true }
+            });
+            const existingWooIds = new Set(existingReviews.map(r => r.wooId));
+
             for (const r of reviews) {
                 wooReviewIds.add(r.id);
 
                 const reviewData = r as any;
                 const reviewerEmail = reviewData.reviewer_email;
 
-                // 1. Find Customer (pre-fetch once, avoiding N+1)
+                // 1. Find Customer (from pre-fetched batch)
                 let wooCustomerId: string | null = null;
                 let customerData: { id: string; wooId: number; email: string } | null = null;
                 if (reviewerEmail) {
-                    customerData = await prisma.wooCustomer.findFirst({
-                        where: { accountId, email: reviewerEmail },
-                        select: { id: true, wooId: true, email: true }
-                    });
+                    customerData = customerByEmail.get(reviewerEmail) || null;
                     if (customerData) wooCustomerId = customerData.id;
                 }
 
@@ -276,7 +295,7 @@ export class ReviewSync extends BaseSync {
 
                 // EDGE CASE: Track unmatched reviews for manual review
                 // This helps identify reviews that couldn't be linked to customers/orders
-                const matchStatus = wooCustomerId ? 'matched' : 'unmatched';
+                const matchStatus = wooOrderId ? 'matched' : 'unmatched';
                 if (!wooCustomerId && reviewerEmail) {
                     Logger.debug('[ReviewSync] Orphaned review - no customer match', {
                         accountId,
@@ -288,10 +307,6 @@ export class ReviewSync extends BaseSync {
                         productName: r.product_name
                     });
                 }
-
-                const existingReview = await prisma.wooReview.findUnique({
-                    where: { accountId_wooId: { accountId, wooId: r.id } }
-                });
 
                 await prisma.wooReview.upsert({
                     where: { accountId_wooId: { accountId, wooId: r.id } },
@@ -330,23 +345,19 @@ export class ReviewSync extends BaseSync {
                 // Detect "Review Left" for triggers
                 const isRecent = (new Date().getTime() - reviewDate.getTime()) < 24 * 60 * 60 * 1000;
 
-                if (isRecent && !existingReview) {
+                if (isRecent && !existingWooIds.has(r.id)) {
                     EventBus.emit(EVENTS.REVIEW.LEFT, { accountId, review: r });
                 }
-
-                // Index into Elasticsearch (parallel)
-                indexPromises.push(
-                    IndexingService.indexReview(accountId, r)
-                        .catch((error: any) => {
-                            Logger.warn(`Failed to index review ${r.id}`, { accountId, syncId, error: error.message });
-                        })
-                );
 
                 totalProcessed++;
             }
 
-            // Wait for all indexing operations
-            await Promise.allSettled(indexPromises);
+            // Bulk index all reviews in one ES call (like CustomerSync/OrderSync)
+            try {
+                await IndexingService.bulkIndexReviews(accountId, reviews);
+            } catch (error: any) {
+                Logger.warn('Bulk index reviews failed', { accountId, syncId, error: error.message });
+            }
 
             Logger.info(`Synced batch of ${reviews.length} reviews`, { accountId, syncId, page, totalPages });
             // Use WooCommerce's x-wp-totalpages header instead of batch size
@@ -373,19 +384,18 @@ export class ReviewSync extends BaseSync {
                 select: { id: true, wooId: true }
             });
 
-            const deletePromises: Promise<any>[] = [];
+            const idsToDelete: string[] = [];
             for (const local of localReviews) {
                 if (!wooReviewIds.has(local.wooId)) {
-                    // Review exists locally but not in WooCommerce - delete it
-                    deletePromises.push(
-                        prisma.wooReview.delete({ where: { id: local.id } })
-                    );
-                    totalDeleted++;
+                    idsToDelete.push(local.id);
                 }
             }
 
-            if (deletePromises.length > 0) {
-                await Promise.allSettled(deletePromises);
+            if (idsToDelete.length > 0) {
+                const result = await prisma.wooReview.deleteMany({
+                    where: { id: { in: idsToDelete }, accountId }
+                });
+                totalDeleted = result.count;
                 Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned reviews`, { accountId, syncId });
             }
         }

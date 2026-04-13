@@ -237,8 +237,15 @@ export class MarketingScheduler {
     // Prevents concurrent alert checks for the same account. Without this,
     // overlapping scheduler cycles pile up gRPC calls and inflate the heap.
     private static inFlightAlertAccounts = new Set<string>();
+    // Prevents overlapping dispatch cycles from different trigger sources
+    private static _adAlertsRunning = false;
 
     static async dispatchAdAlerts() {
+        if (this._adAlertsRunning) {
+            Logger.debug('[Scheduler] Skipping ad alert dispatch — already running');
+            return;
+        }
+        this._adAlertsRunning = true;
         Logger.info('[Scheduler] Starting ad alert check');
 
         try {
@@ -309,6 +316,8 @@ export class MarketingScheduler {
             }
         } catch (error) {
             Logger.error('[Scheduler] Ad alerts dispatch failed', { error });
+        } finally {
+            this._adAlertsRunning = false;
         }
     }
 

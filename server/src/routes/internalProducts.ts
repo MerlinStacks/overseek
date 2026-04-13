@@ -9,6 +9,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { InternalProductsService } from '../services/InternalProductsService';
 import { validateFastify } from '../middleware/validate';
+import { requireAuthFastify } from '../middleware/auth';
 
 // === Zod Schemas ===
 
@@ -54,13 +55,13 @@ const adjustStockSchema = z.object({
 });
 
 export default async function internalProductsRoutes(fastify: FastifyInstance) {
-
+    fastify.addHook('preHandler', requireAuthFastify);
 
     // List internal products
     fastify.get('/', async (req: FastifyRequest<{
         Querystring: { search?: string; supplierId?: string; limit?: string; offset?: string }
     }>, reply: FastifyReply) => {
-        const accountId = req.headers['x-account-id'] as string;
+        const accountId = req.accountId;
 
         if (!accountId) {
             return reply.status(400).send({ error: 'Account ID required' });
@@ -80,7 +81,7 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
 
     // Get for BOM selection (lightweight list)
     fastify.get('/for-bom', async (req: FastifyRequest, reply: FastifyReply) => {
-        const accountId = req.headers['x-account-id'] as string;
+        const accountId = req.accountId;
 
         if (!accountId) {
             return reply.status(400).send({ error: 'Account ID required' });
@@ -94,11 +95,13 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
     fastify.get('/:id', async (req: FastifyRequest<{
         Params: { id: string }
     }>, reply: FastifyReply) => {
+        const accountId = req.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Account ID required' });
         const { id } = req.params;
 
         const item = await InternalProductsService.getById(id);
 
-        if (!item) {
+        if (!item || item.accountId !== accountId) {
             return reply.status(404).send({ error: 'Internal product not found' });
         }
 
@@ -119,7 +122,7 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
             supplierId?: string;
         }
     }>, reply: FastifyReply) => {
-        const accountId = req.headers['x-account-id'] as string;
+        const accountId = req.accountId;
 
         if (!accountId) {
             return reply.status(400).send({ error: 'Account ID required' });
@@ -164,10 +167,12 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
             supplierId?: string;
         }
     }>, reply: FastifyReply) => {
+        const accountId = req.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Account ID required' });
         const { id } = req.params;
 
         try {
-            const item = await InternalProductsService.update(id, req.body);
+            const item = await InternalProductsService.update(id, req.body, accountId);
             return reply.send(item);
         } catch (error: any) {
             if (error.message === 'Internal product not found') {
@@ -185,15 +190,17 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
         Params: { id: string };
         Querystring: { force?: string }
     }>, reply: FastifyReply) => {
+        const accountId = req.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Account ID required' });
         const { id } = req.params;
         const force = req.query.force === 'true';
 
         try {
             if (force) {
-                const result = await InternalProductsService.forceDelete(id);
+                const result = await InternalProductsService.forceDelete(id, accountId);
                 return reply.send(result);
             } else {
-                const result = await InternalProductsService.delete(id);
+                const result = await InternalProductsService.delete(id, accountId);
                 if (!result.success && result.bomUsageWarning) {
                     return reply.status(409).send({
                         error: 'Product is used in BOMs',
@@ -216,11 +223,13 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
         Params: { id: string };
         Body: { adjustment: number; reason: string }
     }>, reply: FastifyReply) => {
+        const accountId = req.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Account ID required' });
         const { id } = req.params;
         const { adjustment, reason } = req.body;
 
         try {
-            const item = await InternalProductsService.adjustStock(id, adjustment, reason, 'USER');
+            const item = await InternalProductsService.adjustStock(id, adjustment, reason, 'USER', accountId);
             return reply.send(item);
         } catch (error: any) {
             if (error.message === 'Internal product not found') {

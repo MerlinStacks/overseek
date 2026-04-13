@@ -59,7 +59,7 @@ interface GrpcBreakerState {
 const grpcBreakerMap = new Map<string, GrpcBreakerState>();
 
 // Periodically purge expired breaker entries to prevent unbounded Map growth
-setInterval(() => {
+const breakerCleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [id, ts] of authBreakerMap.entries()) {
         if (now - ts >= AUTH_BREAKER_TTL_MS) authBreakerMap.delete(id);
@@ -71,6 +71,10 @@ setInterval(() => {
         }
     }
 }, 15 * 60 * 1000); // every 15 minutes
+
+export function cleanupGoogleAdsClient() {
+    clearInterval(breakerCleanupInterval);
+}
 
 /**
  * Check if the gRPC circuit-breaker is currently open for an ad account.

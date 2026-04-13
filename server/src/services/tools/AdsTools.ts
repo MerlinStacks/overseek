@@ -150,7 +150,7 @@ export class AdsTools {
                     totalRoas += insights.roas;
                     successCount++;
                 }
-            } catch { /* skip */ }
+            } catch (err) { Logger.warn('[AdsTools] Failed to fetch insights for account', { error: (err as any)?.message }); }
         }
 
         if (successCount === 0) return null;

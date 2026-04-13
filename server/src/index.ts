@@ -67,6 +67,10 @@ async function start() {
   try {
     await SchedulerService.start();
     Logger.info('[Startup] Scheduler started');
+
+    // Register scheduler worker for graceful shutdown
+    const { onShutdown } = await import('./utils/shutdown');
+    onShutdown(() => SchedulerService.shutdown());
   } catch (error) {
     Logger.error('[Startup] Failed to start scheduler', { error });
   }

@@ -34,7 +34,16 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
     // PUT /macros/:id - Update a macro
     fastify.put<{ Params: { id: string } }>('/macros/:id', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account required' });
         const { name, icon, color, actions, sortOrder } = request.body as any;
+
+        // Verify ownership before update
+        const existing = await prisma.inboxMacro.findFirst({
+            where: { id: request.params.id, accountId }
+        });
+        if (!existing) return reply.code(404).send({ error: 'Macro not found' });
+
         return prisma.inboxMacro.update({
             where: { id: request.params.id },
             data: { name, icon, color, actions, sortOrder }
@@ -43,20 +52,33 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
     // DELETE /macros/:id - Delete a macro
     fastify.delete<{ Params: { id: string } }>('/macros/:id', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account required' });
+
+        // Verify ownership before delete
+        const existing = await prisma.inboxMacro.findFirst({
+            where: { id: request.params.id, accountId }
+        });
+        if (!existing) return reply.code(404).send({ error: 'Macro not found' });
+
         await prisma.inboxMacro.delete({ where: { id: request.params.id } });
         return { success: true };
     });
 
     // POST /macros/:id/execute - Execute a macro on a conversation
     fastify.post<{ Params: { id: string } }>('/macros/:id/execute', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account required' });
         const { conversationId } = request.body as any;
         if (!conversationId) return reply.code(400).send({ error: 'conversationId required' });
 
-        const macro = await prisma.inboxMacro.findUnique({ where: { id: request.params.id } });
+        // Verify macro belongs to this account
+        const macro = await prisma.inboxMacro.findFirst({ where: { id: request.params.id, accountId } });
         if (!macro) return reply.code(404).send({ error: 'Macro not found' });
 
         const actions = macro.actions as any[];
-        const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
+        // Verify conversation belongs to this account
+        const conv = await prisma.conversation.findFirst({ where: { id: conversationId, accountId } });
         if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
 
         for (const action of actions) {

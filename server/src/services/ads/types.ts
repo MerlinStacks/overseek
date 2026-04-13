@@ -155,6 +155,13 @@ export async function getCredentials(platform: AdsPlatform): Promise<Record<stri
         const cached = credentialsCache.get(cacheKey);
 
         if (cached && cached.expiry > Date.now()) {
+            // Proactive sweep: evict expired entries when cache exceeds 100
+            if (credentialsCache.size > 100) {
+                const now = Date.now();
+                for (const [key, entry] of credentialsCache) {
+                    if (entry.expiry <= now) credentialsCache.delete(key);
+                }
+            }
             return cached.data;
         }
 

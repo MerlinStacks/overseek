@@ -65,7 +65,7 @@ async function build() {
     // Rate Limiting
     await fastify.register(rateLimit, {
         max: RATE_LIMITS.MAX_REQUESTS,
-        timeWindow: RATE_LIMITS.WINDOW,
+        timeWindow: RATE_LIMITS.WINDOW_MS,
         allowList: (req) => {
             const url = req.url || '';
             if (url.startsWith('/api/sync')) return true;
@@ -385,13 +385,17 @@ async function initializeApp() {
     setupSocketHandlers(io);
 
     // CRON / SCHEDULERS
-    setInterval(async () => {
+    const tickerInterval = setInterval(async () => {
         try {
             await automationEngine.runTicker();
         } catch (e) {
             Logger.error('Ticker Error', { error: e as Error });
         }
     }, SCHEDULER_LIMITS.TICKER_INTERVAL_MS);
+
+    // Register for cleanup on shutdown
+    process.once('SIGTERM', () => clearInterval(tickerInterval));
+    process.once('SIGINT', () => clearInterval(tickerInterval));
 }
 
 // Initialize on import

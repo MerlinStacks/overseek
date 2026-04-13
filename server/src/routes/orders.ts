@@ -501,8 +501,12 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             // Reindex the order in Elasticsearch
-            const { IndexingService } = await import('../services/search/IndexingService');
-            await IndexingService.indexOrder(accountId, { ...updatedRawData, id: order.wooId }, newTags);
+            try {
+                const { IndexingService } = await import('../services/search/IndexingService');
+                await IndexingService.indexOrder(accountId, { ...updatedRawData, id: order.wooId }, newTags);
+            } catch (err: any) {
+                Logger.warn('[Orders] DB-ES divergence: tag update committed but ES reindex failed', { orderId: order.wooId, error: err.message });
+            }
 
             Logger.info('Tag removed from order', { orderId: order.wooId, tag, remainingTags: newTags });
 
@@ -574,8 +578,12 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             // Reindex the order in Elasticsearch
-            const { IndexingService } = await import('../services/search/IndexingService');
-            await IndexingService.indexOrder(accountId, { ...updatedRawData, id: order.wooId }, newTags);
+            try {
+                const { IndexingService } = await import('../services/search/IndexingService');
+                await IndexingService.indexOrder(accountId, { ...updatedRawData, id: order.wooId }, newTags);
+            } catch (err: any) {
+                Logger.warn('[Orders] DB-ES divergence: tag update committed but ES reindex failed', { orderId: order.wooId, error: err.message });
+            }
 
             Logger.info('Tag added to order', { orderId: order.wooId, tag: cleanTag, allTags: newTags });
 

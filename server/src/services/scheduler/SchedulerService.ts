@@ -46,8 +46,10 @@ export class SchedulerService {
     /**
      * Register the central worker that routes jobs to specialized schedulers
      */
+    private static schedulerWorker: import('bullmq').Worker | null = null;
+
     private static registerWorker() {
-        QueueFactory.createWorker('scheduler', async (job) => {
+        this.schedulerWorker = QueueFactory.createWorker('scheduler', async (job) => {
             switch (job.name) {
                 // Sync jobs
                 case 'orchestrate-sync':
@@ -116,5 +118,15 @@ export class SchedulerService {
         });
 
         Logger.info('Scheduler worker registered');
+    }
+
+    /**
+     * Gracefully close the scheduler worker on shutdown.
+     */
+    static async shutdown() {
+        if (this.schedulerWorker) {
+            await this.schedulerWorker.close();
+            Logger.info('Scheduler worker closed');
+        }
     }
 }

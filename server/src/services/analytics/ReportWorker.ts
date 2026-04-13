@@ -71,6 +71,12 @@ export class ReportWorker {
                 subject = `[Report] ${schedule.template.name} - ${new Date().toLocaleDateString()}`;
             }
 
+            // Update lastRunAt BEFORE sending emails to prevent duplicate sends on crash
+            await prisma.reportSchedule.update({
+                where: { id: scheduleId },
+                data: { lastRunAt: new Date() }
+            });
+
             // Send Email
             if (schedule.emailRecipients && schedule.emailRecipients.length > 0) {
                 const emailService = new EmailService();
@@ -85,12 +91,6 @@ export class ReportWorker {
                     );
                 }
             }
-
-            // Update Last Run
-            await prisma.reportSchedule.update({
-                where: { id: scheduleId },
-                data: { lastRunAt: new Date() }
-            });
 
         } catch (error: any) {
             Logger.error(`[ReportWorker] Failed: ${error.message}`, { error });

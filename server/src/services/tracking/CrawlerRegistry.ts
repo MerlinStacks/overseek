@@ -114,7 +114,44 @@ export const CRAWLER_REGISTRY: CrawlerIdentity[] = [
         intent: 'beneficial',
     },
 
+    // ── Google Specialty Bots ─────────────────────────────────────────
+    {
+        name: 'AdsBot-Google', slug: 'adsbot-google', patterns: ['adsbot-google', 'adsbot/3'],
+        category: 'search_engine', owner: 'Google LLC',
+        description: 'Checks landing page quality for Google Ads campaigns.',
+        website: 'https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers',
+        intent: 'beneficial',
+    },
+    {
+        name: 'Feedfetcher-Google', slug: 'feedfetcher-google', patterns: ['feedfetcher-google'],
+        category: 'search_engine', owner: 'Google LLC',
+        description: 'Fetches RSS/Atom feeds for Google Podcasts and News.',
+        website: 'https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers',
+        intent: 'beneficial',
+    },
+    {
+        name: 'Storebot-Google', slug: 'storebot-google', patterns: ['storebot-google', 'storebot'],
+        category: 'search_engine', owner: 'Google LLC',
+        description: 'Crawls product pages for Google Shopping and Merchant Center.',
+        website: 'https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers',
+        intent: 'beneficial',
+    },
+    {
+        name: 'BingIndexCrawler', slug: 'bingindexcrawler', patterns: ['bingindexcrawler', 'bingindex'],
+        category: 'search_engine', owner: 'Microsoft',
+        description: 'Microsoft Bing supplemental indexing crawler.',
+        website: 'https://www.bing.com/webmasters/help/which-crawlers-does-bing-use',
+        intent: 'beneficial',
+    },
+
     // ── AI Crawlers ────────────────────────────────────────────────────
+    {
+        name: 'DuckAssistBot', slug: 'duckassistbot', patterns: ['duckassistbot'],
+        category: 'ai_crawler', owner: 'DuckDuckGo',
+        description: 'Fetches content for DuckDuckGo AI-assisted search answers.',
+        website: 'https://duckduckgo.com/duckduckbot',
+        intent: 'neutral',
+    },
     {
         name: 'GPTBot', slug: 'gptbot', patterns: ['gptbot', 'chatgpt-user'],
         category: 'ai_crawler', owner: 'OpenAI',
@@ -267,6 +304,53 @@ export const CRAWLER_REGISTRY: CrawlerIdentity[] = [
         intent: 'beneficial',
     },
 
+    {
+        name: 'Snapchat URL Preview', slug: 'snapchat-preview', patterns: ['snap url preview', 'snapchat'],
+        category: 'social_preview', owner: 'Snap Inc.',
+        description: 'Generates link previews when URLs are shared on Snapchat.',
+        website: 'https://www.snapchat.com/',
+        intent: 'beneficial',
+    },
+    {
+        name: 'PeecBot', slug: 'peecbot', patterns: ['peecbot'],
+        category: 'seo_tool', owner: 'Peec.ai',
+        description: 'SEO monitoring and crawling bot.',
+        website: 'https://peec.ai/',
+        intent: 'neutral',
+    },
+
+    // ── Security Scanners (additional) ────────────────────────────────
+    {
+        name: 'Palo Alto Networks', slug: 'palo-alto-scanner', patterns: ['palo alto networks', 'paloaltonetworks', 'palo_alto'],
+        category: 'security_scanner', owner: 'Palo Alto Networks',
+        description: 'Security research and threat intelligence scanner.',
+        website: 'https://www.paloaltonetworks.com/',
+        intent: 'neutral',
+    },
+    {
+        name: 'DomainAuditor', slug: 'domainauditor', patterns: ['domainauditor'],
+        category: 'seo_tool', owner: 'DomainAuditor',
+        description: 'Domain and website auditing crawler.',
+        website: '',
+        intent: 'neutral',
+    },
+
+    // ── HTTP Clients (additional) ─────────────────────────────────────
+    {
+        name: 'SEBot', slug: 'sebot', patterns: ['sebot'],
+        category: 'seo_tool', owner: 'Unknown',
+        description: 'Search engine optimization bot.',
+        website: '',
+        intent: 'neutral',
+    },
+    {
+        name: 'Python aiohttp', slug: 'python-aiohttp', patterns: ['aiohttp'],
+        category: 'http_client', owner: 'Open Source',
+        description: 'Python async HTTP client library.',
+        website: 'https://docs.aiohttp.org/',
+        intent: 'neutral',
+    },
+
     // ── Uptime Monitors ────────────────────────────────────────────────
     {
         name: 'Pingdom', slug: 'pingdom', patterns: ['pingdom'],
@@ -357,7 +441,7 @@ export const CRAWLER_REGISTRY: CrawlerIdentity[] = [
         intent: 'neutral',
     },
     {
-        name: 'Headless Chrome', slug: 'headless', patterns: ['headless'],
+        name: 'Headless Chrome', slug: 'headless', patterns: ['headlesschrome'],
         category: 'http_client', owner: 'Various',
         description: 'Headless browser automation. May be scraping or testing.',
         website: 'https://developer.chrome.com/docs/chromium/headless',

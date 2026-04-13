@@ -193,16 +193,30 @@ export class CustomReportService {
         const result = new Map<string, number>();
 
         try {
-            const rawResults: any[] = await prisma.$queryRaw`
-                SELECT s."${prisma.$queryRaw`${groupByField}`}" as dimension, COUNT(e.id) as views
+            // Map groupByField to safe SQL identifier — never interpolate user input as identifier
+            const DIMENSION_COLUMNS: Record<string, string> = {
+                referrer: '"referrer"',
+                utmSource: '"utmSource"',
+                deviceType: '"deviceType"',
+                country: '"country"',
+            };
+            const columnExpr = DIMENSION_COLUMNS[groupByField];
+            if (!columnExpr) {
+                Logger.warn('[CustomReport] Unknown groupByField', { groupByField });
+                return result;
+            }
+
+            const rawResults: any[] = await prisma.$queryRawUnsafe(
+                `SELECT s.${columnExpr} as dimension, COUNT(e.id) as views
                 FROM "AnalyticsEvent" e
                 JOIN "AnalyticsSession" s ON e."sessionId" = s.id
-                WHERE s."accountId" = ${accountId}
-                AND e."createdAt" >= ${startDate}
-                AND e."createdAt" <= ${endDate}
+                WHERE s."accountId" = $1
+                AND e."createdAt" >= $2
+                AND e."createdAt" <= $3
                 AND e.type = 'pageview'
-                GROUP BY dimension
-            `;
+                GROUP BY s.${columnExpr}`,
+                accountId, startDate, endDate
+            );
 
             for (const row of rawResults) {
                 result.set(row.dimension || '(direct)', Number(row.views));

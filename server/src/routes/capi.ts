@@ -10,6 +10,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { ConversionForwarder } from '../services/tracking/ConversionForwarder';
 import { getSupportedPlatforms } from '../services/tracking/conversionUtils';
+import { requireAuthFastify } from '../middleware/auth';
 
 /** Maps URL platform param → AccountFeature.featureKey */
 const PLATFORM_FEATURE_KEY: Record<string, string> = {
@@ -28,9 +29,9 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * GET /api/capi/config — Get all CAPI platform configs for account
      */
-    fastify.get('/config', async (request, reply) => {
-        const { accountId } = request.query as { accountId: string };
-        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+    fastify.get('/config', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const features = await prisma.accountFeature.findMany({
             where: {
@@ -67,15 +68,15 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * PUT /api/capi/config/:platform — Save config for a specific platform
      */
-    fastify.put('/config/:platform', async (request, reply) => {
+    fastify.put('/config/:platform', { preHandler: requireAuthFastify }, async (request, reply) => {
         const { platform } = request.params as { platform: string };
-        const { accountId, enabled, config } = request.body as {
-            accountId: string;
+        const accountId = request.accountId;
+        const { enabled, config } = request.body as {
             enabled: boolean;
             config: Record<string, any>;
         };
 
-        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const featureKey = PLATFORM_FEATURE_KEY[platform];
         if (!featureKey) {
@@ -108,11 +109,11 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * DELETE /api/capi/config/:platform — Disable a platform
      */
-    fastify.delete('/config/:platform', async (request, reply) => {
+    fastify.delete('/config/:platform', { preHandler: requireAuthFastify }, async (request, reply) => {
         const { platform } = request.params as { platform: string };
-        const { accountId } = request.query as { accountId: string };
+        const accountId = request.accountId;
 
-        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const featureKey = PLATFORM_FEATURE_KEY[platform];
         if (!featureKey) {
@@ -133,11 +134,11 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * POST /api/capi/test/:platform — Send a test event to verify connectivity
      */
-    fastify.post('/test/:platform', async (request, reply) => {
+    fastify.post('/test/:platform', { preHandler: requireAuthFastify }, async (request, reply) => {
         const { platform } = request.params as { platform: string };
-        const { accountId } = request.body as { accountId: string };
+        const accountId = request.accountId;
 
-        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const featureKey = PLATFORM_FEATURE_KEY[platform];
         if (!featureKey) {
@@ -181,16 +182,16 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * GET /api/capi/deliveries — List recent CAPI delivery logs
      */
-    fastify.get('/deliveries', async (request, reply) => {
-        const { accountId, platform, status, limit = '50', page = '1' } = request.query as {
-            accountId: string;
+    fastify.get('/deliveries', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
+        const { platform, status, limit = '50', page = '1' } = request.query as {
             platform?: string;
             status?: string;
             limit?: string;
             page?: string;
         };
 
-        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const take = Math.min(parseInt(limit, 10) || 50, 100);
         const skip = ((parseInt(page, 10) || 1) - 1) * take;
@@ -235,9 +236,10 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
      * Returns per-platform success/failure rates, daily failure trend,
      * event type breakdown, and recent failures in a single request.
      */
-    fastify.get('/health', async (request, reply) => {
-        const { accountId, range = '7d' } = request.query as { accountId: string; range?: string };
-        if (!accountId) return reply.code(400).send({ error: 'accountId required' });
+    fastify.get('/health', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
+        const { range = '7d' } = request.query as { range?: string };
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const rangeMs: Record<string, number> = {
             '24h': 24 * 60 * 60 * 1000,

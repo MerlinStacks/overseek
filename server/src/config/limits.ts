@@ -9,8 +9,8 @@
 export const RATE_LIMITS = {
     /** Maximum requests per window per IP */
     MAX_REQUESTS: 2000,
-    /** Time window for rate limiting */
-    WINDOW: '15 minutes',
+    /** Time window for rate limiting in milliseconds (15 minutes) */
+    WINDOW_MS: 15 * 60 * 1000,
 } as const;
 
 
@@ -69,7 +69,7 @@ export const QUEUE_LIMITS = {
     /** Worker concurrency per queue (1 = serialize jobs to cap peak heap usage) */
     WORKER_CONCURRENCY: 1,
     /** Maximum retry attempts for failed jobs */
-    MAX_RETRIES: 3,
+    MAX_RETRIES: 2,
     /** Retry backoff delay in milliseconds */
     RETRY_DELAY_MS: 2_000,
     /** Keep last N completed jobs per queue */

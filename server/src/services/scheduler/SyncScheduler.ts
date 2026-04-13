@@ -14,7 +14,7 @@ export class SyncScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
 
     /**
-     * Check if an account has ≥5 consecutive failures in the last 90 minutes.
+     * Check if an account has ≥3 consecutive failures in the last 30 minutes.
      * Used internally by the scheduler to gate dispatch.
      * See isAccountCircuitBroken for the public version.
      */
@@ -25,14 +25,14 @@ export class SyncScheduler {
     /**
      * isAccountCircuitBroken — public method for use by the sync health route.
      *
-     * Why: Consecutive FAILED logs (no SUCCESS in between) in the last 90 min
+     * Why: Consecutive FAILED logs (no SUCCESS in between) in the last 30 min
      * indicates the WooCommerce store is persistently down. We open the circuit
      * to stop retry storms from exhausting the Node.js heap (OOM/exit 137).
      * Manual trigger syncs are excluded from the breaker — users can always force.
      */
     static async isAccountCircuitBroken(accountId: string, entityType?: string): Promise<boolean> {
-        const CONSECUTIVE_FAILURE_THRESHOLD = 5;
-        const WINDOW_MS = 90 * 60 * 1000; // 90 minutes
+        const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+        const WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
         try {
             const since = new Date(Date.now() - WINDOW_MS);
@@ -45,7 +45,7 @@ export class SyncScheduler {
                     triggerSource: { not: 'MANUAL' }
                 },
                 orderBy: { startedAt: 'desc' },
-                take: CONSECUTIVE_FAILURE_THRESHOLD + 1,
+                take: CONSECUTIVE_FAILURE_THRESHOLD,
                 select: { status: true }
             });
 
@@ -94,14 +94,18 @@ export class SyncScheduler {
         const service = new SyncService();
 
         for (const acc of accounts) {
-            if (await this.isAccountBlocked(acc.id)) {
-                Logger.warn(`Orchestrator: Skipping account ${acc.id} due to circuit breaker`);
-                continue;
+            try {
+                if (await this.isAccountBlocked(acc.id)) {
+                    Logger.warn(`Orchestrator: Skipping account ${acc.id} due to circuit breaker`);
+                    continue;
+                }
+                await service.runSync(acc.id, {
+                    incremental: true,
+                    priority: 1
+                });
+            } catch (err: any) {
+                Logger.error(`Orchestrator: Failed to dispatch sync for account ${acc.id}`, { error: err.message });
             }
-            await service.runSync(acc.id, {
-                incremental: true,
-                priority: 1
-            });
         }
     }
 
@@ -116,15 +120,19 @@ export class SyncScheduler {
         const service = new SyncService();
 
         for (const acc of accounts) {
-            if (await this.isAccountBlocked(acc.id)) {
-                Logger.warn(`Fast Order Sync: Skipping account ${acc.id} due to circuit breaker`);
-                continue;
+            try {
+                if (await this.isAccountBlocked(acc.id)) {
+                    Logger.warn(`Fast Order Sync: Skipping account ${acc.id} due to circuit breaker`);
+                    continue;
+                }
+                await service.runSync(acc.id, {
+                    types: ['orders'],
+                    incremental: true,
+                    priority: 1
+                });
+            } catch (err: any) {
+                Logger.error(`Fast Order Sync: Failed to dispatch for account ${acc.id}`, { error: err.message });
             }
-            await service.runSync(acc.id, {
-                types: ['orders'],
-                incremental: true,
-                priority: 1
-            });
         }
     }
 }

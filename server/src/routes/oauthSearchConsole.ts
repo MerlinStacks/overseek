@@ -284,9 +284,11 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
                             authError = true;
                         }
 
+                        if (authValidationCache.size >= 1000) authValidationCache.clear();
                         authValidationCache.set(accountId, { valid: !authError, checkedAt: now });
                     } catch {
                         // Network error — don't flag as auth error, could be transient
+                        if (authValidationCache.size >= 1000) authValidationCache.clear();
                         authValidationCache.set(accountId, { valid: true, checkedAt: now });
                     }
                 }

@@ -27,6 +27,7 @@ interface CrawlerEntry {
     intent: 'beneficial' | 'neutral' | 'harmful';
     country: string | null;
     totalHits: number;
+    blockedHits: number;
     action: 'ALLOW' | 'BLOCK';
     ruleReason: string | null;
 }
@@ -34,6 +35,7 @@ interface CrawlerEntry {
 interface CrawlerStats {
     crawlers: CrawlerEntry[];
     totalHits24h: number;
+    totalBlockedHits24h: number;
     uniqueCrawlers: number;
     blockedCount: number;
 }
@@ -83,9 +85,10 @@ export function CrawlerManagement() {
     const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
     const [confirmBlock, setConfirmBlock] = useState<CrawlerEntry | null>(null);
 
-    const fetchCrawlers = useCallback(async () => {
+    const fetchCrawlers = useCallback(async (signal?: AbortSignal) => {
         if (!currentAccount || !token) return;
 
+        setError(null);
 
         try {
             setIsLoading(true);
@@ -93,14 +96,16 @@ export function CrawlerManagement() {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id,
-                }
+                },
+                signal,
             });
 
             if (!res.ok) throw new Error('Failed to fetch crawler data');
 
             const result = await res.json();
             setData(result);
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.name === 'AbortError') return;
             Logger.error('Failed to fetch crawlers', { error: err });
             setError('Failed to load crawler data');
         } finally {
@@ -109,7 +114,9 @@ export function CrawlerManagement() {
     }, [currentAccount, token]);
 
     useEffect(() => {
-        fetchCrawlers();
+        const controller = new AbortController();
+        fetchCrawlers(controller.signal);
+        return () => controller.abort();
     }, [fetchCrawlers]);
 
     const handleToggleBlock = async (crawler: CrawlerEntry) => {
@@ -181,10 +188,11 @@ export function CrawlerManagement() {
             <div className="p-6 space-y-6">
                 {/* Stats Bar */}
                 {data && (
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-4 gap-4">
                         <StatCard icon={<BarChart3 size={18} />} label="Hits (24h)" value={data.totalHits24h.toLocaleString()} color="blue" />
+                        <StatCard icon={<ShieldOff size={18} />} label="Blocked (24h)" value={data.totalBlockedHits24h.toLocaleString()} color="red" />
                         <StatCard icon={<Bot size={18} />} label="Unique Crawlers" value={data.uniqueCrawlers.toString()} color="purple" />
-                        <StatCard icon={<ShieldOff size={18} />} label="Blocked" value={data.blockedCount.toString()} color="red" />
+                        <StatCard icon={<ShieldOff size={18} />} label="Rules Active" value={data.blockedCount.toString()} color="red" />
                     </div>
                 )}
 
@@ -295,7 +303,12 @@ function CrawlerRow({ crawler, isToggling, onToggle }: {
             {/* Name & Owner */}
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-medium text-sm text-gray-900 dark:text-white">{crawler.name}</span>
+                    <span
+                        className="font-medium text-sm text-gray-900 dark:text-white"
+                        title={crawler.slug.startsWith('unknown:') ? crawler.slug : undefined}
+                    >
+                        {crawler.name}
+                    </span>
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${intentCfg.bg} ${intentCfg.color}`}>
                         {intentCfg.label}
                     </span>
@@ -325,6 +338,14 @@ function CrawlerRow({ crawler, isToggling, onToggle }: {
                 <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">{crawler.totalHits.toLocaleString()}</p>
                 <p className="text-[10px] text-gray-400 dark:text-slate-500">hits</p>
             </div>
+
+            {/* Blocked Hit Count — only shown when there are blocked hits */}
+            {crawler.blockedHits > 0 && (
+                <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">{crawler.blockedHits.toLocaleString()}</p>
+                    <p className="text-[10px] text-red-400 dark:text-red-500">blocked</p>
+                </div>
+            )}
 
             {/* Block Toggle */}
             <button

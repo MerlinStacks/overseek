@@ -403,7 +403,7 @@ export async function processEvent(data: TrackingEventPayload) {
         }
     });
 
-    const timeSinceLastActivity = currentVisit
+    const timeSinceLastActivity = currentVisit?.endedAt
         ? now.getTime() - new Date(currentVisit.endedAt).getTime()
         : Infinity;
 

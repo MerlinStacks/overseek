@@ -4,7 +4,12 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../utils/prisma';
+
+const createTemplateSchema = z.object({ name: z.string().min(1), type: z.string(), config: z.record(z.string(), z.unknown()) });
+const createScheduleSchema = z.object({ templateId: z.string().uuid(), frequency: z.string(), time: z.string(), emailRecipients: z.array(z.string().email()) });
+const createDigestSchema = z.object({ accountId: z.string().uuid().optional(), emails: z.array(z.string().email()).optional() });
 
 // System Templates Config
 const SYSTEM_TEMPLATES = [
@@ -51,8 +56,10 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/templates', async (request, reply) => {
         try {
+            const parsed = createTemplateSchema.safeParse(request.body);
+            if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
             const accountId = request.accountId;
-            const { name, config } = request.body as any;
+            const { name, config } = parsed.data;
             const template = await prisma.reportTemplate.create({
                 data: { accountId, name, config, type: 'CUSTOM' }
             });
@@ -81,8 +88,11 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/schedules', async (request, reply) => {
         try {
+            const parsed = createScheduleSchema.safeParse(request.body);
+            if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
             const accountId = request.accountId;
-            const { templateId, frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive } = request.body as any;
+            const { templateId, frequency, time, emailRecipients } = parsed.data;
+            const { dayOfWeek, dayOfMonth, isActive } = request.body as any;
 
             let targetTemplateId = templateId;
 
@@ -152,6 +162,8 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Create a digest schedule
     fastify.post('/digests', async (request, reply) => {
         try {
+            const parsed = createDigestSchema.safeParse(request.body);
+            if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
             const accountId = request.accountId;
             const { frequency, dayOfWeek, time, emailRecipients, isActive } = request.body as any;
 

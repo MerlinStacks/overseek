@@ -253,9 +253,18 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             const passwordHash = await hashPassword(password);
 
-            const user = await prisma.user.create({
-                data: { email, passwordHash, fullName, isSuperAdmin }
-            });
+            let user;
+            try {
+                user = await prisma.user.create({
+                    data: { email, passwordHash, fullName, isSuperAdmin }
+                });
+            } catch (createError: any) {
+                // Handle race condition: concurrent registration with same email
+                if (createError.code === 'P2002') {
+                    return reply.code(400).send({ error: 'User already exists' });
+                }
+                throw createError;
+            }
 
             const { accessToken, refreshToken } = await SecurityService.createSession(
                 user.id, request.ip, request.headers['user-agent'] as string
@@ -346,6 +355,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             return { ...safeUser, permissions };
         } catch (error) {
+            Logger.error('GET /me error', { error });
             return reply.code(500).send({ error: 'Internal server error' });
         }
     });
@@ -522,16 +532,21 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'New password cannot be the same as current password' });
             }
 
-            // Hash and save new password
+            // Hash and save new password + revoke sessions atomically
             const newPasswordHash = await hashPassword(newPassword);
-            await prisma.user.update({
-                where: { id: userId },
-                data: { passwordHash: newPasswordHash }
-            });
+            await prisma.$transaction(async (tx) => {
+                await tx.user.update({
+                    where: { id: userId },
+                    data: { passwordHash: newPasswordHash }
+                });
 
-            // Why: existing JWTs remain valid until expiry. Revoking all refresh
-            // tokens forces re-login, closing any stolen sessions.
-            await SecurityService.revokeUserSessions(userId);
+                // Why: existing JWTs remain valid until expiry. Revoking all refresh
+                // tokens forces re-login, closing any stolen sessions.
+                await tx.refreshToken.updateMany({
+                    where: { userId, revokedAt: null },
+                    data: { revokedAt: new Date() }
+                });
+            });
 
             Logger.info('Password changed successfully', { userId });
             return { message: 'Password changed successfully' };

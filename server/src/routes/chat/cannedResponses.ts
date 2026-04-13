@@ -47,6 +47,12 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
+        // Verify ownership before update
+        const existing = await prisma.cannedResponseLabel.findFirst({
+            where: { id: request.params.id, accountId }
+        });
+        if (!existing) return reply.code(404).send({ error: 'Label not found' });
+
         try {
             const label = await prisma.cannedResponseLabel.update({
                 where: { id: request.params.id },
@@ -60,23 +66,22 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
             if (error.code === 'P2002') {
                 return reply.code(409).send({ error: 'A label with this name already exists' });
             }
-            if (error.code === 'P2025') {
-                return reply.code(404).send({ error: 'Label not found' });
-            }
             throw error;
         }
     });
 
     fastify.delete<{ Params: { id: string } }>('/canned-labels/:id', async (request, reply) => {
-        try {
-            await prisma.cannedResponseLabel.delete({ where: { id: request.params.id } });
-            return { success: true };
-        } catch (error: any) {
-            if (error.code === 'P2025') {
-                return reply.code(404).send({ error: 'Label not found' });
-            }
-            throw error;
-        }
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        // Verify ownership before delete
+        const existing = await prisma.cannedResponseLabel.findFirst({
+            where: { id: request.params.id, accountId }
+        });
+        if (!existing) return reply.code(404).send({ error: 'Label not found' });
+
+        await prisma.cannedResponseLabel.delete({ where: { id: request.params.id } });
+        return { success: true };
     });
 
     // --- Canned Responses ---
@@ -107,6 +112,12 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
+        // Verify ownership before update
+        const existing = await prisma.cannedResponse.findFirst({
+            where: { id: request.params.id, accountId }
+        });
+        if (!existing) return reply.code(404).send({ error: 'Canned response not found' });
+
         const resp = await prisma.cannedResponse.update({
             where: { id: request.params.id },
             data: { shortcut, content, labelId: labelId || null },
@@ -116,6 +127,15 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.delete<{ Params: { id: string } }>('/canned-responses/:id', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        // Verify ownership before delete
+        const existing = await prisma.cannedResponse.findFirst({
+            where: { id: request.params.id, accountId }
+        });
+        if (!existing) return reply.code(404).send({ error: 'Canned response not found' });
+
         await prisma.cannedResponse.delete({ where: { id: request.params.id } });
         return { success: true };
     });

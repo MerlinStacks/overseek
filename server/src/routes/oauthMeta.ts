@@ -251,50 +251,18 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const page = pages[0];
             const igAccount = await MetaMessagingService.getInstagramBusinessAccount(page.accessToken, page.id);
 
-            // Store with proper token metadata
-            await prisma.socialAccount.upsert({
-                where: { accountId_platform_externalId: { accountId, platform: 'FACEBOOK', externalId: page.id } },
-                create: {
-                    accountId,
-                    platform: 'FACEBOOK',
-                    externalId: page.id,
-                    name: page.name,
-                    accessToken: page.accessToken,
-                    tokenExpiry: tokenExpiresAt,
-                    metadata: {
-                        userAccessToken,
-                        tokenType: 'long_lived',
-                        tokenExpiresAt: tokenExpiresAt.toISOString(),
-                        apiVersion: API_VERSION
-                    }
-                },
-                update: {
-                    name: page.name,
-                    accessToken: page.accessToken,
-                    tokenExpiry: tokenExpiresAt,
-                    metadata: {
-                        userAccessToken,
-                        tokenType: 'long_lived',
-                        tokenExpiresAt: tokenExpiresAt.toISOString(),
-                        apiVersion: API_VERSION
-                    },
-                    isActive: true
-                },
-            });
-
-            if (igAccount) {
-                await prisma.socialAccount.upsert({
-                    where: { accountId_platform_externalId: { accountId, platform: 'INSTAGRAM', externalId: igAccount.igUserId } },
+            // Store Facebook + Instagram accounts atomically
+            await prisma.$transaction(async (tx) => {
+                await tx.socialAccount.upsert({
+                    where: { accountId_platform_externalId: { accountId, platform: 'FACEBOOK', externalId: page.id } },
                     create: {
                         accountId,
-                        platform: 'INSTAGRAM',
-                        externalId: igAccount.igUserId,
-                        name: `@${igAccount.username}`,
+                        platform: 'FACEBOOK',
+                        externalId: page.id,
+                        name: page.name,
                         accessToken: page.accessToken,
                         tokenExpiry: tokenExpiresAt,
                         metadata: {
-                            username: igAccount.username,
-                            linkedPageId: page.id,
                             userAccessToken,
                             tokenType: 'long_lived',
                             tokenExpiresAt: tokenExpiresAt.toISOString(),
@@ -302,12 +270,10 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
                         }
                     },
                     update: {
-                        name: `@${igAccount.username}`,
+                        name: page.name,
                         accessToken: page.accessToken,
                         tokenExpiry: tokenExpiresAt,
                         metadata: {
-                            username: igAccount.username,
-                            linkedPageId: page.id,
                             userAccessToken,
                             tokenType: 'long_lived',
                             tokenExpiresAt: tokenExpiresAt.toISOString(),
@@ -316,7 +282,43 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
                         isActive: true
                     },
                 });
-            }
+
+                if (igAccount) {
+                    await tx.socialAccount.upsert({
+                        where: { accountId_platform_externalId: { accountId, platform: 'INSTAGRAM', externalId: igAccount.igUserId } },
+                        create: {
+                            accountId,
+                            platform: 'INSTAGRAM',
+                            externalId: igAccount.igUserId,
+                            name: `@${igAccount.username}`,
+                            accessToken: page.accessToken,
+                            tokenExpiry: tokenExpiresAt,
+                            metadata: {
+                                username: igAccount.username,
+                                linkedPageId: page.id,
+                                userAccessToken,
+                                tokenType: 'long_lived',
+                                tokenExpiresAt: tokenExpiresAt.toISOString(),
+                                apiVersion: API_VERSION
+                            }
+                        },
+                        update: {
+                            name: `@${igAccount.username}`,
+                            accessToken: page.accessToken,
+                            tokenExpiry: tokenExpiresAt,
+                            metadata: {
+                                username: igAccount.username,
+                                linkedPageId: page.id,
+                                userAccessToken,
+                                tokenType: 'long_lived',
+                                tokenExpiresAt: tokenExpiresAt.toISOString(),
+                                apiVersion: API_VERSION
+                            },
+                            isActive: true
+                        },
+                    });
+                }
+            });
 
             Logger.info('Meta messaging connected successfully', {
                 accountId,

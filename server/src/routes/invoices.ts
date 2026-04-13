@@ -86,6 +86,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.user?.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
+        let writeStream: fs.WriteStream | undefined;
         try {
             const data = await (request as any).file({ limits: { fileSize: 5 * 1024 * 1024 } });
             if (!data) return reply.code(400).send({ error: 'No file uploaded' });
@@ -103,11 +104,15 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
             const filePath = path.join(invoiceImagesDir, filename);
 
             // Write file to disk
-            const writeStream = fs.createWriteStream(filePath);
+            writeStream = fs.createWriteStream(filePath);
             for await (const chunk of data.file) {
                 writeStream.write(chunk);
             }
             writeStream.end();
+            await new Promise<void>((resolve, reject) => {
+                writeStream!.on('finish', resolve);
+                writeStream!.on('error', reject);
+            });
 
             const imageUrl = `/uploads/invoices/${filename}`;
             Logger.info('Invoice image uploaded', { accountId, filename, url: imageUrl });
@@ -119,6 +124,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
                 type: data.mimetype
             };
         } catch (error) {
+            if (writeStream) writeStream.destroy();
             Logger.error('Failed to upload invoice image', { error, accountId });
             return reply.code(500).send({ error: 'Failed to upload image' });
         }

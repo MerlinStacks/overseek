@@ -171,14 +171,15 @@ export class InternalProductsService {
 
     static async update(
         id: string,
-        data: UpdateInternalProductData
+        data: UpdateInternalProductData,
+        callerAccountId?: string
     ): Promise<InternalProductWithSupplier> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
             select: { accountId: true, stockQuantity: true }
         });
 
-        if (!existing) {
+        if (!existing || (callerAccountId && existing.accountId !== callerAccountId)) {
             throw new Error('Internal product not found');
         }
 
@@ -221,7 +222,9 @@ export class InternalProductsService {
 
         // Cascade sync: if stock changed, recalculate all BOM parents that use this component
         if (stockChanged) {
-            this.triggerCascadeSync(existing.accountId, id).catch(() => { });
+            this.triggerCascadeSync(existing.accountId, id).catch((err) => {
+                Logger.warn('[InternalProductsService] Cascade sync fire-and-forget failed', { productId: id, error: err?.message });
+            });
         }
 
         return {
@@ -233,13 +236,13 @@ export class InternalProductsService {
     }
 
 
-    static async delete(id: string): Promise<{ success: boolean; bomUsageWarning?: number }> {
+    static async delete(id: string, callerAccountId?: string): Promise<{ success: boolean; bomUsageWarning?: number }> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
             include: { _count: { select: { bomItems: true } } }
         });
 
-        if (!existing) {
+        if (!existing || (callerAccountId && existing.accountId !== callerAccountId)) {
             throw new Error('Internal product not found');
         }
 
@@ -262,13 +265,13 @@ export class InternalProductsService {
     }
 
 
-    static async forceDelete(id: string): Promise<{ success: boolean; bomItemsRemoved: number }> {
+    static async forceDelete(id: string, callerAccountId?: string): Promise<{ success: boolean; bomItemsRemoved: number }> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
             include: { _count: { select: { bomItems: true } } }
         });
 
-        if (!existing) {
+        if (!existing || (callerAccountId && existing.accountId !== callerAccountId)) {
             throw new Error('Internal product not found');
         }
 
@@ -296,14 +299,15 @@ export class InternalProductsService {
         id: string,
         adjustment: number,
         reason: string,
-        source: 'USER' | 'SYSTEM_BOM' | 'SYSTEM_SYNC' = 'USER'
+        source: 'USER' | 'SYSTEM_BOM' | 'SYSTEM_SYNC' = 'USER',
+        callerAccountId?: string
     ): Promise<InternalProductWithSupplier> {
         const existing = await prisma.internalProduct.findUnique({
             where: { id },
             select: { accountId: true, stockQuantity: true, name: true }
         });
 
-        if (!existing) {
+        if (!existing || (callerAccountId && existing.accountId !== callerAccountId)) {
             throw new Error('Internal product not found');
         }
 
@@ -346,7 +350,9 @@ export class InternalProductsService {
         // Cascade sync: recalculate all BOM parents that use this component
         // Skip cascade when source is SYSTEM_BOM to prevent infinite loops
         if (source !== 'SYSTEM_BOM') {
-            this.triggerCascadeSync(existing.accountId, id).catch(() => { });
+            this.triggerCascadeSync(existing.accountId, id).catch((err) => {
+                Logger.warn('[InternalProductsService] Cascade sync fire-and-forget failed', { productId: id, error: err?.message });
+            });
         }
 
         return {

@@ -18,6 +18,7 @@ import { JanitorService } from '../JanitorService';
 export class MaintenanceScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
     private static janitorInterval: NodeJS.Timeout | null = null;
+    private static webVitalsInterval: NodeJS.Timeout | null = null;
     private static queueDepthInterval: NodeJS.Timeout | null = null;
 
     /**
@@ -89,7 +90,7 @@ export class MaintenanceScheduler {
 
         // Nightly Web Vitals cleanup (90-day retention)
         this.runWebVitalsCleanup();
-        setInterval(() => this.runWebVitalsCleanup(), 24 * 60 * 60 * 1000);
+        this.webVitalsInterval = setInterval(() => this.runWebVitalsCleanup(), 24 * 60 * 60 * 1000);
 
         // Run queue depth check on startup then every 5 minutes
         this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e }));
@@ -104,6 +105,15 @@ export class MaintenanceScheduler {
         }).catch(() => {
             // Script may not exist in older deployments - safe to ignore
         });
+    }
+
+    /**
+     * Stop all maintenance tickers
+     */
+    static stop() {
+        if (this.janitorInterval) { clearInterval(this.janitorInterval); this.janitorInterval = null; }
+        if (this.webVitalsInterval) { clearInterval(this.webVitalsInterval); this.webVitalsInterval = null; }
+        if (this.queueDepthInterval) { clearInterval(this.queueDepthInterval); this.queueDepthInterval = null; }
     }
 
     /**

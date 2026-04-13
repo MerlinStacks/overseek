@@ -16,7 +16,13 @@ export class SyncService {
 
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
-        const jobs: Promise<any>[] = [];
+        // OOM prevention: trim bloated queues before adding new jobs (sync queues only)
+        const SYNC_QUEUES = [QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS];
+        for (const queueName of SYNC_QUEUES) {
+            await QueueFactory.enforceMaxQueueDepth(queueName);
+        }
+
+        let jobCount = 0;
 
         const checkAndAddJob = async (queueName: string, jobData: SyncJobData, jobIdBase: string) => {
             const queue = QueueFactory.createQueue(queueName);
@@ -37,24 +43,31 @@ export class SyncService {
                 try {
                     await existingJob.remove();
                 } catch (err: any) {
+                    const msg = err?.message || '';
                     // Race condition: job became active between state check and removal
-                    // This is expected behavior - just skip as we would for active jobs
-                    if (err?.message?.includes('locked by another worker')) {
+                    if (msg.includes('locked by another worker')) {
                         Logger.info(`Skipping ${queueName} for ${accountId} - Job ${stableJobId} became active`);
                         return;
                     }
-                    // Any other removal error should also skip to prevent duplicate job creation
-                    Logger.warn(`Failed to remove existing job ${stableJobId}, skipping`, { error: err });
-                    return;
+                    // Race condition: job was already removed between getJob and remove
+                    if (msg.includes('Missing') || err?.code === 'P2025') {
+                        Logger.info(`Job ${stableJobId} already removed, proceeding to re-create`);
+                        // Fall through to re-create the job
+                    } else {
+                        // Any other removal error should skip to prevent duplicate job creation
+                        Logger.warn(`Failed to remove existing job ${stableJobId}, skipping`, { error: err });
+                        return;
+                    }
                 }
             }
 
-            jobs.push(queue.add(queueName, jobData, {
+            await queue.add(queueName, jobData, {
                 jobId: stableJobId,
                 priority,
                 removeOnComplete: true, // Ensure it clears after success to allow next run
                 removeOnFail: 100 // Keep failed for debugging
-            }));
+            });
+            jobCount++;
         };
 
         if (types.includes('orders')) {
@@ -73,8 +86,7 @@ export class SyncService {
             await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental, triggerSource } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
         }
 
-        await Promise.all(jobs);
-        Logger.info(`Dispatched ${jobs.length} jobs to queues`);
+        Logger.info(`Dispatched ${jobCount} jobs to queues`);
     }
 
     /* 

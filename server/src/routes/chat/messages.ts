@@ -64,6 +64,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
 
         // POST /:id/attachment (using @fastify/multipart)
         fastify.post<{ Params: { id: string } }>('/:id/attachment', async (request, reply) => {
+            let writeStream: fs.WriteStream | undefined;
             try {
                 const data = await (request as any).file({ limits: { fileSize: 25 * 1024 * 1024 } });
                 if (!data) return reply.code(400).send({ error: 'No file uploaded' });
@@ -77,12 +78,16 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
                 const filename = uniqueSuffix + '-' + data.filename;
                 const filePath = path.join(attachmentsDir, filename);
-                const writeStream = fs.createWriteStream(filePath);
+                writeStream = fs.createWriteStream(filePath);
 
                 for await (const chunk of data.file) {
                     writeStream.write(chunk);
                 }
                 writeStream.end();
+                await new Promise<void>((resolve, reject) => {
+                    writeStream!.on('finish', resolve);
+                    writeStream!.on('error', reject);
+                });
 
                 const conversationId = request.params.id;
                 const userId = request.user?.id;
@@ -97,6 +102,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                     attachment: { url: attachmentUrl, name: data.filename, type: data.mimetype }
                 };
             } catch (error) {
+                if (writeStream) writeStream.destroy();
                 Logger.error('Failed to upload attachment', { error });
                 return reply.code(500).send({ error: 'Failed to upload attachment' });
             }
@@ -137,6 +143,10 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                                 writeStream.write(chunk);
                             }
                             writeStream.end();
+                            await new Promise<void>((resolve, reject) => {
+                                writeStream.on('finish', resolve);
+                                writeStream.on('error', reject);
+                            });
 
                             const attachmentUrl = `/uploads/attachments/${filename}`;
                             attachmentLinks.push(`[${part.filename}](${attachmentUrl})`);
@@ -232,7 +242,17 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
 
         fastify.get<{ Params: { messageId: string } }>('/messages/:messageId/reactions', async (request, reply) => {
             try {
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account context required' });
                 const { messageId } = request.params;
+
+                // Verify message belongs to a conversation owned by this account
+                const message = await prisma.message.findFirst({
+                    where: { id: messageId, conversation: { accountId } },
+                    select: { id: true }
+                });
+                if (!message) return reply.code(404).send({ error: 'Message not found' });
+
                 const reactions = await prisma.messageReaction.findMany({
                     where: { messageId },
                     include: { user: { select: { id: true, fullName: true } } }

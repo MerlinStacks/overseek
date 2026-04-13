@@ -800,6 +800,8 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                         progress.errors.push(`Fatal: ${(error as Error).message}`);
                     }
                 }
+                // Clean up progress after 10 minutes even on failure to prevent memory leak
+                setTimeout(() => reprocessProgress.delete(accountId), 10 * 60 * 1000);
             });
         });
     });

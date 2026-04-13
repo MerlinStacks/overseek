@@ -85,7 +85,11 @@ export async function cleanupRateLimits() {
     }
 }
 
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
     cleanupRateLimits().catch(err => Logger.error('Rate limit cleanup failed', { error: err }));
 }, 5 * 60 * 1000);
+
+export function cleanupTrackingMiddleware() {
+    clearInterval(cleanupInterval);
+}
 

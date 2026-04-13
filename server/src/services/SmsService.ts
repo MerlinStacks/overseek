@@ -122,6 +122,7 @@ export class SmsService {
             });
 
             if (!settings || !settings.enabled) {
+                if (this.credentialsCache.size >= 1000) this.credentialsCache.clear();
                 this.credentialsCache.set(accountId, { creds: null, cachedAt: Date.now() });
                 return null;
             }
@@ -132,6 +133,7 @@ export class SmsService {
                 fromNumber: settings.fromNumber
             };
 
+            if (this.credentialsCache.size >= 1000) this.credentialsCache.clear();
             this.credentialsCache.set(accountId, { creds, cachedAt: Date.now() });
             return creds;
 

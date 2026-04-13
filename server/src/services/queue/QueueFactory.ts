@@ -123,6 +123,10 @@ export class QueueFactory {
             Logger.error(`Job ${job?.id} Failed`, { error: err.message });
         });
 
+        worker.on('error', (err) => {
+            Logger.error(`[QueueFactory] Worker error on queue "${name}"`, { error: err.message });
+        });
+
         return worker;
     }
 

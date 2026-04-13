@@ -54,6 +54,7 @@ export const geoipRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GeoIP Upload - using @fastify/multipart 
     fastify.post('/upload-geoip-db', async (request, reply) => {
+        let writeStream: fs.WriteStream | undefined;
         try {
             const data = await (request as any).file();
             if (!data) return reply.code(400).send({ error: 'No file uploaded' });
@@ -65,12 +66,16 @@ export const geoipRoutes: FastifyPluginAsync = async (fastify) => {
             if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
             const filePath = path.join(dataDir, 'GeoLite2-City.mmdb');
-            const writeStream = fs.createWriteStream(filePath);
+            writeStream = fs.createWriteStream(filePath);
 
             for await (const chunk of data.file) {
                 writeStream.write(chunk);
             }
             writeStream.end();
+            await new Promise<void>((resolve, reject) => {
+                writeStream!.on('finish', resolve);
+                writeStream!.on('error', reject);
+            });
 
             await initGeoIP(true);
 
@@ -81,6 +86,7 @@ export const geoipRoutes: FastifyPluginAsync = async (fastify) => {
                 stats: { size: fileStat.size, sizeFormatted: `${(fileStat.size / 1024 / 1024).toFixed(1)} MB`, lastModified: fileStat.mtime.toISOString() }
             };
         } catch (e: any) {
+            if (writeStream) writeStream.destroy();
             Logger.error('Failed to upload GeoIP database', { error: e });
             return reply.code(500).send({ error: e.message || 'Failed to upload GeoIP database' });
         }

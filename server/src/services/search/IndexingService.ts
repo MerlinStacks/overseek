@@ -1,4 +1,4 @@
-import { esClient } from '../../utils/elastic';
+import { esClient, isElasticsearchAvailable } from '../../utils/elastic';
 import { Logger } from '../../utils/logger';
 
 export class IndexingService {
@@ -299,11 +299,41 @@ export class IndexingService {
     // --- Bulk Indexing Methods (for sync) ---
 
     /**
+     * Bulk index reviews in a single ES request.
+     */
+    static async bulkIndexReviews(accountId: string, reviews: any[]) {
+        if (!reviews.length) return;
+        if (!await isElasticsearchAvailable()) return;
+
+        const operations = reviews.flatMap(review => [
+            { index: { _index: 'reviews', _id: `${accountId}_${review.id}` } },
+            {
+                accountId,
+                id: review.id,
+                productId: review.product_id,
+                productName: review.product_name,
+                reviewer: review.reviewer,
+                rating: review.rating,
+                content: review.review,
+                status: review.status,
+                dateCreated: review.date_created
+            }
+        ]);
+
+        const result = await esClient.bulk({ operations, refresh: 'wait_for' });
+        if (result.errors) {
+            const failed = result.items.filter((item: any) => item.index?.error);
+            Logger.warn(`Bulk index reviews: ${failed.length}/${reviews.length} failed`, { accountId });
+        }
+    }
+
+    /**
      * Bulk index orders in a single ES request.
      * tagsMap: Map<orderId, tags[]> for per-order tags.
      */
     static async bulkIndexOrders(accountId: string, orders: any[], tagsMap?: Map<number, string[]>) {
         if (!orders.length) return;
+        if (!await isElasticsearchAvailable()) return;
 
         const operations = orders.flatMap(order => {
             const tags = tagsMap?.get(order.id) || [];
@@ -356,6 +386,7 @@ export class IndexingService {
      */
     static async bulkIndexCustomers(accountId: string, customers: any[]) {
         if (!customers.length) return;
+        if (!await isElasticsearchAvailable()) return;
 
         const operations = customers.flatMap(c => [
             { index: { _index: 'customers', _id: `${accountId}_${c.id}` } },
@@ -383,6 +414,7 @@ export class IndexingService {
      */
     static async bulkIndexProducts(accountId: string, products: any[]) {
         if (!products.length) return;
+        if (!await isElasticsearchAvailable()) return;
 
         const operations = products.flatMap(product => {
             const rawData = product.rawData || product;

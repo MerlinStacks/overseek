@@ -266,7 +266,8 @@ export class BOMConsumptionService {
 
         } catch (error: any) {
             Logger.error(`[BOMConsumption] Order processing failed`, { accountId, orderId, error: error.message });
-            // Don't swallow error - allow retry logic to kick in if called from queue
+            // Re-throw so BullMQ marks job as failed and retries kick in
+            throw error;
         } finally {
             await this.releaseLock(lockKey, lockInfo.usedPostgres, accountId, orderId);
         }

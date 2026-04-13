@@ -296,7 +296,7 @@ function safeParseAIJson(raw: string): any | null {
         if (objStart >= 0) {
             try {
                 return JSON.parse(repaired.slice(objStart));
-            } catch { /* unrecoverable */ }
+            } catch { Logger.warn('[KeywordRecommendation] JSON parse failed after all repair attempts', { rawLength: raw.length }); }
         }
         return null;
     }

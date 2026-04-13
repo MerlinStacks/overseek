@@ -20,6 +20,16 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /:id/notes - Get notes for a conversation
     fastify.get<{ Params: { id: string } }>('/:id/notes', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        // Verify conversation belongs to this account
+        const conv = await prisma.conversation.findFirst({
+            where: { id: request.params.id, accountId },
+            select: { id: true }
+        });
+        if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
+
         const notes = await prisma.conversationNote.findMany({
             where: { conversationId: request.params.id },
             include: { createdBy: { select: { id: true, fullName: true, avatarUrl: true } } },
@@ -30,10 +40,19 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // POST /:id/notes - Create a note
     fastify.post<{ Params: { id: string } }>('/:id/notes', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
         const { content } = request.body as any;
         const userId = (request as any).user?.id;
         if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
         if (!content?.trim()) return reply.code(400).send({ error: 'Content required' });
+
+        // Verify conversation belongs to this account
+        const conv = await prisma.conversation.findFirst({
+            where: { id: request.params.id, accountId },
+            select: { id: true }
+        });
+        if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
 
         const note = await prisma.conversationNote.create({
             data: {

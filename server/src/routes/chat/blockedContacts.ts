@@ -70,9 +70,9 @@ export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!result.success) return reply.code(500).send({ error: result.error });
 
-            // Also close the conversation
+            // Also close the conversation (accountId already verified above via findFirst)
             await prisma.conversation.update({
-                where: { id: conversationId },
+                where: { id: conversationId, accountId },
                 data: { status: 'CLOSED' }
             });
 
