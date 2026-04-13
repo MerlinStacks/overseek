@@ -61,7 +61,7 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             const { name, config } = parsed.data;
             const template = await prisma.reportTemplate.create({
-                data: { accountId, name, config, type: 'CUSTOM' }
+                data: { accountId, name, config: config as any, type: 'CUSTOM' }
             });
             return template;
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
