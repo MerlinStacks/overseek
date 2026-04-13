@@ -106,6 +106,7 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                 return {
                     crawlers,
                     totalHits24h: stats.totalHits24h,
+                    totalBlockedHits24h: stats.totalBlockedHits24h ?? 0,
                     uniqueCrawlers: stats.uniqueCrawlers,
                     blockedCount: stats.blockedCount,
                 };
