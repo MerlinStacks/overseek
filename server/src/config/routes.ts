@@ -128,4 +128,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // Short tracking URL for WooCommerce plugin
     const trackingIngestionRoutes = (await import('../routes/trackingIngestion')).default;
     await fastify.register(trackingIngestionRoutes, { prefix: '/api/t' });
+
+    // Fingerprint collector script for bot detection at checkout
+    const fingerprintRoutes = (await import('../routes/fingerprintRoutes')).default;
+    await fastify.register(fingerprintRoutes, { prefix: '/api/fp' });
 }

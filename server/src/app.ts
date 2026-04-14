@@ -78,6 +78,7 @@ async function build() {
             if (url.startsWith('/api/analytics')) return true;
             if (url.startsWith('/api/notifications')) return true;
             if (url.startsWith('/api/chat')) return true;
+            if (url.startsWith('/api/fp/')) return true;
             if (url.startsWith('/api/dashboard')) return true;
             if (url.startsWith('/api/status-center')) return true;
             return false;

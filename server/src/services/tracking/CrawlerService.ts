@@ -241,6 +241,49 @@ function humanizeUnknownSlug(slug: string): string {
 }
 
 /**
+ * Seed default block rules for a new account.
+ *
+ * Auto-creates BLOCK rules for crawlers with 'harmful' intent (security scanners)
+ * and 'http_client' category (automation tools like cURL, Puppeteer, Selenium).
+ * These are the bot types most commonly used to place fake orders or scrape data.
+ *
+ * Called once during account creation. Idempotent — uses createMany with skipDuplicates.
+ *
+ * @param accountId - The newly created account ID
+ */
+export async function seedDefaultBlockRules(accountId: string): Promise<void> {
+    const toBlock = CRAWLER_REGISTRY.filter(
+        c => c.intent === 'harmful' || c.category === 'http_client'
+    );
+
+    if (toBlock.length === 0) return;
+
+    try {
+        await prisma.crawlerRule.createMany({
+            data: toBlock.map(crawler => ({
+                accountId,
+                crawlerName: crawler.slug,
+                pattern: crawler.patterns[0],
+                action: 'BLOCK' as const,
+                reason: 'Auto-blocked: default protection for new accounts',
+            })),
+            skipDuplicates: true,
+        });
+
+        // Warm the cache so the WC plugin gets patterns on its first sync
+        await invalidateBlockedPatternsCache(accountId);
+
+        Logger.info('[CrawlerService] Seeded default block rules', {
+            accountId,
+            rulesCreated: toBlock.length,
+        });
+    } catch (error) {
+        // Non-fatal: account creation should succeed even if seeding fails
+        Logger.warn('[CrawlerService] Failed to seed default block rules (non-fatal)', { error, accountId });
+    }
+}
+
+/**
  * Get aggregated crawler stats for the dashboard.
  * On-demand query — not cached (admin-only, infrequent).
  *

@@ -12,6 +12,7 @@ import { GoldPriceService } from '../services/GoldPriceService';
 import { WooService } from '../services/woo';
 import { OrderTaggingService } from '../services/OrderTaggingService';
 import { AuditService, AuditActions } from '../services/AuditService';
+import { seedDefaultBlockRules } from '../services/tracking/CrawlerService';
 
 const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -35,6 +36,9 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                     users: { create: { userId, role: 'OWNER' } }
                 }
             });
+
+            // Seed default bot block rules (harmful bots + http clients)
+            void seedDefaultBlockRules(account.id);
 
             try {
                 const wooService = new WooService({ url: wooUrl, consumerKey: wooConsumerKey, consumerSecret: wooConsumerSecret, accountId: account.id });

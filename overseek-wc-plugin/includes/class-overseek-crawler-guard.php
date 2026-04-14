@@ -61,6 +61,12 @@ class OverSeek_Crawler_Guard
         // Check incoming requests — priority 1 to run before tracking/page render
         add_action('template_redirect', array($this, 'maybe_block_request'), 1);
 
+        // Guard WooCommerce Store API checkout against bots.
+        // template_redirect does NOT fire for REST requests — they go through
+        // rest_api_init instead. This filter runs before any REST endpoint
+        // handler and lets us block bots on the public checkout endpoint.
+        add_filter('rest_pre_dispatch', array($this, 'maybe_block_rest_checkout'), 1, 3);
+
         // Immediate sync on cold start so new installs don't wait up to 1 hour
         // with an empty block list. Uses a short-lived backoff transient to prevent
         // hammering the API on every page load if the server is unreachable.
@@ -82,6 +88,7 @@ class OverSeek_Crawler_Guard
     public function maybe_block_request(): void
     {
         // Skip admin, AJAX, cron, REST
+        // REST requests are handled separately via rest_pre_dispatch filter
         if (is_admin() || wp_doing_ajax() || wp_doing_cron()) {
             return;
         }
@@ -118,6 +125,63 @@ class OverSeek_Crawler_Guard
 
         // Not blocked — report to OverSeek if it looks like an unknown bot
         $this->maybe_report_bot($user_agent);
+    }
+
+    /**
+     * Block bots on WooCommerce Store API checkout endpoints.
+     *
+     * Hooked into rest_pre_dispatch (priority 1) so it runs before any REST
+     * endpoint handler. Only applies to the WooCommerce Store API checkout
+     * routes — all other REST endpoints pass through unblocked.
+     *
+     * Why rest_pre_dispatch: This filter fires after the REST route is resolved
+     * but before the endpoint callback runs. Returning a WP_Error here short-
+     * circuits the request. Returning null lets it proceed normally.
+     *
+     * @param mixed            $result  Response to replace the requested result (null to proceed).
+     * @param \WP_REST_Server  $server  REST server instance.
+     * @param \WP_REST_Request $request Incoming REST request.
+     * @return mixed|WP_Error  WP_Error to block, or $result to pass through.
+     */
+    public function maybe_block_rest_checkout($result, $server, $request)
+    {
+        // Only guard WooCommerce Store API checkout routes
+        $route = $request->get_route();
+        $is_checkout = (
+            strpos($route, '/wc/store/v1/checkout') !== false ||
+            strpos($route, '/wc/store/checkout') !== false
+        );
+
+        if (!$is_checkout) {
+            return $result;
+        }
+
+        $user_agent = isset($_SERVER['HTTP_USER_AGENT'])
+            ? strtolower($_SERVER['HTTP_USER_AGENT'])
+            : '';
+
+        if (empty($user_agent)) {
+            return $result;
+        }
+
+        $cached = get_transient($this->transient_key);
+        if (empty($cached) || !is_array($cached)) {
+            return $result;
+        }
+
+        $patterns = isset($cached['patterns']) && is_array($cached['patterns']) ? $cached['patterns'] : array();
+
+        foreach ($patterns as $pattern) {
+            if (!empty($pattern) && strpos($user_agent, $pattern) !== false) {
+                return new \WP_Error(
+                    'bot_blocked',
+                    'Automated access to checkout has been restricted.',
+                    array('status' => 403)
+                );
+            }
+        }
+
+        return $result;
     }
 
     /**

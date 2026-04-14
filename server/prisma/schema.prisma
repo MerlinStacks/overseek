@@ -1790,6 +1790,10 @@ model AnalyticsSession {
   lastTouchAt      DateTime?
   totalVisits      Int @default(1)
 
+  // Browser Fingerprint Bot Score (0-100+, null = not scored)
+  fpScore    Int?
+  fpScoredAt DateTime?
+
   // Abandoned Cart Recovery
   abandonedNotificationSentAt DateTime?
 

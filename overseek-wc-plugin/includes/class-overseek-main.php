@@ -57,6 +57,7 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-server-tracking.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixels.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-web-vitals.php';
 	}
 
@@ -91,6 +92,10 @@ class OverSeek_Main
 		// Initialize Crawler Guard (blocks blacklisted bots at application level).
 		// Not gated by tracking toggle — admins may want bot blocking without analytics.
 		new OverSeek_Crawler_Guard();
+
+		// Initialize Fingerprint Bot Detection (checkout-only, behavioral scoring).
+		// Not gated by tracking toggle — bot protection is independent of analytics.
+		new OverSeek_Fingerprint();
 
 		// Initialize Web Vitals Collector.
 		// Not gated by tracking toggle — performance data is independent of behavioural analytics.

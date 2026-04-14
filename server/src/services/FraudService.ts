@@ -69,6 +69,18 @@ export class FraudService {
             factors.push('Free email provider');
         }
 
+        // Factor 7: Browser fingerprint bot score from checkout
+        const fpScore = orderData._fpScore;
+        if (typeof fpScore === 'number') {
+            if (fpScore >= 60) {
+                score += 30;
+                factors.push(`High bot fingerprint score (${fpScore})`);
+            } else if (fpScore >= 40) {
+                score += 15;
+                factors.push(`Suspicious bot fingerprint score (${fpScore})`);
+            }
+        }
+
         // Determine risk level
         let level: 'low' | 'medium' | 'high' = 'low';
         if (score > 40) level = 'high';

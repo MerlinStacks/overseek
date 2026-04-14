@@ -203,9 +203,15 @@ export async function processEvent(data: TrackingEventPayload) {
         }
     }
 
-    // If checkout start, link email
-    if (data.type === 'checkout_start' && data.payload?.email) {
-        sessionPayload.email = data.payload.email;
+    // If checkout start, link email and persist fingerprint bot score
+    if (data.type === 'checkout_start') {
+        if (data.payload?.email) {
+            sessionPayload.email = data.payload.email;
+        }
+        if (typeof data.payload?.fpScore === 'number') {
+            sessionPayload.fpScore = data.payload.fpScore;
+            sessionPayload.fpScoredAt = new Date();
+        }
     }
 
     // If checkout success or purchase, clear cart and mark as converted

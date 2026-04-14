@@ -1334,6 +1334,15 @@ class OverSeek_Server_Tracking
         // Forward ad platform cookies for server-side attribution
         $this->attach_platform_cookies($payload);
 
+        // Attach fingerprint bot score if available (computed by OverSeek_Fingerprint
+        // during woocommerce_checkout_process at priority 5, before this fires at 10)
+        if (class_exists('OverSeek_Fingerprint')) {
+            $fp_score = OverSeek_Fingerprint::get_score();
+            if ($fp_score !== null) {
+                $payload['fpScore'] = $fp_score;
+            }
+        }
+
         $this->queue_event('checkout_start', $payload);
     }
 
