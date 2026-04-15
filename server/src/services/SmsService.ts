@@ -122,7 +122,7 @@ export class SmsService {
             });
 
             if (!settings || !settings.enabled) {
-                if (this.credentialsCache.size >= 1000) this.credentialsCache.clear();
+                this.evictStaleEntries();
                 this.credentialsCache.set(accountId, { creds: null, cachedAt: Date.now() });
                 return null;
             }
@@ -133,13 +133,24 @@ export class SmsService {
                 fromNumber: settings.fromNumber
             };
 
-            if (this.credentialsCache.size >= 1000) this.credentialsCache.clear();
+            this.evictStaleEntries();
             this.credentialsCache.set(accountId, { creds, cachedAt: Date.now() });
             return creds;
 
         } catch (error) {
             Logger.error('Failed to fetch SMS settings', { error, accountId });
             return null;
+        }
+    }
+
+    /** Evict expired entries to prevent unbounded cache growth. */
+    private evictStaleEntries(): void {
+        if (this.credentialsCache.size < 100) return;
+        const now = Date.now();
+        for (const [key, entry] of this.credentialsCache) {
+            if (now - entry.cachedAt >= SMS_CACHE_TTL_MS) {
+                this.credentialsCache.delete(key);
+            }
         }
     }
 

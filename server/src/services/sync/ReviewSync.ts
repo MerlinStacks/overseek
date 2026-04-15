@@ -84,7 +84,7 @@ export class ReviewSync extends BaseSync {
         let totalDeleted = 0;
         let totalSkipped = 0;
 
-        const wooReviewIds = new Set<number>();
+        const syncStartedAt = new Date();
 
         while (hasMore) {
             const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 100 });
@@ -199,8 +199,6 @@ export class ReviewSync extends BaseSync {
             const existingWooIds = new Set(existingReviews.map(r => r.wooId));
 
             for (const r of reviews) {
-                wooReviewIds.add(r.id);
-
                 const reviewData = r as any;
                 const reviewerEmail = reviewData.reviewer_email;
 
@@ -376,27 +374,29 @@ export class ReviewSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
-        // --- Reconciliation: Remove deleted reviews ---
-        // Only run on full sync (non-incremental) to ensure we have all WooCommerce IDs
-        if (!incremental && wooReviewIds.size > 0) {
-            const localReviews = await prisma.wooReview.findMany({
-                where: { accountId },
-                select: { id: true, wooId: true }
+        // Reconciliation: remove reviews not touched during this full sync.
+        // Uses updatedAt timestamps instead of accumulating all IDs in memory.
+        if (!incremental && totalProcessed > 0) {
+            const staleCount = await prisma.wooReview.count({
+                where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
 
-            const idsToDelete: string[] = [];
-            for (const local of localReviews) {
-                if (!wooReviewIds.has(local.wooId)) {
-                    idsToDelete.push(local.id);
-                }
-            }
+            if (staleCount > 0) {
+                // Safety cap: abort if stale count exceeds 30% of total (likely API issue)
+                const localTotal = await prisma.wooReview.count({ where: { accountId } });
+                const maxDeletions = Math.max(10, Math.floor(localTotal * 0.3));
 
-            if (idsToDelete.length > 0) {
-                const result = await prisma.wooReview.deleteMany({
-                    where: { id: { in: idsToDelete }, accountId }
-                });
-                totalDeleted = result.count;
-                Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned reviews`, { accountId, syncId });
+                if (staleCount > maxDeletions) {
+                    Logger.warn(`Review reconciliation aborted: would delete ${staleCount}/${localTotal} (>30% cap)`, {
+                        accountId, syncId, toDelete: staleCount, localTotal
+                    });
+                } else {
+                    const result = await prisma.wooReview.deleteMany({
+                        where: { accountId, updatedAt: { lt: syncStartedAt } }
+                    });
+                    totalDeleted = result.count;
+                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned reviews`, { accountId, syncId });
+                }
             }
         }
 

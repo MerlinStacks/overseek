@@ -17,7 +17,7 @@ export class CustomerSync extends BaseSync {
         let totalDeleted = 0;
         let totalSkipped = 0;
 
-        const wooCustomerIds = new Set<number>();
+        const syncStartedAt = new Date();
 
         while (hasMore) {
             // Optimized: Increased page size from 25 to 100 for fewer API round-trips
@@ -49,13 +49,9 @@ export class CustomerSync extends BaseSync {
 
             // Optimized: Batch upserts in transactions of 50 for better throughput
             const BATCH_SIZE = 50;
+            const failedWooIds: number[] = [];
             for (let i = 0; i < customers.length; i += BATCH_SIZE) {
                 const batch = customers.slice(i, i + BATCH_SIZE);
-
-                // Track wooIds for reconciliation
-                for (const c of batch) {
-                    wooCustomerIds.add(c.id);
-                }
 
                 // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
                 await Promise.all(
@@ -79,11 +75,21 @@ export class CustomerSync extends BaseSync {
                             }
                         }).catch((err) => {
                             totalSkipped++;
+                            failedWooIds.push(c.id);
                             Logger.warn('Failed to upsert customer', {
                                 accountId, syncId, wooId: c.id, error: err.message
                             });
                         })
                     )
+                );
+            }
+
+            // Preserve existing records that failed to upsert (transient DB errors)
+            // so updatedAt-based reconciliation doesn't delete them
+            if (failedWooIds.length > 0) {
+                await prisma.$executeRawUnsafe(
+                    `UPDATE "WooCustomer" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
+                    accountId, failedWooIds
                 );
             }
 
@@ -112,37 +118,40 @@ export class CustomerSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
-        // --- Reconciliation: Remove deleted customers ---
-        // Only run on full sync (non-incremental) to ensure we have all WooCommerce IDs
-        if (!incremental && wooCustomerIds.size > 0) {
-            // Optimized: Only fetch wooId column instead of full records
-            const localWooIds = await prisma.wooCustomer.findMany({
-                where: { accountId },
+        // Reconciliation: remove customers not touched during this full sync.
+        // Uses updatedAt timestamps instead of accumulating all IDs in memory.
+        if (!incremental && totalProcessed > 0) {
+            const staleCustomers = await prisma.wooCustomer.findMany({
+                where: { accountId, updatedAt: { lt: syncStartedAt } },
                 select: { wooId: true }
             });
 
-            // Collect wooIds of customers to delete (exist locally but not in WooCommerce)
-            const orphanedWooIds = localWooIds
-                .filter(local => !wooCustomerIds.has(local.wooId))
-                .map(local => local.wooId);
+            if (staleCustomers.length > 0) {
+                // Safety cap: abort if stale count exceeds 30% of total (likely API issue)
+                const localTotal = await prisma.wooCustomer.count({ where: { accountId } });
+                const maxDeletions = Math.max(10, Math.floor(localTotal * 0.3));
 
-            if (orphanedWooIds.length > 0) {
-                // Batch delete using wooId directly - single query, no need to fetch IDs first
-                await prisma.wooCustomer.deleteMany({
-                    where: { accountId, wooId: { in: orphanedWooIds } }
-                });
+                if (staleCustomers.length > maxDeletions) {
+                    Logger.warn(`Customer reconciliation aborted: would delete ${staleCustomers.length}/${localTotal} (>30% cap)`, {
+                        accountId, syncId, toDelete: staleCustomers.length, localTotal
+                    });
+                } else {
+                    await prisma.wooCustomer.deleteMany({
+                        where: { accountId, updatedAt: { lt: syncStartedAt } }
+                    });
 
-                // Index deletions in parallel batches
-                const DELETE_BATCH = 20;
-                for (let i = 0; i < orphanedWooIds.length; i += DELETE_BATCH) {
-                    const batch = orphanedWooIds.slice(i, i + DELETE_BATCH);
-                    await Promise.allSettled(
-                        batch.map(wooId => IndexingService.deleteCustomer(accountId, wooId).catch(() => { }))
-                    );
+                    // Index deletions in parallel batches
+                    const DELETE_BATCH = 20;
+                    for (let i = 0; i < staleCustomers.length; i += DELETE_BATCH) {
+                        const batch = staleCustomers.slice(i, i + DELETE_BATCH);
+                        await Promise.allSettled(
+                            batch.map(c => IndexingService.deleteCustomer(accountId, c.wooId).catch(() => { }))
+                        );
+                    }
+
+                    totalDeleted = staleCustomers.length;
+                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned customers`, { accountId, syncId });
                 }
-
-                totalDeleted = orphanedWooIds.length;
-                Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned customers`, { accountId, syncId });
             }
         }
         // --- Auto-Link: Link guest conversations to newly synced customers ---

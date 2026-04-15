@@ -52,18 +52,32 @@ export class WooService {
      */
     private static agentCache = new Map<string, https.Agent>();
 
+    private static readonly MAX_AGENTS = 50;
+
     /** Returns a shared https.Agent for the given hostname, creating one if needed. */
     private static getAgent(hostname: string): https.Agent {
         let agent = WooService.agentCache.get(hostname);
-        if (!agent) {
-            agent = new https.Agent({
-                rejectUnauthorized: false,
-                servername: hostname,
-                keepAlive: true,
-                maxSockets: 10,
-            });
+        if (agent) {
+            // Move to end (most recently used) by re-inserting
+            WooService.agentCache.delete(hostname);
             WooService.agentCache.set(hostname, agent);
+            return agent;
         }
+
+        // Evict oldest entry if at capacity
+        if (WooService.agentCache.size >= WooService.MAX_AGENTS) {
+            const oldest = WooService.agentCache.keys().next().value!;
+            WooService.agentCache.get(oldest)?.destroy();
+            WooService.agentCache.delete(oldest);
+        }
+
+        agent = new https.Agent({
+            rejectUnauthorized: false,
+            servername: hostname,
+            keepAlive: true,
+            maxSockets: 10,
+        });
+        WooService.agentCache.set(hostname, agent);
         return agent;
     }
 

@@ -1,6 +1,6 @@
 import { BaseSync, SyncResult } from './BaseSync';
 import { WooService } from '../woo';
-import { prisma, Prisma } from '../../utils/prisma';
+import { prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
 import { OrderTaggingService } from '../OrderTaggingService';
 import { EventBus, EVENTS } from '../events';
@@ -26,7 +26,7 @@ export class OrderSync extends BaseSync {
         let totalSkipped = 0;
         let totalUpsertFailures = 0;
 
-        const wooOrderIds = new Set<number>();
+        const syncStartedAt = new Date();
         let expectedTotal = 0;
 
         while (hasMore) {
@@ -39,13 +39,14 @@ export class OrderSync extends BaseSync {
 
 
             const orders: WooOrder[] = [];
+            const nonStandardWooIds: number[] = [];
             for (const raw of rawOrders) {
                 const result = WooOrderSchema.safeParse(raw);
                 if (result.success) {
-                    // Always track the ID so reconciliation doesn't delete orders
-                    // whose status changed to a non-standard value after last sync.
-                    wooOrderIds.add(result.data.id);
                     if (!VALID_ORDER_STATUSES.has(result.data.status.toLowerCase())) {
+                        // Track non-standard orders per page (not across all pages)
+                        // so we can touch their updatedAt without upserting new records.
+                        nonStandardWooIds.push(result.data.id);
                         totalSkipped++;
                         Logger.debug('Skipping order with non-standard status', {
                             accountId, syncId, orderId: result.data.id,
@@ -63,11 +64,20 @@ export class OrderSync extends BaseSync {
                 }
             }
 
+            // Touch updatedAt on non-standard-status orders that already exist in DB
+            // so reconciliation doesn't delete them (they still exist in WooCommerce).
+            // Uses raw SQL because Prisma's @updatedAt can't be set explicitly via Client.
+            if (nonStandardWooIds.length > 0) {
+                await prisma.$executeRawUnsafe(
+                    `UPDATE "WooOrder" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
+                    accountId, nonStandardWooIds
+                );
+            }
+
             if (!orders.length) {
                 page++;
                 continue;
             }
-
 
             const existingOrders = await prisma.wooOrder.findMany({
                 where: {
@@ -80,6 +90,7 @@ export class OrderSync extends BaseSync {
 
             // Batch upserts in transaction chunks of 50 (matches CustomerSync pattern)
             const UPSERT_CHUNK_SIZE = 50;
+            const failedWooIds: number[] = [];
             for (let i = 0; i < orders.length; i += UPSERT_CHUNK_SIZE) {
                 const chunk = orders.slice(i, i + UPSERT_CHUNK_SIZE);
 
@@ -121,6 +132,7 @@ export class OrderSync extends BaseSync {
                             Logger.warn('Failed to upsert order', {
                                 accountId, syncId, wooId: order.id, error: err.message
                             });
+                            failedWooIds.push(order.id);
                             return false;
                         });
                     })
@@ -131,6 +143,14 @@ export class OrderSync extends BaseSync {
                 }
             }
 
+            // Preserve existing records that failed to upsert (transient DB errors)
+            // so updatedAt-based reconciliation doesn't delete them
+            if (failedWooIds.length > 0) {
+                await prisma.$executeRawUnsafe(
+                    `UPDATE "WooOrder" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
+                    accountId, failedWooIds
+                );
+            }
 
             let orderTagsMap: Map<number, string[]> | undefined;
             try {
@@ -203,42 +223,37 @@ export class OrderSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
-        // reconciliation: remove orders that no longer exist in Woo (full sync only)
-        if (!incremental && wooOrderIds.size > 0) {
-            const localOrders = await prisma.wooOrder.findMany({
-                where: { accountId },
+        // Reconciliation: remove orders not touched during this full sync.
+        // Uses updatedAt timestamps instead of accumulating all IDs in memory,
+        // which caused OOM when syncing stores with tens of thousands of orders.
+        if (!incremental && totalProcessed > 0) {
+            const staleOrders = await prisma.wooOrder.findMany({
+                where: { accountId, updatedAt: { lt: syncStartedAt } },
                 select: { wooId: true }
             });
 
-            const wooIdsToDelete = localOrders
-                .filter(local => !wooOrderIds.has(local.wooId))
-                .map(local => local.wooId);
-
-            if (wooIdsToDelete.length > 0) {
+            if (staleOrders.length > 0) {
                 // Why safety cap: if WooCommerce API returns partial data (e.g.,
                 // only 1 order due to a transient error), we'd delete everything
                 // else. Capping at 30% prevents catastrophic mass-deletion.
+                const localTotal = await prisma.wooOrder.count({ where: { accountId } });
                 const MAX_DELETE_RATIO = 0.3;
-                const maxDeletions = Math.max(10, Math.floor(localOrders.length * MAX_DELETE_RATIO));
+                const maxDeletions = Math.max(10, Math.floor(localTotal * MAX_DELETE_RATIO));
 
-                if (wooIdsToDelete.length > maxDeletions) {
-                    Logger.warn(`Reconciliation aborted: would delete ${wooIdsToDelete.length}/${localOrders.length} orders (>${Math.round(MAX_DELETE_RATIO * 100)}% cap). Likely API issue.`, {
+                if (staleOrders.length > maxDeletions) {
+                    Logger.warn(`Reconciliation aborted: would delete ${staleOrders.length}/${localTotal} orders (>${Math.round(MAX_DELETE_RATIO * 100)}% cap). Likely API issue.`, {
                         accountId, syncId,
-                        toDelete: wooIdsToDelete.length,
-                        localTotal: localOrders.length,
-                        wooTotal: wooOrderIds.size
+                        toDelete: staleOrders.length,
+                        localTotal,
+                        syncedTotal: totalProcessed
                     });
                 } else {
-                    const deleteIndexPromises = wooIdsToDelete.map(wooId =>
-                        IndexingService.deleteOrder(accountId, wooId)
+                    await Promise.allSettled(
+                        staleOrders.map(o => IndexingService.deleteOrder(accountId, o.wooId))
                     );
-                    await Promise.allSettled(deleteIndexPromises);
 
                     const { count } = await prisma.wooOrder.deleteMany({
-                        where: {
-                            accountId,
-                            wooId: { in: wooIdsToDelete }
-                        }
+                        where: { accountId, updatedAt: { lt: syncStartedAt } }
                     });
                     totalDeleted = count;
 

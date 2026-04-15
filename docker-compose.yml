@@ -94,7 +94,9 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
-      NODE_OPTIONS: "--max-old-space-size=4096"
+      # V8 heap at 3GB leaves ~2GB for Prisma engine, native buffers, and OS.
+      # Previous 4GB setting left only 1GB headroom, contributing to OOM kills.
+      NODE_OPTIONS: "--max-old-space-size=3072"
     volumes:
       - uploads_data:/app/server/uploads
       - geoip_data:/app/server/data

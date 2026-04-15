@@ -27,8 +27,7 @@ export class ProductSync extends BaseSync {
         let totalSkipped = 0;
         let totalVariationsSynced = 0;
 
-        const wooProductIds = new Set<number>();
-        const wooVariationIds = new Set<string>(); // "productId:variationId"
+        const syncStartedAt = new Date();
 
         while (hasMore) {
             const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 100 });
@@ -59,7 +58,6 @@ export class ProductSync extends BaseSync {
 
             // Batch prepare upsert operations
             const upsertOperations = products.map((p) => {
-                wooProductIds.add(p.id);
 
                 // EDGE CASE: Log empty price strings for visibility
                 // Empty string from WooCommerce typically means "price not set" (e.g., variable product with variant-level pricing)
@@ -118,12 +116,24 @@ export class ProductSync extends BaseSync {
             // pool. OrderSync and CustomerSync already use similar chunking (BATCH_SIZE=50);
             // products use 10 because each upsert carries a larger payload (images, rawData).
             const UPSERT_CHUNK = 10;
+            const failedProductWooIds: number[] = [];
             for (let i = 0; i < upsertOperations.length; i += UPSERT_CHUNK) {
                 const ops = upsertOperations.slice(i, i + UPSERT_CHUNK);
-                await Promise.all(ops.map(op => op.catch((err) => {
+                const productSlice = products.slice(i, i + UPSERT_CHUNK);
+                await Promise.all(ops.map((op, idx) => op.catch((err) => {
                     totalSkipped++;
+                    failedProductWooIds.push(productSlice[idx].id);
                     Logger.warn('Failed to upsert product', { accountId, syncId, error: err.message });
                 })));
+            }
+
+            // Preserve existing records that failed to upsert (transient DB errors)
+            // so updatedAt-based reconciliation doesn't delete them
+            if (failedProductWooIds.length > 0) {
+                await prisma.$executeRawUnsafe(
+                    `UPDATE "WooProduct" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
+                    accountId, failedProductWooIds
+                );
             }
 
             // Batch-fetch all upserted products once (avoids N+1 queries)
@@ -222,11 +232,6 @@ export class ProductSync extends BaseSync {
                         // already persisted in ProductVariation.rawData. Duplicating it
                         // here doubled heap usage for variable products with many SKUs.
 
-                        // Track for reconciliation
-                        for (const v of variations) {
-                            wooVariationIds.add(`${parentDbProduct.id}:${v.id}`);
-                        }
-
                         // Batch upsert variations
                         const variationOps = variations.map(v =>
                             prisma.productVariation.upsert({
@@ -287,52 +292,48 @@ export class ProductSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
-        // Reconciliation
-        if (!incremental && wooProductIds.size > 0) {
-            const localProducts = await prisma.wooProduct.findMany({
-                where: { accountId },
+        // Reconciliation: remove products/variations not touched during this full sync.
+        // Uses updatedAt timestamps instead of accumulating all IDs in memory,
+        // which caused OOM when syncing stores with thousands of products + variations.
+        if (!incremental && totalProcessed > 0) {
+            const staleProducts = await prisma.wooProduct.findMany({
+                where: { accountId, updatedAt: { lt: syncStartedAt } },
                 select: { id: true, wooId: true }
             });
 
-            const orphanedProducts = localProducts.filter(local => !wooProductIds.has(local.wooId));
+            if (staleProducts.length > 0) {
+                // Safety cap: abort if stale count exceeds 30% of total (likely API issue)
+                const localTotal = await prisma.wooProduct.count({ where: { accountId } });
+                const maxDeletions = Math.max(10, Math.floor(localTotal * 0.3));
 
-            if (orphanedProducts.length > 0) {
-                const deleteIds = orphanedProducts.map(p => p.id);
+                if (staleProducts.length > maxDeletions) {
+                    Logger.warn(`Product reconciliation aborted: would delete ${staleProducts.length}/${localTotal} (>30% cap)`, {
+                        accountId, syncId, toDelete: staleProducts.length, localTotal
+                    });
+                } else {
+                    await prisma.wooProduct.deleteMany({
+                        where: { id: { in: staleProducts.map(p => p.id) } }
+                    });
+                    totalDeleted += staleProducts.length;
 
-                // Batch delete from database (N+1 optimization)
-                await prisma.wooProduct.deleteMany({
-                    where: { id: { in: deleteIds } }
-                });
-
-                // Update count
-                totalDeleted += deleteIds.length;
-
-                // Delete from index concurrently
-                const deletePromises = orphanedProducts.map(local =>
-                    IndexingService.deleteProduct(accountId, local.wooId)
-                );
-
-                await Promise.allSettled(deletePromises);
-                Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned products`, { accountId, syncId });
+                    await Promise.allSettled(
+                        staleProducts.map(p => IndexingService.deleteProduct(accountId, p.wooId))
+                    );
+                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned products`, { accountId, syncId });
+                }
             }
 
-            // Variation reconciliation: delete orphaned variations
-            if (wooVariationIds.size > 0) {
-                const localVariations = await prisma.productVariation.findMany({
-                    where: { product: { accountId } },
-                    select: { id: true, productId: true, wooId: true }
+            // Variation reconciliation: delete variations not refreshed during sync
+            const staleVariations = await prisma.productVariation.findMany({
+                where: { product: { accountId }, updatedAt: { lt: syncStartedAt } },
+                select: { id: true }
+            });
+
+            if (staleVariations.length > 0) {
+                await prisma.productVariation.deleteMany({
+                    where: { id: { in: staleVariations.map(v => v.id) } }
                 });
-
-                const orphanedVariations = localVariations.filter(lv =>
-                    !wooVariationIds.has(`${lv.productId}:${lv.wooId}`)
-                );
-
-                if (orphanedVariations.length > 0) {
-                    await prisma.productVariation.deleteMany({
-                        where: { id: { in: orphanedVariations.map(v => v.id) } }
-                    });
-                    Logger.info(`Reconciliation: Deleted ${orphanedVariations.length} orphaned variations`, { accountId, syncId });
-                }
+                Logger.info(`Reconciliation: Deleted ${staleVariations.length} orphaned variations`, { accountId, syncId });
             }
         }
 
