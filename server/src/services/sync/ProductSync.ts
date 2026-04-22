@@ -293,47 +293,56 @@ export class ProductSync extends BaseSync {
         }
 
         // Reconciliation: remove products/variations not touched during this full sync.
-        // Uses updatedAt timestamps instead of accumulating all IDs in memory,
-        // which caused OOM when syncing stores with thousands of products + variations.
+        // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
+        // than loading every stale id/wooId into Node memory.
         if (!incremental && totalProcessed > 0) {
-            const staleProducts = await prisma.wooProduct.findMany({
-                where: { accountId, updatedAt: { lt: syncStartedAt } },
-                select: { id: true, wooId: true }
+            const staleProductCount = await prisma.wooProduct.count({
+                where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
 
-            if (staleProducts.length > 0) {
-                // Safety cap: abort if stale count exceeds 30% of total (likely API issue)
+            if (staleProductCount > 0) {
                 const localTotal = await prisma.wooProduct.count({ where: { accountId } });
                 const maxDeletions = Math.max(10, Math.floor(localTotal * 0.3));
 
-                if (staleProducts.length > maxDeletions) {
-                    Logger.warn(`Product reconciliation aborted: would delete ${staleProducts.length}/${localTotal} (>30% cap)`, {
-                        accountId, syncId, toDelete: staleProducts.length, localTotal
+                if (staleProductCount > maxDeletions) {
+                    Logger.warn(`Product reconciliation aborted: would delete ${staleProductCount}/${localTotal} (>30% cap)`, {
+                        accountId, syncId, toDelete: staleProductCount, localTotal
                     });
                 } else {
-                    await prisma.wooProduct.deleteMany({
-                        where: { id: { in: staleProducts.map(p => p.id) } }
-                    });
-                    totalDeleted += staleProducts.length;
+                    // Stream ES deletions in chunks so we never hold the full ID list.
+                    const ES_DELETE_CHUNK = 500;
+                    let cursor: string | undefined;
+                    while (true) {
+                        const chunk: { id: string; wooId: number }[] = await prisma.wooProduct.findMany({
+                            where: { accountId, updatedAt: { lt: syncStartedAt } },
+                            select: { id: true, wooId: true },
+                            orderBy: { id: 'asc' },
+                            take: ES_DELETE_CHUNK,
+                            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+                        });
+                        if (chunk.length === 0) break;
+                        await Promise.allSettled(
+                            chunk.map(p => IndexingService.deleteProduct(accountId, p.wooId))
+                        );
+                        cursor = chunk[chunk.length - 1].id;
+                        if (chunk.length < ES_DELETE_CHUNK) break;
+                    }
 
-                    await Promise.allSettled(
-                        staleProducts.map(p => IndexingService.deleteProduct(accountId, p.wooId))
-                    );
-                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned products`, { accountId, syncId });
+                    const { count } = await prisma.wooProduct.deleteMany({
+                        where: { accountId, updatedAt: { lt: syncStartedAt } }
+                    });
+                    totalDeleted += count;
+                    Logger.info(`Reconciliation: Deleted ${count} orphaned products`, { accountId, syncId });
                 }
             }
 
-            // Variation reconciliation: delete variations not refreshed during sync
-            const staleVariations = await prisma.productVariation.findMany({
-                where: { product: { accountId }, updatedAt: { lt: syncStartedAt } },
-                select: { id: true }
+            // Variation reconciliation: delete directly (no per-id ES calls needed,
+            // variations aren't indexed in ES separately from their parent product).
+            const { count: staleVarCount } = await prisma.productVariation.deleteMany({
+                where: { product: { accountId }, updatedAt: { lt: syncStartedAt } }
             });
-
-            if (staleVariations.length > 0) {
-                await prisma.productVariation.deleteMany({
-                    where: { id: { in: staleVariations.map(v => v.id) } }
-                });
-                Logger.info(`Reconciliation: Deleted ${staleVariations.length} orphaned variations`, { accountId, syncId });
+            if (staleVarCount > 0) {
+                Logger.info(`Reconciliation: Deleted ${staleVarCount} orphaned variations`, { accountId, syncId });
             }
         }
 

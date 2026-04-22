@@ -119,37 +119,45 @@ export class CustomerSync extends BaseSync {
         }
 
         // Reconciliation: remove customers not touched during this full sync.
-        // Uses updatedAt timestamps instead of accumulating all IDs in memory.
+        // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
+        // than loading every stale wooId into Node memory.
         if (!incremental && totalProcessed > 0) {
-            const staleCustomers = await prisma.wooCustomer.findMany({
-                where: { accountId, updatedAt: { lt: syncStartedAt } },
-                select: { wooId: true }
+            const staleCount = await prisma.wooCustomer.count({
+                where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
 
-            if (staleCustomers.length > 0) {
-                // Safety cap: abort if stale count exceeds 30% of total (likely API issue)
+            if (staleCount > 0) {
                 const localTotal = await prisma.wooCustomer.count({ where: { accountId } });
                 const maxDeletions = Math.max(10, Math.floor(localTotal * 0.3));
 
-                if (staleCustomers.length > maxDeletions) {
-                    Logger.warn(`Customer reconciliation aborted: would delete ${staleCustomers.length}/${localTotal} (>30% cap)`, {
-                        accountId, syncId, toDelete: staleCustomers.length, localTotal
+                if (staleCount > maxDeletions) {
+                    Logger.warn(`Customer reconciliation aborted: would delete ${staleCount}/${localTotal} (>30% cap)`, {
+                        accountId, syncId, toDelete: staleCount, localTotal
                     });
                 } else {
-                    await prisma.wooCustomer.deleteMany({
-                        where: { accountId, updatedAt: { lt: syncStartedAt } }
-                    });
-
-                    // Index deletions in parallel batches
-                    const DELETE_BATCH = 20;
-                    for (let i = 0; i < staleCustomers.length; i += DELETE_BATCH) {
-                        const batch = staleCustomers.slice(i, i + DELETE_BATCH);
+                    // Stream ES deletions in chunks so we never hold the full ID list.
+                    const ES_DELETE_CHUNK = 500;
+                    let cursor: string | undefined;
+                    while (true) {
+                        const chunk: { id: string; wooId: number }[] = await prisma.wooCustomer.findMany({
+                            where: { accountId, updatedAt: { lt: syncStartedAt } },
+                            select: { id: true, wooId: true },
+                            orderBy: { id: 'asc' },
+                            take: ES_DELETE_CHUNK,
+                            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+                        });
+                        if (chunk.length === 0) break;
                         await Promise.allSettled(
-                            batch.map(c => IndexingService.deleteCustomer(accountId, c.wooId).catch(() => { }))
+                            chunk.map(c => IndexingService.deleteCustomer(accountId, c.wooId).catch(() => { }))
                         );
+                        cursor = chunk[chunk.length - 1].id;
+                        if (chunk.length < ES_DELETE_CHUNK) break;
                     }
 
-                    totalDeleted = staleCustomers.length;
+                    const { count } = await prisma.wooCustomer.deleteMany({
+                        where: { accountId, updatedAt: { lt: syncStartedAt } }
+                    });
+                    totalDeleted = count;
                     Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned customers`, { accountId, syncId });
                 }
             }

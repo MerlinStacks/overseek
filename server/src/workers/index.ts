@@ -10,8 +10,27 @@ import { Worker } from 'bullmq';
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
 
+// Register SIGTERM handler exactly once at module load. Previously it was
+// attached inside startWorkers(), so if the function was ever invoked more
+// than once (tests, hot reload, error recovery) Node would accumulate
+// listeners and warn about MaxListeners.
+let sigtermRegistered = false;
+function registerSigtermOnce() {
+    if (sigtermRegistered) return;
+    sigtermRegistered = true;
+    process.on('SIGTERM', async () => {
+        Logger.info(`SIGTERM received. Closing ${activeWorkers.length} workers...`);
+        await Promise.allSettled(activeWorkers.map(w => w.close()));
+        Logger.info('All workers closed');
+        const r = await import('../utils/redis');
+        await r.redisClient.quit().catch(() => { /* already closed */ });
+        process.exit(0);
+    });
+}
+
 export async function startWorkers() {
     Logger.info('Starting Workers...');
+    registerSigtermOnce();
 
 
     activeWorkers.push(QueueFactory.createWorker(QUEUES.ORDERS, async (job) => {
@@ -90,14 +109,4 @@ export async function startWorkers() {
         Logger.info('[Workers] BOM Consumption event listener registered');
     });
 
-    // Graceful Shutdown — close workers before disconnecting Redis
-    process.on('SIGTERM', async () => {
-        Logger.info(`SIGTERM received. Closing ${activeWorkers.length} workers...`);
-        await Promise.allSettled(
-            activeWorkers.map(w => w.close())
-        );
-        Logger.info('All workers closed');
-        await import('../utils/redis').then(r => r.redisClient.quit());
-        process.exit(0);
-    });
 }

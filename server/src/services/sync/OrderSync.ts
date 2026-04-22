@@ -224,33 +224,46 @@ export class OrderSync extends BaseSync {
         }
 
         // Reconciliation: remove orders not touched during this full sync.
-        // Uses updatedAt timestamps instead of accumulating all IDs in memory,
-        // which caused OOM when syncing stores with tens of thousands of orders.
+        // Count-first pattern: we check the 30% safety cap via SQL count() before
+        // loading any IDs into Node memory. Previously we loaded every stale wooId
+        // (even just to evaluate the cap), which on a store with 100k stale rows
+        // put ~10MB of objects on the heap for a decision that doesn't need them.
         if (!incremental && totalProcessed > 0) {
-            const staleOrders = await prisma.wooOrder.findMany({
-                where: { accountId, updatedAt: { lt: syncStartedAt } },
-                select: { wooId: true }
+            const staleCount = await prisma.wooOrder.count({
+                where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
 
-            if (staleOrders.length > 0) {
-                // Why safety cap: if WooCommerce API returns partial data (e.g.,
-                // only 1 order due to a transient error), we'd delete everything
-                // else. Capping at 30% prevents catastrophic mass-deletion.
+            if (staleCount > 0) {
                 const localTotal = await prisma.wooOrder.count({ where: { accountId } });
                 const MAX_DELETE_RATIO = 0.3;
                 const maxDeletions = Math.max(10, Math.floor(localTotal * MAX_DELETE_RATIO));
 
-                if (staleOrders.length > maxDeletions) {
-                    Logger.warn(`Reconciliation aborted: would delete ${staleOrders.length}/${localTotal} orders (>${Math.round(MAX_DELETE_RATIO * 100)}% cap). Likely API issue.`, {
+                if (staleCount > maxDeletions) {
+                    Logger.warn(`Reconciliation aborted: would delete ${staleCount}/${localTotal} orders (>${Math.round(MAX_DELETE_RATIO * 100)}% cap). Likely API issue.`, {
                         accountId, syncId,
-                        toDelete: staleOrders.length,
+                        toDelete: staleCount,
                         localTotal,
                         syncedTotal: totalProcessed
                     });
                 } else {
-                    await Promise.allSettled(
-                        staleOrders.map(o => IndexingService.deleteOrder(accountId, o.wooId))
-                    );
+                    // Stream ES deletions in chunks so we never hold the full ID list.
+                    const ES_DELETE_CHUNK = 500;
+                    let cursor: string | undefined;
+                    while (true) {
+                        const chunk: { id: string; wooId: number }[] = await prisma.wooOrder.findMany({
+                            where: { accountId, updatedAt: { lt: syncStartedAt } },
+                            select: { id: true, wooId: true },
+                            orderBy: { id: 'asc' },
+                            take: ES_DELETE_CHUNK,
+                            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+                        });
+                        if (chunk.length === 0) break;
+                        await Promise.allSettled(
+                            chunk.map(o => IndexingService.deleteOrder(accountId, o.wooId))
+                        );
+                        cursor = chunk[chunk.length - 1].id;
+                        if (chunk.length < ES_DELETE_CHUNK) break;
+                    }
 
                     const { count } = await prisma.wooOrder.deleteMany({
                         where: { accountId, updatedAt: { lt: syncStartedAt } }

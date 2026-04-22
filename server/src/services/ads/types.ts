@@ -117,6 +117,19 @@ export interface SearchKeywordInsight {
 const credentialsCache: Map<string, { data: any; expiry: number }> = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Active sweep so expired entries don't hang around when nothing reads the
+// cache. The defensive sweep below only fires on a cache hit, which never
+// happens during quiet periods — a previously-expired entry could then
+// survive for hours even though it's unusable.
+if (typeof setInterval === 'function') {
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, entry] of credentialsCache) {
+            if (entry.expiry <= now) credentialsCache.delete(key);
+        }
+    }, 10 * 60 * 1000).unref();
+}
+
 /** Valid platform identifiers for credentials */
 export type AdsPlatform = 'GOOGLE_ADS' | 'GOOGLE_SEARCH_CONSOLE' | 'META_ADS' | 'META' | 'META_MESSAGING';
 
