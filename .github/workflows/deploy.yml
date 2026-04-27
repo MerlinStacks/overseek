@@ -62,6 +62,7 @@ jobs:
               - 'docker-compose.yml'
             web:
               - 'client/**'
+              - 'packages/overseek-core/**'
 
   # ── Step 2a: Build & push API image ──────────────────────────────────────────
   build-api:
@@ -131,7 +132,7 @@ jobs:
       - name: Build & push Web image
         uses: docker/build-push-action@v6
         with:
-          context: ./client
+          context: .
           file: client/Dockerfile
           push: true
           tags: |
