@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, Calendar, RefreshCw, Package, ChevronRight, DollarSign } from 'lucide-react';
@@ -65,14 +65,7 @@ export function MobileCustomerDetail() {
     const [data, setData] = useState<CustomerDetails | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (id) fetchCustomer();
-        const handleRefresh = () => { if (id) fetchCustomer(); };
-        window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [id, currentAccount, token]);
-
-    const fetchCustomer = async () => {
+    const fetchCustomer = useCallback(async () => {
         if (!currentAccount || !token || !id) {
             setLoading(false);
             return;
@@ -118,7 +111,16 @@ export function MobileCustomerDetail() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount, id, token]);
+
+    useEffect(() => {
+        fetchCustomer();
+        const handleRefresh = () => {
+            fetchCustomer();
+        };
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+    }, [fetchCustomer]);
 
     // Currency formatting helper using centralized utility
     const formatAccountCurrency = (amount: number) =>

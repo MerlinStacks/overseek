@@ -4,6 +4,7 @@ import { ShoppingCart, TrendingDown, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass, widgetListRowClass, widgetPillClass } from './widgetStyles';
 
 interface ProductAbandonmentStat {
     productId: number;
@@ -24,11 +25,6 @@ interface CartAbandonmentData {
     overallAbandonmentRate: number;
     topAbandonedProducts: ProductAbandonmentStat[];
     quickRemoveProducts: ProductAbandonmentStat[];
-}
-
-interface CartAbandonmentWidgetProps {
-    className?: string;
-    days?: number;
 }
 
 export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps) {
@@ -64,10 +60,10 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
 
     if (loading) {
         return (
-            <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 ${className}`}>
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-slate-900 dark:text-white">Cart Abandonment</h3>
-                    <div className="p-2 bg-gradient-to-br from-rose-400 to-red-500 rounded-lg text-white shadow-md">
+            <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col ${className || ''}`}>
+                <div className={widgetHeaderRowClass}>
+                    <h3 className={widgetTitleClass}>Cart Abandonment</h3>
+                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-rose-400 to-red-500`}>
                         <ShoppingCart size={16} />
                     </div>
                 </div>
@@ -80,10 +76,10 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
 
     if (!data || (data.topAbandonedProducts.length === 0 && data.quickRemoveProducts.length === 0)) {
         return (
-            <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 ${className}`}>
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-slate-900 dark:text-white">Cart Abandonment</h3>
-                    <div className="p-2 bg-gradient-to-br from-rose-400 to-red-500 rounded-lg text-white shadow-md">
+            <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col ${className || ''}`}>
+                <div className={widgetHeaderRowClass}>
+                    <h3 className={widgetTitleClass}>Cart Abandonment</h3>
+                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-rose-400 to-red-500`}>
                         <ShoppingCart size={16} />
                     </div>
                 </div>
@@ -99,16 +95,16 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
     const activeProducts = activeTab === 'abandoned' ? data.topAbandonedProducts : data.quickRemoveProducts;
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`}>
+        <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col ${className || ''}`}>
             {/* Header */}
-            <div className="flex items-center justify-between mb-3">
+            <div className={widgetHeaderRowClass}>
                 <div>
-                    <h3 className="font-semibold text-slate-900 dark:text-white">Cart Abandonment</h3>
+                    <h3 className={widgetTitleClass}>Cart Abandonment</h3>
                     <p className="text-xs text-slate-400 dark:text-slate-500">
                         {data.overallAbandonmentRate}% overall rate
                     </p>
                 </div>
-                <div className="p-2 bg-gradient-to-br from-rose-400 to-red-500 rounded-lg text-white shadow-md shadow-red-500/20">
+                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-rose-400 to-red-500 shadow-red-500/20`}>
                     <TrendingDown size={16} />
                 </div>
             </div>
@@ -161,10 +157,7 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
                     </div>
                 ) : (
                     activeProducts.slice(0, 5).map((product, idx) => (
-                        <div
-                            key={product.productId}
-                            className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-700/30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
-                        >
+                        <div key={product.productId} className={`flex items-center justify-between ${widgetListRowClass} bg-slate-50 dark:bg-slate-700/30 hover:bg-slate-100 dark:hover:bg-slate-700/50`}>
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0 ${idx === 0 ? 'bg-rose-500 text-white' :
                                         idx === 1 ? 'bg-rose-400 text-white' :
@@ -178,7 +171,7 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
                                         {product.productName}
                                     </p>
                                     {product.sku && (
-                                        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                                        <p className={`text-[10px] text-slate-400 dark:text-slate-500`}>
                                             SKU: {product.sku}
                                         </p>
                                     )}
@@ -188,12 +181,12 @@ export function CartAbandonmentWidget({ className = '', dateRange }: WidgetProps
                                 {activeTab === 'abandoned' ? (
                                     <>
                                         <p className="text-sm font-bold text-rose-500">{product.abandonmentRate}%</p>
-                                        <p className="text-[10px] text-slate-400">{product.addToCartCount} adds</p>
+                                        <p className={widgetPillClass}>{product.addToCartCount} adds</p>
                                     </>
                                 ) : (
                                     <>
                                         <p className="text-sm font-bold text-amber-500">{product.quickRemoveCount}x</p>
-                                        <p className="text-[10px] text-slate-400">quick removed</p>
+                                        <p className={widgetPillClass}>quick removed</p>
                                     </>
                                 )}
                             </div>

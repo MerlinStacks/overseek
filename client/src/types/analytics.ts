@@ -90,7 +90,7 @@ export interface LiveSession {
     currentPath: string | null;
     lastActiveAt: string;
     cartValue: number;
-    cartItems: any;
+    cartItems: unknown;
     referrer: string | null;
     utmSource: string | null;
     utmCampaign: string | null;

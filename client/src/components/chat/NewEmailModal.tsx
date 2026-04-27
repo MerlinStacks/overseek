@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
 import { useCannedResponses } from '../../hooks/useCannedResponses';
+import type { CannedResponse } from '../../hooks/useCannedResponses';
 
 interface EmailAccount {
     id: string;
@@ -60,8 +61,7 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
         filteredCanned,
         showCanned,
         handleInputForCanned,
-        selectCanned,
-        setShowCanned
+        selectCanned
     } = useCannedResponses();
 
     // Handle body change and check for canned response trigger
@@ -71,12 +71,12 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
     };
 
     // Select a canned response and replace the body
-    const handleSelectCanned = (response: { id: string; shortcut: string; content: string }) => {
+    const handleSelectCanned = (response: CannedResponse) => {
         const context = {
             agentFirstName: user?.fullName?.split(' ')[0],
             agentFullName: user?.fullName ?? undefined
         };
-        const content = selectCanned(response as any, context);
+        const content = selectCanned(response, context);
         setBody(content);
     };
 
@@ -92,10 +92,11 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
                     }
                 });
                 if (res.ok) {
-                    const accounts = await res.json();
-                    setEmailAccounts(accounts);
-                    if (accounts.length > 0) {
-                        const defaultAccount = accounts.find((a: EmailAccount) => a.isDefault) || accounts[0];
+                    const accounts: unknown = await res.json();
+                    const parsedAccounts = Array.isArray(accounts) ? (accounts as EmailAccount[]) : [];
+                    setEmailAccounts(parsedAccounts);
+                    if (parsedAccounts.length > 0) {
+                        const defaultAccount = parsedAccounts.find((a: EmailAccount) => a.isDefault) || parsedAccounts[0];
                         setEmailAccountId(defaultAccount.id);
                     }
                 }
@@ -145,14 +146,15 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
             });
 
             if (!res.ok) {
-                const errData = await res.json();
-                setError(errData.error || 'Failed to generate AI draft');
+                const errData: unknown = await res.json();
+                setError((errData as { error?: string }).error || 'Failed to generate AI draft');
                 return;
             }
 
-            const data = await res.json();
-            if (data.draft) {
-                setBody(data.draft);
+            const data: unknown = await res.json();
+            const draft = (data as { draft?: string }).draft;
+            if (draft) {
+                setBody(draft);
             }
         } catch (err) {
             Logger.error('AI compose assist failed:', { error: err });
@@ -243,15 +245,13 @@ export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
             }
 
             onSent(result.conversationId!);
-        } catch (err: any) {
-            setError(err.message || 'Failed to send email');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to send email';
+            setError(message);
             setIsSending(false);
             setUploadProgress(0);
         }
     };
-
-
-    const selectedAccount = emailAccounts.find(a => a.id === emailAccountId);
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

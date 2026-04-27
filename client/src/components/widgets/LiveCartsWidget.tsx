@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass, widgetListRowClass, widgetMicroLabelClass } from './widgetStyles';
 
 interface CartItem {
     productId: number;
@@ -36,29 +37,21 @@ interface CartSession {
     minutesSinceActivity: number;
 }
 
-/**
- * Get intent level and color based on purchase intent score.
- */
-function getIntentLevel(score: number): { label: string; color: string; bgColor: string } {
-    if (score >= 70) return { label: 'Hot', color: 'text-red-600', bgColor: 'bg-red-100' };
-    if (score >= 40) return { label: 'Warm', color: 'text-orange-500', bgColor: 'bg-orange-100' };
-    return { label: 'Cold', color: 'text-blue-500', bgColor: 'bg-blue-100' };
-}
-
 const LiveCartsWidget = ({ className }: WidgetProps) => {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const [carts, setCarts] = useState<CartSession[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchCarts = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         try {
             const res = await fetch('/api/tracking/carts', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
+                    'X-Account-ID': accountId
                 }
             });
             if (res.ok) {
@@ -70,18 +63,19 @@ const LiveCartsWidget = ({ className }: WidgetProps) => {
         } finally {
             setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchCarts, 30000, [fetchCarts], 'live-carts');
 
     if (loading && carts.length === 0) {
         return (
-            <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-4 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 overflow-hidden ${className}`}>
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-slate-900 dark:text-white">Live Carts</h3>
-                    <ShoppingCart size={18} className="text-slate-400 dark:text-slate-500" />
+            <div className={`${widgetCardClass} h-full w-full p-4 flex flex-col overflow-hidden ${className || ''}`}>
+                <div className={widgetHeaderRowClass}>
+                    <h3 className={widgetTitleClass}>Live Carts</h3>
+                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-blue-400 to-indigo-600 shadow-blue-500/20`}>
+                        <ShoppingCart size={16} />
+                    </div>
                 </div>
                 <div className="flex-1 flex justify-center items-center">
                     <Loader2 className="animate-spin text-slate-400 dark:text-slate-500" />
@@ -91,17 +85,19 @@ const LiveCartsWidget = ({ className }: WidgetProps) => {
     }
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-4 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 overflow-hidden transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`}>
-            <div className="flex justify-between items-center mb-4">
+        <div className={`${widgetCardClass} h-full w-full p-4 flex flex-col overflow-hidden ${className || ''}`}>
+            <div className={widgetHeaderRowClass}>
                 <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-900 dark:text-white">Live Carts</h3>
+                    <h3 className={widgetTitleClass}>Live Carts</h3>
                     {carts.length > 0 && (
                         <span className="text-xs bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">
                             {carts.length}
                         </span>
                     )}
                 </div>
-                <ShoppingCart size={18} className="text-slate-400 dark:text-slate-500" />
+                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-blue-400 to-indigo-600 shadow-blue-500/20`}>
+                    <ShoppingCart size={16} />
+                </div>
             </div>
             <div className="flex-1 overflow-y-auto">
                 {carts.length === 0 ? (
@@ -112,12 +108,10 @@ const LiveCartsWidget = ({ className }: WidgetProps) => {
                 ) : (
                     <div className="space-y-2">
                         {carts.map(cart => {
-                            const intent = getIntentLevel(cart.purchaseIntentScore);
                             const firstItem = cart.cartItems?.[0];
-                            const hasMultipleItems = cart.cartItems?.length > 1;
 
                             return (
-                                <div key={cart.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-600/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors cursor-pointer">
+                                <div key={cart.id} className={`flex items-center justify-between ${widgetListRowClass} bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-600/50 hover:bg-slate-100 dark:hover:bg-slate-700/60 cursor-pointer`}>
                                     <div className="flex items-center space-x-3">
                                         {/* Product thumbnail or placeholder */}
                                         <div className="relative">
@@ -170,7 +164,7 @@ const LiveCartsWidget = ({ className }: WidgetProps) => {
                                                     : formatDistanceToNow(new Date(cart.lastActiveAt), { addSuffix: true })}
                                         </div>
                                         {(cart.city || cart.country) && (
-                                            <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase mt-0.5">
+                                            <div className={`${widgetMicroLabelClass} uppercase mt-0.5`}>
                                                 {cart.city}{cart.city && cart.country ? ', ' : ''}{cart.country}
                                             </div>
                                         )}

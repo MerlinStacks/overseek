@@ -191,7 +191,6 @@ export function useOrders() {
         return () => controller.abort();
     // Why attributions in deps: without it, the stale closure always sees
     // the initial empty object, causing redundant refetches for every page.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [orders, token, currentAccount, attributions]);
 
     // Ref to hold the post-sync fetch timeout for cleanup

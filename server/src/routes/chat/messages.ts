@@ -26,19 +26,31 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
 
+        const ensureConversationOwnership = async (conversationId: string, accountId: string) => {
+            return prisma.conversation.findFirst({
+                where: { id: conversationId, accountId },
+                select: { id: true }
+            });
+        };
+
         // POST /:id/messages
         fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
             try {
                 const { content, type, isInternal, channel, emailAccountId } = request.body as any;
                 const userId = request.user?.id;
                 const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
                 if (!content?.trim()) {
                     return reply.code(400).send({ error: 'Message content is required' });
                 }
 
+                if (!(await ensureConversationOwnership(request.params.id, accountId))) {
+                    return reply.code(404).send({ error: 'Conversation not found' });
+                }
+
                 // Store the message first
-                const msg = await chatService.addMessage(request.params.id, content, type || 'AGENT', userId, isInternal);
+                const msg = await chatService.addMessage(request.params.id, content, type || 'AGENT', userId, isInternal, accountId);
 
                 // If internal note, don't route externally
                 if (isInternal) {
@@ -66,6 +78,12 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         fastify.post<{ Params: { id: string } }>('/:id/attachment', async (request, reply) => {
             let writeStream: fs.WriteStream | undefined;
             try {
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+                if (!(await ensureConversationOwnership(request.params.id, accountId))) {
+                    return reply.code(404).send({ error: 'Conversation not found' });
+                }
+
                 const data = await (request as any).file({ limits: { fileSize: 25 * 1024 * 1024 } });
                 if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
@@ -94,7 +112,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 const attachmentUrl = `/uploads/attachments/${filename}`;
                 const content = `[Attachment: ${data.filename}](${attachmentUrl})`;
 
-                const msg = await chatService.addMessage(conversationId, content, 'AGENT', userId, false);
+                const msg = await chatService.addMessage(conversationId, content, 'AGENT', userId, false, accountId);
 
                 return {
                     success: true,
@@ -117,6 +135,9 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
 
                 if (!accountId || !userId) {
                     return reply.code(401).send({ error: 'Unauthorized' });
+                }
+                if (!(await ensureConversationOwnership(conversationId, accountId))) {
+                    return reply.code(404).send({ error: 'Conversation not found' });
                 }
 
                 // Parse multipart data
@@ -185,7 +206,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 }
 
                 // Add message to conversation
-                const msg = await chatService.addMessage(conversationId, fullContent, type, userId, isInternal);
+                const msg = await chatService.addMessage(conversationId, fullContent, type, userId, isInternal, accountId);
 
                 // Send via email if this is an EMAIL conversation and not internal
                 if (!isInternal && attachments.length > 0) {
@@ -217,11 +238,19 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 const { messageId } = request.params;
                 const { emoji } = request.body as any;
                 const userId = request.user?.id;
+                const accountId = request.accountId;
 
                 if (!emoji) return reply.code(400).send({ error: 'Emoji is required' });
+                if (!userId || !accountId) return reply.code(400).send({ error: 'Account context required' });
+
+                const message = await prisma.message.findFirst({
+                    where: { id: messageId, conversation: { accountId } },
+                    select: { id: true }
+                });
+                if (!message) return reply.code(404).send({ error: 'Message not found' });
 
                 const existingReaction = await prisma.messageReaction.findUnique({
-                    where: { messageId_userId_emoji: { messageId, userId: userId!, emoji } }
+                    where: { messageId_userId_emoji: { messageId, userId, emoji } }
                 });
 
                 if (existingReaction) {
@@ -229,7 +258,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                     return { action: 'removed', emoji };
                 } else {
                     const reaction = await prisma.messageReaction.create({
-                        data: { messageId, userId: userId!, emoji },
+                        data: { messageId, userId, emoji },
                         include: { user: { select: { id: true, fullName: true } } }
                     });
                     return { action: 'added', reaction };

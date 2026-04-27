@@ -36,6 +36,26 @@ export function usePWA() {
         isPersistentStorage: false
     });
 
+    // Check pending actions count
+    const checkPendingActions = useCallback(async () => {
+        try {
+            const request = indexedDB.open('overseek-offline', 1);
+            request.onsuccess = () => {
+                const db = request.result;
+                if (db.objectStoreNames.contains('pending-actions')) {
+                    const tx = db.transaction('pending-actions', 'readonly');
+                    const store = tx.objectStore('pending-actions');
+                    const countReq = store.count();
+                    countReq.onsuccess = () => {
+                        setState(prev => ({ ...prev, pendingActionsCount: countReq.result }));
+                    };
+                }
+            };
+        } catch {
+            // IndexedDB not available
+        }
+    }, []);
+
     // Request persistent storage to prevent cache eviction
     useEffect(() => {
         const requestPersistentStorage = async () => {
@@ -106,27 +126,7 @@ export function usePWA() {
         return () => {
             navigator.serviceWorker?.removeEventListener('message', handleMessage);
         };
-    }, []);
-
-    // Check pending actions count
-    const checkPendingActions = useCallback(async () => {
-        try {
-            const request = indexedDB.open('overseek-offline', 1);
-            request.onsuccess = () => {
-                const db = request.result;
-                if (db.objectStoreNames.contains('pending-actions')) {
-                    const tx = db.transaction('pending-actions', 'readonly');
-                    const store = tx.objectStore('pending-actions');
-                    const countReq = store.count();
-                    countReq.onsuccess = () => {
-                        setState(prev => ({ ...prev, pendingActionsCount: countReq.result }));
-                    };
-                }
-            };
-        } catch {
-            // IndexedDB not available
-        }
-    }, []);
+    }, [checkPendingActions]);
 
     // Queue an action to be synced when online
     const queueOfflineAction = useCallback(async (action: OfflineAction): Promise<boolean> => {
@@ -169,7 +169,7 @@ export function usePWA() {
 
             // @ts-expect-error - periodicSync is not in TypeScript types yet
             if (registration?.periodicSync) {
-                // @ts-expect-error
+                // @ts-expect-error - periodicSync typing is missing in lib.dom for this target
                 await registration.periodicSync.register(tag, {
                     minInterval
                 });
@@ -202,17 +202,14 @@ export function usePWA() {
  * Hook to check if running as installed PWA
  */
 export function useIsPWA(): boolean {
-    const [isPWA, setIsPWA] = useState(false);
-
-    useEffect(() => {
+    const [isPWA] = useState(() => {
         // Check various indicators of PWA mode
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
         const isFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
         // @ts-expect-error - iOS specific
         const isIOSPWA = window.navigator.standalone === true;
-
-        setIsPWA(isStandalone || isFullscreen || isIOSPWA);
-    }, []);
+        return isStandalone || isFullscreen || isIOSPWA;
+    });
 
     return isPWA;
 }

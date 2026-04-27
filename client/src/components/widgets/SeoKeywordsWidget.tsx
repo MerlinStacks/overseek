@@ -24,6 +24,7 @@ import {
     Crosshair,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass } from './widgetStyles';
 
 /** Position badge color based on ranking bucket */
 function positionColor(pos: number): string {
@@ -61,12 +62,12 @@ export function SeoKeywordsWidget({ className }: WidgetProps) {
 
     return (
         <div
-            className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 overflow-hidden transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`}
+            className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden ${className || ''}`}
         >
             {/* Header */}
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-slate-900 dark:text-white">SEO Keywords</h3>
-                <div className="p-2 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-lg text-white shadow-md shadow-cyan-500/20">
+            <div className={widgetHeaderRowClass}>
+                <h3 className={widgetTitleClass}>SEO Keywords</h3>
+                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-blue-400 to-cyan-600 shadow-cyan-500/20`}>
                     <Search size={16} />
                 </div>
             </div>

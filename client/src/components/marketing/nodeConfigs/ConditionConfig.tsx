@@ -4,17 +4,44 @@
  */
 import React, { useState, useEffect } from 'react';
 
+type MatchType = 'all' | 'any';
+
+interface ConditionRule {
+    field: string;
+    operator: string;
+    value: string;
+}
+
+interface ConditionNodeConfig {
+    group?: string;
+    matchType?: MatchType;
+    conditions?: ConditionRule[];
+}
+
 export interface ConditionConfigProps {
-    config: any;
-    onUpdate: (key: string, value: any) => void;
+    config: ConditionNodeConfig;
+    onUpdate: (key: string, value: unknown) => void;
+}
+
+interface ConditionOption {
+    field: string;
+    label: string;
+    operators: string[];
+}
+
+interface ConditionGroup {
+    id: string;
+    label: string;
+    icon: string;
+    conditions: ConditionOption[];
 }
 
 /** Condition group definitions matching FunnelKit pattern */
-export const CONDITION_GROUPS = [
+export const CONDITION_GROUPS: ConditionGroup[] = [
     {
         id: 'segments',
         label: 'Segments',
-        icon: '📋',
+        icon: 'List',
         conditions: [
             { field: 'segment.id', label: 'Contact is in Segment', operators: ['eq', 'neq'] },
             { field: 'list.id', label: 'Contact is in List', operators: ['eq', 'neq'] },
@@ -23,7 +50,7 @@ export const CONDITION_GROUPS = [
     {
         id: 'contact',
         label: 'Contact Details',
-        icon: '👤',
+        icon: 'Contact',
         conditions: [
             { field: 'customer.email', label: 'Email address', operators: ['contains', 'not_contains', 'eq', 'neq'] },
             { field: 'customer.phone', label: 'Phone number', operators: ['is_set', 'not_set', 'eq'] },
@@ -35,7 +62,7 @@ export const CONDITION_GROUPS = [
     {
         id: 'woocommerce',
         label: 'WooCommerce',
-        icon: '🛒',
+        icon: 'Store',
         conditions: [
             { field: 'order.total', label: 'Order Total', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
             { field: 'order.itemCount', label: 'Order Item Count', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
@@ -48,7 +75,7 @@ export const CONDITION_GROUPS = [
     {
         id: 'user',
         label: 'User',
-        icon: '🔐',
+        icon: 'User',
         conditions: [
             { field: 'user.role', label: 'User Role', operators: ['eq', 'neq'] },
             { field: 'user.isLoggedIn', label: 'Is Logged In', operators: ['eq'] },
@@ -58,7 +85,7 @@ export const CONDITION_GROUPS = [
     {
         id: 'geography',
         label: 'Geography',
-        icon: '🌍',
+        icon: 'Geo',
         conditions: [
             { field: 'customer.country', label: 'Country', operators: ['eq', 'neq'] },
             { field: 'customer.state', label: 'State/Province', operators: ['eq', 'neq'] },
@@ -69,7 +96,7 @@ export const CONDITION_GROUPS = [
     {
         id: 'engagement',
         label: 'Engagement',
-        icon: '📧',
+        icon: 'Engage',
         conditions: [
             { field: 'email.opened', label: 'Opened any email', operators: ['eq'] },
             { field: 'email.openedRecent', label: 'Opened email in last X days', operators: ['eq'] },
@@ -80,7 +107,7 @@ export const CONDITION_GROUPS = [
     {
         id: 'datetime',
         label: 'DateTime',
-        icon: '📅',
+        icon: 'Date',
         conditions: [
             { field: 'date.dayOfWeek', label: 'Day of Week', operators: ['eq', 'neq'] },
             { field: 'date.hour', label: 'Hour of Day', operators: ['eq', 'gt', 'lt', 'between'] },
@@ -106,13 +133,11 @@ export const OPERATOR_LABELS: Record<string, string> = {
 
 export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpdate }) => {
     const [activeGroup, setActiveGroup] = useState(config.group || 'woocommerce');
-    const [conditions, setConditions] = useState<any[]>(config.conditions || [{ field: '', operator: '', value: '' }]);
+    const [conditions, setConditions] = useState<ConditionRule[]>(config.conditions || [{ field: '', operator: '', value: '' }]);
 
-    // Find available conditions for active group
     const activeGroupData = CONDITION_GROUPS.find(g => g.id === activeGroup);
     const availableConditions = activeGroupData?.conditions || [];
 
-    // Get operators for a field
     const getOperatorsForField = (fieldValue: string) => {
         for (const group of CONDITION_GROUPS) {
             const condition = group.conditions.find(c => c.field === fieldValue);
@@ -123,7 +148,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
         return ['eq', 'neq', 'gt', 'lt'];
     };
 
-    const updateCondition = (index: number, key: string, value: any) => {
+    const updateCondition = (index: number, key: keyof ConditionRule, value: string) => {
         const updated = [...conditions];
         updated[index] = { ...updated[index], [key]: value };
         setConditions(updated);
@@ -143,20 +168,17 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
         onUpdate('conditions', updated);
     };
 
-    // Sync group to config
     useEffect(() => {
         onUpdate('group', activeGroup);
-    }, [activeGroup]);
+    }, [activeGroup, onUpdate]);
 
     return (
         <div className="space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-gray-700">Add Conditions</label>
                 <span className="text-xs text-gray-500">Match {config.matchType || 'all'} conditions</span>
             </div>
 
-            {/* Match Type Toggle */}
             <div className="flex gap-2">
                 <button
                     onClick={() => onUpdate('matchType', 'all')}
@@ -178,7 +200,6 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                 </button>
             </div>
 
-            {/* Category Selector */}
             <div className="flex gap-2 flex-wrap">
                 {CONDITION_GROUPS.map(group => (
                     <button
@@ -195,7 +216,6 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                 ))}
             </div>
 
-            {/* Available Conditions */}
             <div className="border rounded-lg p-3 bg-gray-50 max-h-[200px] overflow-y-auto">
                 <div className="text-xs text-gray-500 mb-2">Select a condition to add:</div>
                 <div className="space-y-1">
@@ -203,12 +223,11 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                         <button
                             key={cond.field}
                             onClick={() => {
-                                // Add this condition
                                 if (conditions[conditions.length - 1]?.field === '') {
                                     updateCondition(conditions.length - 1, 'field', cond.field);
                                     updateCondition(conditions.length - 1, 'operator', cond.operators[0]);
                                 } else {
-                                    const newCond = { field: cond.field, operator: cond.operators[0], value: '' };
+                                    const newCond: ConditionRule = { field: cond.field, operator: cond.operators[0], value: '' };
                                     const updated = [...conditions, newCond];
                                     setConditions(updated);
                                     onUpdate('conditions', updated);
@@ -223,7 +242,6 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                 </div>
             </div>
 
-            {/* Active Conditions */}
             {conditions.filter(c => c.field).length > 0 && (
                 <div className="space-y-2">
                     <div className="text-xs font-medium text-gray-700">Active conditions:</div>
@@ -254,14 +272,13 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                                 onClick={() => removeCondition(idx)}
                                 className="p-1 text-gray-400 hover:text-red-500 transition-colors"
                             >
-                                ×
+                                x
                             </button>
                         </div>
                     ))}
                 </div>
             )}
 
-            {/* Preview */}
             {conditions.filter(c => c.field && c.value).length > 0 && (
                 <div className="bg-orange-50 p-3 rounded-lg text-sm text-orange-700 border border-orange-200">
                     <strong>Preview:</strong><br />
@@ -270,10 +287,17 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                             {i > 0 && <span className="font-medium"> {config.matchType === 'any' ? 'OR' : 'AND'} </span>}
                             {CONDITION_GROUPS.flatMap(g => g.conditions).find(cond => cond.field === c.field)?.label || c.field} {OPERATOR_LABELS[c.operator] || c.operator} "{c.value}"
                         </span>
-                    ))} → <span className="text-green-600 font-medium">YES</span><br />
-                    Otherwise → <span className="text-red-600 font-medium">NO</span>
+                    ))} {'->'} <span className="text-green-600 font-medium">YES</span><br />
+                    Otherwise {'->'} <span className="text-red-600 font-medium">NO</span>
                 </div>
             )}
+
+            <button
+                onClick={addCondition}
+                className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+            >
+                + Add Another Condition
+            </button>
         </div>
     );
 };

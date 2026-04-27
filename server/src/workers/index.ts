@@ -68,7 +68,7 @@ export async function startWorkers() {
         const { BOMInventorySyncService } = await import('../services/BOMInventorySyncService');
         activeWorkers.push(QueueFactory.createWorker(QUEUES.BOM_SYNC, async (job) => {
             const { accountId } = job.data;
-            const result = await BOMInventorySyncService.syncAllBOMProducts(accountId);
+            const result = await BOMInventorySyncService.syncAllBOMProducts(accountId, job);
             Logger.info(`[BOM Worker] Completed BOM sync`, {
                 accountId,
                 synced: result.synced,

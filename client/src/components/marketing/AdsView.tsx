@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -31,6 +31,7 @@ interface AdsViewProps {
 export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const [accounts, setAccounts] = useState<AdAccount[]>([]);
     const [insights, setInsights] = useState<Record<string, AdInsights>>({});
     const [loadingInsights, setLoadingInsights] = useState<Record<string, boolean>>({});
@@ -57,15 +58,11 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
     const [googleCallbackUrl, setGoogleCallbackUrl] = useState(`${window.location.origin}/api/oauth/google/callback`);
 
     useEffect(() => {
-        fetchAccounts();
-    }, [currentAccount, token]);
-
-    useEffect(() => {
         /** Fetch the actual callback URL the server uses, so the displayed URL matches. */
         async function fetchCallbackUrl() {
             try {
                 const res = await fetch('/api/oauth/callback-urls', {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
+                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId || '' }
                 });
                 if (res.ok) {
                     const data = await res.json();
@@ -76,13 +73,36 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             }
         }
         if (token) fetchCallbackUrl();
-    }, [token, currentAccount]);
+    }, [token, accountId]);
 
-    async function fetchAccounts() {
-        if (!currentAccount) return;
+    const fetchInsights = useCallback(async (adAccountId: string) => {
+        setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
+        setInsightErrors(prev => ({ ...prev, [adAccountId]: '' })); // Clear previous error
+        try {
+            const res = await fetch(`/api/ads/${adAccountId}/insights`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId || '' }
+            });
+            const data = await res.json();
+            if (!data.error) {
+                setInsights(prev => ({ ...prev, [adAccountId]: data }));
+            } else {
+                Logger.error(`Insights fetch error for ${adAccountId}`, { error: data.error });
+                setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
+            }
+        } catch (err: unknown) {
+            Logger.error('Failed to fetch insights', { error: err });
+            const message = err instanceof Error ? err.message : 'Connection error';
+            setInsightErrors(prev => ({ ...prev, [adAccountId]: message }));
+        } finally {
+            setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
+        }
+    }, [accountId, token]);
+
+    const fetchAccounts = useCallback(async () => {
+        if (!accountId || !token) return;
         try {
             const res = await fetch('/api/ads', {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId }
             });
             const data = await res.json();
             setAccounts(data);
@@ -100,29 +120,11 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [accountId, token, fetchInsights]);
 
-    async function fetchInsights(adAccountId: string) {
-        setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
-        setInsightErrors(prev => ({ ...prev, [adAccountId]: '' })); // Clear previous error
-        try {
-            const res = await fetch(`/api/ads/${adAccountId}/insights`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
-            });
-            const data = await res.json();
-            if (!data.error) {
-                setInsights(prev => ({ ...prev, [adAccountId]: data }));
-            } else {
-                Logger.error(`Insights fetch error for ${adAccountId}`, { error: data.error });
-                setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
-            }
-        } catch (err: any) {
-            Logger.error('Failed to fetch insights', { error: err });
-            setInsightErrors(prev => ({ ...prev, [adAccountId]: err.message || 'Connection error' }));
-        } finally {
-            setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
-        }
-    }
+    useEffect(() => {
+        fetchAccounts();
+    }, [fetchAccounts]);
 
     async function handleConnect(e: React.FormEvent) {
         e.preventDefault();
@@ -290,7 +292,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             alert(`OAuth Error: ${errorType}${errorMessage ? ` - ${errorMessage}` : ''}`);
             window.history.replaceState({}, '', '/marketing?tab=ads');
         }
-    }, []);
+    }, [fetchAccounts]);
 
     return (
         <div className="space-y-6">

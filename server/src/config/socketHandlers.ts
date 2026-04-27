@@ -82,6 +82,28 @@ export function setupSocketHandlers(io: Server): void {
             socket.to(`conversation:${conversationId}`).emit('typing:stop', { conversationId });
         });
 
+        // Agent draft presence (collision-avoidance while composing replies)
+        socket.on('agent:draft:start', ({ conversationId, user }) => {
+            if (!conversationId || !user?.id) return;
+            socket.to(`conversation:${conversationId}`).emit('agent:draft:start', {
+                conversationId,
+                user: {
+                    id: user.id,
+                    name: user.name || 'Agent',
+                    avatarUrl: user.avatarUrl || null
+                },
+                startedAt: Date.now()
+            });
+        });
+
+        socket.on('agent:draft:stop', ({ conversationId, userId }) => {
+            if (!conversationId || !userId) return;
+            socket.to(`conversation:${conversationId}`).emit('agent:draft:stop', {
+                conversationId,
+                userId
+            });
+        });
+
         // Document presence (Invoice Designer, etc.)
         socket.on('join:document', async ({ docId, user }) => {
             socket.join(`document:${docId}`);

@@ -23,7 +23,8 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/', async (request, reply) => {
         try {
             const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const userId = request.user?.id;
+            if (!accountId || !userId) return reply.code(400).send({ error: 'Account ID and user required' });
 
             const query = request.query as { limit?: string };
             const limit = parseInt(query.limit || '20', 10);
@@ -31,14 +32,32 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
             const notifications = await prisma.notification.findMany({
                 where: { accountId },
                 orderBy: { createdAt: 'desc' },
-                take: limit
+                take: limit,
+                include: {
+                    reads: {
+                        where: { userId },
+                        select: { id: true }
+                    }
+                }
             });
 
             const unreadCount = await prisma.notification.count({
-                where: { accountId, isRead: false }
+                where: {
+                    accountId,
+                    isRead: false,
+                    reads: {
+                        none: { userId }
+                    }
+                }
             });
 
-            return { notifications, unreadCount };
+            return {
+                notifications: notifications.map(({ reads, ...notification }) => ({
+                    ...notification,
+                    isRead: notification.isRead || reads.length > 0
+                })),
+                unreadCount
+            };
         } catch (error) {
             Logger.error('Fetch notifications error', { error });
             return reply.code(500).send({ error: 'Failed to fetch notifications' });
@@ -49,12 +68,30 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/read-all', async (request, reply) => {
         try {
             const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const userId = request.user?.id;
+            if (!accountId || !userId) return reply.code(400).send({ error: 'Account ID and user required' });
 
-            await prisma.notification.updateMany({
-                where: { accountId, isRead: false },
-                data: { isRead: true }
+            const unreadNotifications = await prisma.notification.findMany({
+                where: {
+                    accountId,
+                    isRead: false,
+                    reads: {
+                        none: { userId }
+                    }
+                },
+                select: { id: true }
             });
+
+            if (unreadNotifications.length > 0) {
+                await prisma.notificationRead.createMany({
+                    data: unreadNotifications.map((n) => ({
+                        notificationId: n.id,
+                        userId,
+                        accountId
+                    })),
+                    skipDuplicates: true
+                });
+            }
 
             return { success: true };
         } catch (error) {
@@ -67,11 +104,18 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { id } = request.params;
             const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const userId = request.user?.id;
+            if (!accountId || !userId) return reply.code(400).send({ error: 'Account ID and user required' });
 
-            await prisma.notification.updateMany({
+            const existing = await prisma.notification.findFirst({
                 where: { id, accountId },
-                data: { isRead: true }
+                select: { id: true }
+            });
+            if (!existing) return reply.code(404).send({ error: 'Notification not found' });
+
+            await prisma.notificationRead.createMany({
+                data: [{ notificationId: id, userId, accountId }],
+                skipDuplicates: true
             });
 
             return { success: true };

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTabLeader } from './useTabLeader';
 
 /**
@@ -126,6 +126,5 @@ export function useTabCoordinatedPolling<T>(
             clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLeader, channelName, intervalMs, ...deps]);
+    }, [isLeader, channelName, intervalMs, deps]);
 }

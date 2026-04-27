@@ -1,0 +1,96 @@
+name: Memory Soak Check
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'docker-compose.yml'
+      - 'server/start.sh'
+      - '.github/workflows/memory-soak.yml'
+  workflow_dispatch:
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare stack env
+        run: |
+          cat > stack.env <<'EOF'
+          POSTGRES_PASSWORD=ci-password
+          JWT_SECRET=ci-jwt-secret-that-is-long-enough-for-tests
+          ENCRYPTION_KEY=ci-encryption-key-32-characters-long
+          APP_URL=http://localhost:5173
+          NODE_ENV=production
+          MEMORY_MONITOR_INTERVAL_MS=30000
+          MEMORY_MONITOR_LOG_LEVEL=warn
+          EOF
+
+      - name: Ensure proxy network exists
+        run: docker network create proxy-net || true
+
+      - name: Start API stack
+        run: docker compose up -d postgres redis elasticsearch api
+
+      - name: Wait for API liveness
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:3000/health/live > /dev/null; then
+              echo "API is live"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "API did not become live in time"
+          docker compose logs --tail 200 api
+          exit 1
+
+      - name: Run soak loop
+        shell: bash
+        run: |
+          json_num () {
+            node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const o=JSON.parse(s);const p=process.argv[1].split(".");let v=o;for(const k of p){v=v[k]}process.stdout.write(String(v));});' "$1"
+          }
+
+          start_json="$(curl -fsS http://localhost:3000/health/memory)"
+          start_heap="$(printf '%s' "$start_json" | json_num memory.heapUsedMb)"
+          start_rss="$(printf '%s' "$start_json" | json_num memory.rssMb)"
+
+          echo "Start heapUsedMb=$start_heap rssMb=$start_rss"
+
+          # 12 minutes with light operational traffic
+          for i in $(seq 1 72); do
+            curl -fsS http://localhost:3000/health/ready > /dev/null
+            sample="$(curl -fsS http://localhost:3000/health/memory)"
+            heap="$(printf '%s' "$sample" | json_num memory.heapUsedMb)"
+            rss="$(printf '%s' "$sample" | json_num memory.rssMb)"
+            loop_p95="$(printf '%s' "$sample" | json_num memory.eventLoopLagP95Ms)"
+            echo "tick=$i heapUsedMb=$heap rssMb=$rss eventLoopP95Ms=$loop_p95"
+            sleep 10
+          done
+
+          end_json="$(curl -fsS http://localhost:3000/health/memory)"
+          end_heap="$(printf '%s' "$end_json" | json_num memory.heapUsedMb)"
+          end_rss="$(printf '%s' "$end_json" | json_num memory.rssMb)"
+
+          heap_delta="$(node -e "const a=Number(process.argv[1]); const b=Number(process.argv[2]); console.log((b-a).toFixed(2));" "$start_heap" "$end_heap")"
+          rss_delta="$(node -e "const a=Number(process.argv[1]); const b=Number(process.argv[2]); console.log((b-a).toFixed(2));" "$start_rss" "$end_rss")"
+
+          echo "End heapUsedMb=$end_heap rssMb=$end_rss"
+          echo "Delta heapUsedMb=$heap_delta rssMb=$rss_delta"
+
+          # Conservative guardrails: fail only on strong monotonic growth.
+          node -e "const hd=Number(process.argv[1]); const rd=Number(process.argv[2]); if (hd > 350 || rd > 600) { console.error('Memory growth exceeded threshold', { heapDeltaMb: hd, rssDeltaMb: rd }); process.exit(1); }" "$heap_delta" "$rss_delta"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail 300 api
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+

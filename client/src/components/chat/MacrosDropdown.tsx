@@ -2,7 +2,7 @@
  * MacrosDropdown - Quick action buttons for inbox automations.
  * Displays available macros and executes on click.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Zap, ChevronDown, Play } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -29,11 +29,7 @@ export function MacrosDropdown({ conversationId, onExecuted }: MacrosDropdownPro
     const [isOpen, setIsOpen] = useState(false);
     const [isExecuting, setIsExecuting] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchMacros();
-    }, [currentAccount?.id]);
-
-    const fetchMacros = async () => {
+    const fetchMacros = useCallback(async () => {
         if (!currentAccount?.id || !token) return;
         try {
             const res = await fetch('/api/chat/macros', {
@@ -46,7 +42,11 @@ export function MacrosDropdown({ conversationId, onExecuted }: MacrosDropdownPro
         } catch (e) {
             Logger.error('Failed to fetch macros:', { error: e });
         }
-    };
+    }, [currentAccount?.id, token]);
+
+    useEffect(() => {
+        fetchMacros();
+    }, [fetchMacros]);
 
     const executeMacro = async (macroId: string) => {
         setIsExecuting(macroId);

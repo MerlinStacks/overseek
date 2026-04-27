@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { WidgetProps } from './WidgetRegistry';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { widgetGlassCardClass, widgetSubtleTextClass } from './widgetStyles';
 
 /**
  * Compact widget displaying the current count of live visitors.
@@ -14,13 +15,14 @@ import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 export function VisitorCountWidget(_props: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
 
     const [count, setCount] = useState<number>(0);
     const [visitors24h, setVisitors24h] = useState<number>(0);
     const [loading, setLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         try {
             // Fetch live visitors and 24h stats in parallel
@@ -28,13 +30,13 @@ export function VisitorCountWidget(_props: WidgetProps) {
                 fetch('/api/tracking/live', {
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
+                        'x-account-id': accountId
                     }
                 }),
                 fetch('/api/tracking/visitors-24h', {
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
+                        'x-account-id': accountId
                     }
                 })
             ]);
@@ -53,14 +55,13 @@ export function VisitorCountWidget(_props: WidgetProps) {
         } finally {
             setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     // Visibility-aware polling with tab coordination: only leader tab polls
     useVisibilityPolling(fetchData, 10000, [fetchData], 'visitor-count');
 
     return (
-        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-700/50 flex flex-col h-full justify-center items-center relative overflow-hidden transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
+        <div className={`${widgetGlassCardClass} p-6 flex flex-col h-full justify-center items-center relative overflow-hidden`}>
             {/* Pulsing Indicator with glow */}
             <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-full">
                 <span className="relative flex h-2.5 w-2.5">
@@ -77,7 +78,7 @@ export function VisitorCountWidget(_props: WidgetProps) {
                 ) : (
                     <span className="text-5xl font-bold text-slate-900 dark:text-white tracking-tight">{count}</span>
                 )}
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Active Visitors</p>
+                <p className={`${widgetSubtleTextClass} mt-2 font-medium`}>Active Visitors</p>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{visitors24h.toLocaleString()} in last 24h</p>
             </div>
 

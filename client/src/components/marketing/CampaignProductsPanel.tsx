@@ -5,7 +5,7 @@
  * Fetches products on demand when campaign is expanded.
  */
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Loader2, Package, TrendingUp, TrendingDown } from 'lucide-react';
@@ -42,11 +42,7 @@ export function CampaignProductsPanel({ adAccountId, campaignId, days }: Campaig
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchProducts();
-    }, [adAccountId, campaignId, days]);
-
-    async function fetchProducts() {
+    const fetchProducts = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
@@ -64,12 +60,17 @@ export function CampaignProductsPanel({ adAccountId, campaignId, days }: Campaig
             }
             const data = await res.json();
             setProducts(data);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to load products';
+            setError(message);
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [adAccountId, campaignId, currentAccount?.id, days, token]);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
 
     const formatNumber = (v: number) =>
         formatCompact(v);

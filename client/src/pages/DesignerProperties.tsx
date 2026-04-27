@@ -1,10 +1,29 @@
 import { useState, useRef } from 'react';
-import { X, Trash2, Copy, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle, User, LayoutTemplate, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Heading, FileText } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { X, Trash2, Copy, Type, Image as ImageIcon, Table, DollarSign, Settings, Upload, Loader2, CheckCircle, AlertCircle, User, LayoutTemplate, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Heading, FileText, QrCode } from 'lucide-react';
+
+interface DesignerItemStyle {
+    fontSize?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    textAlign?: 'left' | 'center' | 'right';
+    autoFit?: boolean;
+}
+
+interface DesignerItem {
+    id: string;
+    type: string;
+    content?: string;
+    logo?: string;
+    businessDetails?: string;
+    style?: DesignerItemStyle;
+    [key: string]: unknown;
+}
 
 interface DesignerPropertiesProps {
-    items: any[];
+    items: DesignerItem[];
     selectedId: string | null;
-    onUpdateItem: (updates: any) => void;
+    onUpdateItem: (updates: Record<string, unknown>) => void;
     onDeleteItem: () => void;
     onDuplicateItem?: () => void;
     onClose: () => void;
@@ -13,7 +32,7 @@ interface DesignerPropertiesProps {
 }
 
 
-const TYPE_CONFIG: Record<string, { icon: any; label: string; color: string }> = {
+const TYPE_CONFIG: Record<string, { icon: LucideIcon; label: string; color: string }> = {
     header: { icon: Heading, label: 'Header', color: 'text-slate-600 bg-slate-50' },
     text: { icon: Type, label: 'Text Block', color: 'text-blue-600 bg-blue-50' },
     image: { icon: ImageIcon, label: 'Image', color: 'text-purple-600 bg-purple-50' },
@@ -21,6 +40,7 @@ const TYPE_CONFIG: Record<string, { icon: any; label: string; color: string }> =
     customer_details: { icon: User, label: 'Customer Details', color: 'text-indigo-600 bg-indigo-50' },
     order_table: { icon: Table, label: 'Order Items', color: 'text-emerald-600 bg-emerald-50' },
     totals: { icon: DollarSign, label: 'Totals', color: 'text-amber-600 bg-amber-50' },
+    payment_block: { icon: QrCode, label: 'Payment Block', color: 'text-cyan-600 bg-cyan-50' },
     footer: { icon: LayoutTemplate, label: 'Footer', color: 'text-slate-600 bg-slate-50' }
 };
 
@@ -87,14 +107,15 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
 
             const result = await response.json();
             onUpdateItem({ [updateField]: result.url });
-        } catch (error: any) {
-            setUploadError(error.message || 'Failed to upload image');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to upload image';
+            setUploadError(message);
         } finally {
             setIsUploading(false);
         }
     };
 
-    const updateStyle = (key: string, value: any) => {
+    const updateStyle = (key: keyof DesignerItemStyle, value: string | boolean) => {
         const currentStyle = selectedItem.style || {};
         onUpdateItem({
             style: {
@@ -404,6 +425,23 @@ export function DesignerProperties({ items, selectedId, onUpdateItem, onDeleteIt
                                 <p className="text-sm font-medium text-amber-700 mb-1">Auto-Calculated</p>
                                 <p className="text-xs text-amber-600 leading-relaxed">
                                     Displays subtotal, shipping, tax, and grand total. Values are calculated from order data.
+                                </p>
+                            </div>
+                        )}
+
+                        {selectedItem.type === 'payment_block' && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-2">Pay URL (supports placeholders)</label>
+                                    <input
+                                        className="w-full text-sm border border-slate-200 rounded-xl shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 p-3 transition-all"
+                                        placeholder="https://pay.example.com/invoice/{{invoice.number}}"
+                                        value={selectedItem.content || ''}
+                                        onChange={(e) => onUpdateItem({ content: e.target.value })}
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-400">
+                                    Leave empty to use the template-level Pay URL from invoice settings.
                                 </p>
                             </div>
                         )}

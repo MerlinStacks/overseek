@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Server, CheckCircle, XCircle, Loader2, Save, ChevronDown, ChevronUp, Send, Inbox, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useToast } from '../../context/ToastContext';
 
 /**
  * Unified Email Account - combines SMTP and IMAP in one record.
@@ -53,6 +54,7 @@ export function EmailAccountForm({
 }: EmailAccountFormProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const [formData, setFormData] = useState<Partial<EmailAccount>>({
         smtpEnabled: false,
         imapEnabled: false,
@@ -64,13 +66,9 @@ export function EmailAccountForm({
     });
     const [smtpExpanded, setSmtpExpanded] = useState(formData.smtpEnabled);
     const [imapExpanded, setImapExpanded] = useState(formData.imapEnabled);
-    const [relayExpanded, setRelayExpanded] = useState(!!formData.relayEndpoint);
     const [testingProtocol, setTestingProtocol] = useState<'SMTP' | 'IMAP' | null>(null);
 
-    // Determine if using relay (endpoint configured) or SMTP
-    const useRelay = !!formData.relayEndpoint;
-
-    const handleChange = (field: keyof EmailAccount, value: any) => {
+    const handleChange = (field: keyof EmailAccount, value: EmailAccount[keyof EmailAccount]) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
@@ -181,7 +179,6 @@ export function EmailAccountForm({
                                         type="button"
                                         onClick={() => {
                                             handleChange('smtpEnabled', false);
-                                            setRelayExpanded(true);
                                         }}
                                         className={`flex-1 py-3 px-4 rounded-lg border-2 transition-all ${formData.relayEndpoint
                                             ? 'border-purple-500 bg-purple-50 text-purple-700'
@@ -319,12 +316,13 @@ export function EmailAccountForm({
                                                     });
                                                     const result = await response.json();
                                                     if (result.success) {
-                                                        alert('✓ ' + result.message);
+                                                        toast.success(result.message || 'Relay test successful.');
                                                     } else {
-                                                        alert('✗ ' + (result.error || 'Unknown error'));
+                                                        toast.error(`Relay test failed: ${result.error || 'Unknown error'}`);
                                                     }
-                                                } catch (err: any) {
-                                                    alert('Cannot test relay: ' + err.message);
+                                                } catch (err: unknown) {
+                                                    const message = err instanceof Error ? err.message : 'Unknown error';
+                                                    toast.error(`Cannot test relay: ${message}`);
                                                 }
                                             }}
                                             disabled={!formData.relayEndpoint || !formData.relayApiKey}
@@ -482,3 +480,4 @@ export function EmailAccountForm({
         </div>
     );
 }
+

@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { CheckCircle, XCircle, Clock, RotateCw } from 'lucide-react';
-import { cn } from '../../utils/cn';
 import { Pagination } from '../../components/ui/Pagination';
 
 interface SyncLog {
@@ -25,7 +24,7 @@ export function AdminLogsPage() {
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
 
-    const fetchLogs = (currentPage: number, currentLimit: number) => {
+    const fetchLogs = useCallback((currentPage: number, currentLimit: number) => {
         setLoading(true);
         fetch(`/api/admin/logs?page=${currentPage}&limit=${currentLimit}`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -41,11 +40,12 @@ export function AdminLogsPage() {
                 Logger.error('An error occurred', { error: err });
                 setLoading(false);
             });
-    };
+    }, [token]);
 
     useEffect(() => {
-        fetchLogs(page, limit);
-    }, [token, page, limit]); // Re-fetch when page changes
+        const id = setTimeout(() => fetchLogs(page, limit), 0);
+        return () => clearTimeout(id);
+    }, [fetchLogs, page, limit]); // Re-fetch when page changes
 
     return (
         <div className="space-y-6">

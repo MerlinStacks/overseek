@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, X, Trash2 } from 'lucide-react';
+import { LogIn, Trash2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 interface Account {
@@ -34,7 +34,7 @@ export function AdminAccountsPage() {
     const [confirmName, setConfirmName] = useState('');
     const [deleting, setDeleting] = useState(false);
 
-    const fetchAccounts = () => {
+    const fetchAccounts = useCallback(() => {
         fetch('/api/admin/accounts', {
             headers: { Authorization: `Bearer ${token}` }
         })
@@ -52,11 +52,11 @@ export function AdminAccountsPage() {
                 Logger.error('AdminAccountsPage fetch error:', { error: err });
                 setLoading(false);
             });
-    };
+    }, [token]);
 
     useEffect(() => {
         fetchAccounts();
-    }, [token]);
+    }, [fetchAccounts]);
 
     const handleImpersonate = async (accountId: string) => {
         // First we need to find the OWNER of the account to impersonate

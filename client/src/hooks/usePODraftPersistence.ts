@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Logger } from '../utils/logger';
 
 /** Shape of a single PO line item stored in the draft */
@@ -120,11 +120,11 @@ export function usePODraftPersistence({
 }: UsePODraftPersistenceOptions): UsePODraftPersistenceReturn {
     const key = buildDraftKey(accountId, poId);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const hasDraftRef = useRef(false);
+    const [hasDraft, setHasDraft] = useState(false);
 
     // Check for existing draft on first render
     useEffect(() => {
-        hasDraftRef.current = readDraft(key) !== null;
+        setHasDraft(readDraft(key) !== null);
     }, [key]);
 
     // Debounced auto-save whenever formState changes
@@ -140,9 +140,7 @@ export function usePODraftPersistence({
         return () => {
             if (timerRef.current) clearTimeout(timerRef.current);
         };
-        // Why: stringify comparison avoids missing deep changes in items array
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key, enabled, JSON.stringify(formState)]);
+    }, [key, enabled, formState]);
 
     const loadDraft = useCallback((): PODraftState | null => {
         return readDraft(key);
@@ -150,12 +148,12 @@ export function usePODraftPersistence({
 
     const clearDraft = useCallback((): void => {
         localStorage.removeItem(key);
-        hasDraftRef.current = false;
+        setHasDraft(false);
     }, [key]);
 
     return {
         loadDraft,
         clearDraft,
-        hasDraft: hasDraftRef.current,
+        hasDraft,
     };
 }

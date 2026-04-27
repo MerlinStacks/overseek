@@ -103,7 +103,9 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
                 conversation.id,
                 Body,
                 'CUSTOMER',
-                undefined // senderId is null for external customers usually, or we could link to WooCustomer
+                undefined, // senderId is null for external customers usually, or we could link to WooCustomer
+                false,
+                settings.accountId
             );
 
             // Twilio expects TwiML response or empty 200 OK

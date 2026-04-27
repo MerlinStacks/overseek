@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
     BarChart3, DollarSign, GitBranch,
-    TrendingUp, Search, LogOut, Download
+    TrendingUp, Download
 } from 'lucide-react';
 import { DateRangeFilter } from '../components/analytics/DateRangeFilter';
 

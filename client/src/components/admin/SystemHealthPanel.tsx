@@ -4,13 +4,11 @@ import {
     Activity,
     Database,
     Server,
-    HardDrive,
     RefreshCw,
     CheckCircle,
     XCircle,
     AlertTriangle,
     Clock,
-    Inbox,
     Webhook,
     Layers
 } from 'lucide-react';
@@ -79,8 +77,9 @@ export function SystemHealthPanel() {
             if (!res.ok) throw new Error('Failed to fetch system health');
             const data = await res.json();
             setHealth(data);
-        } catch (e: any) {
-            setError(e.message);
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Failed to fetch system health';
+            setError(message);
         } finally {
             setLoading(false);
         }

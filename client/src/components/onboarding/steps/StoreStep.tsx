@@ -20,12 +20,12 @@ import { Logger } from '../../../utils/logger';
  */
 export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingStepProps) {
     const { token, logout } = useAuth();
-    const { refreshAccounts, currentAccount } = useAccount();
+    const { refreshAccounts, currentAccount, setCurrentAccount } = useAccount();
     const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [testError, setTestError] = useState<string | null>(null);
     const [isCreatingAccount, setIsCreatingAccount] = useState(false);
-    // Initialize from context to handle component remount after account was already created
-    const [accountCreated, setAccountCreated] = useState(() => Boolean(currentAccount?.id));
+    // True only when the wizard store/account has been successfully created.
+    const [accountCreated, setAccountCreated] = useState(() => Boolean(draft.store.connectionVerified && currentAccount?.id));
     const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Auto-advance to next step after successful test + account creation
@@ -78,13 +78,12 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
             const data = await res.json();
 
             if (res.ok && data.success) {
-                setTestStatus('success');
-                handleChange('connectionVerified', true);
-
-                // Guard: only create account if one doesn't already exist
-                if (!accountCreated && !currentAccount) {
+                // Ensure this wizard flow has an actual persisted account before continuing.
+                if (!accountCreated) {
                     await createAccountEarly();
                 } else {
+                    setTestStatus('success');
+                    handleChange('connectionVerified', true);
                     setAccountCreated(true);
                 }
             } else {
@@ -131,13 +130,23 @@ export function StoreStep({ draft, setDraft, onNext, isSubmitting }: OnboardingS
                 throw new Error(data.error || 'Failed to create account');
             }
 
-            // Refresh accounts to update currentAccount in context
+            const createdAccount = await res.json();
+
+            // Refresh account list and explicitly switch context to the newly created account.
             await refreshAccounts();
+            if (createdAccount?.id) {
+                setCurrentAccount(createdAccount);
+            }
+
+            setTestStatus('success');
+            handleChange('connectionVerified', true);
             setAccountCreated(true);
             Logger.info('Account created early in wizard flow');
         } catch (error) {
             Logger.error('Early account creation failed', { error });
-            // Non-fatal: account will be created in finalization if this fails
+            // Fatal for this step: plugin/config steps need a real account id.
+            setTestStatus('error');
+            handleChange('connectionVerified', false);
             setTestError('Account setup incomplete. Please try again.');
         } finally {
             setIsCreatingAccount(false);

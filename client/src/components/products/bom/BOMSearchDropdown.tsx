@@ -5,12 +5,36 @@
 import React from 'react';
 import { Plus, Package, GitBranch } from 'lucide-react';
 
+export interface BOMSearchResultVariant {
+    id?: string | number;
+    wooId: number;
+    sku?: string;
+    cogs?: number;
+    stockQuantity?: number;
+    attributeString?: string;
+}
+
+export interface BOMSearchResultProduct {
+    id: string;
+    name: string;
+    sku?: string;
+    cogs?: number;
+    price?: number;
+    stockQuantity?: number;
+    hasBOM?: boolean;
+    isInternalProduct?: boolean;
+    mainImage?: string;
+    searchableVariants?: BOMSearchResultVariant[];
+    isVariant?: boolean;
+    variantId?: number;
+}
+
 export interface BOMSearchDropdownProps {
     searchTerm: string;
     onSearchChange: (value: string) => void;
-    searchResults: any[];
+    searchResults: BOMSearchResultProduct[];
     productId: string;
-    onAddProduct: (product: any) => void;
+    onAddProduct: (product: BOMSearchResultProduct) => void;
 }
 
 /**
@@ -43,7 +67,8 @@ export function BOMSearchDropdown({
                         // Filter out products that can't be added as components (but allow internal products)
                         .filter(p => (p.isInternalProduct || (!p.hasBOM && p.id !== productId)))
                         .map(p => {
-                            const hasVariants = p.searchableVariants && p.searchableVariants.length > 0;
+                            const variants = p.searchableVariants ?? [];
+                            const hasVariants = variants.length > 0;
                             // Internal products are always clickable, WooCommerce products only if no variants
                             const isClickable = p.isInternalProduct || !hasVariants;
 
@@ -77,7 +102,7 @@ export function BOMSearchDropdown({
                                                 )}
                                                 {hasVariants && (
                                                     <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200">
-                                                        {p.searchableVariants.length} variant{p.searchableVariants.length > 1 ? 's' : ''}
+                                                        {variants.length} variant{variants.length > 1 ? 's' : ''}
                                                     </span>
                                                 )}
                                             </div>
@@ -93,7 +118,7 @@ export function BOMSearchDropdown({
                                     {/* Variant sub-options */}
                                     {hasVariants && (
                                         <div className="bg-gray-50/30 border-t border-gray-100">
-                                            {p.searchableVariants.map((v: any) => (
+                                            {variants.map((v) => (
                                                 <button
                                                     key={v.id}
                                                     className="w-full text-left pl-8 pr-3 py-2 transition-colors flex items-center gap-3 hover:bg-blue-50 border-b border-gray-50 last:border-b-0"

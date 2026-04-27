@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -39,7 +39,7 @@ function useCredentials() {
      */
     const [serverUrls, setServerUrls] = useState<Record<string, string>>({});
 
-    const authHeaders = { Authorization: `Bearer ${token}` };
+    const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
     const fetchCredentials = useCallback(async () => {
         try {
@@ -78,7 +78,7 @@ function useCredentials() {
         } finally {
             setLoading(false);
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const fetchCallbackUrls = useCallback(async () => {
         try {
@@ -95,7 +95,7 @@ function useCredentials() {
         } catch {
             /* Fallback to window.location.origin via default empty map */
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const handleSave = useCallback(async (platformId: string) => {
         setSaving(platformId);
@@ -129,7 +129,7 @@ function useCredentials() {
         } finally {
             setSaving(null);
         }
-    }, [formData, notes, token, fetchCredentials]);
+    }, [formData, notes, authHeaders, fetchCredentials]);
 
     const handleDelete = useCallback(async (platformId: string) => {
         if (!confirm(`Delete all ${PLATFORMS.find(p => p.id === platformId)?.name} credentials? This cannot be undone.`)) return;
@@ -145,7 +145,7 @@ function useCredentials() {
         } catch {
             setMessage({ type: 'error', text: 'Failed to delete.' });
         }
-    }, [token, fetchCredentials]);
+    }, [authHeaders, fetchCredentials]);
 
     /** Tests SMTP connection with the saved credentials. */
     const handleTestSmtp = useCallback(async () => {
@@ -181,7 +181,7 @@ function useCredentials() {
         } finally {
             setTesting(null);
         }
-    }, [formData, token]);
+    }, [formData, authHeaders]);
 
     /** Generates VAPID keys via the backend. */
     const handleGenerateVapidKeys = useCallback(async () => {
@@ -227,7 +227,7 @@ function useCredentials() {
         } finally {
             setGenerating(false);
         }
-    }, [token, fetchCredentials]);
+    }, [authHeaders, fetchCredentials]);
 
     const toggleReveal = useCallback((fieldKey: string) => {
         setRevealedFields(prev => ({ ...prev, [fieldKey]: !prev[fieldKey] }));
@@ -245,7 +245,7 @@ function useCredentials() {
     }, [credentials]);
 
     useEffect(() => { fetchCredentials(); }, [fetchCredentials]);
-    useEffect(() => { if (token) fetchCallbackUrls(); }, [fetchCallbackUrls]);
+    useEffect(() => { if (token) fetchCallbackUrls(); }, [token, fetchCallbackUrls]);
 
     /** Auto-dismiss success messages after 4 seconds */
     useEffect(() => {

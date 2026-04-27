@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Loader2, Package, TrendingUp, AlertCircle, CheckCircle, Clock, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -78,13 +78,7 @@ export function StockVelocityReport() {
         </th>
     );
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchData();
-        }
-    }, [currentAccount, token]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
@@ -94,12 +88,16 @@ export function StockVelocityReport() {
             if (!res.ok) throw new Error('Failed to fetch data');
             const json = await res.json();
             setData(json);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to fetch data');
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        void fetchData();
+    }, [fetchData]);
 
     if (isLoading) {
         return (

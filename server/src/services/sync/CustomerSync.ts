@@ -59,6 +59,9 @@ export class CustomerSync extends BaseSync {
                         prisma.wooCustomer.upsert({
                             where: { accountId_wooId: { accountId, wooId: c.id } },
                             update: {
+                                email: c.email,
+                                firstName: c.first_name,
+                                lastName: c.last_name,
                                 totalSpent: c.total_spent ?? 0,
                                 ordersCount: c.orders_count ?? 0,
                                 rawData: c as any

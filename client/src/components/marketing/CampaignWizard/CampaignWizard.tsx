@@ -5,7 +5,7 @@
  * Guides users through goal selection, product selection, ad copy, and budget.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { X, CheckCircle, ArrowRight } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
 import { StepGoalType } from './steps/StepGoalType';
@@ -45,12 +45,6 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
     const [draft, setDraft] = useState<CampaignDraft>(createInitialDraft);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    // Memoized validation for current step
-    const stepValidation = useMemo(
-        () => validateStep(currentStep, draft),
-        [currentStep, draft]
-    );
 
     // Navigation handlers with validation
     const handleNext = useCallback(() => {
@@ -133,9 +127,10 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
             onSuccess?.(draft.name);
             handleClose();
 
-        } catch (e: any) {
-            Logger.error('[CampaignWizard] Failed to launch campaign', { error: e.message });
-            setError(e.message || 'An unexpected error occurred');
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'An unexpected error occurred';
+            Logger.error('[CampaignWizard] Failed to launch campaign', { error: message });
+            setError(message);
         } finally {
             setLoading(false);
         }

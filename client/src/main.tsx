@@ -1,7 +1,6 @@
 import * as React from 'react'
 import * as ReactDOM from 'react-dom/client'
 import * as Sentry from '@sentry/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { installDeploymentRecovery } from './utils/deploymentRecovery'
 import App from './App.tsx'
 import './index.css'
@@ -9,22 +8,6 @@ import './index.css'
 // Install deployment recovery handlers BEFORE React initializes.
 // This catches chunk load errors from stale caches after redeployment.
 installDeploymentRecovery();
-
-/**
- * Why these defaults: staleTime prevents refetching on every mount,
- * single retry avoids hammering failing endpoints, and gcTime keeps
- * unused cache around long enough for tab-switching.
- */
-const queryClient = new QueryClient({
-    defaultOptions: {
-        queries: {
-            staleTime: 60 * 1000,
-            retry: 1,
-            gcTime: 5 * 60 * 1000,
-            refetchOnWindowFocus: false,
-        },
-    },
-});
 
 // Initialize Sentry if DSN is provided
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -44,8 +27,6 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-        <QueryClientProvider client={queryClient}>
-            <App />
-        </QueryClientProvider>
+        <App />
     </React.StrictMode>,
 )

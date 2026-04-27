@@ -35,6 +35,10 @@ const prefetchedRoutes = new Set<string>();
  * ```
  */
 export function usePrefetch() {
+    const idleWindow = window as Window & {
+        requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    };
+
     const prefetch = useCallback((path: string) => {
         // Normalize path (remove trailing slashes, take base path)
         const basePath = '/' + path.split('/').filter(Boolean)[0] || '/';
@@ -46,8 +50,8 @@ export function usePrefetch() {
         if (loader) {
             prefetchedRoutes.add(basePath);
             // Use requestIdleCallback for non-blocking prefetch
-            if ('requestIdleCallback' in window) {
-                (window as any).requestIdleCallback(() => {
+            if (idleWindow.requestIdleCallback) {
+                idleWindow.requestIdleCallback(() => {
                     loader().catch(() => {
                         // Silently fail - prefetch is opportunistic
                         prefetchedRoutes.delete(basePath);
@@ -62,18 +66,18 @@ export function usePrefetch() {
                 }, 100);
             }
         }
-    }, []);
+    }, [idleWindow]);
 
     const prefetchOnIdle = useCallback((paths: string[]) => {
         // Prefetch multiple routes when browser is idle
-        if ('requestIdleCallback' in window) {
-            (window as any).requestIdleCallback(() => {
+        if (idleWindow.requestIdleCallback) {
+            idleWindow.requestIdleCallback(() => {
                 paths.forEach(prefetch);
             }, { timeout: 3000 });
         } else {
             setTimeout(() => paths.forEach(prefetch), 2000);
         }
-    }, [prefetch]);
+    }, [prefetch, idleWindow]);
 
     return { prefetch, prefetchOnIdle };
 }

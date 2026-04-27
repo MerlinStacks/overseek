@@ -1,7 +1,12 @@
 
 import * as React from 'react';
-import { clsx } from 'clsx';
-import { Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
+import {
+    buildInvoiceNumber,
+    formatInvoiceCurrency,
+    formatInvoiceDate,
+    mergeInvoiceSettings
+} from '../../../../packages/overseek-core/src/invoiceRenderModel';
 import { getItemMeta, resolveHandlebars } from '../../utils/invoiceItemUtils';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
@@ -9,10 +14,102 @@ import 'react-resizable/css/styles.css';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
+type InvoiceItemType =
+    | 'header'
+    | 'text'
+    | 'image'
+    | 'order_details'
+    | 'customer_details'
+    | 'order_table'
+    | 'totals'
+    | 'payment_block'
+    | 'footer'
+    | 'row';
+
+interface InvoiceItemStyle {
+    fontSize?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    textAlign?: 'left' | 'center' | 'right';
+    autoFit?: boolean;
+}
+
+interface InvoiceItem {
+    id: string;
+    type: InvoiceItemType;
+    content?: string;
+    logo?: string;
+    businessDetails?: string;
+    style?: InvoiceItemStyle;
+    children?: string[];
+}
+
+interface InvoiceLayoutItem {
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    minW?: number;
+    minH?: number;
+    maxW?: number;
+    maxH?: number;
+    [key: string]: unknown;
+}
+
+interface BillingData {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    company?: string;
+    address_1?: string;
+    address_2?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+    phone?: string;
+}
+
+interface ShippingLineData {
+    method_title?: string;
+}
+
+interface InvoiceLineItemData {
+    name?: string;
+    quantity?: number;
+    total?: string | number;
+    [key: string]: unknown;
+}
+
+interface InvoiceOrderData {
+    number?: string | number;
+    order_number?: string | number;
+    date_created?: string;
+    payment_method_title?: string;
+    payment_method?: string;
+    shipping_lines?: ShippingLineData[];
+    shipping_method?: string;
+    billing?: BillingData;
+    line_items?: InvoiceLineItemData[];
+    total?: string | number;
+    total_tax?: string | number;
+    shipping_total?: string | number;
+    discount_total?: string | number;
+    currency?: string;
+    [key: string]: unknown;
+}
+
+const toNumber = (val: unknown) => {
+    const parsed = Number(val ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
 interface InvoiceRendererProps {
-    layout: any[];
-    items: any[];
-    data?: any;
+    layout: InvoiceLayoutItem[];
+    items: InvoiceItem[];
+    data?: InvoiceOrderData;
+    settings?: Record<string, unknown>;
     readOnly?: boolean;
     pageMode?: 'single' | 'multi';
 }
@@ -21,10 +118,15 @@ interface InvoiceRendererProps {
  * InvoiceRenderer - Renders the invoice template with order data.
  * Shows a clean, print-ready preview (no designer styling).
  */
-export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode = 'single' }: InvoiceRendererProps) {
+export function InvoiceRenderer({ layout, items, data, settings, readOnly = true, pageMode = 'single' }: InvoiceRendererProps) {
+    const mergedSettings = mergeInvoiceSettings(settings || {});
+    const invoiceNumber = buildInvoiceNumber(mergedSettings);
+    const invoiceIssueDate = new Date();
+    const invoiceDueDate = new Date(invoiceIssueDate);
+    invoiceDueDate.setDate(invoiceDueDate.getDate() + Number(mergedSettings.compliance.paymentTermsDays || 14));
 
     // Helper to render content - clean print-ready styling
-    const renderContent = (itemConfig: any) => {
+    const renderContent = (itemConfig: InvoiceItem) => {
         if (!itemConfig) return <div className="p-3 text-red-500 text-sm">Error: Item config missing</div>;
 
         switch (itemConfig.type) {
@@ -58,7 +160,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     </div>
                 );
 
-            case 'order_details':
+            case 'order_details': {
                 const orderNumber = data?.number || data?.order_number || 'N/A';
                 const orderDate = data?.date_created
                     ? new Date(data.date_created).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -70,6 +172,18 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     <div className="py-3">
                         <table className="text-sm">
                             <tbody>
+                                <tr>
+                                    <td className="text-slate-500 pr-8 py-1">Invoice Number:</td>
+                                    <td className="font-medium text-slate-800">{invoiceNumber}</td>
+                                </tr>
+                                <tr>
+                                    <td className="text-slate-500 pr-8 py-1">Invoice Date:</td>
+                                    <td className="font-medium text-slate-800">{formatInvoiceDate(invoiceIssueDate, mergedSettings)}</td>
+                                </tr>
+                                <tr>
+                                    <td className="text-slate-500 pr-8 py-1">Due Date:</td>
+                                    <td className="font-medium text-slate-800">{formatInvoiceDate(invoiceDueDate, mergedSettings)}</td>
+                                </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-8 py-1">Order Number:</td>
                                     <td className="font-medium text-slate-800">{orderNumber}</td>
@@ -90,8 +204,9 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         </table>
                     </div>
                 );
+            }
 
-            case 'text':
+            case 'text': {
                 const style = itemConfig.style || {};
                 const isAutoFit = style.autoFit !== false; // Default to true
                 let text = itemConfig.content || '';
@@ -119,6 +234,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         {text}
                     </div>
                 );
+            }
 
             case 'image':
                 return (
@@ -137,7 +253,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                     </div>
                 );
 
-            case 'customer_details':
+            case 'customer_details': {
                 const billing = data?.billing || {};
                 const hasCustomerData = billing.first_name || billing.email;
 
@@ -164,25 +280,21 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         )}
                     </div>
                 );
+            }
 
-            case 'order_table':
+            case 'order_table': {
                 const lineItems = data?.line_items || [];
                 const hasItems = lineItems.length > 0;
                 const hasOrderData = data?.total !== undefined;
 
                 // Helper to format currency using order's actual currency
-                const formatMoney = (val: any) => {
-                    const num = parseFloat(val || 0);
-                    try {
-                        return new Intl.NumberFormat('en-US', { style: 'currency', currency: data?.currency || 'USD' }).format(num);
-                    } catch {
-                        return `$${num.toFixed(2)}`;
-                    }
+                const formatMoney = (val: unknown) => {
+                    return formatInvoiceCurrency(toNumber(val), mergedSettings, data?.currency || mergedSettings.locale.currency || 'USD');
                 };
 
                 // Calculate subtotal
                 const orderSubtotal = hasOrderData
-                    ? parseFloat(data.total) - parseFloat(data.total_tax || 0) - parseFloat(data.shipping_total || 0)
+                    ? toNumber(data.total) - toNumber(data.total_tax) - toNumber(data.shipping_total)
                     : 0;
 
                 // Helper to extract item metadata (delegated to shared utility)
@@ -200,10 +312,12 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {lineItems.map((item: any, i: number) => {
+                                    {lineItems.map((item, i: number) => {
                                         const itemMeta = getItemMeta(item);
-                                        const unitPrice = item.quantity > 0
-                                            ? (parseFloat(item.total || 0) / item.quantity).toFixed(2)
+                                        const quantity = toNumber(item.quantity);
+                                        const lineTotal = toNumber(item.total);
+                                        const unitPrice = quantity > 0
+                                            ? (lineTotal / quantity).toFixed(2)
                                             : '0.00';
 
                                         return (
@@ -224,9 +338,9 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-3 text-center text-slate-600">{item.quantity}</td>
+                                                <td className="py-3 text-center text-slate-600">{quantity}</td>
                                                 <td className="py-3 text-right text-slate-600">${unitPrice}</td>
-                                                <td className="py-3 text-right font-medium text-slate-700">${parseFloat(item.total || 0).toFixed(2)}</td>
+                                                <td className="py-3 text-right font-medium text-slate-700">${lineTotal.toFixed(2)}</td>
                                             </tr>
                                         );
                                     })}
@@ -242,14 +356,14 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                             <td className="py-1.5 text-right text-slate-600">Subtotal</td>
                                             <td className="py-1.5 text-right text-slate-700">{formatMoney(orderSubtotal)}</td>
                                         </tr>
-                                        {data.shipping_total && parseFloat(data.shipping_total) > 0 && (
+                                        {toNumber(data.shipping_total) > 0 && (
                                             <tr>
                                                 <td colSpan={2}></td>
                                                 <td className="py-1.5 text-right text-slate-600">Shipping</td>
                                                 <td className="py-1.5 text-right text-slate-700">{formatMoney(data.shipping_total)}</td>
                                             </tr>
                                         )}
-                                        {data.discount_total && parseFloat(data.discount_total) > 0 && (
+                                        {toNumber(data.discount_total) > 0 && (
                                             <tr>
                                                 <td colSpan={2}></td>
                                                 <td className="py-1.5 text-right text-emerald-600">Discount</td>
@@ -276,20 +390,16 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         )}
                     </div>
                 );
+            }
 
-            case 'totals':
+            case 'totals': {
                 const hasData = data?.total !== undefined;
-                const formatCurrency = (val: any) => {
-                    const num = parseFloat(val || 0);
-                    try {
-                        return new Intl.NumberFormat('en-US', { style: 'currency', currency: data?.currency || 'USD' }).format(num);
-                    } catch {
-                        return `$${num.toFixed(2)}`;
-                    }
+                const formatCurrency = (val: unknown) => {
+                    return formatInvoiceCurrency(toNumber(val), mergedSettings, data?.currency || mergedSettings.locale.currency || 'USD');
                 };
 
                 const subtotal = hasData
-                    ? parseFloat(data.total) - parseFloat(data.total_tax || 0) - parseFloat(data.shipping_total || 0)
+                    ? toNumber(data.total) - toNumber(data.total_tax) - toNumber(data.shipping_total)
                     : 0;
 
                 return (
@@ -301,13 +411,13 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                                         <td className="py-1.5 text-slate-600">Subtotal</td>
                                         <td className="py-1.5 text-right text-slate-700 w-28">{formatCurrency(subtotal)}</td>
                                     </tr>
-                                    {data.shipping_total && parseFloat(data.shipping_total) > 0 && (
+                                    {toNumber(data.shipping_total) > 0 && (
                                         <tr>
                                             <td className="py-1.5 text-slate-600">Shipping</td>
                                             <td className="py-1.5 text-right text-slate-700">{formatCurrency(data.shipping_total)}</td>
                                         </tr>
                                     )}
-                                    {data.discount_total && parseFloat(data.discount_total) > 0 && (
+                                    {toNumber(data.discount_total) > 0 && (
                                         <tr>
                                             <td className="py-1.5 text-emerald-600">Discount</td>
                                             <td className="py-1.5 text-right text-emerald-600">-{formatCurrency(data.discount_total)}</td>
@@ -330,24 +440,49 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         )}
                     </div>
                 );
+            }
+
+            case 'payment_block':
+                return (
+                    <div className="py-2 border border-cyan-200 rounded-lg bg-cyan-50/40 p-3">
+                        <div className="text-xs uppercase tracking-wider text-cyan-700 font-semibold mb-2">Payment</div>
+                        {(itemConfig.content || mergedSettings.payment.payNowUrl) ? (
+                            <div className="space-y-2">
+                                <div className="text-sm text-cyan-700 break-all">
+                                    {mergedSettings.payment.payNowLabel || 'Pay now'}: {itemConfig.content || mergedSettings.payment.payNowUrl}
+                                </div>
+                                <div className="w-16 h-16 rounded-md border border-cyan-300 bg-white grid grid-cols-4 gap-0.5 p-1">
+                                    {Array.from({ length: 16 }).map((_, idx) => (
+                                        <div key={idx} className={`${idx % 3 === 0 ? 'bg-cyan-700' : 'bg-cyan-100'} rounded-xs`} />
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-slate-400 italic text-sm">Set a Pay URL in settings or this block.</div>
+                        )}
+                    </div>
+                );
 
             case 'footer':
                 return (
                     <div className="py-3 text-center text-sm text-slate-500 bg-white relative z-20">
-                        {itemConfig.content || 'Thank you for your business!'}
+                        <div>{itemConfig.content || 'Thank you for your business!'}</div>
+                        {mergedSettings.compliance.legalFooter && (
+                            <div className="mt-1 text-xs text-slate-400 whitespace-pre-wrap">{mergedSettings.compliance.legalFooter}</div>
+                        )}
                     </div>
                 );
 
-            case 'row':
+            case 'row': {
                 // Row container - renders children horizontally
                 const childItems = (itemConfig.children || []).map((childId: string) =>
                     items.find(i => i.id === childId)
-                ).filter(Boolean);
+                ).filter((child): child is InvoiceItem => Boolean(child));
 
                 return (
                     <div className="py-2 flex gap-4" style={{ overflow: 'visible' }}>
                         {childItems.length > 0 ? (
-                            childItems.map((child: any) => (
+                            childItems.map((child) => (
                                 <div key={child.id} className="flex-1">
                                     {renderContent(child)}
                                 </div>
@@ -359,6 +494,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                         )}
                     </div>
                 );
+            }
 
             default:
                 return <div className="p-2 text-slate-500 text-sm">{itemConfig.type}</div>;
@@ -372,8 +508,8 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
         if (pageMode !== 'multi') return [layout];
 
         const sortedLayout = [...layout].sort((a, b) => a.y - b.y);
-        const pages: any[][] = [];
-        let currentPage: any[] = [];
+        const pages: InvoiceLayoutItem[][] = [];
+        let currentPage: InvoiceLayoutItem[] = [];
         let pageStartY = 0;
 
         for (const item of sortedLayout) {
@@ -408,8 +544,8 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
         const sortedLayout = [...layout].sort((a, b) => a.y - b.y);
 
         // Separate footer items to render at the end
-        const footerItems: any[] = [];
-        const contentItems: any[] = [];
+        const footerItems: Array<{ layout: InvoiceLayoutItem; config: InvoiceItem }> = [];
+        const contentItems: Array<{ layout: InvoiceLayoutItem; config: InvoiceItem }> = [];
 
         sortedLayout.forEach(l => {
             const itemConfig = items.find(i => i.id === l.i);
@@ -473,7 +609,7 @@ export function InvoiceRenderer({ layout, items, data, readOnly = true, pageMode
                             isResizable={true}
                             margin={[16, 8]}
                         >
-                            {pageLayout.map((l: any) => {
+                            {pageLayout.map((l: InvoiceLayoutItem) => {
                                 const itemConfig = items.find(i => i.id === l.i);
 
                                 // Hide headers on pages after the first

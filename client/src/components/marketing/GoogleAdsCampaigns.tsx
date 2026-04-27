@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
@@ -51,6 +51,11 @@ interface DailyTrend {
     conversionsValue: number;
 }
 
+interface SuggestionsPayload {
+    suggestions?: string[];
+    action_items?: string[];
+}
+
 interface GoogleAdsCampaignsProps {
     adAccountId: string;
     accountName: string;
@@ -72,7 +77,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
     const [days, setDays] = useState(30);
 
     // AI Suggestions state
-    const [suggestions, setSuggestions] = useState<any>(null);
+    const [suggestions, setSuggestions] = useState<SuggestionsPayload | null>(null);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(true);
     const [showContextModal, setShowContextModal] = useState(false);
@@ -80,11 +85,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
     // Expanded campaigns for product view
     const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
 
-    useEffect(() => {
-        fetchData();
-    }, [adAccountId, days]);
-
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
@@ -108,14 +109,15 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
 
             setCampaigns(campaignsData);
             setTrends(trendsData);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to load campaigns';
+            setError(message);
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [adAccountId, currentAccount?.id, days, token]);
 
-    async function fetchSuggestions() {
+    const fetchSuggestions = useCallback(async () => {
         setLoadingSuggestions(true);
         try {
             const headers = {
@@ -132,11 +134,15 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
         } finally {
             setLoadingSuggestions(false);
         }
-    }
+    }, [adAccountId, currentAccount?.id, token]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     useEffect(() => {
         fetchSuggestions();
-    }, [adAccountId]);
+    }, [fetchSuggestions]);
 
     function handleSort(column: keyof CampaignInsight) {
         if (sortBy === column) {

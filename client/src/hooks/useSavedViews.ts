@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 
 /**
  * SavedView represents a user-defined filter preset for data tables.

@@ -31,20 +31,21 @@ interface GoldPriceSummary {
 export function GoldPriceMarginWidget({ className }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const navigate = useNavigate();
     const [summary, setSummary] = useState<GoldPriceSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const fetchSummary = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         setError(null);
         try {
             const res = await fetch('/api/reports/gold-price/summary', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
+                    'X-Account-ID': accountId
                 }
             });
             if (!res.ok) {
@@ -58,8 +59,7 @@ export function GoldPriceMarginWidget({ className }: WidgetProps) {
         } finally {
             setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     useEffect(() => {
         fetchSummary();
@@ -105,7 +105,7 @@ export function GoldPriceMarginWidget({ className }: WidgetProps) {
 
     return (
         <div
-            className="flex flex-col h-full cursor-pointer group"
+            className={`flex flex-col h-full cursor-pointer group ${className || ''}`}
             onClick={() => navigate('/reports/gold-price-margin')}
             role="button"
             tabIndex={0}

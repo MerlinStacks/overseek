@@ -2,9 +2,24 @@ import { useState, useMemo } from 'react';
 import { Loader2, Search } from 'lucide-react';
 
 interface ReportsTableProps {
-    data: any[];
+    data: ReportsTableRow[];
     loading: boolean;
     activeView: string;
+}
+
+interface ReportsTableRow {
+    channel?: string;
+    sessions?: number;
+    source?: string;
+    medium?: string;
+    campaign?: string;
+    url?: string;
+    title?: string;
+    views?: number;
+    entries?: number;
+    exits?: number;
+    term?: string;
+    searches?: number;
 }
 
 export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) => {

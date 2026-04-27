@@ -18,7 +18,7 @@ import { QueueFactory } from './services/queue/QueueFactory';
 import { EventBus, EVENTS } from './services/events';
 import { AutomationEngine } from './services/AutomationEngine';
 import { setIO } from './socket';
-import { RATE_LIMITS, UPLOAD_LIMITS, SCHEDULER_LIMITS } from './config/limits';
+import { RATE_LIMITS, UPLOAD_LIMITS } from './config/limits';
 import { verifyToken } from './utils/auth';
 import { registerRoutes } from './config/routes';
 import { setupSocketHandlers } from './config/socketHandlers';
@@ -385,18 +385,6 @@ async function initializeApp() {
     // Setup Socket.IO handlers (extracted to config/socketHandlers.ts)
     setupSocketHandlers(io);
 
-    // CRON / SCHEDULERS
-    const tickerInterval = setInterval(async () => {
-        try {
-            await automationEngine.runTicker();
-        } catch (e) {
-            Logger.error('Ticker Error', { error: e as Error });
-        }
-    }, SCHEDULER_LIMITS.TICKER_INTERVAL_MS);
-
-    // Register for cleanup on shutdown
-    process.once('SIGTERM', () => clearInterval(tickerInterval));
-    process.once('SIGINT', () => clearInterval(tickerInterval));
 }
 
 // Initialize on import

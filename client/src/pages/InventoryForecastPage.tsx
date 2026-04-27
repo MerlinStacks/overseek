@@ -111,8 +111,8 @@ export function InventoryForecastPage() {
                 const data = await alertRes.json();
                 setAlerts(data);
             }
-        } catch (err: any) {
-            setError(err.message || 'Failed to load forecast data');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to load forecast data');
         } finally {
             setIsLoading(false);
         }
@@ -425,7 +425,7 @@ export function InventoryForecastPage() {
                                                 forecast.daysUntilStockout <= 30 ? 'text-yellow-600' :
                                                     'text-green-600'
                                             }`}>
-                                            {forecast.daysUntilStockout >= 999 ? '∞' : `${forecast.daysUntilStockout}d`}
+                                            {forecast.daysUntilStockout >= 999 ? '8' : `${forecast.daysUntilStockout}d`}
                                         </span>
                                     </td>
 
@@ -494,3 +494,4 @@ function StatCard({ label, value, suffix = '', color }: {
         </div>
     );
 }
+

@@ -308,15 +308,20 @@ export function ChatSettings() {
                     <div className="space-y-4">
                         <div className="grid gap-2">
                             {/* Simplified Day Editor */}
-                            {Object.entries(config.businessHours.days).map(([day, schedule]: [string, any]) => (
-                                <div key={day} className="flex items-center gap-4">
-                                    <span className="w-12 uppercase text-xs font-bold">{day}</span>
+                            {Object.entries(config.businessHours.days).map(([day, schedule]) => {
+                                const dayKey = day as keyof typeof config.businessHours.days;
+                                return (
+                                    <div key={day} className="flex items-center gap-4">
+                                        <span className="w-12 uppercase text-xs font-bold">{day}</span>
                                     <input
                                         type="checkbox"
                                         checked={schedule.isOpen}
                                         onChange={e => {
                                             const newDays = { ...config.businessHours.days };
-                                            (newDays as any)[day].isOpen = e.target.checked;
+                                            newDays[dayKey] = {
+                                                ...newDays[dayKey],
+                                                isOpen: e.target.checked
+                                            };
                                             setConfig({ ...config, businessHours: { ...config.businessHours, days: newDays } });
                                         }}
                                     />
@@ -324,21 +329,28 @@ export function ChatSettings() {
                                         <>
                                             <input type="time" value={schedule.open} onChange={e => {
                                                 const newDays = { ...config.businessHours.days };
-                                                (newDays as any)[day].open = e.target.value;
+                                                newDays[dayKey] = {
+                                                    ...newDays[dayKey],
+                                                    open: e.target.value
+                                                };
                                                 setConfig({ ...config, businessHours: { ...config.businessHours, days: newDays } });
                                             }} className="border rounded-sm px-2" />
                                             <span>to</span>
                                             <input type="time" value={schedule.close} onChange={e => {
                                                 const newDays = { ...config.businessHours.days };
-                                                (newDays as any)[day].close = e.target.value;
+                                                newDays[dayKey] = {
+                                                    ...newDays[dayKey],
+                                                    close: e.target.value
+                                                };
                                                 setConfig({ ...config, businessHours: { ...config.businessHours, days: newDays } });
                                             }} className="border rounded-sm px-2" />
                                         </>
                                     ) : (
                                         <span className="text-gray-400 italic">Closed</span>
                                     )}
-                                </div>
-                            ))}
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         <div>

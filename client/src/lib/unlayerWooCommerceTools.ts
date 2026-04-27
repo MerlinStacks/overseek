@@ -6,9 +6,12 @@
  */
 
 // Types for Unlayer editor reference
+type ToolValue = string | number | boolean | null | undefined;
+type ToolValues = Record<string, ToolValue>;
+
 interface UnlayerEditor {
-    registerTool: (config: any) => void;
-    createViewer: (config: { render: (values: any) => string }) => any;
+    registerTool: (config: Record<string, unknown>) => void;
+    createViewer: (config: { render: (values: ToolValues) => string }) => unknown;
 }
 
 /**
@@ -116,7 +119,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         values: {},
         renderer: {
             Viewer: unlayer.createViewer({
-                render(values: any) {
+                render(values: ToolValues) {
                     const showImage = values.showImage !== false;
                     const showPrice = values.showPrice !== false;
                     const showDescription = values.showDescription === true;
@@ -139,7 +142,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                 },
             }),
             exporters: {
-                email(values: any) {
+                email(values: ToolValues) {
                     const showImage = values.showImage !== false;
                     const showPrice = values.showPrice !== false;
                     const showDescription = values.showDescription === true;
@@ -210,7 +213,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         values: {},
         renderer: {
             Viewer: unlayer.createViewer({
-                render(values: any) {
+                render(values: ToolValues) {
                     const bgColor = values.backgroundColor || '#f3f4f6';
                     const borderStyle = values.borderStyle || 'dashed';
                     const showDiscount = values.showDiscount !== false;
@@ -227,7 +230,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                 },
             }),
             exporters: {
-                email(values: any) {
+                email(values: ToolValues) {
                     const bgColor = values.backgroundColor || '#f3f4f6';
                     const borderStyle = values.borderStyle || 'dashed';
                     const showDiscount = values.showDiscount !== false;
@@ -286,7 +289,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         values: {},
         renderer: {
             Viewer: unlayer.createViewer({
-                render(values: any) {
+                render(values: ToolValues) {
                     const addressType = values.addressType || 'billing';
                     const showLabel = values.showLabel !== false;
 
@@ -314,18 +317,9 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                 },
             }),
             exporters: {
-                email(values: any) {
+                email(values: ToolValues) {
                     const addressType = values.addressType || 'billing';
                     const showLabel = values.showLabel !== false;
-
-                    const renderAddress = (type: string, label: string, mergeTag: string) => `
-            <div style="flex: 1; min-width: 200px;">
-              ${showLabel ? `<p style="margin: 0 0 8px 0; color: #6b7280; font-size: 12px; text-transform: uppercase; font-weight: 600;">${label}</p>` : ''}
-              <div style="background: #f9fafb; border-radius: 8px; padding: 16px; border: 1px solid #e5e7eb;">
-                <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.6;">${mergeTag}</p>
-              </div>
-            </div>
-          `;
 
                     // Use table layout for email compatibility
                     return `
@@ -398,7 +392,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         values: {},
         renderer: {
             Viewer: unlayer.createViewer({
-                render(values: any) {
+                render(values: ToolValues) {
                     const showImages = values.showImages !== false;
                     const showShipping = values.showShipping !== false;
                     const showDiscount = values.showDiscount !== false;
@@ -457,10 +451,9 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                 },
             }),
             exporters: {
-                email(values: any) {
+                email(values: ToolValues) {
                     const showShipping = values.showShipping !== false;
                     const showDiscount = values.showDiscount !== false;
-                    const headerColor = values.headerColor || '#f3f4f6';
 
                     // The items table merge tag renders the full table with items
                     return `
@@ -533,7 +526,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         values: {},
         renderer: {
             Viewer: unlayer.createViewer({
-                render(values: any) {
+                render(values: ToolValues) {
                     const showIcon = values.showIcon !== false;
                     const bgColor = values.backgroundColor || '#fef3c7';
                     const borderColor = values.borderColor || '#f59e0b';
@@ -554,7 +547,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                 },
             }),
             exporters: {
-                email(values: any) {
+                email(values: ToolValues) {
                     const showIcon = values.showIcon !== false;
                     const bgColor = values.backgroundColor || '#fef3c7';
                     const borderColor = values.borderColor || '#f59e0b';
@@ -619,8 +612,8 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         values: {},
         renderer: {
             Viewer: unlayer.createViewer({
-                render(values: any) {
-                    const buttonStyle = values.buttonStyle || 'primary';
+                render(values: ToolValues) {
+                    const buttonStyle = typeof values.buttonStyle === 'string' ? values.buttonStyle : 'primary';
                     const showExpiry = values.showExpiry !== false;
 
                     const buttonColors: Record<string, { bg: string; text: string }> = {
@@ -655,7 +648,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                 },
             }),
             exporters: {
-                email(values: any) {
+                email(_values: ToolValues) {
                     // The downloads merge tag renders the full download list
                     return `
             <div style="padding: 20px; font-family: Arial, sans-serif;">
@@ -672,5 +665,4 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         },
     });
 
-    console.log('[Unlayer] WooCommerce custom tools registered successfully');
 }

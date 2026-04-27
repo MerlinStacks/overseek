@@ -9,6 +9,7 @@ import { useAccount } from '../context/AccountContext';
 import { useSocket } from '../context/SocketContext';
 import { useDrafts } from './useDrafts';
 import { ConversationChannel } from '../components/chat/ChannelSelector';
+import { lintOutboundMessage, type OutboundSafetyIssue } from '../utils/outboundSafety';
 
 interface UseMessageSendOptions {
     conversationId: string;
@@ -56,6 +57,14 @@ interface UseMessageSendReturn {
     isScheduling: boolean;
     /** Undo delay in milliseconds */
     UNDO_DELAY_MS: number;
+    /** Outbound safety findings for current message */
+    safetyIssues: OutboundSafetyIssue[];
+    /** Whether this outbound message needs explicit approval before send */
+    requiresSafetyApproval: boolean;
+    /** Approves and re-attempts current send */
+    approveSafetyAndSend: (channel?: ConversationChannel) => void;
+    /** Clear current safety findings/approval gate */
+    dismissSafetyWarnings: () => void;
 }
 
 const UNDO_DELAY_MS = 5000;
@@ -82,8 +91,12 @@ export function useMessageSend({
     const [quotedMessage, setQuotedMessage] = useState<{ id: string; content: string; senderType: string } | null>(null);
     const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
     const [isScheduling, setIsScheduling] = useState(false);
+    const [safetyIssues, setSafetyIssues] = useState<OutboundSafetyIssue[]>([]);
+    const [requiresSafetyApproval, setRequiresSafetyApproval] = useState(false);
+    const isDraftingRef = useRef(false);
+    const draftStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Ref that always holds the latest pendingSend — avoids stale closure
+    // Ref that always holds the latest pendingSend - avoids stale closure
     // when the conversation-switch effect fires.
     const pendingSendRef: MutableRefObject<PendingSend | null> = useRef(null);
     pendingSendRef.current = pendingSend;
@@ -116,6 +129,56 @@ export function useMessageSend({
         };
     }, []);
 
+    // Broadcast agent drafting presence to reduce reply collisions.
+    useEffect(() => {
+        const plainText = input.replace(/<[^>]*>/g, '').trim();
+        const shouldDraftBroadcast = Boolean(plainText) && !isInternal;
+        const userId = user?.id;
+        if (!socket || !conversationId || !userId) return;
+
+        if (shouldDraftBroadcast && !isDraftingRef.current) {
+            socket.emit('agent:draft:start', {
+                conversationId,
+                user: {
+                    id: userId,
+                    name: user.fullName || user.email || 'Agent',
+                    avatarUrl: user.avatarUrl || null
+                }
+            });
+            isDraftingRef.current = true;
+        }
+
+        if (draftStopTimeoutRef.current) {
+            clearTimeout(draftStopTimeoutRef.current);
+            draftStopTimeoutRef.current = null;
+        }
+
+        if (isDraftingRef.current) {
+            draftStopTimeoutRef.current = setTimeout(() => {
+                socket.emit('agent:draft:stop', { conversationId, userId });
+                isDraftingRef.current = false;
+            }, 2500);
+        }
+
+        return () => {
+            if (draftStopTimeoutRef.current) {
+                clearTimeout(draftStopTimeoutRef.current);
+                draftStopTimeoutRef.current = null;
+            }
+        };
+    }, [input, isInternal, socket, conversationId, user?.id, user?.fullName, user?.email, user?.avatarUrl]);
+
+    // Ensure drafting state is cleared when changing threads/unmounting.
+    useEffect(() => {
+        return () => {
+            const userId = user?.id;
+            if (socket && conversationId && userId && isDraftingRef.current) {
+                socket.emit('agent:draft:stop', { conversationId, userId });
+                isDraftingRef.current = false;
+            }
+        };
+    }, [socket, conversationId, user?.id]);
+
     // Auto-save draft on input change
     useEffect(() => {
         if (conversationId && input) {
@@ -134,6 +197,11 @@ export function useMessageSend({
             setPendingSend(null);
         }
     }, [pendingSend]);
+
+    const dismissSafetyWarnings = useCallback(() => {
+        setSafetyIssues([]);
+        setRequiresSafetyApproval(false);
+    }, []);
 
     /**
      * Prepare message content with quote and signature.
@@ -159,7 +227,7 @@ export function useMessageSend({
         }
 
         return content;
-    }, [quotedMessage, signatureEnabled, user, isInternal, recipientEmail]);
+    }, [quotedMessage, signatureEnabled, user, isInternal, recipientEmail, isLiveChat]);
 
     /**
      * Send the current message with undo delay.
@@ -170,6 +238,19 @@ export function useMessageSend({
         // Strip HTML to check for actual content
         const plainText = input.replace(/<[^>]*>/g, '').trim();
         if (!plainText || isSending || pendingSend) return;
+
+        if (!isInternal) {
+            const issues = lintOutboundMessage(plainText);
+            if (issues.length > 0 && !requiresSafetyApproval) {
+                setSafetyIssues(issues);
+                setRequiresSafetyApproval(true);
+                return;
+            }
+        }
+
+        // Approval was used for this send; reset for next message.
+        setSafetyIssues([]);
+        setRequiresSafetyApproval(false);
 
         const finalContent = prepareContent(input);
 
@@ -202,8 +283,17 @@ export function useMessageSend({
         // Emit typing stop
         if (socket && conversationId) {
             socket.emit('typing:stop', { conversationId });
+            if (user?.id && isDraftingRef.current) {
+                socket.emit('agent:draft:stop', { conversationId, userId: user.id });
+                isDraftingRef.current = false;
+            }
         }
-    }, [input, isSending, pendingSend, prepareContent, onSendMessage, isInternal, clearDraft, conversationId, socket, emailAccountId]);
+    }, [input, isSending, pendingSend, prepareContent, onSendMessage, isInternal, clearDraft, conversationId, socket, emailAccountId, user?.id, requiresSafetyApproval]);
+
+    const approveSafetyAndSend = useCallback((channel?: ConversationChannel) => {
+        setRequiresSafetyApproval(false);
+        handleSend(undefined, channel);
+    }, [handleSend]);
 
     /**
      * Schedule a message for later delivery.
@@ -247,6 +337,13 @@ export function useMessageSend({
         }
     }, [input, token, currentAccount, conversationId, prepareContent, isInternal, clearDraft]);
 
+    useEffect(() => {
+        if (!requiresSafetyApproval && safetyIssues.length === 0) return;
+        // Message edits should force a new linting pass before approval.
+        setRequiresSafetyApproval(false);
+        setSafetyIssues([]);
+    }, [input, isInternal, requiresSafetyApproval, safetyIssues.length]);
+
     return {
         input,
         setInput,
@@ -262,6 +359,10 @@ export function useMessageSend({
         cancelPendingSend,
         handleScheduleMessage,
         isScheduling,
-        UNDO_DELAY_MS
+        UNDO_DELAY_MS,
+        safetyIssues,
+        requiresSafetyApproval,
+        approveSafetyAndSend,
+        dismissSafetyWarnings
     };
 }

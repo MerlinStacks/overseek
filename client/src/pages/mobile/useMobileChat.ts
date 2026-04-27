@@ -7,7 +7,7 @@
  * the page component is purely presentational.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -80,13 +80,16 @@ export function useMobileChat(conversationId: string | undefined) {
     } = useCannedResponses();
 
     // Customer context for canned response placeholders
-    const customerContext = conversation ? {
-        firstName: conversation.customerName.split(' ')[0],
-        lastName: conversation.customerName.split(' ').slice(1).join(' '),
-        email: conversation.customerEmail,
-        agentFirstName: user?.fullName?.split(' ')[0],
-        agentFullName: user?.fullName ?? undefined,
-    } : undefined;
+    const customerContext = useMemo(() => {
+        if (!conversation) return undefined;
+        return {
+            firstName: conversation.customerName.split(' ')[0],
+            lastName: conversation.customerName.split(' ').slice(1).join(' '),
+            email: conversation.customerEmail,
+            agentFirstName: user?.fullName?.split(' ')[0],
+            agentFullName: user?.fullName ?? undefined,
+        };
+    }, [conversation, user?.fullName]);
 
     // -------------------------------------------------------
     // Data fetching

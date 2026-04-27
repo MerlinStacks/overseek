@@ -36,6 +36,7 @@ interface ProductResult {
     main_image?: string;
     type?: string;
     variations?: VariationResult[];
+    searchableVariants?: SearchableVariant[];
     hasBOM?: boolean;
 }
 
@@ -46,6 +47,17 @@ interface VariationResult {
     cogs?: number;
     attributes?: { name: string; option: string }[];
     stock_quantity?: number;
+}
+
+interface SearchableVariant {
+    wooId: number;
+    sku?: string;
+    price?: number;
+    cogs?: number;
+    stockQuantity?: number;
+    stock_quantity?: number;
+    attributeString?: string;
+    attributes?: { name: string; option: string }[];
 }
 
 /** Flattened item for display - can be a simple product or a variant */
@@ -102,14 +114,14 @@ export function ProductSearchInput({
             if (product.hasBOM) continue;
 
             // Use searchableVariants (contains full variant data with COGS) over variations (only WooCommerce IDs)
-            const searchableVariants = (product as any).searchableVariants || [];
+            const searchableVariants = product.searchableVariants || [];
             const hasVariations = product.type === 'variable' && searchableVariants.length > 0;
 
             if (hasVariations) {
                 // Add each variant as a separate item
                 for (const variation of searchableVariants) {
                     const variantLabel = variation.attributeString ||
-                        variation.attributes?.map((attr: any) => attr.option).join(' / ') ||
+                        variation.attributes?.map((attr) => attr.option).join(' / ') ||
                         `Variant ${variation.wooId}`;
 
                     items.push({

@@ -24,7 +24,7 @@ interface LogisticsPanelProps {
         stock_quantity?: number | null;
         stock_status?: string;
     }>;
-    onChange: (updates: any) => void;
+    onChange: (updates: Partial<LogisticsPanelProps['formData']>) => void;
     /** Forwarded ref so the parent can trigger stock saves via the page-level Save button */
     stockPanelRef?: React.Ref<StockManagementPanelRef>;
 }
@@ -95,7 +95,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Allow Backorders</label>
                                 <select
                                     value={formData.backorders}
-                                    onChange={(e) => onChange({ backorders: e.target.value })}
+                                    onChange={(e) => onChange({ backorders: e.target.value as 'no' | 'notify' | 'yes' })}
                                     className="w-full px-3 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"
                                 >
                                     <option value="no">Do not allow</option>

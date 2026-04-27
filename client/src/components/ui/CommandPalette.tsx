@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
-import { Search, Package, FileText, Settings, LayoutDashboard, Truck, Users, BarChart2, Sparkles } from 'lucide-react';
+import { Search, Package, FileText, Settings, LayoutDashboard, Users, BarChart2, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useCommandPalette } from '../../hooks/useCommandPalette';
@@ -14,6 +14,37 @@ interface SearchResult {
     subtitle?: string;
     type: 'product' | 'order' | 'customer' | 'semantic';
     similarity?: number;
+}
+
+interface GlobalProductResult {
+    id: string;
+    name: string;
+    sku?: string;
+}
+
+interface GlobalOrderResult {
+    id: string;
+    number?: string | number;
+    status?: string;
+}
+
+interface GlobalCustomerResult {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+}
+
+interface GlobalSearchPayload {
+    products?: GlobalProductResult[];
+    orders?: GlobalOrderResult[];
+    customers?: GlobalCustomerResult[];
+}
+
+interface SemanticSearchPayloadItem {
+    id: string;
+    name: string;
+    similarity: number;
 }
 
 export function CommandPalette() {
@@ -84,11 +115,11 @@ export function CommandPalette() {
 
                 // Parse unified global search results
                 if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
-                    const data = await globalRes.value.json();
+                    const data: GlobalSearchPayload = await globalRes.value.json();
 
                     // Products
                     if (data.products) {
-                        newResults.push(...data.products.slice(0, 5).map((p: any) => ({
+                        newResults.push(...data.products.slice(0, 5).map((p) => ({
                             id: p.id,
                             title: p.name,
                             subtitle: p.sku ? `SKU: ${p.sku}` : undefined,
@@ -98,7 +129,7 @@ export function CommandPalette() {
 
                     // Orders
                     if (data.orders) {
-                        newResults.push(...data.orders.slice(0, 5).map((o: any) => ({
+                        newResults.push(...data.orders.slice(0, 5).map((o) => ({
                             id: o.id,
                             title: `Order #${o.number || o.id}`,
                             subtitle: o.status,
@@ -108,10 +139,10 @@ export function CommandPalette() {
 
                     // Customers
                     if (data.customers) {
-                        newResults.push(...data.customers.slice(0, 5).map((c: any) => ({
+                        newResults.push(...data.customers.slice(0, 5).map((c) => ({
                             id: c.id,
-                            title: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email,
-                            subtitle: c.email,
+                            title: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email || 'Unknown customer',
+                            subtitle: c.email || '',
                             type: 'customer' as const
                         })));
                     }
@@ -121,9 +152,9 @@ export function CommandPalette() {
 
                 // Handle semantic results separately
                 if (semanticRes && semanticRes.status === 'fulfilled' && semanticRes.value.ok) {
-                    const data = await semanticRes.value.json();
+                    const data: SemanticSearchPayloadItem[] = await semanticRes.value.json();
                     if (Array.isArray(data)) {
-                        setSemanticResults(data.map((r: any) => ({
+                        setSemanticResults(data.map((r) => ({
                             id: r.id,
                             title: r.name,
                             subtitle: `${Math.round(r.similarity * 100)}% match`,

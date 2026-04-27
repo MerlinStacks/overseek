@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { useAccount } from './AccountContext';
@@ -22,12 +22,14 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     const { currentAccount } = useAccount();
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const socketRef = useRef<Socket | null>(null);
 
     useEffect(() => {
         if (!token || !currentAccount) {
-            if (socket) {
-                socket.disconnect();
-                setSocket(null);
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+                socketRef.current = null;
+                queueMicrotask(() => setSocket(null));
             }
             return;
         }
@@ -57,12 +59,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             setIsConnected(false);
         });
 
-        setSocket(newSocket);
+        socketRef.current = newSocket;
+        queueMicrotask(() => setSocket(newSocket));
 
         return () => {
             newSocket.disconnect();
+            if (socketRef.current === newSocket) {
+                socketRef.current = null;
+            }
         };
-    }, [token, currentAccount?.id]);
+    }, [token, currentAccount]);
 
     return (
         <SocketContext.Provider value={{ socket, isConnected }}>

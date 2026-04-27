@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import { Logger } from '../../utils/logger';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useAccount } from '../../context/AccountContext';
+import { useSocket } from '../../context/SocketContext';
 
 // Extracted hooks (canned + email accounts are passed in as props from InboxPage)
 import { useTypingIndicator } from '../../hooks/useTypingIndicator';
@@ -120,6 +120,7 @@ export const ChatWindow = memo(function ChatWindow({
 }: ChatWindowProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
     const { user } = useAuth();
+    const { socket } = useSocket();
 
     // === HOOKS (only per-conversation ones remain here) ===
     const attachments = useAttachments({
@@ -159,12 +160,44 @@ export const ChatWindow = memo(function ChatWindow({
 
     // Lightbox state
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+    const [activeDraftingAgents, setActiveDraftingAgents] = useState<Array<{ id: string; name: string; avatarUrl?: string | null }>>([]);
 
     // Reset search when changing conversations
     useEffect(() => {
         setShowSearch(false);
         setSearchQuery('');
+        setActiveDraftingAgents([]);
     }, [conversationId]);
+
+    // Track other agents currently drafting in this thread (collision safety).
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleDraftStart = (payload: {
+            conversationId: string;
+            user: { id: string; name: string; avatarUrl?: string | null };
+        }) => {
+            if (!payload?.conversationId || payload.conversationId !== conversationId) return;
+            if (!payload.user?.id || payload.user.id === user?.id) return;
+            setActiveDraftingAgents(prev => {
+                if (prev.some(a => a.id === payload.user.id)) return prev;
+                return [...prev, payload.user];
+            });
+        };
+
+        const handleDraftStop = (payload: { conversationId: string; userId: string }) => {
+            if (!payload?.conversationId || payload.conversationId !== conversationId) return;
+            if (!payload.userId) return;
+            setActiveDraftingAgents(prev => prev.filter(a => a.id !== payload.userId));
+        };
+
+        socket.on('agent:draft:start', handleDraftStart);
+        socket.on('agent:draft:stop', handleDraftStop);
+        return () => {
+            socket.off('agent:draft:start', handleDraftStart);
+            socket.off('agent:draft:stop', handleDraftStop);
+        };
+    }, [conversationId, socket, user?.id]);
 
     // Track previous conversationId to distinguish switch vs new message
     const prevConversationIdRef = useRef(conversationId);
@@ -343,6 +376,11 @@ export const ChatWindow = memo(function ChatWindow({
                 emailAccounts={emailAccounts}
                 selectedEmailAccountId={selectedEmailAccountId}
                 onEmailAccountChange={onEmailAccountChange}
+                activeDraftingAgents={activeDraftingAgents}
+                safetyIssues={messageSend.safetyIssues}
+                requiresSafetyApproval={messageSend.requiresSafetyApproval}
+                onApproveSafetySend={messageSend.approveSafetyAndSend}
+                onDismissSafetyWarnings={messageSend.dismissSafetyWarnings}
             />
 
             {/* All Modals */}

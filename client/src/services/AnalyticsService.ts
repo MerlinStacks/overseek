@@ -13,7 +13,7 @@ export const AnalyticsService = {
     saveTemplate: async (
         token: string,
         accountId: string,
-        template: { name: string, config: any }
+        template: { name: string, config: Record<string, unknown> }
     ): Promise<ReportTemplate> => {
         return api.post<ReportTemplate>('/api/analytics/templates', template, token, accountId);
     },

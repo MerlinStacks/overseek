@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
-import { Bot, Send, Loader2, Sparkles, ChevronDown, BarChart2, TrendingUp, ShoppingCart, Target, Users, Search, DollarSign } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, ChevronDown, BarChart2, TrendingUp, Users, Search, DollarSign } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -10,9 +10,15 @@ interface Message {
     id: string;
     role: 'user' | 'assistant' | 'system';
     content: string;
-    sources?: any[];
+    sources?: MessageSource[];
 }
 
+interface MessageSource {
+    name?: string;
+    title?: string;
+    term?: string;
+    [key: string]: unknown;
+}
 
 /** Why memo: AIChatWidget lives in DashboardLayout and has no page-specific props.
  *  Without memo, every route change re-renders it unnecessarily. */
@@ -158,7 +164,7 @@ function AIChatWidgetInner() {
                                                 <Sparkles size={10} /> Analyzed Data
                                             </p>
                                             <div className="flex flex-wrap gap-2">
-                                                {msg.sources.map((s: any, idx) => (
+                                                {msg.sources.map((s, idx) => (
                                                     <span key={idx} className="text-[10px] bg-black/5 px-2 py-1 rounded-full truncate max-w-[150px] border border-black/5" title={JSON.stringify(s)}>
                                                         {s.name || s.title || s.term || `Item #${idx + 1}`}
                                                     </span>

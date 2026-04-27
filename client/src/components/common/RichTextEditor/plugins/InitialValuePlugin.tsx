@@ -7,8 +7,8 @@
  */
 import { useEffect, useRef } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $generateNodesFromDOM, $generateHtmlFromNodes } from '@lexical/html';
-import { $getRoot, $insertNodes, $createParagraphNode, LexicalEditor } from 'lexical';
+import { $generateNodesFromDOM } from '@lexical/html';
+import { $getRoot, $insertNodes, $createParagraphNode } from 'lexical';
 
 interface InitialValuePluginProps {
     initialValue: string;
@@ -31,17 +31,8 @@ export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
     useEffect(() => {
         // Normalize for comparison
         const normalizedExternal = normalizeHtml(initialValue || '');
-
-        // Check if we actually need to update
-        let currentEditorHtml = '';
-        (editor as any).getEditorState().read(() => {
-            currentEditorHtml = $generateHtmlFromNodes(editor, null);
-        });
-        const normalizedCurrent = normalizeHtml(currentEditorHtml);
-
-        // Skip if external value matches what's already in editor
-        if (normalizedExternal === normalizedCurrent) {
-            lastExternalValueRef.current = initialValue || '';
+        const normalizedLastExternal = normalizeHtml(lastExternalValueRef.current || '');
+        if (normalizedExternal === normalizedLastExternal) {
             return;
         }
 

@@ -174,6 +174,9 @@ export function validateStep(step: number, draft: OnboardingDraft): { isValid: b
                 if (!draft.email.smtpUsername.trim()) {
                     return { isValid: false, error: 'SMTP username is required' };
                 }
+                if (!draft.email.smtpPassword.trim()) {
+                    return { isValid: false, error: 'SMTP password is required' };
+                }
             }
             return { isValid: true };
 

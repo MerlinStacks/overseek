@@ -1,8 +1,8 @@
 /**
  * MergeCustomerModal - Find and merge duplicate customer records.
  */
-import { useState, useEffect } from 'react';
-import { Users, ArrowRight, AlertTriangle, Check, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Users, ArrowRight, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Modal } from '../ui/Modal';
@@ -35,13 +35,7 @@ export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplet
     const [isMerging, setIsMerging] = useState(false);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        if (isOpen && customerId) {
-            fetchDuplicates();
-        }
-    }, [isOpen, customerId]);
-
-    const fetchDuplicates = async () => {
+    const fetchDuplicates = useCallback(async () => {
         setIsLoading(true);
         setError('');
         try {
@@ -58,7 +52,13 @@ export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplet
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount?.id, customerId, token]);
+
+    useEffect(() => {
+        if (isOpen && customerId) {
+            fetchDuplicates();
+        }
+    }, [customerId, fetchDuplicates, isOpen]);
 
     const handleMerge = async () => {
         if (!selectedSource || !target) return;

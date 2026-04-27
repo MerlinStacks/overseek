@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTabLeader } from './useTabLeader';
 
 /**
@@ -127,7 +127,6 @@ export function useVisibilityPolling(
             if (initialTimeout) clearTimeout(initialTimeout);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [intervalMs, shouldCoordinate, isLeader, channelName, ...deps]);
+    }, [intervalMs, shouldCoordinate, isLeader, channelName, deps]);
 }
 

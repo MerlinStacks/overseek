@@ -18,5 +18,6 @@ export const TOOLBOX_ITEMS = [
     { id: 'customer_details', type: 'customer_details', label: 'Customer Details' },
     { id: 'order_table', type: 'order_table', label: 'Order Items' },
     { id: 'totals', type: 'totals', label: 'Totals & Tax' },
+    { id: 'payment_block', type: 'payment_block', label: 'Payment Block' },
     { id: 'footer', type: 'footer', label: 'Footer' },
 ];

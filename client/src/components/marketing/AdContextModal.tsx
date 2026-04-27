@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Lightbulb, Loader2 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
@@ -23,13 +23,7 @@ export function AdContextModal({ isOpen, onClose, onSaved }: AdContextModalProps
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (isOpen && currentAccount) {
-            fetchContext();
-        }
-    }, [isOpen, currentAccount]);
-
-    async function fetchContext() {
+    const fetchContext = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -48,7 +42,13 @@ export function AdContextModal({ isOpen, onClose, onSaved }: AdContextModalProps
         } finally {
             setLoading(false);
         }
-    }
+    }, [currentAccount?.id, token]);
+
+    useEffect(() => {
+        if (isOpen && currentAccount) {
+            fetchContext();
+        }
+    }, [isOpen, currentAccount, fetchContext]);
 
     async function handleSave() {
         setSaving(true);

@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # =============================================================================
 # Stage 1: Builder
 # =============================================================================
@@ -23,7 +25,12 @@ RUN mkdir -p client && echo '{"name":"client-stub","version":"1.0.0"}' > client/
 COPY server/package.json server/
 
 # Install server dependencies using workspace
-RUN npm install --workspace=server --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --workspace=server --legacy-peer-deps --prefer-offline --no-audit
+
+# Copy shared core package source and build it for runtime imports
+COPY packages/overseek-core/ packages/overseek-core/
+RUN npm run build -w packages/overseek-core
 
 # Copy server source
 COPY server/ server/
@@ -59,7 +66,12 @@ RUN mkdir -p client && echo '{"name":"client-stub","version":"1.0.0"}' > client/
 
 # Copy server package.json and install production dependencies only
 COPY server/package.json server/
-RUN npm install --workspace=server --legacy-peer-deps --omit=dev
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --workspace=server --legacy-peer-deps --omit=dev --prefer-offline --no-audit
+
+# Copy required shared package for runtime imports
+COPY --from=builder /app/packages/overseek-core/dist /app/packages/overseek-core/dist
+COPY --from=builder /app/packages/overseek-core/package.json /app/packages/overseek-core/package.json
 
 # Copy built artifacts from builder stage
 COPY --from=builder /app/server/dist ./server/dist

@@ -10,8 +10,9 @@
  * Scoring is pure PHP arithmetic — no HTTP calls, no DB queries beyond a
  * single transient lookup. Adds <1ms to checkout processing.
  *
- * Fail-open: missing or invalid tokens are allowed through (logged for
- * monitoring). Real customers are never blocked.
+ * Fail-soft: missing tokens add risk and can be blocked only when combined
+ * with risky context (e.g. bursty checkout attempts). Real customers on
+ * normal traffic should still pass.
  *
  * @package OverSeek
  * @since   2.12.0
@@ -48,6 +49,12 @@ class OverSeek_Fingerprint
 
     /** @var int Nonce TTL in seconds. */
     private const NONCE_TTL = 600; // 10 minutes
+
+    /** @var int Velocity window in seconds for short burst detection. */
+    private const VELOCITY_WINDOW_SHORT = 300; // 5 minutes
+
+    /** @var int Velocity window in seconds for medium burst detection. */
+    private const VELOCITY_WINDOW_MEDIUM = 3600; // 1 hour
 
     public function __construct()
     {
@@ -129,7 +136,8 @@ class OverSeek_Fingerprint
     public function validate_classic_checkout(): void
     {
         $token = isset($_POST['_os_fp']) ? sanitize_text_field(wp_unslash($_POST['_os_fp'])) : '';
-        $score = $this->score_token($token);
+        $email = isset($_POST['billing_email']) ? sanitize_email(wp_unslash($_POST['billing_email'])) : '';
+        $score = $this->score_token($token, $email);
 
         if ($score >= self::BLOCK_THRESHOLD) {
             wc_add_notice(
@@ -166,7 +174,11 @@ class OverSeek_Fingerprint
     public function validate_blocks_checkout($order): void
     {
         $token = isset($_SERVER['HTTP_X_OS_FP']) ? sanitize_text_field($_SERVER['HTTP_X_OS_FP']) : '';
-        $score = $this->score_token($token);
+        $email = '';
+        if (is_object($order) && method_exists($order, 'get_billing_email')) {
+            $email = sanitize_email((string) $order->get_billing_email());
+        }
+        $score = $this->score_token($token, $email);
 
         if ($score >= self::BLOCK_THRESHOLD) {
             // Store API expects a RouteException or WP_Error-compatible exception
@@ -191,9 +203,10 @@ class OverSeek_Fingerprint
      * Score a fingerprint token.
      *
      * @param string $token Base64-encoded JSON token from the collector JS.
+     * @param string $email Billing email when available.
      * @return int Score (0 = clean, higher = more suspicious).
      */
-    private function score_token(string $token): int
+    private function score_token(string $token, string $email = ''): int
     {
         // Return cached score if already computed this request
         if ($this->current_score !== null) {
@@ -202,12 +215,27 @@ class OverSeek_Fingerprint
 
         $score   = 0;
         $factors = array();
+        $velocity = $this->score_checkout_velocity($email);
+        $score += $velocity['score'];
+        $factors = array_merge($factors, $velocity['factors']);
 
-        // Missing token = fail-open (JS might be disabled or blocked by ad blocker)
+        // Missing token = fail-soft:
+        // low-risk requests pass with mild risk, high-risk requests are challenged/blocked.
         if (empty($token)) {
-            $this->current_score   = 0;
-            $this->current_factors = array('Token missing (fail-open)');
-            return 0;
+            $score += 10;
+            $factors[] = 'Token missing';
+
+            if ($velocity['score'] >= 20 || $this->is_suspicious_user_agent()) {
+                $score += 50;
+                $factors[] = 'Token missing in risky context (challenge required)';
+            } else {
+                $score += 5;
+                $factors[] = 'Token missing in low-risk context (fail-soft)';
+            }
+
+            $this->current_score   = $score;
+            $this->current_factors = $factors;
+            return $score;
         }
 
         // Decode token
@@ -249,6 +277,20 @@ class OverSeek_Fingerprint
             $factors[] = 'Zero pointer events before submit';
         }
 
+        // Score: trusted interaction signals (harder to fake than plain counters)
+        $trusted_pointer = isset($data['pt']) ? intval($data['pt']) : 0;
+        if ($trusted_pointer === 0) {
+            $score += 12;
+            $factors[] = 'No trusted pointerdown events';
+        }
+
+        $key_count = isset($data['k']) ? intval($data['k']) : 0;
+        $trusted_keys = isset($data['kt']) ? intval($data['kt']) : 0;
+        if ($key_count > 0 && $trusted_keys === 0) {
+            $score += 10;
+            $factors[] = 'Keyboard events present but none trusted';
+        }
+
         // Score: time to submit
         $time_ms = isset($data['t']) ? intval($data['t']) : 0;
         if ($time_ms < 2000) {
@@ -283,6 +325,124 @@ class OverSeek_Fingerprint
         $this->current_score   = $score;
         $this->current_factors = $factors;
         return $score;
+    }
+
+    /**
+     * Score bursty checkout behavior over short windows.
+     * Uses transients keyed by account + IP/visitor/email hash.
+     *
+     * @param string $email Billing email when available.
+     * @return array{score:int,factors:string[]}
+     */
+    private function score_checkout_velocity(string $email): array
+    {
+        $score = 0;
+        $factors = array();
+
+        $visitor_id = $this->get_visitor_id() ?? 'none';
+        $ip = $this->get_client_ip();
+        $email_hash = !empty($email) ? substr(md5(strtolower($email)), 0, 16) : 'none';
+
+        $ip_short = $this->increment_velocity_counter('ip_short_' . md5($ip), self::VELOCITY_WINDOW_SHORT);
+        if ($ip_short >= 10) {
+            $score += 35;
+            $factors[] = 'High checkout burst from IP (5m)';
+        } elseif ($ip_short >= 6) {
+            $score += 20;
+            $factors[] = 'Elevated checkout burst from IP (5m)';
+        }
+
+        $visitor_short = $this->increment_velocity_counter('visitor_short_' . md5($visitor_id), self::VELOCITY_WINDOW_SHORT);
+        if ($visitor_short >= 7) {
+            $score += 25;
+            $factors[] = 'High checkout burst from visitor (5m)';
+        } elseif ($visitor_short >= 4) {
+            $score += 15;
+            $factors[] = 'Elevated checkout burst from visitor (5m)';
+        }
+
+        if ($email_hash !== 'none') {
+            $email_medium = $this->increment_velocity_counter('email_medium_' . $email_hash, self::VELOCITY_WINDOW_MEDIUM);
+            if ($email_medium >= 8) {
+                $score += 30;
+                $factors[] = 'High checkout burst from email (1h)';
+            } elseif ($email_medium >= 4) {
+                $score += 15;
+                $factors[] = 'Elevated checkout burst from email (1h)';
+            }
+        }
+
+        return array('score' => $score, 'factors' => $factors);
+    }
+
+    /**
+     * Increment a transient counter in a fixed window and return the new count.
+     *
+     * @param string $suffix Counter key suffix.
+     * @param int    $ttl    Window TTL in seconds.
+     * @return int Current count in the active window.
+     */
+    private function increment_velocity_counter(string $suffix, int $ttl): int
+    {
+        $key = '_os_fp_vel_' . substr(md5($this->account_id . '_' . $suffix), 0, 24);
+        $data = get_transient($key);
+        $now = time();
+
+        if (!is_array($data) || !isset($data['count'], $data['start']) || ($now - intval($data['start'])) > $ttl) {
+            $data = array('count' => 1, 'start' => $now);
+            set_transient($key, $data, $ttl);
+            return 1;
+        }
+
+        $count = intval($data['count']) + 1;
+        $data['count'] = $count;
+        set_transient($key, $data, max(1, $ttl - ($now - intval($data['start']))));
+        return $count;
+    }
+
+    /**
+     * Determine whether user agent is likely automation tooling.
+     *
+     * @return bool True if UA appears suspicious.
+     */
+    private function is_suspicious_user_agent(): bool
+    {
+        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower((string) $_SERVER['HTTP_USER_AGENT']) : '';
+        if (empty($ua)) {
+            return true;
+        }
+
+        $signals = array('headless', 'bot', 'crawler', 'spider', 'curl', 'wget', 'python', 'java/');
+        foreach ($signals as $signal) {
+            if (strpos($ua, $signal) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolve the client IP behind reverse proxies when present.
+     *
+     * @return string IP address string or "unknown".
+     */
+    private function get_client_ip(): string
+    {
+        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            return sanitize_text_field((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
+        }
+
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $xff = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
+            return sanitize_text_field(trim($xff[0]));
+        }
+
+        if (!empty($_SERVER['REMOTE_ADDR'])) {
+            return sanitize_text_field((string) $_SERVER['REMOTE_ADDR']);
+        }
+
+        return 'unknown';
     }
 
     /**

@@ -24,17 +24,17 @@ export function useApi() {
     );
 
     const post = useCallback(
-        <T>(endpoint: string, data?: any) => api.post<T>(endpoint, data, token || undefined, accountId),
+        <T>(endpoint: string, data?: unknown) => api.post<T>(endpoint, data, token || undefined, accountId),
         [token, accountId]
     );
 
     const patch = useCallback(
-        <T>(endpoint: string, data?: any) => api.patch<T>(endpoint, data, token || undefined, accountId),
+        <T>(endpoint: string, data?: unknown) => api.patch<T>(endpoint, data, token || undefined, accountId),
         [token, accountId]
     );
 
     const put = useCallback(
-        <T>(endpoint: string, data?: any) => api.put<T>(endpoint, data, token || undefined, accountId),
+        <T>(endpoint: string, data?: unknown) => api.put<T>(endpoint, data, token || undefined, accountId),
         [token, accountId]
     );
 

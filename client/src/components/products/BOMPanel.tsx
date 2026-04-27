@@ -2,21 +2,60 @@
  * BOMPanel - Bill of Materials configuration panel.
  * Manages composite product components, costs, and WooCommerce inventory sync.
  */
-import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { useState, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { GitBranch, Loader2, Save } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { BOMCostSummary, BOMSearchDropdown, BOMItemsTable, type BOMItem } from './bom';
+import type { BOMSearchResultProduct, BOMSearchResultVariant } from './bom/BOMSearchDropdown';
 
 interface BOMPanelProps {
     productId: string; // Internal UUID
-    variants?: any[]; // Passed from parent
+    variants?: VariantScopeOption[]; // Passed from parent
     fixedVariationId?: number; // If set, locks to this ID
     onSaveComplete?: () => void; // Optional callback after save completes
     onCOGSUpdate?: (cogs: number) => void; // Optional callback to update parent COGS
     onSyncComplete?: (newStock: number) => void; // Optional callback after sync completes
+}
+
+interface VariantScopeOption {
+    id: number;
+    sku?: string;
+}
+
+interface InternalProductSearchResponse {
+    id: string;
+    name: string;
+    mainImage?: string;
+    cogs?: number;
+    stockQuantity?: number;
+}
+
+interface ProductApiResult extends BOMSearchResultProduct {
+    searchableVariants?: BOMSearchResultVariant[];
+}
+
+interface BomResponseItem {
+    id?: string;
+    childProductId?: string;
+    childVariationId?: number;
+    internalProductId?: string;
+    supplierItemId?: string;
+    quantity: number | string;
+    wasteFactor: number | string;
+    internalProduct?: { name: string; cogs?: number | string };
+    childProduct?: { name?: string; cogs?: number | string };
+    childVariation?: {
+        cogs?: number | string;
+        sku?: string;
+        wooId?: number | string;
+        _parentProductName?: string;
+        rawData?: { attributes?: Array<{ option?: string; value?: string }> };
+    };
+    supplierItem?: { name?: string; cost?: number | string };
 }
 
 /**
@@ -29,6 +68,7 @@ export interface BOMPanelRef {
 export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel({ productId, variants = [], fixedVariationId, onSaveComplete, onCOGSUpdate, onSyncComplete }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const { hasPermission } = usePermissions();
     const canViewCogs = hasPermission('view_cogs');
     const [bomItems, setBomItems] = useState<BOMItem[]>([]);
@@ -36,7 +76,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     const [saving, setSaving] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searchResults, setSearchResults] = useState<BOMSearchResultProduct[]>([]);
 
     // BOM Inventory Sync state
     const [effectiveStock, setEffectiveStock] = useState<number | null>(null);
@@ -47,12 +87,6 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     // 0 = Main Product, otherwise Variant ID
     // If fixedVariationId is defined, use it, else default to 0
     const [selectedScope, setSelectedScope] = useState<number>(fixedVariationId !== undefined ? fixedVariationId : 0);
-
-    useEffect(() => {
-        if (!currentAccount || !productId || !canViewCogs) return;
-        fetchBOM();
-        fetchEffectiveStock();
-    }, [productId, currentAccount, token, selectedScope, canViewCogs]);
 
     // Search for products with debounce
     useEffect(() => {
@@ -79,17 +113,17 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                     })
                 ]);
 
-                let results: any[] = [];
+                let results: BOMSearchResultProduct[] = [];
 
                 if (wooRes.ok) {
-                    const wooData = await wooRes.json();
+                    const wooData: { products?: ProductApiResult[] } = await wooRes.json();
                     results = [...(wooData.products || [])];
                 }
 
                 if (internalRes.ok) {
-                    const internalData = await internalRes.json();
+                    const internalData: { items?: InternalProductSearchResponse[] } = await internalRes.json();
                     // Mark internal products for visual distinction
-                    const internalProducts = (internalData.items || []).map((ip: any) => ({
+                    const internalProducts: BOMSearchResultProduct[] = (internalData.items || []).map((ip) => ({
                         ...ip,
                         isInternalProduct: true,
                         name: ip.name,
@@ -116,13 +150,13 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
      * Sorts products by relevance to search term.
      * Prioritizes products matching more search words.
      */
-    const sortProductsByRelevance = (products: any[], term: string): any[] => {
+    const sortProductsByRelevance = (products: BOMSearchResultProduct[], term: string): BOMSearchResultProduct[] => {
         const searchWords = term.toLowerCase().trim().split(/\s+/).filter(w => w.length > 0);
 
-        const getRelevanceScore = (product: any): number => {
+        const getRelevanceScore = (product: BOMSearchResultProduct): number => {
             const nameLower = (product.name || '').toLowerCase();
             const skuLower = (product.sku || '').toLowerCase();
-            const variantStrings: string[] = (product.searchableVariants || []).map((v: any) =>
+            const variantStrings: string[] = (product.searchableVariants || []).map((v) =>
                 `${(v.attributeString || '')} ${(v.sku || '')}`.toLowerCase()
             );
 
@@ -152,12 +186,12 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         const sorted = products.sort((a, b) => getRelevanceScore(a) - getRelevanceScore(b));
 
         // Sort variants within each product
-        return sorted.map((product: any) => {
+        return sorted.map((product) => {
             if (!product.searchableVariants || product.searchableVariants.length === 0) {
                 return product;
             }
 
-            const sortedVariants = [...product.searchableVariants].sort((va: any, vb: any) => {
+            const sortedVariants = [...product.searchableVariants].sort((va, vb) => {
                 const aStr = `${(va.attributeString || '')} ${(va.sku || '')}`.toLowerCase();
                 const bStr = `${(vb.attributeString || '')} ${(vb.sku || '')}`.toLowerCase();
                 const aMatches = searchWords.filter(w => aStr.includes(w)).length;
@@ -169,7 +203,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         });
     };
 
-    const fetchBOM = async () => {
+    const fetchBOM = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`/api/inventory/products/${productId}/bom?variationId=${selectedScope}`, {
@@ -182,7 +216,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.items) {
-                    const mapped = data.items.map((item: any) => mapBOMItemFromResponse(item));
+                    const mapped = data.items.map((item: BomResponseItem) => mapBOMItemFromResponse(item));
                     setBomItems(mapped);
                 } else {
                     setBomItems([]);
@@ -195,12 +229,12 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         } finally {
             setLoading(false);
         }
-    };
+    }, [productId, selectedScope, token, currentAccount]);
 
     /**
      * Maps a backend BOM item response to the UI BOMItem interface.
      */
-    const mapBOMItemFromResponse = (item: any): BOMItem => {
+    const mapBOMItemFromResponse = (item: BomResponseItem): BOMItem => {
         let displayName = 'Unknown';
         let isInternal = false;
 
@@ -210,7 +244,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         } else if (item.childVariation) {
             const variantRaw = item.childVariation.rawData || {};
             const attrString = (variantRaw.attributes || [])
-                .map((a: any) => a.option || a.value)
+                .map((a) => a.option || a.value)
                 .filter(Boolean)
                 .join(' / ');
             const parentName = item.childProduct?.name || item.childVariation._parentProductName;
@@ -218,7 +252,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 ? `${parentName} - ${attrString || item.childVariation.sku || `#${item.childVariation.wooId}`}`
                 : attrString || item.childVariation.sku || `Variant #${item.childVariation.wooId}`;
         } else if (item.childProduct) {
-            displayName = item.childProduct.name;
+            displayName = item.childProduct.name || 'Unknown';
         } else if (item.supplierItem) {
             displayName = item.supplierItem.name || 'Unknown';
         }
@@ -248,7 +282,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         };
     };
 
-    const fetchEffectiveStock = async () => {
+    const fetchEffectiveStock = useCallback(async () => {
         if (!currentAccount || !productId) return;
 
         try {
@@ -272,7 +306,13 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
             setEffectiveStock(null);
             setCurrentWooStock(null);
         }
-    };
+    }, [currentAccount, productId, selectedScope, token]);
+
+    useEffect(() => {
+        if (!currentAccount || !productId || !canViewCogs) return;
+        void fetchBOM();
+        void fetchEffectiveStock();
+    }, [currentAccount, productId, canViewCogs, fetchBOM, fetchEffectiveStock]);
 
     const handleSyncToWoo = async () => {
         if (!currentAccount || !productId) return;
@@ -307,7 +347,12 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         }
     };
 
-    const handleSave = async (): Promise<boolean> => {
+    const totalCost = bomItems.reduce((sum, item) => {
+        const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
+        return sum + itemCost;
+    }, 0);
+
+    const handleSave = useCallback(async (): Promise<boolean> => {
         setSaving(true);
         try {
             const payload = {
@@ -348,18 +393,18 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         } finally {
             setSaving(false);
         }
-    };
+    }, [selectedScope, bomItems, productId, token, currentAccount, fetchBOM, onCOGSUpdate, totalCost, onSaveComplete]);
 
     useImperativeHandle(ref, () => ({
         save: handleSave
-    }), [bomItems, selectedScope, productId, token, currentAccount, handleSave]);
+    }), [handleSave]);
 
-    const handleAddProduct = (product: any) => {
+    const handleAddProduct = (product: BOMSearchResultProduct) => {
         // Handle internal products
         if (product.isInternalProduct) {
             const alreadyExists = bomItems.some(i => i.internalProductId === product.id);
             if (alreadyExists) {
-                alert('This component is already in the BOM.');
+                toast.error('This component is already in the BOM.');
                 return;
             }
 
@@ -380,7 +425,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
 
         // Check if self-linking
         if (product.id === productId && !product.isVariant) {
-            alert('Cannot add the product to its own BOM.');
+            toast.error('Cannot add the product to its own BOM.');
             return;
         }
 
@@ -393,7 +438,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         });
 
         if (alreadyExists) {
-            alert('This component is already in the BOM.');
+            toast.error('This component is already in the BOM.');
             return;
         }
 
@@ -410,11 +455,6 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         setSearchTerm('');
         setSearchResults([]);
     };
-
-    const totalCost = bomItems.reduce((sum, item) => {
-        const itemCost = Number(item.cost) * Number(item.quantity) * (1 + Number(item.wasteFactor));
-        return sum + itemCost;
-    }, 0);
 
     // Hide entire panel if user doesn't have COGS permission
     if (!canViewCogs) return null;

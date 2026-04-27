@@ -11,16 +11,27 @@ import { WizardStepProps, WizardProduct } from '../types';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAccount } from '../../../../context/AccountContext';
 
+interface ApiProduct {
+    wooId: number | string;
+    name?: string;
+    price?: number | string;
+    mainImage?: string;
+    images?: Array<{ src?: string } | string>;
+    sku?: string;
+}
+
 /**
  * Maps API product response to WizardProduct format.
  */
-function mapToWizardProduct(apiProduct: any): WizardProduct {
-    const imageUrl = apiProduct.mainImage || apiProduct.images?.[0]?.src;
+function mapToWizardProduct(apiProduct: ApiProduct): WizardProduct {
+    const firstImage = apiProduct.images?.[0];
+    const firstImageSrc = typeof firstImage === 'string' ? firstImage : firstImage?.src;
+    const imageUrl = apiProduct.mainImage || firstImageSrc;
     return {
         id: String(apiProduct.wooId),
         name: apiProduct.name || 'Unnamed Product',
-        price: parseFloat(apiProduct.price) || 0,
-        image: imageUrl || null,
+        price: parseFloat(String(apiProduct.price ?? 0)) || 0,
+        image: imageUrl || undefined,
         sku: apiProduct.sku || ''
     };
 }
@@ -55,7 +66,7 @@ export function StepProductSelection({ draft, setDraft }: WizardStepProps) {
                 }
 
                 const data = await res.json();
-                const productList = data.products || data.items || data || [];
+                const productList = (data.products || data.items || data || []) as ApiProduct[];
 
                 // Map and sort by name for consistent UX
                 const mapped = productList
@@ -63,8 +74,9 @@ export function StepProductSelection({ draft, setDraft }: WizardStepProps) {
                     .filter((p: WizardProduct) => p.price > 0); // Only show priced products
 
                 setProducts(mapped);
-            } catch (err: any) {
-                setError(err.message || 'Failed to load products');
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'Failed to load products';
+                setError(message);
             } finally {
                 setLoading(false);
             }

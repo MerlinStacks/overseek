@@ -11,11 +11,35 @@ import {
     getTriggerIcon, getTriggerLabel, getActionIcon, getActionLabel, getActionGradient
 } from './flowNodeUtils';
 
+interface FlowNodeConfig {
+    actionType?: string;
+    subject?: string;
+    duration?: number;
+    unit?: string;
+    delayUntilTime?: string;
+    delayUntilDays?: string[];
+    field?: string;
+    operator?: string;
+    value?: string;
+}
+
+interface FlowNodeData {
+    label?: string;
+    config?: FlowNodeConfig;
+    stats?: NodeStats;
+    stepNumber?: number;
+    onAddStep?: OnAddStepCallback;
+    onCopy?: OnCopyNodeCallback;
+    onDelete?: OnDeleteNodeCallback;
+    onSettingsClick?: () => void;
+}
+
 /**
  * TriggerNode - Entry point for automation flows.
  */
 export const TriggerNode = memo(({ data, id }: NodeProps) => {
-    const config = data.config as any;
+    const nodeData = data as unknown as FlowNodeData;
+    const config = nodeData.config;
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
@@ -51,7 +75,8 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
  * ActionNode - Performs an action in the flow (send email, SMS, etc).
  */
 export const ActionNode = memo(({ data, id }: NodeProps) => {
-    const config = data.config as any;
+    const nodeData = data as unknown as FlowNodeData;
+    const config = nodeData.config;
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
@@ -94,7 +119,8 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
  * DelayNode - Adds a time delay before the next step.
  */
 export const DelayNode = memo(({ data, id }: NodeProps) => {
-    const config = data.config as any;
+    const nodeData = data as unknown as FlowNodeData;
+    const config = nodeData.config;
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
@@ -103,9 +129,10 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
 
     const duration = config?.duration || 1;
     const unit = config?.unit || 'hours';
+    const delayDays = config?.delayUntilDays ?? [];
     let delayDescription = `Delay of ${duration} ${duration === 1 ? unit.slice(0, -1) : unit}.`;
     if (config?.delayUntilTime) delayDescription = `Wait until ${config.delayUntilTime}`;
-    if (config?.delayUntilDays?.length > 0) delayDescription += ` on ${config.delayUntilDays.join(', ')}`;
+    if (delayDays.length > 0) delayDescription += ` on ${delayDays.join(', ')}`;
 
     return (
         <>
@@ -141,7 +168,8 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
  * ConditionNode - Splits the flow based on a condition.
  */
 export const ConditionNode = memo(({ data, id }: NodeProps) => {
-    const config = data.config as any;
+    const nodeData = data as unknown as FlowNodeData;
+    const config = nodeData.config;
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
@@ -173,8 +201,8 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 <div className="font-semibold text-gray-900 mb-2">{data.label as string}</div>
                 <div className="text-xs text-gray-500 mb-3 truncate">{conditionPreview}</div>
                 <div className="flex justify-between items-center text-xs font-semibold pt-2 border-t border-orange-200">
-                    <div className="flex items-center gap-1"><span className="text-green-600">✓ YES</span></div>
-                    <div className="flex items-center gap-1"><span className="text-red-600">✗ NO</span></div>
+                    <div className="flex items-center gap-1"><span className="text-green-600">YES</span></div>
+                    <div className="flex items-center gap-1"><span className="text-red-600">NO</span></div>
                 </div>
             </NodeWrapper>
             <Handle type="source" position={Position.Bottom} id="true" className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white" style={{ left: '25%' }} />

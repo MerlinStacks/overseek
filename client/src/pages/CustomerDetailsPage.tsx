@@ -1,9 +1,9 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { formatCurrency } from '../utils/format';
-import { Mail, ShoppingBag, Calendar, Activity, Zap, Users } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Mail, Calendar, Activity, Zap, Users } from 'lucide-react';
+import { useParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -18,11 +18,44 @@ interface CustomerDetails {
         totalSpent: number;
         ordersCount: number;
         dateCreated: string;
-        rawData: any;
+        rawData?: {
+            billing?: {
+                phone?: string;
+                address_1?: string;
+                address_2?: string;
+                city?: string;
+                state?: string;
+                postcode?: string;
+                country?: string;
+            };
+            [key: string]: unknown;
+        };
     };
-    orders: any[];
-    automations: any[];
-    activity: any[];
+    orders: Array<{
+        id: string;
+        number: string;
+        dateCreated: string;
+        status: string;
+        total: number | string;
+        currency?: string;
+    }>;
+    automations: Array<{
+        id: string;
+        status: string;
+        createdAt: string;
+        automation?: { name?: string };
+    }>;
+    activity: Array<{
+        id: string;
+        lastActiveAt: string;
+        referrer?: string;
+        deviceType?: string;
+        events: Array<{
+            createdAt: string;
+            type: string;
+            url?: string;
+        }>;
+    }>;
 }
 
 export function CustomerDetailsPage() {
@@ -34,13 +67,7 @@ export function CustomerDetailsPage() {
     const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity'>('overview');
     const [showMergeModal, setShowMergeModal] = useState(false);
 
-    useEffect(() => {
-        if (id && currentAccount && token) {
-            fetchCustomerDetails();
-        }
-    }, [id, currentAccount, token]);
-
-    async function fetchCustomerDetails() {
+    const fetchCustomerDetails = useCallback(async () => {
         if (!id) return;
         setIsLoading(true);
         try {
@@ -59,7 +86,13 @@ export function CustomerDetailsPage() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [id, token, currentAccount?.id]);
+
+    useEffect(() => {
+        if (id && currentAccount && token) {
+            fetchCustomerDetails();
+        }
+    }, [id, currentAccount, token, fetchCustomerDetails]);
 
     if (isLoading) return <div className="p-8 text-center text-gray-500">Loading customer profile...</div>;
     if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;
@@ -262,7 +295,7 @@ export function CustomerDetailsPage() {
                                                 Referrer: {session.referrer || 'Direct'} • Device: {session.deviceType || 'Unknown'}
                                             </p>
                                             <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                                                {session.events.map((event: any, idx: number) => (
+                                                {session.events.map((event, idx: number) => (
                                                     <div key={idx} className="text-sm flex gap-2 items-start">
                                                         <span className="text-gray-400 min-w-[60px]">{new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                         <span className={

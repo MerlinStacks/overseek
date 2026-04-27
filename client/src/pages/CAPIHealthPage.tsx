@@ -44,6 +44,11 @@ interface HealthResponse {
     range: string;
 }
 
+interface TrendTooltipParam {
+    name: string;
+    value: number | string;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -131,8 +136,8 @@ export function CAPIHealthPage() {
         grid: { top: 10, right: 16, bottom: 24, left: 40 },
         tooltip: {
             trigger: 'axis',
-            formatter: (params: any) => {
-                const p = Array.isArray(params) ? params[0] : params;
+            formatter: (params: unknown) => {
+                const p = (Array.isArray(params) ? params[0] : params) as TrendTooltipParam;
                 return `<b>${p.name}</b><br/>Failures: ${p.value}`;
             },
         },

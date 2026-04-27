@@ -137,6 +137,9 @@ export function MobileProfile() {
     };
 
     const avatarUrl = getAvatarUrl();
+    const roleLabel = (user as { role?: string | null } | null)?.role?.toLowerCase() || 'user';
+    const shiftStart = user?.shiftStart;
+    const shiftEnd = user?.shiftEnd;
 
     return (
         <div className="space-y-6 animate-fade-slide-up">
@@ -267,7 +270,7 @@ export function MobileProfile() {
                     </div>
                     <div className="flex-1">
                         <p className="font-medium text-white">Account Role</p>
-                        <p className="text-sm text-slate-400 capitalize">{(user as any)?.role?.toLowerCase() || 'User'}</p>
+                        <p className="text-sm text-slate-400 capitalize">{roleLabel}</p>
                     </div>
                 </div>
 
@@ -288,8 +291,8 @@ export function MobileProfile() {
                     <div className="flex-1">
                         <p className="font-medium text-white">Shift Hours</p>
                         <p className="text-sm text-slate-400">
-                            {(user as any)?.shiftStart && (user as any)?.shiftEnd
-                                ? `${(user as any).shiftStart} – ${(user as any).shiftEnd}`
+                            {shiftStart && shiftEnd
+                                ? `${shiftStart} - ${shiftEnd}`
                                 : 'Not set'}
                         </p>
                     </div>
@@ -307,3 +310,4 @@ export function MobileProfile() {
         </div>
     );
 }
+

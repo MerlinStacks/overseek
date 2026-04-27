@@ -12,6 +12,57 @@ export class PushNotificationService {
     private static vapidKeysCache: { publicKey: string; privateKey: string } | null = null;
     private static cacheExpiry: number = 0;
     private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+    private static readonly TAGGED_NOTIFICATION_TYPES = new Set(['order', 'message', 'lowStock', 'dailySummary']);
+
+    /**
+     * Adds metadata used by the service worker to avoid replay storms on reconnect.
+     */
+    private static withDeliveryMetadata(
+        type: 'message' | 'order' | 'lowStock' | 'dailySummary' | 'test' | 'broadcast',
+        notification: { title: string; body: string; data?: Record<string, unknown> }
+    ): Record<string, unknown> {
+        const now = Date.now();
+        const data = { ...(notification.data || {}) };
+
+        if (typeof data.timestamp !== 'number') {
+            data.timestamp = now;
+        }
+
+        const inferredTag = this.inferTag(type, data);
+        if (inferredTag && typeof data.tag !== 'string') {
+            data.tag = inferredTag;
+        }
+
+        return {
+            ...notification,
+            timestamp: now,
+            tag: typeof data.tag === 'string' ? data.tag : undefined,
+            data
+        };
+    }
+
+    private static inferTag(type: string, data: Record<string, unknown>): string | undefined {
+        const orderId = data.orderId;
+        if (typeof orderId === 'string' || typeof orderId === 'number') {
+            return `order-${orderId}`;
+        }
+
+        const conversationId = data.conversationId;
+        if (typeof conversationId === 'string' || typeof conversationId === 'number') {
+            return `conversation-${conversationId}`;
+        }
+
+        const productId = data.productId;
+        if (typeof productId === 'string' || typeof productId === 'number') {
+            return `product-${productId}`;
+        }
+
+        if (this.TAGGED_NOTIFICATION_TYPES.has(type)) {
+            return `account-${type}`;
+        }
+
+        return undefined;
+    }
 
     /**
      * Retrieves VAPID keys from platform credentials with TTL caching.
@@ -302,6 +353,7 @@ export class PushNotificationService {
             subscriptionCount: subscriptions.length
         });
 
+        const payload = this.withDeliveryMetadata(type, notification);
         let sent = 0;
         let failed = 0;
         // Collect stale endpoint IDs — delete in one batch after loop to avoid N individual DELETEs
@@ -319,7 +371,7 @@ export class PushNotificationService {
 
                 await webpush.sendNotification(
                     pushSubscription,
-                    JSON.stringify(notification)
+                    JSON.stringify(payload)
                 );
                 sent++;
             } catch (error: unknown) {
@@ -403,6 +455,7 @@ export class PushNotificationService {
             return { sent: 0, failed: 0, diagnostics };
         }
 
+        const payload = this.withDeliveryMetadata(type, notification);
         let sent = 0;
         let failed = 0;
         const staleIds: string[] = [];
@@ -414,7 +467,7 @@ export class PushNotificationService {
                     keys: { p256dh: sub.p256dh, auth: sub.auth }
                 };
 
-                await webpush.sendNotification(pushSubscription, JSON.stringify(notification));
+                await webpush.sendNotification(pushSubscription, JSON.stringify(payload));
                 sent++;
             } catch (error: unknown) {
                 failed++;
@@ -479,10 +532,11 @@ export class PushNotificationService {
         }
 
         const notification = {
-            title: '🔔 Test Notification',
+            title: 'Test Notification',
             body: 'Push notifications are working correctly!',
             data: { type: 'test', timestamp: Date.now() }
         };
+        const payload = this.withDeliveryMetadata('test', notification);
 
         let sent = 0;
         let failed = 0;
@@ -500,7 +554,7 @@ export class PushNotificationService {
 
                 await webpush.sendNotification(
                     pushSubscription,
-                    JSON.stringify(notification)
+                    JSON.stringify(payload)
                 );
                 sent++;
             } catch (error: unknown) {
@@ -543,6 +597,7 @@ export class PushNotificationService {
         const subscriptions = await prisma.pushSubscription.findMany({
             where: { userId }
         });
+        const payload = this.withDeliveryMetadata('broadcast', notification);
 
         let sent = 0;
         let failed = 0;
@@ -552,7 +607,7 @@ export class PushNotificationService {
             try {
                 await webpush.sendNotification(
                     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                    JSON.stringify(notification)
+                    JSON.stringify(payload)
                 );
                 sent++;
             } catch (error) {
@@ -604,6 +659,7 @@ export class PushNotificationService {
             title: notification.title
         });
 
+        const payload = this.withDeliveryMetadata('broadcast', notification);
         let sent = 0;
         let failed = 0;
         const staleIds: string[] = [];
@@ -620,7 +676,7 @@ export class PushNotificationService {
 
                 await webpush.sendNotification(
                     pushSubscription,
-                    JSON.stringify(notification)
+                    JSON.stringify(payload)
                 );
                 sent++;
             } catch (error: unknown) {

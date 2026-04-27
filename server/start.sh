@@ -58,6 +58,13 @@ COUNT=0
 if npx prisma migrate deploy --config ./prisma/prisma.config.ts 2>/dev/null; then
   echo "[Startup] Migrations applied via migrate deploy."
 else
+  if [ "${NODE_ENV}" = "production" ] && [ "${ALLOW_DB_PUSH_FALLBACK}" != "true" ]; then
+    echo "[Startup] ERROR: prisma migrate deploy failed in production."
+    echo "[Startup] Refusing to run 'prisma db push --accept-data-loss' without explicit override."
+    echo "[Startup] If this is intentional, set ALLOW_DB_PUSH_FALLBACK=true."
+    exit 1
+  fi
+
   echo "[Startup] migrate deploy failed, using db push to sync schema..."
   until npx prisma db push --accept-data-loss --config ./prisma/prisma.config.ts; do
     COUNT=$((COUNT+1))
@@ -73,8 +80,9 @@ fi
 
 echo "[Startup] Database ready."
 
-# Start the application with capped heap (4GB)
+# Start the application with capped heap.
+# Respect preconfigured NODE_OPTIONS from Compose/env; default to 3GB.
 echo "[Startup] Starting Node.js application..."
-export NODE_OPTIONS="--max-old-space-size=4096"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=3072}"
 exec npm start
 

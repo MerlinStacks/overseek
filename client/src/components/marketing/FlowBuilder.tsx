@@ -93,7 +93,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-    const { getViewport } = useReactFlow();
 
     // Modal states
     const [showEventSelector, setShowEventSelector] = useState(false);
@@ -136,7 +135,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     }, []);
 
     // Update node data from config panel
-    const updateNodeData = useCallback((nodeId: string, newData: any) => {
+    const updateNodeData = useCallback((nodeId: string, newData: Node['data']) => {
         setNodes((nds) =>
             nds.map((node) => {
                 if (node.id === nodeId) {
@@ -157,7 +156,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
     }, [setNodes, setEdges]);
 
     // --- Node Copy/Move Operations ---
-    const [clipboard, setClipboard] = useState<Node | null>(null);
+    const [_clipboard, setClipboard] = useState<Node | null>(null);
 
     const handleCopyNode = useCallback((nodeId: string) => {
         const nodeToCopy = nodes.find(n => n.id === nodeId);
@@ -243,7 +242,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
         setEdges(edgesWithIds);
     }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
 
-    const handleStepSelect = useCallback((stepType: StepType) => {
+    const handleStepSelect = (stepType: StepType) => {
         if (!pendingNodeParent) return;
 
         // Find parent node to position new node below it
@@ -333,10 +332,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
             };
             addNodeAndConnect(newNode, pendingNodeParent);
         }
-    }, [pendingNodeParent, nodes]);
+    };
 
     // --- Action Selection ---
-    const handleActionSelect = useCallback((action: { actionType: string; label: string }) => {
+    const handleActionSelect = (action: { actionType: string; label: string }) => {
         if (!pendingNodeParent) return;
 
         const parentNode = nodes.find(n => n.id === pendingNodeParent);
@@ -359,7 +358,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
         };
         addNodeAndConnect(newNode, pendingNodeParent);
         setShowActionSelector(false);
-    }, [pendingNodeParent, nodes]);
+    };
 
     // Helper to add a node and connect it to parent
     const addNodeAndConnect = useCallback((newNode: Node, parentId: string) => {

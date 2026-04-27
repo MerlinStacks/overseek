@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
-import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react';
+import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { SuppliersList } from '../components/inventory/SuppliersList';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
@@ -16,6 +16,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { InternalProductsList } from '../components/inventory/InternalProductsList';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Modal } from '../components/ui/Modal';
+import type { SeoTest } from '../components/Seo/SeoScoreBadge';
 
 interface Product {
     // Updated Product Interface
@@ -34,8 +35,13 @@ interface Product {
     // Scoring
     seoScore?: number;
     merchantCenterScore?: number;
-    seoData?: any;
-    merchantCenterIssues?: any;
+    seoData?: {
+        tests?: unknown[];
+        analysis?: unknown[];
+        focusKeyword?: string;
+        [key: string]: unknown;
+    };
+    merchantCenterIssues?: Array<string | { message?: string; issue?: string }>;
     variations?: Array<{
         id: number;
         stock_quantity: number | null;
@@ -54,6 +60,16 @@ interface Product {
 }
 
 import { ProductService } from '../services/ProductService';
+
+function isSeoTest(value: unknown): value is SeoTest {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as SeoTest).test === 'string' &&
+        typeof (value as SeoTest).passed === 'boolean' &&
+        typeof (value as SeoTest).message === 'string'
+    );
+}
 
 export function InventoryPage() {
     const navigate = useNavigate();
@@ -75,10 +91,11 @@ export function InventoryPage() {
             setSearchParams({ tab: activeTab }, { replace: true });
         } else if (activeTab === 'catalog' && currentTabParam) {
             // Remove tab param when on default catalog tab
-            searchParams.delete('tab');
-            setSearchParams(searchParams, { replace: true });
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('tab');
+            setSearchParams(nextParams, { replace: true });
         }
-    }, [activeTab]);
+    }, [activeTab, searchParams, setSearchParams]);
 
     // Catalog State
     const [products, setProducts] = useState<Product[]>([]);
@@ -90,7 +107,6 @@ export function InventoryPage() {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
-    const [totalItems, setTotalItems] = useState(0);
     const [debouncedQuery, setDebouncedQuery] = useState('');
 
     // BOM State
@@ -108,13 +124,7 @@ export function InventoryPage() {
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
-    useEffect(() => {
-        if (activeTab === 'catalog') {
-            fetchProducts();
-        }
-    }, [currentAccount, token, debouncedQuery, page, limit, activeTab]);
-
-    async function fetchProducts() {
+    const fetchProducts = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         setIsLoading(true);
@@ -136,21 +146,26 @@ export function InventoryPage() {
                 const data = await res.json();
                 setProducts(data.products);
                 setTotalPages(data.totalPages);
-                setTotalItems(data.total);
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token, page, limit, debouncedQuery]);
+
+    useEffect(() => {
+        if (activeTab === 'catalog') {
+            fetchProducts();
+        }
+    }, [activeTab, fetchProducts]);
 
     async function handleCreateProduct() {
         if (!currentAccount || !token || !newProductName.trim()) return;
 
         setIsCreating(true);
         try {
-            const newProduct = await ProductService.createProduct({ name: newProductName.trim() }, token, currentAccount.id);
+            const newProduct = await ProductService.createProduct({ name: newProductName.trim() }, token, currentAccount.id) as { id: string };
             setShowCreateModal(false);
             setNewProductName('');
             navigate(`/inventory/product/${newProduct.id}`);
@@ -399,14 +414,18 @@ export function InventoryPage() {
                                                             onClick={() => setViewingSeo(product)}
                                                             className="flex flex-col gap-1 items-start hover:opacity-80 transition-opacity"
                                                         >
-                                                            <SeoScoreBadge score={product.seoScore || 0} size="sm" tests={product.seoData?.tests} />
+                                                            <SeoScoreBadge
+                                                                score={product.seoScore || 0}
+                                                                size="sm"
+                                                                tests={Array.isArray(product.seoData?.tests) ? product.seoData.tests.filter(isSeoTest) : undefined}
+                                                            />
                                                             <span
                                                                 className={`text-[10px] font-medium px-2 py-0.5 rounded-full border cursor-help ${(product.merchantCenterScore || 0) === 100
                                                                     ? 'bg-blue-50 text-blue-700 border-blue-100'
                                                                     : 'bg-orange-50 text-orange-700 border-orange-100'
                                                                     }`}
                                                                 title={product.merchantCenterIssues?.length
-                                                                    ? `Issues:\n${product.merchantCenterIssues.map((i: any) => typeof i === 'string' ? i : i.message || i.issue).join('\n')}`
+                                                                    ? `Issues:\n${product.merchantCenterIssues.map((i) => typeof i === 'string' ? i : i.message || i.issue || '').join('\n')}`
                                                                     : (product.merchantCenterScore || 0) === 100 ? 'All Google Merchant Center checks passed' : 'Click to view GMC details'}
                                                             >
                                                                 GMC: {product.merchantCenterScore || 0}%

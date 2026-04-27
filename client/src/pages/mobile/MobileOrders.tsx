@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -74,15 +74,7 @@ export function MobileOrders() {
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(1);
 
-    useEffect(() => {
-        fetchOrders(true);
-        // Listen for refresh events from pull-to-refresh
-        const handleRefresh = () => fetchOrders(true);
-        window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [currentAccount, activeFilter, token]);
-
-    const fetchOrders = async (reset = false) => {
+    const fetchOrders = useCallback(async (targetPage: number, reset = false) => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
@@ -94,7 +86,7 @@ export function MobileOrders() {
                 setPage(1);
             }
 
-            const currentPage = reset ? 1 : page;
+            const currentPage = targetPage;
             const params = new URLSearchParams();
             params.append('page', currentPage.toString());
             params.append('limit', '20');
@@ -136,12 +128,20 @@ export function MobileOrders() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [activeFilter, currentAccount, searchQuery, token]);
+
+    useEffect(() => {
+        fetchOrders(1, true);
+        // Listen for refresh events from pull-to-refresh
+        const handleRefresh = () => fetchOrders(1, true);
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+    }, [fetchOrders]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         triggerHaptic();
-        fetchOrders(true);
+        fetchOrders(1, true);
     };
 
     const handleFilterChange = (filter: string) => {
@@ -190,7 +190,7 @@ export function MobileOrders() {
             });
         } catch (error) {
             Logger.error('[MobileOrders] Status update failed:', { error: error });
-            fetchOrders(true);
+            fetchOrders(1, true);
         }
     };
 
@@ -321,7 +321,7 @@ export function MobileOrders() {
                 {/* Load More */}
                 {hasMore && orders.length > 0 && (
                     <button
-                        onClick={() => fetchOrders()}
+                        onClick={() => fetchOrders(page, false)}
                         disabled={loading}
                         className="w-full py-4 text-indigo-400 font-semibold disabled:opacity-50 pwa-card active:bg-slate-700/50 transition-all"
                     >

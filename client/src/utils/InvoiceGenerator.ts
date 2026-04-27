@@ -15,6 +15,7 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { createElement } from 'react';
+import type { ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Logger } from './logger';
 import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
@@ -31,8 +32,10 @@ const CAPTURE_SCALE = 2;
 
 interface OrderData {
     number: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }
+
+type InvoiceRendererProps = ComponentProps<typeof InvoiceRenderer>;
 
 /**
  * Generates a PDF invoice that matches the designer HTML preview exactly.
@@ -40,9 +43,10 @@ interface OrderData {
  */
 export const generateInvoicePDF = async (
     order: OrderData,
-    grid: any[],
-    items: any[],
-    _templateName: string = 'Invoice'
+    grid: InvoiceRendererProps['layout'],
+    items: InvoiceRendererProps['items'],
+    _templateName: string = 'Invoice',
+    settings?: InvoiceRendererProps['settings']
 ): Promise<void> => {
     // 1. Create hidden container — must stay within viewport for html2canvas
     //    to capture correctly. We use opacity:0 + overflow:hidden instead of
@@ -70,6 +74,7 @@ export const generateInvoicePDF = async (
                 layout: grid,
                 items,
                 data: order,
+                settings,
                 readOnly: true,
                 pageMode: 'single',
             })
@@ -126,9 +131,10 @@ export const generateInvoicePDF = async (
         const pdf = createPaginatedPdf(canvas, breakPoints);
         const orderNumber = order.number || order.order_number || order.id || 'draft';
         pdf.save(`Invoice_${orderNumber}.pdf`);
-    } catch (err: any) {
-        const msg = err?.message || String(err);
-        Logger.error('Failed to generate invoice PDF', { error: msg, stack: err?.stack });
+    } catch (err: unknown) {
+        const typedError = err instanceof Error ? err : new Error(String(err));
+        const msg = typedError.message || String(err);
+        Logger.error('Failed to generate invoice PDF', { error: msg, stack: typedError.stack });
         throw new Error(`Invoice generation failed: ${msg}`);
     } finally {
         // Always cleanup: unmount React tree + remove container from DOM
@@ -294,7 +300,7 @@ function inlineResolvedColors(container: HTMLElement): void {
             if (value) {
                 const resolved = resolveColorToHex(value);
                 if (resolved !== value) {
-                    el.style[prop as any] = resolved;
+                    el.style.setProperty(prop, resolved);
                 }
             }
         }
@@ -441,4 +447,3 @@ function createPaginatedPdf(
 
     return pdf;
 }
-

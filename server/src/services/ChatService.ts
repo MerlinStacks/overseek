@@ -14,6 +14,7 @@ import { AutomationEngine } from './AutomationEngine';
 import { EventBus, EVENTS } from './events';
 import { TwilioService } from './TwilioService';
 import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
+import type { Prisma } from '@prisma/client';
 
 export class ChatService {
     private io: Server;
@@ -35,9 +36,14 @@ export class ChatService {
         status?: string,
         assignedTo?: string,
         limit: number = 25,
-        cursor?: string
+        cursor?: string,
+        options?: {
+            wooCustomerId?: string;
+            guestEmail?: string;
+            sort?: 'updated' | 'priority';
+        }
     ) {
-        const cacheKey = `conversations:${accountId}:${status || 'all'}:${assignedTo || 'all'}:${limit}:${cursor || 'start'}`;
+        const cacheKey = `conversations:${accountId}:${status || 'all'}:${assignedTo || 'all'}:${limit}:${cursor || 'start'}:${options?.wooCustomerId || 'any-customer'}:${options?.guestEmail || 'any-email'}:${options?.sort || 'updated'}`;
 
         return cacheAside(
             cacheKey,
@@ -48,10 +54,16 @@ export class ChatService {
                     cursor: cursor ? { id: cursor } : undefined,
                     where: {
                         accountId: String(accountId),
-                        status: status || undefined,
-                        assignedTo: assignedTo || undefined,
+                        ...(status ? { status } : {}),
+                        ...(assignedTo === '__unassigned__'
+                            ? { assignedTo: null }
+                            : assignedTo
+                                ? { assignedTo }
+                                : {}),
+                        ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
+                        ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
                         mergedIntoId: null
-                    },
+                    } satisfies Prisma.ConversationWhereInput,
                     include: {
                         // Only fetch fields needed for display
                         wooCustomer: {
@@ -85,18 +97,98 @@ export class ChatService {
                 // Why: truncate message content before caching. Full message
                 // bodies can be KBs each; list previews only need a snippet.
                 // This dramatically reduces the serialized cache payload size.
-                return conversations.map(c => ({
+                const enriched = conversations.map(c => {
+                    const priorityData = ChatService.buildPriorityData(c);
+                    return {
                     ...c,
+                    priorityScore: priorityData.score,
+                    priorityTier: priorityData.tier,
+                    priorityReasons: priorityData.reasons,
                     messages: c.messages.map(m => ({
                         ...m,
                         content: m.content.length > 200
                             ? m.content.slice(0, 200) + '...'
                             : m.content
                     }))
-                }));
+                    };
+                });
+
+                if (options?.sort === 'priority') {
+                    return enriched.sort((a, b) => {
+                        if (b.priorityScore !== a.priorityScore) return b.priorityScore - a.priorityScore;
+                        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+                    });
+                }
+
+                return enriched;
             },
             { ttl: CacheTTL.SHORT, namespace: 'inbox' }
         );
+    }
+
+    /**
+     * Compute an inbox priority score used to sort queue work.
+     * Higher score means conversation should be handled sooner.
+     */
+    private static buildPriorityData(conversation: {
+        priority?: string;
+        isRead?: boolean;
+        status?: string;
+        updatedAt: Date;
+        wooCustomer?: { totalSpent?: Prisma.Decimal | number | null; ordersCount?: number | null } | null;
+    }): { score: number; tier: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW'; reasons: string[] } {
+        const reasons: string[] = [];
+        let score = 0;
+
+        const priority = (conversation.priority || 'MEDIUM').toUpperCase();
+        if (priority === 'HIGH') {
+            score += 100;
+            reasons.push('Marked high priority');
+        } else if (priority === 'LOW') {
+            score += 15;
+        } else {
+            score += 55;
+        }
+
+        if (conversation.isRead === false) {
+            score += 30;
+            reasons.push('Unread');
+        }
+
+        if ((conversation.status || 'OPEN') === 'OPEN') {
+            score += 10;
+        }
+
+        const ageMinutes = Math.max(0, (Date.now() - new Date(conversation.updatedAt).getTime()) / 60000);
+        const ageBonus = Math.min(40, Math.floor(ageMinutes / 15));
+        if (ageBonus > 0) {
+            score += ageBonus;
+            if (ageMinutes >= 60) reasons.push(`Waiting ${Math.floor(ageMinutes)}m`);
+        }
+
+        const totalSpentRaw = conversation.wooCustomer?.totalSpent;
+        const totalSpent = totalSpentRaw == null ? 0 : Number(totalSpentRaw);
+        const ordersCount = conversation.wooCustomer?.ordersCount || 0;
+
+        if (totalSpent >= 5000) {
+            score += 45;
+            reasons.push('VIP customer');
+        } else if (totalSpent >= 1000) {
+            score += 25;
+            reasons.push('High-value customer');
+        }
+
+        if (ordersCount >= 10) {
+            score += 15;
+            reasons.push('Frequent buyer');
+        } else if (ordersCount >= 5) {
+            score += 8;
+        }
+
+        if (score >= 170) return { score, tier: 'CRITICAL', reasons };
+        if (score >= 120) return { score, tier: 'HIGH', reasons };
+        if (score >= 70) return { score, tier: 'NORMAL', reasons };
+        return { score, tier: 'LOW', reasons };
     }
 
     /**
@@ -130,9 +222,9 @@ export class ChatService {
         });
     }
 
-    async getConversation(id: string) {
-        const conversation = await prisma.conversation.findUnique({
-            where: { id },
+    async getConversation(accountId: string, id: string) {
+        const conversation = await prisma.conversation.findFirst({
+            where: { id, accountId },
             include: {
                 messages: { orderBy: { createdAt: 'asc' } },
                 wooCustomer: true,
@@ -190,27 +282,31 @@ export class ChatService {
         return { ...conversation, messages: enrichedMessages };
     }
 
-        async addMessage(
+    async addMessage(
         conversationId: string,
         content: string,
         senderType: 'AGENT' | 'CUSTOMER' | 'SYSTEM',
         senderId?: string,
-        isInternal: boolean = false
+        isInternal: boolean = false,
+        accountId?: string
     ) {
-        const message = await prisma.message.create({
-            data: { conversationId, content, senderType, senderId, isInternal }
-        });
-
-        // Get conversation with customer info to check blocked status
-        const conversation = await prisma.conversation.findUnique({
-            where: { id: conversationId },
+        // Resolve conversation first so we can enforce account ownership before writing.
+        const conversation = await prisma.conversation.findFirst({
+            where: {
+                id: conversationId,
+                ...(accountId ? { accountId } : {})
+            },
             include: { wooCustomer: true }
         });
 
         if (!conversation) {
             Logger.error('[ChatService] Conversation not found', { conversationId });
-            return message;
+            throw new Error('Conversation not found');
         }
+
+        const message = await prisma.message.create({
+            data: { conversationId, content, senderType, senderId, isInternal }
+        });
 
         // Handle Outbound SMS (Agent replies)
         if (senderType === 'AGENT' && !isInternal && conversation.channel === 'SMS') {
@@ -264,12 +360,15 @@ export class ChatService {
         // Include accountId for client-side account isolation filtering
         this.io.to(`conversation:${conversationId}`).emit('message:new', {
             ...message,
-            accountId: conversation.accountId
+            accountId: conversation.accountId,
+            priority: conversation.priority,
+            assignedTo: conversation.assignedTo
         });
         this.io.to(`account:${conversation.accountId}`).emit('conversation:updated', {
             id: conversationId,
             lastMessage: message,
-            updatedAt: message.createdAt
+            updatedAt: message.createdAt,
+            priority: conversation.priority
         });
 
         // Only handle autoreplies and push notifications for non-blocked customers
@@ -297,24 +396,42 @@ export class ChatService {
         return message;
     }
 
-        async assignConversation(id: string, userId: string) {
+    async assignConversation(accountId: string, id: string, userId: string | null) {
+        const existing = await prisma.conversation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!existing) {
+            throw new Error('Conversation not found');
+        }
+
         const conv = await prisma.conversation.update({
-            where: { id },
-            data: { assignedTo: userId }
+            where: { id: existing.id },
+            data: { assignedTo: userId ?? null }
         });
         this.io.to(`conversation:${id}`).emit('conversation:assigned', { userId });
 
         // Trigger automation
-        this.automationEngine.processTrigger(conv.accountId, 'CONVERSATION_ASSIGNED', {
-            conversationId: id,
-            assignedTo: userId
-        });
+        if (userId) {
+            this.automationEngine.processTrigger(conv.accountId, 'CONVERSATION_ASSIGNED', {
+                conversationId: id,
+                assignedTo: userId
+            });
+        }
 
         return conv;
     }
 
-    async updateStatus(id: string, status: string) {
-        const conv = await prisma.conversation.update({ where: { id }, data: { status } });
+    async updateStatus(accountId: string, id: string, status: string) {
+        const existing = await prisma.conversation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!existing) {
+            throw new Error('Conversation not found');
+        }
+
+        const conv = await prisma.conversation.update({ where: { id: existing.id }, data: { status } });
 
         // Invalidate cache when status changes
         await this.invalidateConversationCache(conv.accountId);
@@ -332,9 +449,17 @@ export class ChatService {
     /**
      * Mark a conversation as read by staff
      */
-    async markAsRead(id: string) {
+    async markAsRead(accountId: string, id: string) {
+        const existing = await prisma.conversation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!existing) {
+            throw new Error('Conversation not found');
+        }
+
         const conv = await prisma.conversation.update({
-            where: { id },
+            where: { id: existing.id },
             data: { isRead: true }
         });
         // Emit socket event so other clients know it's been read
@@ -356,22 +481,36 @@ export class ChatService {
         });
     }
 
-    async mergeConversations(targetId: string, sourceId: string) {
+    async mergeConversations(accountId: string, targetId: string, sourceId: string) {
+        const [target, source] = await Promise.all([
+            prisma.conversation.findFirst({
+                where: { id: targetId, accountId },
+                select: { id: true }
+            }),
+            prisma.conversation.findFirst({
+                where: { id: sourceId, accountId },
+                select: { id: true }
+            })
+        ]);
+        if (!target || !source) {
+            throw new Error('Conversation not found');
+        }
+
         // Why: wrap in transaction so partial failure (e.g., crash after moving
         // messages but before closing source) doesn't leave orphaned data.
         await prisma.$transaction(async (tx) => {
             await tx.message.updateMany({
-                where: { conversationId: sourceId },
-                data: { conversationId: targetId }
+                where: { conversationId: source.id },
+                data: { conversationId: target.id }
             });
             await tx.conversation.update({
-                where: { id: sourceId },
-                data: { status: 'CLOSED', mergedIntoId: targetId }
+                where: { id: source.id },
+                data: { status: 'CLOSED', mergedIntoId: target.id }
             });
             await tx.message.create({
                 data: {
-                    conversationId: targetId,
-                    content: `Merged conversation #${sourceId} into this thread.`,
+                    conversationId: target.id,
+                    content: `Merged conversation #${source.id} into this thread.`,
                     senderType: 'SYSTEM'
                 }
             });
@@ -379,9 +518,17 @@ export class ChatService {
         return { success: true };
     }
 
-    async linkCustomer(conversationId: string, wooCustomerId: string) {
+    async linkCustomer(accountId: string, conversationId: string, wooCustomerId: string) {
+        const existing = await prisma.conversation.findFirst({
+            where: { id: conversationId, accountId },
+            select: { id: true }
+        });
+        if (!existing) {
+            throw new Error('Conversation not found');
+        }
+
         return prisma.conversation.update({
-            where: { id: conversationId },
+            where: { id: existing.id },
             data: { wooCustomerId }
         });
     }

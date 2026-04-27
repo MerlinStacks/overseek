@@ -6,6 +6,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useNavigate } from 'react-router-dom';
 import { WidgetProps } from './WidgetRegistry';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
+import { widgetGlassCardClass, widgetSubtleTextClass } from './widgetStyles';
 
 /**
  * Compact widget displaying the count of open inbox conversations.
@@ -14,19 +15,20 @@ import { useWidgetSocket } from '../../hooks/useWidgetSocket';
 export function OpenInboxWidget(_props: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const navigate = useNavigate();
 
     const [count, setCount] = useState<number>(0);
     const [loading, setLoading] = useState(true);
 
     const fetchCount = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         try {
             const res = await fetch('/api/dashboard/inbox-count', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -38,8 +40,7 @@ export function OpenInboxWidget(_props: WidgetProps) {
         } finally {
             setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchCount, 60000, [fetchCount], 'open-inbox');
@@ -57,7 +58,7 @@ export function OpenInboxWidget(_props: WidgetProps) {
     return (
         <div
             onClick={handleClick}
-            className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-6 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-slate-700/50 flex flex-col h-full justify-center items-center relative overflow-hidden cursor-pointer hover:shadow-md dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] transition-shadow"
+            className={`${widgetGlassCardClass} p-6 flex flex-col h-full justify-center items-center relative overflow-hidden cursor-pointer`}
         >
             {/* Notification Indicator */}
             {count > 0 && (
@@ -77,7 +78,7 @@ export function OpenInboxWidget(_props: WidgetProps) {
                 ) : (
                     <span className="text-5xl font-bold text-slate-900 dark:text-white">{count}</span>
                 )}
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Open Conversations</p>
+                <p className={`${widgetSubtleTextClass} mt-2 font-medium`}>Open Conversations</p>
             </div>
 
             {/* Background Icon */}

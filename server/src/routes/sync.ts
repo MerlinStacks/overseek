@@ -19,10 +19,20 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
 
     const syncQueues = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'bom-inventory-sync'] as const;
     const allowedEntities = new Set(['orders', 'products', 'customers', 'reviews', 'bom']);
+    const mapEntityToQueue = (entityType: string): string | null => {
+        switch (entityType) {
+            case 'orders': return 'sync-orders';
+            case 'products': return 'sync-products';
+            case 'customers': return 'sync-customers';
+            case 'reviews': return 'sync-reviews';
+            case 'bom': return 'bom-inventory-sync';
+            default: return null;
+        }
+    };
 
     const hasActiveSyncJob = async (accountId: string, entityType: string): Promise<boolean> => {
-        const queueName = `sync-${entityType}`;
-        if (!syncQueues.includes(queueName as any)) return false;
+        const queueName = mapEntityToQueue(entityType);
+        if (!queueName || !syncQueues.includes(queueName as any)) return false;
 
         const queue = (await import('../services/queue/QueueFactory')).QueueFactory.getQueue(queueName);
         const jobs = await queue.getJobs(['active', 'waiting', 'delayed']);
@@ -84,12 +94,21 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/control', async (request, reply) => {
-        const { accountId, action, queueName, jobId } = request.body as any;
+        const { action, queueName, jobId } = request.body as any;
+        const requestAccountId = request.accountId;
+        const isSuperAdmin = request.user?.isSuperAdmin === true;
+
+        if (!requestAccountId && !isSuperAdmin) {
+            return reply.code(400).send({ error: 'accountId is required' });
+        }
 
         try {
             const { QueueFactory } = await import('../services/queue/QueueFactory');
 
             if (action === 'pause') {
+                if (!isSuperAdmin) {
+                    return reply.code(403).send({ error: 'Only super admins can pause queues' });
+                }
                 if (queueName) {
                     const queue = QueueFactory.getQueue(queueName);
                     await queue.pause();
@@ -101,6 +120,9 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                 }
 
             } else if (action === 'resume') {
+                if (!isSuperAdmin) {
+                    return reply.code(403).send({ error: 'Only super admins can resume queues' });
+                }
                 if (queueName) {
                     const queue = QueueFactory.getQueue(queueName);
                     await queue.resume();
@@ -116,6 +138,10 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                     const queue = QueueFactory.getQueue(queueName);
                     const job = await queue.getJob(jobId);
                     if (job) {
+                        const jobAccountId = job?.data?.accountId as string | undefined;
+                        if (!isSuperAdmin && jobAccountId !== requestAccountId) {
+                            return reply.code(403).send({ error: 'Cannot cancel jobs for another account' });
+                        }
                         try {
                             await job.remove();
                         } catch (e) {

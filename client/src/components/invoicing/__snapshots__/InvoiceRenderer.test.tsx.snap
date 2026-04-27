@@ -1,0 +1,201 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal footer from settings 1`] = `
+<div>
+  <div
+    class="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50 p-4"
+    style="min-height: auto;"
+  >
+    <div
+      class="mb-2"
+    >
+      <div
+        class="py-3"
+      >
+        <table
+          class="text-sm"
+        >
+          <tbody>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Invoice Number:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                INV-01234
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Invoice Date:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                26/04/2026
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Due Date:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                03/05/2026
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Order Number:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                1001
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Order Date:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                20/04/2026
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Payment Method:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                Card
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="text-slate-500 pr-8 py-1"
+              >
+                Shipping Method:
+              </td>
+              <td
+                class="font-medium text-slate-800"
+              >
+                Express
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div
+      class="mb-2"
+    >
+      <div
+        class="py-2 border border-cyan-200 rounded-lg bg-cyan-50/40 p-3"
+      >
+        <div
+          class="text-xs uppercase tracking-wider text-cyan-700 font-semibold mb-2"
+        >
+          Payment
+        </div>
+        <div
+          class="space-y-2"
+        >
+          <div
+            class="text-sm text-cyan-700 break-all"
+          >
+            Pay now
+            : 
+            https://pay.example.com/invoice/INV-01234
+          </div>
+          <div
+            class="w-16 h-16 rounded-md border border-cyan-300 bg-white grid grid-cols-4 gap-0.5 p-1"
+          >
+            <div
+              class="bg-cyan-700 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-700 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-700 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-700 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-700 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-100 rounded-xs"
+            />
+            <div
+              class="bg-cyan-700 rounded-xs"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="mt-4 pt-4 border-t border-slate-200"
+    >
+      <div
+        class="py-3 text-center text-sm text-slate-500 bg-white relative z-20"
+      >
+        <div>
+          Thanks for your order
+        </div>
+        <div
+          class="mt-1 text-xs text-slate-400 whitespace-pre-wrap"
+        >
+          ABN 12 345 678 901
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;

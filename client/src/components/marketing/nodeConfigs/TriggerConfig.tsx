@@ -4,9 +4,16 @@
  */
 import React from 'react';
 
+interface TriggerNodeConfig {
+    triggerType?: string;
+    filterByValue?: boolean;
+    filterOperator?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq';
+    filterValue?: string | number;
+}
+
 export interface TriggerConfigProps {
-    config: any;
-    onUpdate: (key: string, value: any) => void;
+    config: TriggerNodeConfig;
+    onUpdate: (key: string, value: unknown) => void;
 }
 
 const TRIGGER_TYPES = [
@@ -63,9 +70,9 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                                 className="px-2 py-1 border rounded-sm text-sm"
                             >
                                 <option value="gt">&gt;</option>
-                                <option value="gte">≥</option>
+                                <option value="gte">&gt;=</option>
                                 <option value="lt">&lt;</option>
-                                <option value="lte">≤</option>
+                                <option value="lte">&lt;=</option>
                                 <option value="eq">=</option>
                             </select>
                             <span className="text-sm text-gray-600">$</span>

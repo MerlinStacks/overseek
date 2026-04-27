@@ -42,6 +42,7 @@ model User {
   auditLogs             AuditLog[]
   refreshTokens         RefreshToken[]
   pushSubscriptions     PushSubscription[]
+  notificationReads     NotificationRead[]
   blockedContacts       BlockedContact[]
   messageReactions      MessageReaction[]
   scheduledMessages     Message[]            @relation("ScheduledMessages")
@@ -190,6 +191,7 @@ model Account {
   
   // Notification Deliveries
   notificationDeliveries NotificationDelivery[]
+  notificationReads      NotificationRead[]
 
   // Rate Limiting
   rateLimit           AccountRateLimit?
@@ -351,10 +353,27 @@ model Notification {
   link    String? // Optional URL to navigate to
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reads   NotificationRead[]
 
   createdAt DateTime @default(now())
 
   @@index([accountId, isRead])
+}
+
+model NotificationRead {
+  id             String   @id @default(uuid())
+  notificationId String
+  userId         String
+  accountId      String
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([accountId, userId, readAt(sort: Desc)])
+  @@index([notificationId])
 }
 
 enum Role {
@@ -786,6 +805,10 @@ model BOMItem {
   internalProduct  InternalProduct? @relation("InternalProductAsBOMComponent", fields: [internalProductId], references: [id])
 
   // @@unique([bomId, supplierItemId]) // Removed as it conflicts with optional fields
+  @@index([bomId, isActive])
+  @@index([childProductId, isActive])
+  @@index([internalProductId, isActive])
+  @@index([deactivatedReason])
 }
 
 /// Tracks individual BOM stock deductions for deterministic crash recovery.

@@ -1,12 +1,16 @@
-
 import { WidgetProps } from './WidgetRegistry';
 import { Logger } from '../../utils/logger';
-
-import { DollarSign, Loader2, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { DollarSign, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
+import { widgetCardClass, widgetSubtleTextClass } from './widgetStyles';
+
+interface SalesResponse {
+    total?: number;
+    count?: number;
+}
 
 export function TotalSalesWidget({ className, dateRange, comparison, comparisonLabel }: WidgetProps) {
     const { token } = useAuth();
@@ -16,73 +20,102 @@ export function TotalSalesWidget({ className, dateRange, comparison, comparisonL
     const [comparisonSales, setComparisonSales] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [hasRealtimeUpdate, setHasRealtimeUpdate] = useState(false);
+    const indicatorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const fetchAbortRef = useRef<AbortController | null>(null);
 
     const fetchSales = useCallback(async () => {
         if (!currentAccount || !token) return;
 
+        fetchAbortRef.current?.abort();
+        const controller = new AbortController();
+        fetchAbortRef.current = controller;
+
         setLoading(true);
         try {
-            const currentRes = await fetch(`/api/analytics/sales?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            const headers = { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id };
+            const currentRequest = fetch(
+                `/api/analytics/sales?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`,
+                { headers, signal: controller.signal }
+            ).then(async (res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json() as Promise<SalesResponse>;
             });
-            if (!currentRes.ok) throw new Error(`HTTP ${currentRes.status}`);
-            const currentData = await currentRes.json();
+
+            const comparisonRequest = comparison
+                ? fetch(
+                    `/api/analytics/sales?startDate=${comparison.startDate}&endDate=${comparison.endDate}`,
+                    { headers, signal: controller.signal }
+                ).then(async (res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json() as Promise<SalesResponse>;
+                })
+                : Promise.resolve(null);
+
+            const [currentData, comparisonData] = await Promise.all([currentRequest, comparisonRequest]);
+            if (controller.signal.aborted) return;
+
             setSales(currentData.total || 0);
             setOrderCount(currentData.count || 0);
-
-            if (comparison) {
-                const compRes = await fetch(`/api/analytics/sales?startDate=${comparison.startDate}&endDate=${comparison.endDate}`, {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                });
-                if (!compRes.ok) throw new Error(`HTTP ${compRes.status}`);
-                const compData = await compRes.json();
-                setComparisonSales(compData.total || 0);
-            } else {
-                setComparisonSales(null);
-            }
+            setComparisonSales(comparisonData ? (comparisonData.total || 0) : null);
         } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             Logger.error('An error occurred', { error: err });
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) {
+                setLoading(false);
+            }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token, dateRange, comparison]);
+    }, [comparison, currentAccount, dateRange.endDate, dateRange.startDate, token]);
 
     useEffect(() => {
         fetchSales();
+        return () => {
+            fetchAbortRef.current?.abort();
+        };
     }, [fetchSales]);
 
-    // Real-time: Listen for new orders and update sales
-    // Using typeof check to ensure data.total is a valid number before arithmetic
+    useEffect(() => {
+        return () => {
+            if (indicatorTimeoutRef.current) {
+                clearTimeout(indicatorTimeoutRef.current);
+                indicatorTimeoutRef.current = null;
+            }
+        };
+    }, []);
+
+    // Real-time: Listen for new orders and update sales.
     useWidgetSocket<{ total?: number }>('order:new', (data) => {
-        if (typeof data.total === 'number' && !isNaN(data.total)) {
-            setSales(prev => (prev ?? 0) + data.total!);
-            setOrderCount(prev => (prev ?? 0) + 1);
+        const incomingTotal = data.total;
+        if (typeof incomingTotal === 'number' && !isNaN(incomingTotal)) {
+            setSales((prev) => (prev ?? 0) + incomingTotal);
+            setOrderCount((prev) => (prev ?? 0) + 1);
             setHasRealtimeUpdate(true);
-            // Clear the indicator after 3 seconds
-            setTimeout(() => setHasRealtimeUpdate(false), 3000);
+
+            if (indicatorTimeoutRef.current) {
+                clearTimeout(indicatorTimeoutRef.current);
+            }
+            indicatorTimeoutRef.current = setTimeout(() => setHasRealtimeUpdate(false), 3000);
         }
     });
 
-
-    // Calculate percentage change
+    // Calculate percentage change.
     let percentChange = 0;
     let isPositive = false;
     const hasComparison = comparisonSales !== null;
 
     if (hasComparison && comparisonSales !== 0 && sales !== null) {
-        percentChange = ((sales - comparisonSales!) / comparisonSales!) * 100;
+        percentChange = ((sales - comparisonSales) / comparisonSales) * 100;
         isPositive = percentChange >= 0;
     } else if (hasComparison && comparisonSales === 0 && sales !== null && sales > 0) {
-        percentChange = 100; // Zero to something is 100% growth essentially
+        percentChange = 100;
         isPositive = true;
     }
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-6 flex flex-col justify-between rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 ${hasRealtimeUpdate ? 'ring-2 ring-emerald-500/30 animate-pulse-glow' : ''} ${className}`}>
+        <div className={`${widgetCardClass} h-full w-full p-6 flex flex-col justify-between hover:-translate-y-0.5 ${hasRealtimeUpdate ? 'ring-2 ring-emerald-500/30 animate-pulse-glow' : ''} ${className || ''}`}>
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium uppercase tracking-wider">
+                    <h3 className={`${widgetSubtleTextClass} font-medium uppercase tracking-wider`}>
                         Total Revenue {currentAccount?.revenueTaxInclusive !== false ? '(Inclusive)' : '(Exclusive)'}
                     </h3>
                     {loading ? (
@@ -97,14 +130,14 @@ export function TotalSalesWidget({ className, dateRange, comparison, comparisonL
                             </p>
                             {orderCount !== null && (
                                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                                    {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''} · AOV ${orderCount > 0 ? ((sales || 0) / orderCount).toFixed(2) : '0.00'}
+                                    {orderCount.toLocaleString()} order{orderCount !== 1 ? 's' : ''} &middot; AOV ${orderCount > 0 ? ((sales || 0) / orderCount).toFixed(2) : '0.00'}
                                 </p>
                             )}
                         </>
                     )}
                 </div>
-                <div className="p-3 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl text-white shadow-lg shadow-emerald-500/25">
-                    <DollarSign size={24} />
+                <div className="p-2.5 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg text-white shadow-lg shadow-emerald-500/25">
+                    <DollarSign size={20} />
                 </div>
             </div>
 

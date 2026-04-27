@@ -15,6 +15,10 @@ import { UrlBuilder } from '../components/analytics/UrlBuilder';
 import { RoadblocksView } from '../components/analytics/RoadblocksView';
 import VisitorProfileModal from '../components/analytics/VisitorProfileModal';
 
+interface ReportRow {
+    [key: string]: unknown;
+}
+
 // Sidebar Menu Items
 const MENUS = [
     {
@@ -58,7 +62,7 @@ export function LiveAnalyticsPage() {
     const [carts, setCarts] = useState<LiveSession[]>([]);
 
     // Report Data (Generic)
-    const [reportData, setReportData] = useState<any[]>([]);
+    const [reportData, setReportData] = useState<ReportRow[]>([]);
     const [loadingReport, setLoadingReport] = useState(false);
 
     // Date Range (Simple for now: today, 7d, 30d) - Defaults to today
@@ -82,14 +86,8 @@ export function LiveAnalyticsPage() {
     // Visibility-aware polling with tab coordination
     useVisibilityPolling(fetchLiveData, 5000, [fetchLiveData], 'live-analytics-page');
 
-    useEffect(() => {
-        // Fetch Report Data when view changes
-        if (activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'performance') {
-            fetchReport(activeView);
-        }
-    }, [activeView, dateRange, currentAccount]);
-
-    async function fetchReport(viewId: string) {
+    const fetchReport = useCallback(async (viewId: string) => {
+        if (!token || !currentAccount?.id) return;
         setLoadingReport(true);
         try {
             // Determine endpoint
@@ -102,18 +100,26 @@ export function LiveAnalyticsPage() {
             if (viewId === 'exit') endpoint = '/api/analytics/behaviour/exit';
 
             // Use shared date utility for consistent timezone handling
-            const range = getDateRange(dateRange as any);
+            const range = getDateRange(dateRange);
 
             const res = await fetch(`${endpoint}?startDate=${range.startDate}&endDate=${range.endDate}`, {
-                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount!.id }
+                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id }
             });
 
             if (res.ok) {
-                setReportData(await res.json());
+                const data: unknown = await res.json();
+                setReportData(Array.isArray(data) ? (data as ReportRow[]) : []);
             }
         } catch (e) { Logger.error('An error occurred', { error: e }); }
         finally { setLoadingReport(false); }
-    }
+    }, [dateRange, token, currentAccount?.id]);
+
+    useEffect(() => {
+        // Fetch Report Data when view changes
+        if (activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'performance') {
+            fetchReport(activeView);
+        }
+    }, [activeView, dateRange, currentAccount, fetchReport]);
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)] -m-8 overflow-hidden bg-gray-50">

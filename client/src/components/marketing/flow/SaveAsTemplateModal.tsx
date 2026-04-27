@@ -8,7 +8,7 @@ import { useAccount } from '../../../context/AccountContext';
 
 interface Props {
     content: string;
-    designJson?: any;
+    designJson?: unknown;
     onSaved: (templateId: string) => void;
     onClose: () => void;
 }

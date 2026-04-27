@@ -7,6 +7,8 @@ import { InboxSkeleton, ContactPanelSkeleton } from '../components/chat/InboxSke
 import { NewEmailModal } from '../components/chat/NewEmailModal';
 import { KeyboardShortcutsHelp } from '../components/chat/KeyboardShortcutsHelp';
 import { MessageSquare } from 'lucide-react';
+import type { Conversation as ConversationListItem } from '../components/chat/ConversationItem';
+import type { MergedRecipient } from '../components/chat/RecipientList';
 
 // Lazy load ContactPanel - only needed when a conversation is selected
 const ContactPanel = lazy(() => import('../components/chat/ContactPanel').then(m => ({ default: m.ContactPanel })));
@@ -29,6 +31,10 @@ export function InboxPage() {
         isShortcutsHelpOpen,
         setIsShortcutsHelpOpen,
         availableChannels,
+        conversationFilter,
+        setConversationFilter,
+        showResolved,
+        setShowResolved,
         hasMore,
         isLoadingMore,
         activeConversation,
@@ -48,6 +54,38 @@ export function InboxPage() {
         emailAccounts,
     } = useInbox();
 
+    const normalizedConversations: ConversationListItem[] = conversations.map((conversation) => ({
+        ...conversation,
+        assignedTo: conversation.assignedTo ?? undefined,
+        messages: conversation.messages || [],
+    }));
+
+    const normalizedMergedRecipients: MergedRecipient[] = (activeConversation?.mergedFrom || [])
+        .filter((recipient): recipient is { id: string; name?: string; email?: string } => typeof recipient.id === 'string' && recipient.id.length > 0)
+        .map((recipient) => ({
+            id: recipient.id,
+            name: recipient.name,
+            email: recipient.email,
+            channel: activeConversation?.channel || 'CHAT',
+        }));
+
+    const normalizedActiveConversation = activeConversation
+        ? {
+            ...activeConversation,
+            assignedTo: activeConversation.assignedTo ?? undefined,
+            createdAt: typeof activeConversation.createdAt === 'string' ? activeConversation.createdAt : activeConversation.updatedAt,
+            wooCustomer: activeConversation.wooCustomer ? {
+                id: String((activeConversation.wooCustomer as { id?: unknown }).id ?? ''),
+                wooId: Number(activeConversation.wooCustomer.wooId || 0),
+                firstName: activeConversation.wooCustomer.firstName,
+                lastName: activeConversation.wooCustomer.lastName,
+                email: activeConversation.wooCustomer.email,
+                totalSpent: typeof activeConversation.wooCustomer.totalSpent === 'number' ? activeConversation.wooCustomer.totalSpent : undefined,
+                ordersCount: typeof activeConversation.wooCustomer.ordersCount === 'number' ? activeConversation.wooCustomer.ordersCount : undefined,
+            } : undefined,
+        }
+        : undefined;
+
     if (isLoading) {
         return <InboxSkeleton />;
     }
@@ -56,7 +94,7 @@ export function InboxPage() {
         <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100vh-64px)] flex bg-gray-100 overflow-hidden">
             {/* Conversations List */}
             <ConversationList
-                conversations={conversations}
+                conversations={normalizedConversations}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onPreload={handlePreloadConversation}
@@ -65,6 +103,10 @@ export function InboxPage() {
                 hasMore={hasMore}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={loadMoreConversations}
+                filter={conversationFilter}
+                onFilterChange={setConversationFilter}
+                showResolved={showResolved}
+                onShowResolvedChange={setShowResolved}
             />
 
             {/* Main Chat Area */}
@@ -77,10 +119,10 @@ export function InboxPage() {
                         recipientEmail={recipientEmail}
                         recipientName={recipientName}
                         status={activeConversation?.status}
-                        assigneeId={activeConversation?.assignedTo}
+                        assigneeId={activeConversation?.assignedTo ?? undefined}
                         availableChannels={availableChannels}
                         currentChannel={activeConversation?.channel || 'CHAT'}
-                        mergedRecipients={activeConversation?.mergedFrom || []}
+                        mergedRecipients={normalizedMergedRecipients}
                         customerData={customerData}
                         onStatusChange={handleStatusChange}
                         onAssign={handleAssign}
@@ -114,7 +156,7 @@ export function InboxPage() {
             {selectedId && (
                 <Suspense fallback={<ContactPanelSkeleton />}>
                     <ContactPanel
-                        conversation={activeConversation}
+                        conversation={normalizedActiveConversation}
                         onSelectConversation={(id) => setSelectedId(id)}
                     />
                 </Suspense>

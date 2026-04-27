@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { Users, Server, Activity, AlertTriangle, Database, Trash2, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -25,6 +25,14 @@ interface SystemHealth {
     webhooks: { failed24h: number; processed24h: number; received24h: number };
 }
 
+interface StatCardProps {
+    title: string;
+    value: number;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    color: string;
+    action?: React.ReactNode;
+}
+
 export function AdminDashboard() {
     const { token } = useAuth();
     const [stats, setStats] = useState<AdminStats | null>(null);
@@ -32,7 +40,7 @@ export function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const [statsRes, healthRes] = await Promise.all([
                 fetch('/api/admin/stats', { headers: { Authorization: `Bearer ${token}` } }),
@@ -46,11 +54,11 @@ export function AdminDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [token]);
 
     useEffect(() => {
         fetchData();
-    }, [token]);
+    }, [fetchData]);
 
     const handleClearFailedSyncs = async () => {
         if (!confirm(`Are you sure you want to delete all ${stats?.failedSyncs24h || 0} failed sync logs?\n\nThis action cannot be undone.`)) {
@@ -78,7 +86,7 @@ export function AdminDashboard() {
         }
     };
 
-    const StatCard = ({ title, value, icon: Icon, color, action }: any) => (
+    const StatCard = ({ title, value, icon: Icon, color, action }: StatCardProps) => (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
             <div className="flex justify-between items-start">
                 <div>

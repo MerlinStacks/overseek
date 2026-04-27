@@ -17,8 +17,22 @@ interface AnalyticsEvent {
     type: string;
     url: string;
     pageTitle?: string;
-    payload?: any;
+    payload?: EventPayload;
     createdAt: string;
+}
+
+interface EventPayload {
+    productName?: string;
+    sku?: string;
+    term?: string;
+    searchQuery?: string;
+    name?: string;
+    quantity?: number;
+    price?: number | string;
+    total?: number | string;
+    currency?: string;
+    orderId?: string | number;
+    [key: string]: unknown;
 }
 
 interface AnalyticsVisit {
@@ -58,12 +72,21 @@ interface VisitorData {
         events?: AnalyticsEvent[]; // Legacy flat events
     };
     visits?: AnalyticsVisit[];
-    customer?: any;
+    customer?: VisitorCustomer | null;
     stats: {
         totalEvents: number;
         totalVisits?: number;
         firstSeen?: { createdAt: string };
     };
+}
+
+interface VisitorCustomer {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    wooId?: number | string;
+    totalSpent?: number | string;
+    currency?: string;
 }
 
 /**

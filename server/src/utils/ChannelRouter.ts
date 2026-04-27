@@ -1,5 +1,5 @@
 /**
- * ChannelRouter — routes outbound messages to the correct external channel.
+ * ChannelRouter routes outbound messages to the correct external channel.
  *
  * Why: extracted from messages.ts to DRY the duplicated conversation + email-account
  * lookup pattern shared by `routeMessageToChannel` and `sendEmailWithAttachments`,
@@ -25,7 +25,9 @@ interface Attachment {
  */
 async function resolveEmailAccount(accountId: string, emailAccountId?: string) {
     if (emailAccountId) {
-        const explicit = await prisma.emailAccount.findUnique({ where: { id: emailAccountId } });
+        const explicit = await prisma.emailAccount.findFirst({
+            where: { id: emailAccountId, accountId }
+        });
         if (explicit) return explicit;
     }
     const { getDefaultEmailAccount } = await import('../utils/getDefaultEmailAccount');
@@ -61,8 +63,8 @@ export async function routeMessageToChannel(
     accountId: string,
     emailAccountId?: string
 ): Promise<void> {
-    const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
+    const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, accountId },
         include: {
             wooCustomer: true,
             socialAccount: true,
@@ -166,8 +168,8 @@ export async function sendEmailWithAttachments(
     accountId: string,
     emailAccountId?: string
 ): Promise<void> {
-    const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
+    const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, accountId },
         include: { wooCustomer: true }
     });
 

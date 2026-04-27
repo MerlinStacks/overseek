@@ -104,8 +104,8 @@ export function CrawlerManagement() {
 
             const result = await res.json();
             setData(result);
-        } catch (err: any) {
-            if (err?.name === 'AbortError') return;
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') return;
             Logger.error('Failed to fetch crawlers', { error: err });
             setError('Failed to load crawler data');
         } finally {

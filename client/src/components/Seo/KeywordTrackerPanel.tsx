@@ -108,8 +108,9 @@ function TrackerContent() {
             await addKeyword.mutateAsync({ keyword: trimmed });
             setNewKeyword('');
             setShowAddForm(false);
-        } catch (err: any) {
-            setAddError(err?.message || 'Failed to add keyword');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to add keyword';
+            setAddError(message);
         }
     };
 
@@ -370,7 +371,7 @@ function KeywordRow({ keyword, isSelected, onSelect, onDelete }: {
 function KeywordHistoryChart({ keywordId }: { keywordId: string }) {
     const [days, setDays] = useState(30);
     const { data, isLoading } = useKeywordHistory(keywordId, days);
-    const history = data?.history || [];
+    const history = useMemo(() => data?.history ?? [], [data?.history]);
 
     // Compute chart dimensions
     const chartData = useMemo(() => {

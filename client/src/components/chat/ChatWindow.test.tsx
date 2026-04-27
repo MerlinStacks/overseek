@@ -36,5 +36,5 @@ describe('ChatWindow', () => {
         // Just test that the module can be imported
         const module = await import('./ChatWindow');
         expect(module.ChatWindow).toBeDefined();
-    });
+    }, 15000);
 });

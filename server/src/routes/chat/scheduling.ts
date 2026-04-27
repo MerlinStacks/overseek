@@ -20,6 +20,11 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { content, scheduledFor, isInternal, attachments } = request.body as any;
             const userId = request.user?.id;
+            const accountId = request.accountId;
+
+            if (!accountId) {
+                return reply.code(400).send({ error: 'Account ID required' });
+            }
 
             if (!content || !scheduledFor) {
                 return reply.code(400).send({ error: 'Content and scheduledFor are required' });
@@ -28,6 +33,14 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
             const scheduledDate = new Date(scheduledFor);
             if (scheduledDate <= new Date()) {
                 return reply.code(400).send({ error: 'Scheduled time must be in the future' });
+            }
+
+            const conversation = await prisma.conversation.findFirst({
+                where: { id: request.params.id, accountId },
+                select: { id: true }
+            });
+            if (!conversation) {
+                return reply.code(404).send({ error: 'Conversation not found' });
             }
 
             // attachments should be array of { filename, path, contentType }
@@ -98,6 +111,11 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/:id/snooze', async (request, reply) => {
         try {
             const { until } = request.body as any;
+            const accountId = request.accountId;
+
+            if (!accountId) {
+                return reply.code(400).send({ error: 'Account ID required' });
+            }
 
             if (!until) {
                 return reply.code(400).send({ error: 'Snooze until time is required' });
@@ -108,8 +126,16 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Snooze time must be in the future' });
             }
 
+            const existing = await prisma.conversation.findFirst({
+                where: { id: request.params.id, accountId },
+                select: { id: true }
+            });
+            if (!existing) {
+                return reply.code(404).send({ error: 'Conversation not found' });
+            }
+
             const conversation = await prisma.conversation.update({
-                where: { id: request.params.id },
+                where: { id: existing.id },
                 data: {
                     status: 'SNOOZED',
                     snoozedUntil: snoozeUntil,
@@ -130,8 +156,21 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     // DELETE /:id/snooze - Cancel snooze (reopen conversation)
     fastify.delete<{ Params: { id: string } }>('/:id/snooze', async (request, reply) => {
         try {
+            const accountId = request.accountId;
+            if (!accountId) {
+                return reply.code(400).send({ error: 'Account ID required' });
+            }
+
+            const existing = await prisma.conversation.findFirst({
+                where: { id: request.params.id, accountId },
+                select: { id: true }
+            });
+            if (!existing) {
+                return reply.code(404).send({ error: 'Conversation not found' });
+            }
+
             const conversation = await prisma.conversation.update({
-                where: { id: request.params.id },
+                where: { id: existing.id },
                 data: {
                     status: 'OPEN',
                     snoozedUntil: null,

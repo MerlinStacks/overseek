@@ -134,7 +134,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
         fetchAllBomData();
     }, [token, currentAccount, product.id, variants, canViewCogs]);
 
-    const handleFieldChange = useCallback((id: number, field: keyof ProductVariant, value: any) => {
+    const handleFieldChange = useCallback((id: number, field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => {
         setEditingVariants(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
     }, []);
 

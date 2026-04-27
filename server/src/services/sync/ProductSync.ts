@@ -79,10 +79,12 @@ export class ProductSync extends BaseSync {
                     where: { accountId_wooId: { accountId, wooId: p.id } },
                     update: {
                         name: p.name,
+                        sku: p.sku,
                         price: parsedPrice,
                         stockStatus: p.stock_status, // Sync from WooCommerce to distinguish states
                         stockQuantity: p.stock_quantity ?? null,
                         manageStock: p.manage_stock ?? (p as any).manage_stock ?? false,
+                        permalink: p.permalink,
                         rawData: p as any,
                         mainImage: p.images?.[0]?.src,
                         weight: p.weight ? parseFloat(p.weight) : null,

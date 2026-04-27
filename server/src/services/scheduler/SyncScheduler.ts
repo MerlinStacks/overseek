@@ -8,6 +8,7 @@
 import { QueueFactory } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
+import { SCHEDULER_LIMITS } from '../../config/limits';
 
 
 export class SyncScheduler {
@@ -68,19 +69,19 @@ export class SyncScheduler {
     static async register() {
         // Global Sync Orchestrator (Every 5 mins)
         await this.queue.add('orchestrate-sync', {}, {
-            repeat: { pattern: '*/5 * * * *' },
+            repeat: { pattern: SCHEDULER_LIMITS.FULL_SYNC_CRON },
             jobId: 'orchestrator'
         });
-        Logger.info('Scheduled Global Sync Orchestrator (Every 5 mins)');
+        Logger.info(`Scheduled Global Sync Orchestrator (${SCHEDULER_LIMITS.FULL_SYNC_CRON})`);
 
         // Fast Order Sync (Every 2 minutes)
         // Webhooks handle real-time order events; this is a safety-net
         // to catch anything webhooks miss.
         await this.queue.add('fast-order-sync', {}, {
-            repeat: { every: 120000 },
+            repeat: { every: SCHEDULER_LIMITS.FAST_SYNC_INTERVAL_MS },
             jobId: 'fast-order-sync'
         });
-        Logger.info('Scheduled Fast Order Sync (Every 2 minutes)');
+        Logger.info(`Scheduled Fast Order Sync (Every ${Math.floor(SCHEDULER_LIMITS.FAST_SYNC_INTERVAL_MS / 1000)} seconds)`);
     }
 
     /**

@@ -12,7 +12,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { Logger } from '../../utils/logger';
 import {
     Package, Plus, Search, Loader2, Trash2, Edit2, Box,
-    AlertTriangle, Building2
+    Building2
 } from 'lucide-react';
 import { Pagination } from '../ui/Pagination';
 import { Toast, ToastType } from '../ui/Toast';
@@ -45,6 +45,11 @@ interface InternalProductFormData {
     supplierId: string;
 }
 
+interface SupplierOption {
+    id: string;
+    name: string;
+}
+
 export function InternalProductsList() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -74,7 +79,7 @@ export function InternalProductsList() {
     });
 
     // Suppliers for dropdown
-    const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+    const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
 
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
@@ -93,16 +98,7 @@ export function InternalProductsList() {
     }, [searchQuery]);
 
     // Fetch products
-    useEffect(() => {
-        fetchProducts();
-    }, [currentAccount, token, debouncedQuery, page, limit]);
-
-    // Fetch suppliers on mount
-    useEffect(() => {
-        fetchSuppliers();
-    }, [currentAccount, token]);
-
-    async function fetchProducts() {
+    const fetchProducts = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         setIsLoading(true);
@@ -130,9 +126,14 @@ export function InternalProductsList() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token, limit, page, debouncedQuery]);
 
-    async function fetchSuppliers() {
+    useEffect(() => {
+        void fetchProducts();
+    }, [fetchProducts]);
+
+    // Fetch suppliers on mount
+    const fetchSuppliers = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         try {
@@ -144,13 +145,17 @@ export function InternalProductsList() {
             });
 
             if (res.ok) {
-                const data = await res.json();
-                setSuppliers(data.map((s: any) => ({ id: s.id, name: s.name })));
+                const data: SupplierOption[] = await res.json();
+                setSuppliers(data.map((s) => ({ id: s.id, name: s.name })));
             }
         } catch (err) {
             Logger.error('Failed to fetch suppliers', { error: err });
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        void fetchSuppliers();
+    }, [fetchSuppliers]);
 
     function openCreateModal() {
         setEditingProduct(null);
@@ -220,7 +225,7 @@ export function InternalProductsList() {
             }
         } catch (err) {
             Logger.error('Failed to save internal product', { error: err });
-            showToast('Failed to save — network error');
+            showToast('Failed to save - network error');
         } finally {
             setIsSaving(false);
         }
@@ -254,7 +259,7 @@ export function InternalProductsList() {
             }
         } catch (err) {
             Logger.error('Failed to delete internal product', { error: err });
-            showToast('Failed to delete — network error');
+            showToast('Failed to delete - network error');
         }
     }
 

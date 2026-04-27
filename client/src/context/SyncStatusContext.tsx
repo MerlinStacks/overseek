@@ -10,7 +10,7 @@ export interface SyncJob {
     id: string;
     queue: string;
     progress: number;
-    data: any;
+    data: unknown;
 }
 
 export interface SyncLog {
@@ -136,12 +136,12 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!socket) return;
 
-        const handleSyncStarted = (data: { accountId: string; type: string }) => {
+        const handleSyncStarted = (_data: { accountId: string; type: string }) => {
             setIsSyncing(true);
             fetchStatus();
         };
 
-        const handleSyncCompleted = (data: { accountId: string; type: string; status: string; error?: string }) => {
+        const handleSyncCompleted = (_data: { accountId: string; type: string; status: string; error?: string }) => {
             fetchStatus();
         };
 

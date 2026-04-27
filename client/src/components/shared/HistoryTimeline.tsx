@@ -9,15 +9,28 @@ interface AuditLog {
     id: string;
     action: string;
     resource: string;
-    details: any;
+    details: Record<string, unknown>;
     source?: string; // USER, SYSTEM_BOM, SYSTEM_SYNC
-    previousValue?: any;
+    previousValue?: Record<string, unknown>;
     validationStatus?: string;
     createdAt: string;
     user: {
         fullName: string | null;
         email: string;
     } | null;
+}
+
+interface OrderBomDeductionDetails extends Record<string, unknown> {
+    trigger: 'ORDER_BOM_DEDUCTION';
+    stock_quantity?: number;
+    orderNumber?: string | number;
+    quantitySold?: number;
+    bomItemQty?: number;
+    deductionQty?: number;
+}
+
+function isOrderBomDeductionDetails(details: Record<string, unknown> | undefined): details is OrderBomDeductionDetails {
+    return details?.trigger === 'ORDER_BOM_DEDUCTION';
 }
 
 interface HistoryTimelineProps {
@@ -86,7 +99,7 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
 
     /** Format action description based on source and details */
     const getActionDescription = (log: AuditLog) => {
-        if (log.source === 'SYSTEM_BOM' && log.details?.trigger === 'ORDER_BOM_DEDUCTION') {
+        if (log.source === 'SYSTEM_BOM' && isOrderBomDeductionDetails(log.details)) {
             const prev = log.previousValue?.stock_quantity;
             const next = log.details.stock_quantity;
             const orderNum = log.details.orderNumber;
@@ -134,7 +147,7 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                                 </div>
 
                                 {/* BOM-specific details */}
-                                {log.source === 'SYSTEM_BOM' && log.details?.trigger === 'ORDER_BOM_DEDUCTION' && (
+                                {log.source === 'SYSTEM_BOM' && isOrderBomDeductionDetails(log.details) && (
                                     <div className="mt-3 bg-orange-50/50 rounded-sm p-3 text-xs">
                                         <div className="flex flex-wrap gap-4 text-gray-600">
                                             <span><strong>Qty Sold:</strong> {log.details.quantitySold}</span>

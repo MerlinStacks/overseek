@@ -59,15 +59,17 @@ export function MarketingPage() {
         }
     }, [activeTab, setSearchParams]);
 
-    const tabs = [
+    const adTabs: Array<{ id: TabId; label: string; icon: typeof Mail }> = isAdTrackingEnabled ? [
+        { id: 'performance', label: 'Ad Performance', icon: BarChart2 },
+        { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
+        { id: 'experiments', label: 'A/B Tests', icon: FlaskConical },
+        { id: 'reports', label: 'Reports', icon: FileText },
+        { id: 'intelligence', label: 'Intelligence', icon: Zap },
+    ] : [];
+
+    const tabs: Array<{ id: TabId; label: string; icon: typeof Mail }> = [
         { id: 'campaigns', label: 'Campaigns', icon: Mail },
-        ...(isAdTrackingEnabled ? [
-            { id: 'performance', label: 'Ad Performance', icon: BarChart2 },
-            { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
-            { id: 'experiments', label: 'A/B Tests', icon: FlaskConical },
-            { id: 'reports', label: 'Reports', icon: FileText },
-            { id: 'intelligence', label: 'Intelligence', icon: Zap },
-        ] : []),
+        ...adTabs,
     ];
 
     const handleEditCampaign = (id: string, name: string) => {
@@ -82,7 +84,7 @@ export function MarketingPage() {
         setEditingItem(null);
     };
 
-    const handleSaveEmail = async (html: string, design: any) => {
+    const handleSaveEmail = async (html: string, design: unknown) => {
         if (!editingItem || !currentAccount) return;
         try {
             await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
@@ -132,7 +134,7 @@ export function MarketingPage() {
                     return (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
+                            onClick={() => setActiveTab(tab.id)}
                             className={`flex items-center gap-2 px-6 py-3 font-medium text-sm border-b-2 transition-colors ${isActive
                                 ? 'border-blue-600 text-blue-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

@@ -10,12 +10,17 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { SegmentService } from './SegmentService';
 import { resolveMergeTags } from './MergeTagResolver';
+import { EmailService } from './EmailService';
+import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
+import { campaignTrackingService } from './CampaignTrackingService';
 
 export class MarketingService {
     private segmentService: SegmentService;
+    private emailService: EmailService;
 
     constructor() {
         this.segmentService = new SegmentService();
+        this.emailService = new EmailService();
     }
 
     // -------------------
@@ -73,6 +78,14 @@ export class MarketingService {
     async sendCampaign(campaignId: string, accountId: string) {
         const campaign = await this.getCampaign(campaignId, accountId);
         if (!campaign) throw new Error('Campaign not found');
+        if (!campaign.subject?.trim() || !campaign.content?.trim()) {
+            throw new Error('Campaign must have subject and content before sending');
+        }
+
+        const defaultEmailAccount = await getDefaultEmailAccount(accountId);
+        if (!defaultEmailAccount) {
+            throw new Error('No sending-capable email account is configured');
+        }
 
         let totalRecipients = 0;
 
@@ -92,19 +105,59 @@ export class MarketingService {
         });
 
         let processedCount = 0;
+        let sentCount = 0;
+        let failedCount = 0;
         const BATCH_SIZE = 1000;
+
+        const sendToBatch = async (customers: Array<{ id: string; email: string | null }>) => {
+            for (const customer of customers) {
+                const recipientEmail = customer.email?.trim();
+                if (!recipientEmail) continue;
+
+                processedCount++;
+                try {
+                    const subject = resolveMergeTags(campaign.subject, { customer });
+                    const content = resolveMergeTags(campaign.content, { customer });
+
+                    const result = await this.emailService.sendEmail(
+                        accountId,
+                        defaultEmailAccount.id,
+                        recipientEmail,
+                        subject,
+                        content,
+                        undefined,
+                        { source: 'CAMPAIGN', sourceId: campaignId }
+                    );
+
+                    if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+                        continue;
+                    }
+
+                    sentCount++;
+                    await campaignTrackingService.trackSend(accountId, campaignId, 'broadcast', recipientEmail);
+                } catch (error) {
+                    failedCount++;
+                    Logger.error('Error sending campaign email', {
+                        campaignId,
+                        accountId,
+                        recipientEmail,
+                        error
+                    });
+                }
+            }
+        };
 
         try {
             if (campaign.segmentId) {
                 for await (const batch of this.segmentService.iterateCustomersInSegment(accountId, campaign.segmentId, BATCH_SIZE)) {
-                    processedCount += batch.length;
+                    await sendToBatch(batch);
                 }
             } else {
                 let cursor: string | undefined;
                 while (true) {
                     const params: any = {
                         where: { accountId, email: { not: '' } },
-                        select: { id: true, email: true },
+                        select: { id: true, email: true, firstName: true, lastName: true },
                         take: BATCH_SIZE,
                         orderBy: { id: 'asc' }
                     };
@@ -117,7 +170,7 @@ export class MarketingService {
                     const customers = await prisma.wooCustomer.findMany(params);
                     if (customers.length === 0) break;
 
-                    processedCount += customers.length;
+                    await sendToBatch(customers);
 
                     if (customers.length < BATCH_SIZE) break;
                     cursor = customers[customers.length - 1].id;
@@ -127,12 +180,13 @@ export class MarketingService {
             Logger.error('Error sending campaign', err);
         }
 
+        const finalStatus = sentCount > 0 ? 'SENT' : (failedCount > 0 ? 'FAILED' : 'SENT');
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
-            data: { status: 'SENT', sentCount: processedCount }
+            data: { status: finalStatus, sentCount }
         });
 
-        return { success: true, count: processedCount };
+        return { success: sentCount > 0, count: sentCount, processedCount, failedCount };
     }
 
     // -------------------
@@ -160,9 +214,17 @@ export class MarketingService {
     }
 
     async upsertAutomation(accountId: string, data: any) {
-        const { id, name, triggerType, triggerConfig, steps, isActive } = data;
+        const { id, name, triggerType, triggerConfig, isActive } = data;
 
         if (id) {
+            const existing = await prisma.marketingAutomation.findFirst({
+                where: { id, accountId },
+                select: { id: true }
+            });
+            if (!existing) {
+                throw new Error('Automation not found');
+            }
+
             return prisma.marketingAutomation.update({
                 where: { id },
                 data: {
@@ -208,6 +270,14 @@ export class MarketingService {
         const { id, name, subject, content, designJson } = data;
 
         if (id) {
+            const existing = await prisma.emailTemplate.findFirst({
+                where: { id, accountId },
+                select: { id: true }
+            });
+            if (!existing) {
+                throw new Error('Template not found');
+            }
+
             return prisma.emailTemplate.update({
                 where: { id },
                 data: { name, subject, content, designJson }

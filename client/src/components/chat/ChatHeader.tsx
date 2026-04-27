@@ -61,11 +61,11 @@ export function ChatHeader({
 
     // Close dropdowns on outside click
     const actionsMenuRef = useClickOutside<HTMLDivElement>(
-        useCallback(() => setShowActionsMenu(false), []),
+        useCallback(() => setShowActionsMenu(false), [setShowActionsMenu]),
         showActionsMenu
     );
     const moreMenuRef = useClickOutside<HTMLDivElement>(
-        useCallback(() => setShowMoreMenu(false), []),
+        useCallback(() => setShowMoreMenu(false), [setShowMoreMenu]),
         showMoreMenu
     );
 

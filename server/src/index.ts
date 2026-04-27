@@ -11,7 +11,8 @@ import { IndexingService } from './services/search/IndexingService';
 import { esClient } from './utils/elastic';
 import { Logger } from './utils/logger';
 import { validateEnvironment } from './utils/env';
-import { initGracefulShutdown } from './utils/shutdown';
+import { initGracefulShutdown, onShutdown } from './utils/shutdown';
+import { startMemoryMonitor, stopMemoryMonitor } from './utils/memoryMonitor';
 
 // Validate environment variables before proceeding
 try {
@@ -55,6 +56,12 @@ async function start() {
   // Wait for Fastify app to be fully initialized
   await appPromise;
 
+  // Start lightweight memory telemetry early in bootstrap.
+  startMemoryMonitor();
+  onShutdown(async () => {
+    stopMemoryMonitor();
+  });
+
   // Start Internal Workers
   try {
     await startWorkers();
@@ -68,8 +75,6 @@ async function start() {
     await SchedulerService.start();
     Logger.info('[Startup] Scheduler started');
 
-    // Register scheduler worker for graceful shutdown
-    const { onShutdown } = await import('./utils/shutdown');
     onShutdown(() => SchedulerService.shutdown());
   } catch (error) {
     Logger.error('[Startup] Failed to start scheduler', { error });
@@ -77,8 +82,11 @@ async function start() {
 
   // Start keyword rank tracking scheduler
   try {
-    const { startKeywordRankScheduler } = await import('./services/search-console/keywordRankScheduler');
+    const { startKeywordRankScheduler, stopKeywordRankScheduler } = await import('./services/search-console/keywordRankScheduler');
     startKeywordRankScheduler();
+    onShutdown(async () => {
+      stopKeywordRankScheduler();
+    });
     Logger.info('[Startup] Keyword rank scheduler started');
   } catch (error) {
     Logger.error('[Startup] Failed to start keyword rank scheduler', { error });
@@ -86,8 +94,11 @@ async function start() {
 
   // Start competitor SERP position tracking scheduler
   try {
-    const { startCompetitorRankScheduler } = await import('./services/search-console/CompetitorRankScheduler');
+    const { startCompetitorRankScheduler, stopCompetitorRankScheduler } = await import('./services/search-console/CompetitorRankScheduler');
     startCompetitorRankScheduler();
+    onShutdown(async () => {
+      stopCompetitorRankScheduler();
+    });
     Logger.info('[Startup] Competitor rank scheduler started');
   } catch (error) {
     Logger.error('[Startup] Failed to start competitor rank scheduler', { error });

@@ -41,6 +41,9 @@ const REASON_LABELS: Record<string, string> = {
     PARENT_VARIATION_DELETED: 'Parent variation was deleted from WooCommerce',
     CHILD_PRODUCT_DELETED: 'Component product was deleted from WooCommerce',
     CHILD_VARIATION_DELETED: 'Component variation was deleted from WooCommerce',
+    VARIATION_DELETED_IN_WOO: 'Component variation no longer exists in WooCommerce',
+    PRODUCT_404: 'Component product no longer exists in WooCommerce',
+    PARENT_PRODUCT_404: 'Parent BOM product no longer exists in WooCommerce',
     UNKNOWN: 'Automatically deactivated (reason unspecified)',
 };
 

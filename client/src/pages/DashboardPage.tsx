@@ -1,4 +1,4 @@
-import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
+import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { Logger } from '../utils/logger';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -9,62 +9,33 @@ import { usePermissions } from '../hooks/usePermissions';
 import { DashboardPageSkeleton } from '../components/ui/PageSkeletons';
 import { Loader2, Plus, X, Lock, Unlock } from 'lucide-react';
 import { debounce, isEqual } from '../utils/debounce';
-import { useRef, useLayoutEffect, useState, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { useMobile } from '../hooks/useMobile';
 import { getDateRange, getComparisonRange, getComparisonLabel, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 import { api } from '../services/api';
 
-// Custom WidthProvider HOC since the library's export is broken in ESM
-const withWidth = (WrappedComponent: any) => {
-    return (props: any) => {
-        const ref = useRef<HTMLDivElement>(null);
-        // Initialize with 0 to prevent rendering at wrong breakpoint
-        const [width, setWidth] = useState(0);
-
-        // Debounce width updates to reduce re-renders during resize
-        const debouncedSetWidth = useMemo(
-            () => debounce((w: number) => setWidth(w), 100),
-            []
-        );
-
-        useLayoutEffect(() => {
-            if (!ref.current) return;
-
-            // Set initial width immediately (no debounce for first render)
-            setWidth(ref.current.offsetWidth || ref.current.clientWidth);
-
-            const observer = new ResizeObserver((entries) => {
-                for (const entry of entries) {
-                    // Only debounce subsequent updates
-                    debouncedSetWidth(entry.contentRect.width);
-                }
-            });
-            observer.observe(ref.current);
-            return () => observer.disconnect();
-        }, [debouncedSetWidth]);
-
-        return (
-            <div ref={ref} className={props.className} style={{ width: '100%', height: '100%' }}>
-                {/* Only render grid when we know actual width to prevent layout jump */}
-                {width > 0 && (
-                    <WrappedComponent
-                        {...props}
-                        width={width}
-                        className="" // clear class on child to avoid conflicts
-                    />
-                )}
-            </div>
-        );
-    };
-};
-
-const ResponsiveGridLayoutWithWidth = withWidth(ResponsiveGridLayout);
+const ResponsiveGridLayoutWithWidth = WidthProvider(Responsive);
+interface GridLayoutItem {
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+type Layouts = Partial<Record<string, readonly GridLayoutItem[]>>;
 
 interface WidgetInstance {
     id: string; // Generated ID or DB ID
     widgetKey: string;
     position: { x: number, y: number, w: number, h: number };
-    settings?: any;
+    settings?: unknown;
+}
+
+interface DashboardWidgetResponse {
+    id: string;
+    widgetKey: string;
+    position: string | { x: number; y: number; w: number; h: number };
+    settings?: unknown;
 }
 
 export function DashboardPage() {
@@ -86,10 +57,37 @@ export function DashboardPage() {
     const [dateOption, setDateOption] = useState<DateRangeOption>('today');
     const [comparisonOption, setComparisonOption] = useState<ComparisonOption>('smart');
 
+    const fetchLayout = useCallback(async () => {
+        if (!currentAccount) return;
+        setIsLoading(true);
+        try {
+            const data = await api.request<{ widgets: DashboardWidgetResponse[] }>('/api/dashboard', {
+                method: 'GET',
+                token: token || undefined,
+                accountId: currentAccount.id,
+                headers: {
+                    'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
+                }
+            });
+
+            // Transform DB widgets to state
+            const mapped = data.widgets.map((w) => ({
+                id: w.id, // Use unique ID for key
+                widgetKey: w.widgetKey,
+                position: (typeof w.position === 'string' ? JSON.parse(w.position) : w.position) as WidgetInstance['position'],
+                settings: w.settings
+            }));
+            setWidgets(mapped);
+        } catch (err) {
+            Logger.error('An error occurred', { error: err });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [currentAccount, token]);
+
     useEffect(() => {
         fetchLayout();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [fetchLayout]);
 
     /** Close the Add Widget dropdown when clicking outside */
     useEffect(() => {
@@ -103,34 +101,6 @@ export function DashboardPage() {
         return () => document.removeEventListener('mousedown', handler);
     }, [showAddWidget]);
 
-    async function fetchLayout() {
-        if (!currentAccount) return;
-        setIsLoading(true);
-        try {
-            const data = await api.request<{ widgets: any[] }>('/api/dashboard', {
-                method: 'GET',
-                token: token || undefined,
-                accountId: currentAccount.id,
-                headers: {
-                    'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
-                }
-            });
-
-            // Transform DB widgets to state
-            const mapped = data.widgets.map((w: any) => ({
-                id: w.id, // Use unique ID for key
-                widgetKey: w.widgetKey,
-                position: typeof w.position === 'string' ? JSON.parse(w.position) : w.position,
-                settings: w.settings
-            }));
-            setWidgets(mapped);
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-        } finally {
-            setIsLoading(false);
-        }
-    }
-
     /**
      * Handle breakpoint changes to maintain layout stability.
      * This prevents react-grid-layout from recalculating layouts during resize.
@@ -139,7 +109,7 @@ export function DashboardPage() {
         setCurrentBreakpoint(newBreakpoint);
     };
 
-    const onLayoutChange = (_layout: any, allLayouts: any) => {
+    const onLayoutChange = (_layout: readonly GridLayoutItem[], allLayouts: Layouts) => {
         // Don't persist layout changes on mobile to protect desktop layout
         if (isMobile) return;
         // Only persist when layout is unlocked to prevent accidental saves
@@ -151,7 +121,7 @@ export function DashboardPage() {
 
         // Update local state positions from lg layout
         const newWidgets = widgets.map(w => {
-            const match = lgLayout.find((l: any) => l.i === w.id);
+            const match = lgLayout.find((l) => l.i === w.id);
             if (match) {
                 return {
                     ...w,
@@ -166,10 +136,6 @@ export function DashboardPage() {
             debouncedSave(newWidgets);
         }
     };
-
-    /** Ref-based save to avoid stale closures over token/currentAccount */
-    const widgetsRef = useRef(widgets);
-    widgetsRef.current = widgets;
 
     const saveLayout = useCallback(async (newWidgets: WidgetInstance[]) => {
         setIsSaving(true);
@@ -268,7 +234,8 @@ export function DashboardPage() {
                         <select
                             value={dateOption}
                             onChange={(e) => setDateOption(e.target.value as DateRangeOption)}
-                            className="bg-transparent border-r border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer"
+                            aria-label="Date range"
+                            className="bg-transparent border-r border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500/50"
                         >
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -281,7 +248,8 @@ export function DashboardPage() {
                         <select
                             value={comparisonOption}
                             onChange={(e) => setComparisonOption(e.target.value as ComparisonOption)}
-                            className="bg-transparent px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer"
+                            aria-label="Comparison period"
+                            className="bg-transparent px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400 outline-hidden focus:bg-slate-50 dark:focus:bg-slate-700/50 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500/50"
                         >
                             <option value="none">No Comparison</option>
                             <option value="smart">Smart Comparison</option>
@@ -297,6 +265,7 @@ export function DashboardPage() {
                     {/* Layout Lock Toggle */}
                     <button
                         onClick={() => setIsLayoutLocked(!isLayoutLocked)}
+                        aria-label={isLayoutLocked ? 'Unlock layout editing' : 'Lock layout editing'}
                         className={`px-3 py-2.5 rounded-xl text-sm flex items-center gap-2 transition-all duration-200 border font-medium ${isLayoutLocked
                             ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                             : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20'
@@ -310,13 +279,16 @@ export function DashboardPage() {
                     <div className="relative" ref={addWidgetRef}>
                         <button
                             onClick={() => setShowAddWidget(!showAddWidget)}
+                            aria-label="Add dashboard widget"
+                            aria-expanded={showAddWidget}
+                            aria-controls="dashboard-widget-menu"
                             className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5"
                         >
                             <Plus size={16} /> Add Widget
                         </button>
 
                         {showAddWidget && (
-                            <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-scale-in">
+                            <div id="dashboard-widget-menu" className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-scale-in">
                                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                                     <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Available Widgets</span>
                                 </div>
@@ -346,7 +318,12 @@ export function DashboardPage() {
                 breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                 cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                 rowHeight={100}
-                onLayoutChange={(l: any, all: any) => onLayoutChange(l, all)}
+                onLayoutChange={(layoutArg, layoutsArg) => {
+                    onLayoutChange(
+                        layoutArg as unknown as readonly GridLayoutItem[],
+                        layoutsArg as Layouts
+                    );
+                }}
                 onBreakpointChange={onBreakpointChange}
                 isDraggable={!isLayoutLocked}
                 isResizable={!isLayoutLocked}
@@ -367,18 +344,24 @@ export function DashboardPage() {
                                 <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }}
+                                        aria-label="Remove widget"
                                         className="p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-slate-700/80 rounded-sm hover:bg-red-50 dark:hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 text-gray-400 dark:text-slate-400 pointer-events-auto shadow-xs"
                                         title="Remove Widget"
                                     >
                                         <X size={14} />
                                     </button>
-                                    <div className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-slate-700/80 rounded-sm text-gray-500 dark:text-slate-400 pointer-events-auto shadow-xs hover:bg-white dark:hover:bg-slate-600">
+                                    <button
+                                        type="button"
+                                        aria-label="Drag widget"
+                                        title="Drag Widget"
+                                        className="drag-handle p-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-slate-700/80 rounded-sm text-gray-500 dark:text-slate-400 pointer-events-auto shadow-xs hover:bg-white dark:hover:bg-slate-600 focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+                                    >
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
-                                    </div>
+                                    </button>
                                 </div>
                             )}
                             {renderWidget(w.widgetKey, {
-                                settings: w.settings,
+                                settings: (typeof w.settings === 'object' && w.settings !== null ? w.settings : undefined) as Record<string, unknown> | undefined,
                                 className: "h-full",
                                 dateRange,
                                 comparison: comparisonRange,

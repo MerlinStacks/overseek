@@ -52,11 +52,7 @@ export function PoliciesPage() {
         setToastVisible(true);
     }, []);
 
-    useEffect(() => {
-        if (currentAccount && token) fetchPolicies();
-    }, [currentAccount, token]);
-
-    const fetchPolicies = async () => {
+    const fetchPolicies = useCallback(async () => {
         try {
             const res = await fetch('/api/policies', {
                 headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
@@ -67,7 +63,11 @@ export function PoliciesPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [token, currentAccount?.id]);
+
+    useEffect(() => {
+        if (currentAccount && token) fetchPolicies();
+    }, [currentAccount, token, fetchPolicies]);
 
     const handleCreate = () => {
         setSelectedPolicy(null);
@@ -335,7 +335,7 @@ export function PoliciesPage() {
                                 <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
                                     <select
                                         value={formType}
-                                        onChange={e => setFormType(e.target.value as any)}
+                                        onChange={e => setFormType(e.target.value as 'POLICY' | 'SOP' | 'TRAINING')}
                                         className="text-sm border border-gray-300 rounded-lg px-2 py-1"
                                     >
                                         <option value="POLICY">Policy</option>

@@ -50,6 +50,29 @@ const platformServices = new Map<string, ConversionPlatformService>();
 
 export class ConversionForwarder {
     /**
+     * Check whether an event type is enabled for a specific platform config.
+     * If no events object is configured, default to enabled for backward compatibility.
+     */
+    private static isEventEnabledForPlatform(config: Record<string, any>, eventType: string): boolean {
+        const events = config?.events;
+        if (!events || typeof events !== 'object') return true;
+
+        const EVENT_TOGGLE_MAP: Record<string, string> = {
+            purchase: 'purchase',
+            add_to_cart: 'addToCart',
+            checkout_start: 'initiateCheckout',
+            product_view: 'viewContent',
+            search: 'search',
+        };
+
+        const toggleKey = EVENT_TOGGLE_MAP[eventType];
+        if (!toggleKey) return true;
+
+        // Toggle defaults to enabled unless explicitly set to false
+        return events[toggleKey] !== false;
+    }
+
+    /**
      * Register a platform service. Called once at app startup
      * for each supported platform.
      */
@@ -91,9 +114,14 @@ export class ConversionForwarder {
             const enabledConfigs = await ConversionForwarder.getEnabledPlatforms(data.accountId);
             if (enabledConfigs.length === 0) return;
 
+            const filteredConfigs = enabledConfigs.filter(({ config }) =>
+                ConversionForwarder.isEventEnabledForPlatform(config, data.type),
+            );
+            if (filteredConfigs.length === 0) return;
+
             // Fan out to all enabled platforms — allSettled ensures one failure doesn't block others
             const results = await Promise.allSettled(
-                enabledConfigs.map(({ platform, config }) => {
+                filteredConfigs.map(({ platform, config }) => {
                     const service = platformServices.get(platform);
                     if (!service) {
                         Logger.warn(`[ConversionForwarder] No service registered for platform: ${platform}`);
@@ -108,7 +136,7 @@ export class ConversionForwarder {
                 const result = results[i];
                 if (result.status === 'rejected') {
                     Logger.error('[ConversionForwarder] Platform delivery failed', {
-                        platform: enabledConfigs[i].platform,
+                        platform: filteredConfigs[i].platform,
                         accountId: data.accountId,
                         eventType: data.type,
                         error: result.reason?.message || String(result.reason),

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -51,11 +51,7 @@ export function SuppliersList() {
     const [addingItemTo, setAddingItemTo] = useState<string | null>(null);
     const [newItem, setNewItem] = useState({ name: '', sku: '', cost: '0', leadTime: '7', moq: '1' });
 
-    useEffect(() => {
-        if (currentAccount) fetchSuppliers();
-    }, [currentAccount]);
-
-    async function fetchSuppliers() {
+    const fetchSuppliers = useCallback(async () => {
         if (!currentAccount) return;
         setLoading(true);
         try {
@@ -69,7 +65,11 @@ export function SuppliersList() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        fetchSuppliers();
+    }, [fetchSuppliers]);
 
     async function handleCreateSupplier(e: React.FormEvent) {
         e.preventDefault();

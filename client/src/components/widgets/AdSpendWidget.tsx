@@ -1,62 +1,94 @@
 import { WidgetProps } from './WidgetRegistry';
 import { Logger } from '../../utils/logger';
 import { formatCurrency } from '../../utils/format';
-import { TrendingUp, Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { TrendingUp } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { WidgetLoadingState, WidgetErrorState } from './WidgetState';
+import { widgetCardClass, widgetSubtleTextClass } from './widgetStyles';
+
+interface AdSpendData {
+    spend?: number;
+    currency?: string;
+    roas?: number;
+    clicks?: number;
+}
 
 export function AdSpendWidget({ className, dateRange }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [data, setData] = useState<any>(null);
+    const [data, setData] = useState<AdSpendData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const fetchAbortRef = useRef<AbortController | null>(null);
+
+    const fetchData = useCallback(async () => {
+        if (!currentAccount || !token) return;
+
+        fetchAbortRef.current?.abort();
+        const controller = new AbortController();
+        fetchAbortRef.current = controller;
+        setLoading(true);
+
+        try {
+            const res = await fetch(`/api/analytics/ads-summary?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                signal: controller.signal
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const resData = await res.json() as AdSpendData;
+            if (controller.signal.aborted) return;
+            setData(resData);
+            setError(null);
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
+            Logger.error('Failed to fetch ad spend data', { error: err });
+            setError('Failed to load ad spend');
+        } finally {
+            if (!controller.signal.aborted) {
+                setLoading(false);
+            }
+        }
+    }, [currentAccount, dateRange.endDate, dateRange.startDate, token]);
 
     useEffect(() => {
-        if (!currentAccount) return;
-
-        fetch(`/api/analytics/ads-summary?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-        })
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-            })
-            .then(resData => setData(resData))
-            .catch(e => Logger.error('Failed to fetch ad spend data', { error: e }))
-            .finally(() => setLoading(false));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token, dateRange]);
+        fetchData();
+        return () => {
+            fetchAbortRef.current?.abort();
+        };
+    }, [fetchData]);
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-6 flex flex-col justify-between rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 ${className}`}>
+        <div className={`${widgetCardClass} h-full w-full p-6 flex flex-col justify-between hover:-translate-y-0.5 ${className || ''}`}>
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium uppercase tracking-wider">Ad Spend</h3>
+                    <h3 className={`${widgetSubtleTextClass} font-medium uppercase tracking-wider`}>Ad Spend</h3>
                     {loading ? (
-                        <div className="mt-2"><Loader2 className="animate-spin text-slate-400" size={24} /></div>
+                        <WidgetLoadingState message="Loading ad metrics..." className="items-start py-2" />
+                    ) : error ? (
+                        <WidgetErrorState message={error} onRetry={fetchData} className="items-start py-2" />
                     ) : (
                         <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
                             {formatCurrency(data?.spend || 0, data?.currency || 'USD')}
                         </p>
                     )}
                 </div>
-                <div className="p-3 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-xl text-white shadow-lg shadow-blue-500/25">
-                    <TrendingUp size={24} />
+                <div className="p-2.5 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-lg text-white shadow-lg shadow-blue-500/25">
+                    <TrendingUp size={20} />
                 </div>
             </div>
-            {!loading && (
+            {!loading && !error && (
                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm border-t border-slate-200 dark:border-slate-700 pt-4">
                     <div>
                         <p className="text-slate-400 dark:text-slate-500 text-xs">ROAS</p>
                         <p className="font-bold text-slate-900 dark:text-white">
-                            {/* ROAS from API or dash if 0 */}
-                            {data?.roas ? data.roas.toFixed(2) + 'x' : '-'}
+                            {data?.roas ? `${data.roas.toFixed(2)}x` : '-'}
                         </p>
                     </div>
                     <div className="text-right">
                         <p className="text-slate-400 dark:text-slate-500 text-xs">Clicks</p>
-                        <p className="font-bold text-slate-900 dark:text-white">{data?.clicks || 0}</p>
+                        <p className="font-bold text-slate-900 dark:text-white">{(data?.clicks || 0).toLocaleString()}</p>
                     </div>
                 </div>
             )}

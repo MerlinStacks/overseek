@@ -1,11 +1,11 @@
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { Logger } from '../utils/logger';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
-import { formatDate, fixMojibake, formatCurrency } from '../utils/format';
-import { User, MapPin, Mail, Phone, Package, CreditCard, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings, Truck, ExternalLink, Copy } from 'lucide-react';
+import { formatDate, formatCurrency } from '../utils/format';
+import { User, MapPin, Mail, Phone, Package, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Truck, ExternalLink, Copy } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
@@ -32,15 +32,62 @@ interface Attribution {
     os?: string;
 }
 
+interface OrderLineItem {
+    id: string | number;
+    name: string;
+    sku?: string | null;
+    meta_data?: unknown[];
+    price: number | string;
+    quantity: number;
+    total: number | string;
+}
+
+interface TrackingItem {
+    provider?: string;
+    dateShipped?: string;
+    trackingNumber: string;
+    trackingUrl?: string;
+}
+
+interface InvoiceTemplate {
+    name: string;
+    layout?: {
+        grid?: unknown[];
+        items?: unknown[];
+    };
+}
+
+interface OrderDetails {
+    id?: string | number;
+    wooId?: number;
+    status?: string;
+    date_created?: string;
+    payment_method_title?: string;
+    currency?: string;
+    total?: number | string;
+    total_tax?: number | string;
+    shipping_total?: number | string;
+    line_items?: OrderLineItem[];
+    shipping_lines?: Array<{ method_title?: string }>;
+    billing?: Record<string, string>;
+    shipping?: Record<string, string>;
+    customer_id?: number;
+    _customerMeta?: { ordersCount?: number };
+    _count?: { messages?: number };
+    tags?: string[];
+    internal_updated_at?: string;
+    tracking_items?: TrackingItem[];
+    [key: string]: unknown;
+}
+
 export function OrderDetailPage() {
     const { id } = useParams();
-    const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { hasPermission } = usePermissions();
     const toast = useToast();
 
-    const [order, setOrder] = useState<any>(null);
+    const [order, setOrder] = useState<OrderDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [showRaw, setShowRaw] = useState(false);
@@ -50,36 +97,7 @@ export function OrderDetailPage() {
 
 
 
-    useEffect(() => {
-        if (id && currentAccount && token) {
-            fetchOrder();
-        }
-    }, [id, currentAccount, token]);
-
-    async function fetchOrder() {
-        setIsLoading(true);
-        setError('');
-        try {
-            const res = await fetch(`/api/orders/${id}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount?.id || ''
-                }
-            });
-            if (!res.ok) throw new Error('Failed to fetch order');
-            const data = await res.json();
-            setOrder(data);
-
-            // Fetch attribution data
-            fetchAttribution();
-        } catch (err) {
-            setError('Could not load order details.');
-        } finally {
-            setIsLoading(false);
-        }
-    }
-
-    async function fetchAttribution() {
+    const fetchAttribution = useCallback(async () => {
         try {
             const res = await fetch(`/api/orders/${id}/attribution`, {
                 headers: {
@@ -91,15 +109,58 @@ export function OrderDetailPage() {
                 const data = await res.json();
                 setAttribution(data.attribution);
             }
-        } catch (err) {
+        } catch {
             // Attribution is optional, don't fail the page
-            console.warn('Could not load attribution data');
+            Logger.warn('Could not load attribution data');
         }
-    }
+    }, [id, token, currentAccount?.id]);
+
+    const fetchOrder = useCallback(async () => {
+        setIsLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`/api/orders/${id}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount?.id || ''
+                }
+            });
+            if (!res.ok) throw new Error('Failed to fetch order');
+            const data: OrderDetails = await res.json();
+            setOrder(data);
+
+            // Fetch attribution data
+            fetchAttribution();
+        } catch (err) {
+            setError('Could not load order details.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [id, token, currentAccount?.id, fetchAttribution]);
+
+    useEffect(() => {
+        if (id && currentAccount && token) {
+            fetchOrder();
+        }
+    }, [id, currentAccount, token, fetchOrder]);
 
 
+
+    const toNumber = (value: unknown): number => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const toStringValue = (value: unknown): string => (typeof value === 'string' || typeof value === 'number') ? String(value) : '';
+    const toMetaData = (value: unknown[]): Array<{ key: string; value: string; display_key?: string; display_value?: string }> =>
+        value.filter((entry): entry is { key: string; value: string; display_key?: string; display_value?: string } => (
+            typeof entry === 'object' &&
+            entry !== null &&
+            typeof (entry as { key?: unknown }).key === 'string' &&
+            typeof (entry as { value?: unknown }).value === 'string'
+        ));
 
     const handleGenerateInvoice = async () => {
+        if (!order) return;
         setIsGenerating(true);
         try {
             // 1. Fetch Templates
@@ -111,7 +172,7 @@ export function OrderDetailPage() {
             });
             if (!res.ok) throw new Error("Failed to fetch templates");
 
-            const templates = await res.json();
+            const templates: InvoiceTemplate[] = await res.json();
 
             // Use the most recent template or default
             const template = templates.length > 0 ? templates[0] : null;
@@ -122,10 +183,15 @@ export function OrderDetailPage() {
             }
 
             // 2. Generate PDF
-            await generateInvoicePDF(order, template.layout?.grid || [], template.layout?.items || [], template.name);
+            await generateInvoicePDF(
+                { ...order, number: toStringValue(order.id || order.wooId || '') },
+                (template.layout?.grid || []) as Array<{ i: string; x: number; y: number; w: number; h: number }>,
+                (template.layout?.items || []) as unknown as Parameters<typeof generateInvoicePDF>[2],
+                template.name
+            );
 
-        } catch (e: any) {
-            const msg = e?.message || String(e);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
             Logger.error('Invoice generation error', { error: msg });
             toast.error(`Failed to generate invoice: ${msg}`);
         } finally {
@@ -135,7 +201,7 @@ export function OrderDetailPage() {
 
     /** Callback when tags are updated via the OrderTagPanel */
     function handleTagsChange(newTags: string[]) {
-        setOrder((prev: any) => ({ ...prev, tags: newTags }));
+        setOrder((prev) => prev ? { ...prev, tags: newTags } : prev);
     }
 
 
@@ -171,7 +237,7 @@ export function OrderDetailPage() {
                         </span>
                         <FraudBadge orderId={id || ''} />
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">Placed on {formatDate(order.date_created)} via {order.payment_method_title}</div>
+                    <div className="text-sm text-gray-500 mt-1">Placed on {formatDate(toStringValue(order.date_created))} via {order.payment_method_title}</div>
                 </div>
                 <div className="flex gap-2">
                     <button
@@ -205,23 +271,23 @@ export function OrderDetailPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {order.line_items?.map((item: any) => (
+                                    {order.line_items?.map((item) => (
                                         <tr key={item.id} className="hover:bg-gray-50/50">
                                             <td className="px-6 py-4">
                                                 <div className="font-medium text-gray-900">{item.name}</div>
                                                 <div className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</div>
                                                 {item.meta_data && item.meta_data.length > 0 && (
-                                                    <OrderMetaSection metaData={item.meta_data} onImageClick={setSelectedImage} />
+                                                    <OrderMetaSection metaData={toMetaData(item.meta_data)} onImageClick={setSelectedImage} />
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-right text-gray-600">
-                                                {formatCurrency(item.price, order.currency)}
+                                                {formatCurrency(toNumber(item.price), order.currency)}
                                             </td>
                                             <td className="px-6 py-4 text-center text-gray-600 bg-gray-50/30">
                                                 {item.quantity}
                                             </td>
                                             <td className="px-6 py-4 text-right font-medium text-gray-900">
-                                                {formatCurrency(item.total, order.currency)}
+                                                {formatCurrency(toNumber(item.total), order.currency)}
                                             </td>
                                         </tr>
                                     ))}
@@ -243,19 +309,19 @@ export function OrderDetailPage() {
                                             )}
                                         </td>
                                         <td className="px-6 py-2 text-right font-medium text-gray-800">
-                                            {formatCurrency(order.shipping_total, order.currency)}
+                                            {formatCurrency(toNumber(order.shipping_total), order.currency)}
                                         </td>
                                     </tr>
                                     <tr>
                                         <td colSpan={3} className="px-6 py-2 text-right text-sm text-gray-500">Tax</td>
                                         <td className="px-6 py-2 text-right font-medium text-gray-800">
-                                            {formatCurrency(order.total_tax, order.currency)}
+                                            {formatCurrency(toNumber(order.total_tax), order.currency)}
                                         </td>
                                     </tr>
                                     <tr className="border-t border-gray-200 bg-gray-100">
                                         <td colSpan={3} className="px-6 py-4 text-right font-bold text-gray-900 text-lg">Total</td>
                                         <td className="px-6 py-4 text-right font-bold text-blue-600 text-lg">
-                                            {formatCurrency(order.total, order.currency)}
+                                            {formatCurrency(toNumber(order.total), order.currency)}
                                         </td>
                                     </tr>
                                 </tfoot>
@@ -284,7 +350,7 @@ export function OrderDetailPage() {
                 <div className="space-y-6">
                     {/* Tags Panel - First for visibility */}
                     <OrderTagPanel
-                        orderId={order.id || order.wooId?.toString() || id || ''}
+                        orderId={toStringValue(order.id || order.wooId || id || '')}
                         currentTags={order.tags || []}
                         lastUpdate={order.internal_updated_at}
                         onTagsChange={handleTagsChange}
@@ -292,7 +358,7 @@ export function OrderDetailPage() {
                     />
 
                     {/* COGS Breakdown - visible to users with view_cogs permission */}
-                    <OrderCOGSPanel orderId={order.id || order.wooId?.toString() || id || ''} currency={order.currency} />
+                    <OrderCOGSPanel orderId={toStringValue(order.id || order.wooId || id || '')} currency={order.currency} />
 
                     {/* Customer Card */}
                     <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
@@ -373,7 +439,7 @@ export function OrderDetailPage() {
                     </div>
 
                     {/* Shipment Tracking Card */}
-                    {order.tracking_items?.length > 0 && (
+                    {(order.tracking_items || []).length > 0 && (
                         <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                             <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
                                 <Truck size={18} className="text-blue-500" />
@@ -381,7 +447,7 @@ export function OrderDetailPage() {
                             </div>
 
                             <div className="space-y-3">
-                                {order.tracking_items.map((item: any, idx: number) => (
+                                {(order.tracking_items || []).map((item, idx: number) => (
                                     <div key={idx} className={`space-y-2 ${idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''}`}>
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
@@ -507,7 +573,7 @@ export function OrderDetailPage() {
                     <Clock size={18} className="text-gray-400" />
                     <h2 className="text-lg font-medium text-gray-900">Order History</h2>
                 </div>
-                <HistoryTimeline resource="ORDER" resourceId={order.id || order.wooId} />
+                <HistoryTimeline resource="ORDER" resourceId={toStringValue(order.id || order.wooId)} />
             </div>
 
             {/* Image Preview Modal */}

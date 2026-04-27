@@ -237,9 +237,9 @@ describe('ChatService', () => {
 
     describe('getConversation', () => {
         it('should return null when conversation not found', async () => {
-            mockFindUnique.mockResolvedValueOnce(null);
+            mockFindFirst.mockResolvedValueOnce(null);
 
-            const result = await chatService.getConversation(conversationId);
+            const result = await chatService.getConversation(accountId, conversationId);
 
             expect(result).toBeNull();
         });
@@ -256,9 +256,9 @@ describe('ChatService', () => {
                 mergedFrom: [],
             };
 
-            mockFindUnique.mockResolvedValueOnce(mockConversation);
+            mockFindFirst.mockResolvedValueOnce(mockConversation);
 
-            const result = await chatService.getConversation(conversationId);
+            const result = await chatService.getConversation(accountId, conversationId);
 
             expect(result).not.toBeNull();
             expect(result!.id).toBe(conversationId);
@@ -268,9 +268,10 @@ describe('ChatService', () => {
     describe('updateStatus', () => {
         it('should update conversation status', async () => {
             const newStatus = 'CLOSED';
+            mockFindFirst.mockResolvedValueOnce({ id: conversationId });
             mockUpdate.mockResolvedValueOnce({ id: conversationId, accountId, status: newStatus });
 
-            const result = await chatService.updateStatus(conversationId, newStatus);
+            const result = await chatService.updateStatus(accountId, conversationId, newStatus);
 
             expect(result.status).toBe(newStatus);
             expect(mockUpdate).toHaveBeenCalledWith(
@@ -285,9 +286,10 @@ describe('ChatService', () => {
     describe('assignConversation', () => {
         it('should assign conversation to a user', async () => {
             const userId = 'user-456';
+            mockFindFirst.mockResolvedValueOnce({ id: conversationId });
             mockUpdate.mockResolvedValueOnce({ id: conversationId, accountId, assignedTo: userId });
 
-            const result = await chatService.assignConversation(conversationId, userId);
+            const result = await chatService.assignConversation(accountId, conversationId, userId);
 
             expect(result.assignedTo).toBe(userId);
             expect(mockUpdate).toHaveBeenCalledWith(
@@ -301,9 +303,10 @@ describe('ChatService', () => {
 
     describe('markAsRead', () => {
         it('should mark conversation as read', async () => {
+            mockFindFirst.mockResolvedValueOnce({ id: conversationId });
             mockUpdate.mockResolvedValueOnce({ id: conversationId, accountId, isRead: true });
 
-            const result = await chatService.markAsRead(conversationId);
+            const result = await chatService.markAsRead(accountId, conversationId);
 
             expect(result.isRead).toBe(true);
             expect(mockUpdate).toHaveBeenCalledWith(
@@ -338,9 +341,10 @@ describe('ChatService', () => {
     describe('linkCustomer', () => {
         it('should link a customer to a conversation', async () => {
             const wooCustomerId = 'woo-cust-123';
+            mockFindFirst.mockResolvedValueOnce({ id: conversationId });
             mockUpdate.mockResolvedValueOnce({ id: conversationId, wooCustomerId });
 
-            const result = await chatService.linkCustomer(conversationId, wooCustomerId);
+            const result = await chatService.linkCustomer(accountId, conversationId, wooCustomerId);
 
             expect(result.wooCustomerId).toBe(wooCustomerId);
             expect(mockUpdate).toHaveBeenCalledWith(

@@ -4,7 +4,7 @@
  * Type definitions and utility functions for flow nodes.
  */
 import {
-    Mail, Clock, Split, Zap, MessageSquare, Tag, Link, ShoppingCart,
+    Mail, Zap, MessageSquare, Tag, Link, ShoppingCart,
     CheckCircle, Star, User, Eye, UserPlus, CreditCard, XCircle,
     MousePointer, Target, ArrowUpDown, LogOut
 } from 'lucide-react';
@@ -25,11 +25,21 @@ export type OnCopyNodeCallback = (nodeId: string) => void;
 export type OnMoveNodeCallback = (nodeId: string) => void;
 export type OnDeleteNodeCallback = (nodeId: string) => void;
 
+interface NodeConfigLike {
+    triggerType?: string;
+    actionType?: string;
+}
+
+const asNodeConfig = (config: unknown): NodeConfigLike => {
+    if (!config || typeof config !== 'object') return {};
+    return config as NodeConfigLike;
+};
+
 /**
  * Get icon for trigger type.
  */
-export function getTriggerIcon(config: any) {
-    const triggerType = config?.triggerType;
+export function getTriggerIcon(config: unknown) {
+    const triggerType = asNodeConfig(config).triggerType;
     switch (triggerType) {
         case 'ORDER_CREATED': return <ShoppingCart size={16} className="text-white" />;
         case 'ORDER_COMPLETED': return <CheckCircle size={16} className="text-white" />;
@@ -51,8 +61,8 @@ export function getTriggerIcon(config: any) {
 /**
  * Get human-readable trigger name.
  */
-export function getTriggerLabel(config: any): string {
-    const triggerType = config?.triggerType;
+export function getTriggerLabel(config: unknown): string {
+    const triggerType = asNodeConfig(config).triggerType;
     const labels: Record<string, string> = {
         'ORDER_CREATED': 'Order Created',
         'ORDER_COMPLETED': 'Order Completed',
@@ -68,14 +78,14 @@ export function getTriggerLabel(config: any): string {
         'LINK_CLICKED': 'Link Clicked',
         'MANUAL': 'Manual Entry',
     };
-    return labels[triggerType] || 'Trigger';
+    return (triggerType ? labels[triggerType] : undefined) || 'Trigger';
 }
 
 /**
  * Get icon for action type.
  */
-export function getActionIcon(config: any) {
-    const actionType = config?.actionType;
+export function getActionIcon(config: unknown) {
+    const actionType = asNodeConfig(config).actionType;
     switch (actionType) {
         case 'SEND_EMAIL': return <Mail size={16} className="text-white" />;
         case 'SEND_SMS': return <MessageSquare size={16} className="text-white" />;
@@ -92,8 +102,8 @@ export function getActionIcon(config: any) {
 /**
  * Get human-readable action name.
  */
-export function getActionLabel(config: any): string {
-    const actionType = config?.actionType;
+export function getActionLabel(config: unknown): string {
+    const actionType = asNodeConfig(config).actionType;
     const labels: Record<string, string> = {
         'SEND_EMAIL': 'Send Email',
         'SEND_SMS': 'Send SMS',
@@ -104,14 +114,14 @@ export function getActionLabel(config: any): string {
         'JUMP': 'Jump',
         'EXIT': 'Exit',
     };
-    return labels[actionType] || 'Action';
+    return (actionType ? labels[actionType] : undefined) || 'Action';
 }
 
 /**
  * Get gradient color for action type.
  */
-export function getActionGradient(config: any): string {
-    const actionType = config?.actionType;
+export function getActionGradient(config: unknown): string {
+    const actionType = asNodeConfig(config).actionType;
     switch (actionType) {
         case 'GOAL': return 'bg-linear-to-br from-emerald-500 to-emerald-600';
         case 'JUMP': return 'bg-linear-to-br from-red-500 to-red-600';

@@ -77,6 +77,18 @@ interface SyncResult {
     localDbUpdated?: boolean;
 }
 
+function allowsBackorders(rawData: any): boolean {
+    if (!rawData || typeof rawData !== 'object') return false;
+    const backorders = String(rawData.backorders ?? '').toLowerCase();
+    return backorders === 'yes' || backorders === 'notify' || rawData.backorders_allowed === true;
+}
+
+function getStockStatusForQuantity(quantity: number, allowBackorders: boolean): 'instock' | 'outofstock' | 'onbackorder' {
+    if (quantity > 0) return 'instock';
+    if (allowBackorders) return 'onbackorder';
+    return 'outofstock';
+}
+
 export class BOMInventorySyncService {
     /**
      * Calculate the effective stock (max buildable units) for a product based on its BOM.
@@ -91,8 +103,8 @@ export class BOMInventorySyncService {
 
         // Get the product details (with retry for transient DNS errors)
         const product = await withDbRetry(
-            () => prisma.wooProduct.findUnique({
-                where: { id: productId },
+            () => prisma.wooProduct.findFirst({
+                where: { id: productId, accountId },
                 select: { id: true, wooId: true, name: true, rawData: true }
             }),
             { context: 'Get product for BOM sync' }
@@ -455,12 +467,13 @@ export class BOMInventorySyncService {
      * Returns null if the product has no BOM or no child products/internal products.
      */
     static async calculateEffectiveStockLocal(
+        accountId: string,
         productId: string,
         variationId: number = 0
     ): Promise<EffectiveStockResult | null> {
         // Get the product details with stock from rawData
-        const product = await prisma.wooProduct.findUnique({
-            where: { id: productId },
+        const product = await prisma.wooProduct.findFirst({
+            where: { id: productId, accountId },
             select: { id: true, wooId: true, name: true, rawData: true, stockQuantity: true }
         });
 
@@ -662,8 +675,8 @@ export class BOMInventorySyncService {
             // For main products (variationId = 0), update the product directly
             if (variationId > 0) {
                 // Get the parent product's wooId to construct the variation endpoint
-                const parentProduct = await prisma.wooProduct.findUnique({
-                    where: { id: productId },
+                const parentProduct = await prisma.wooProduct.findFirst({
+                    where: { id: productId, accountId },
                     select: { wooId: true }
                 });
 
@@ -671,20 +684,27 @@ export class BOMInventorySyncService {
                     throw new Error('Parent product not found');
                 }
 
+                const variationRecord = await prisma.productVariation.findUnique({
+                    where: { productId_wooId: { productId, wooId: variationId } },
+                    select: { rawData: true }
+                });
+                const allowBackorders = allowsBackorders(variationRecord?.rawData);
+
                 // Update variation stock via WooCommerce variations API
                 await wooService.updateProductVariation(parentProduct.wooId, variationId, {
                     stock_quantity: calculation.effectiveStock,
                     manage_stock: true,
-                    stock_status: calculation.effectiveStock > 0 ? 'instock' : 'outofstock'
+                    stock_status: getStockStatusForQuantity(calculation.effectiveStock, allowBackorders)
                 });
             } else {
                 // Guard: do not set manage_stock on variable parent products
-                const productRecord = await prisma.wooProduct.findUnique({
-                    where: { id: productId },
+                const productRecord = await prisma.wooProduct.findFirst({
+                    where: { id: productId, accountId },
                     select: { rawData: true }
                 });
                 const productRaw = productRecord?.rawData as any;
                 const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
+                const allowBackorders = allowsBackorders(productRaw);
 
                 if (isVariable) {
                     Logger.warn(`[BOMInventorySync] Refusing to set manage_stock on variable parent product`, {
@@ -704,7 +724,7 @@ export class BOMInventorySyncService {
                 await wooService.updateProduct(calculation.wooId, {
                     stock_quantity: calculation.effectiveStock,
                     manage_stock: true,
-                    stock_status: calculation.effectiveStock > 0 ? 'instock' : 'outofstock'
+                    stock_status: getStockStatusForQuantity(calculation.effectiveStock, allowBackorders)
                 });
             }
 
@@ -791,7 +811,10 @@ export class BOMInventorySyncService {
     /**
      * Sync all BOM parent products for an account to WooCommerce.
      */
-    static async syncAllBOMProducts(accountId: string): Promise<{
+    static async syncAllBOMProducts(
+        accountId: string,
+        job: { updateProgress: (progress: any) => Promise<void> } | null = null
+    ): Promise<{
         total: number;
         synced: number;
         skipped: number;
@@ -822,13 +845,19 @@ export class BOMInventorySyncService {
             { context: 'Find BOMs for bulk sync' }
         );
 
-        Logger.info(`[BOMInventorySync] Starting bulk sync for ${bomsWithChildProducts.length} products`, { accountId });
+        const total = bomsWithChildProducts.length;
+        Logger.info(`[BOMInventorySync] Starting bulk sync for ${total} products`, { accountId });
 
         // Only track counters — accumulating full SyncResult[] caused unbounded
         // heap growth on every hourly run, contributing to OOM (exit 137).
+        let processed = 0;
         let synced = 0;
         let skipped = 0;
         let failed = 0;
+
+        if (job) {
+            await job.updateProgress({ current: 0, total, synced: 0, skipped: 0, failed: 0 });
+        }
 
         for (const bom of bomsWithChildProducts) {
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
@@ -853,18 +882,29 @@ export class BOMInventorySyncService {
                 });
                 failed++;
             }
+
+            processed++;
+            if (job) {
+                await job.updateProgress({
+                    current: processed,
+                    total,
+                    synced,
+                    skipped,
+                    failed
+                });
+            }
         }
 
         Logger.info(`[BOMInventorySync] Bulk sync complete`, {
             accountId,
-            total: bomsWithChildProducts.length,
+            total,
             synced,
             skipped,
             failed
         });
 
         return {
-            total: bomsWithChildProducts.length,
+            total,
             synced,
             skipped,
             failed,

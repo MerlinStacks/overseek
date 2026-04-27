@@ -40,11 +40,21 @@ export class LabelService {
     /**
      * Update an existing label.
      */
-    async updateLabel(id: string, input: UpdateLabelInput) {
-        Logger.debug('Updating label', { id, input });
+    async updateLabel(accountId: string, id: string, input: UpdateLabelInput) {
+        Logger.debug('Updating label', { accountId, id, input });
+
+        const existing = await prisma.conversationLabel.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!existing) {
+            const error = new Error('Label not found');
+            (error as any).code = 'P2025';
+            throw error;
+        }
 
         return prisma.conversationLabel.update({
-            where: { id },
+            where: { id: existing.id },
             data: {
                 ...(input.name && { name: input.name.trim() }),
                 ...(input.color && { color: input.color }),
@@ -55,12 +65,22 @@ export class LabelService {
     /**
      * Delete a label and all its assignments.
      */
-    async deleteLabel(id: string) {
-        Logger.debug('Deleting label', { id });
+    async deleteLabel(accountId: string, id: string) {
+        Logger.debug('Deleting label', { accountId, id });
+
+        const existing = await prisma.conversationLabel.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!existing) {
+            const error = new Error('Label not found');
+            (error as any).code = 'P2025';
+            throw error;
+        }
 
         // Cascade delete will remove assignments automatically
         return prisma.conversationLabel.delete({
-            where: { id },
+            where: { id: existing.id },
         });
     }
 
@@ -82,9 +102,9 @@ export class LabelService {
     /**
      * Get a single label by ID.
      */
-    async getLabel(id: string) {
-        return prisma.conversationLabel.findUnique({
-            where: { id },
+    async getLabel(accountId: string, id: string) {
+        return prisma.conversationLabel.findFirst({
+            where: { id, accountId },
             include: {
                 _count: {
                     select: { conversations: true },
@@ -96,8 +116,24 @@ export class LabelService {
     /**
      * Assign a label to a conversation.
      */
-    async assignLabel(conversationId: string, labelId: string) {
-        Logger.debug('Assigning label', { conversationId, labelId });
+    async assignLabel(accountId: string, conversationId: string, labelId: string) {
+        Logger.debug('Assigning label', { accountId, conversationId, labelId });
+
+        const [conversation, label] = await Promise.all([
+            prisma.conversation.findFirst({
+                where: { id: conversationId, accountId },
+                select: { id: true }
+            }),
+            prisma.conversationLabel.findFirst({
+                where: { id: labelId, accountId },
+                select: { id: true }
+            })
+        ]);
+        if (!conversation || !label) {
+            const error = new Error('Conversation or label not found');
+            (error as any).code = 'P2025';
+            throw error;
+        }
 
         // Use upsert to avoid duplicate errors
         const assignment = await prisma.conversationLabelAssignment.upsert({
@@ -133,14 +169,29 @@ export class LabelService {
     /**
      * Remove a label from a conversation.
      */
-    async removeLabel(conversationId: string, labelId: string) {
-        Logger.debug('Removing label', { conversationId, labelId });
+    async removeLabel(accountId: string, conversationId: string, labelId: string) {
+        Logger.debug('Removing label', { accountId, conversationId, labelId });
+
+        const assignment = await prisma.conversationLabelAssignment.findFirst({
+            where: {
+                conversationId,
+                labelId,
+                conversation: { accountId },
+                label: { accountId }
+            },
+            select: { conversationId: true, labelId: true }
+        });
+        if (!assignment) {
+            const error = new Error('Label assignment not found');
+            (error as any).code = 'P2025';
+            throw error;
+        }
 
         return prisma.conversationLabelAssignment.delete({
             where: {
                 conversationId_labelId: {
-                    conversationId,
-                    labelId,
+                    conversationId: assignment.conversationId,
+                    labelId: assignment.labelId,
                 },
             },
         });
@@ -149,9 +200,9 @@ export class LabelService {
     /**
      * Get all labels for a conversation.
      */
-    async getConversationLabels(conversationId: string) {
+    async getConversationLabels(accountId: string, conversationId: string) {
         const assignments = await prisma.conversationLabelAssignment.findMany({
-            where: { conversationId },
+            where: { conversationId, conversation: { accountId }, label: { accountId } },
             include: {
                 label: true,
             },
@@ -166,10 +217,29 @@ export class LabelService {
     /**
      * Bulk assign a label to multiple conversations.
      */
-    async bulkAssignLabel(conversationIds: string[], labelId: string) {
-        Logger.debug('Bulk assigning label', { count: conversationIds.length, labelId });
+    async bulkAssignLabel(accountId: string, conversationIds: string[], labelId: string) {
+        Logger.debug('Bulk assigning label', { accountId, count: conversationIds.length, labelId });
 
-        const operations = conversationIds.map((conversationId) =>
+        const [validLabel, validConversations] = await Promise.all([
+            prisma.conversationLabel.findFirst({
+                where: { id: labelId, accountId },
+                select: { id: true }
+            }),
+            prisma.conversation.findMany({
+                where: { id: { in: conversationIds }, accountId },
+                select: { id: true }
+            })
+        ]);
+        if (!validLabel) {
+            const error = new Error('Label not found');
+            (error as any).code = 'P2025';
+            throw error;
+        }
+
+        const validIds = validConversations.map(c => c.id);
+        if (validIds.length === 0) return [];
+
+        const operations = validIds.map((conversationId) =>
             prisma.conversationLabelAssignment.upsert({
                 where: {
                     conversationId_labelId: {
@@ -191,13 +261,15 @@ export class LabelService {
     /**
      * Bulk remove a label from multiple conversations.
      */
-    async bulkRemoveLabel(conversationIds: string[], labelId: string) {
-        Logger.debug('Bulk removing label', { count: conversationIds.length, labelId });
+    async bulkRemoveLabel(accountId: string, conversationIds: string[], labelId: string) {
+        Logger.debug('Bulk removing label', { accountId, count: conversationIds.length, labelId });
 
         return prisma.conversationLabelAssignment.deleteMany({
             where: {
                 conversationId: { in: conversationIds },
                 labelId,
+                conversation: { accountId },
+                label: { accountId }
             },
         });
     }

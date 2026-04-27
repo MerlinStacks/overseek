@@ -1,25 +1,25 @@
-# OverSeek WooCommerce Plugin
+﻿# OverSeek WooCommerce Plugin
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-> **Important:** This plugin is **not standalone** — it connects your WooCommerce store to your self-hosted OverSeek server. You must set up the server first.
+> **Important:** This plugin is **not standalone** - it connects your WooCommerce store to your self-hosted OverSeek server. You must set up the server first.
 
 ## Requirements
 
-- WordPress 6.0+
+- WordPress 6.4+
 - WooCommerce 8.0+ (classic or Blocks-based checkout)
 - PHP 8.1+
 - A running OverSeek server (see main [README](../README.md))
 
 ## Installation
 
-1. **Copy the plugin** — Upload the `overseek-wc-plugin` folder to `/wp-content/plugins/`
-2. **Activate** — Go to WordPress Admin → Plugins → Activate "OverSeek WooCommerce Integration"
-3. **Configure** — Navigate to WooCommerce → OverSeek and paste your configuration JSON from the OverSeek dashboard
+1. **Copy the plugin** - Upload the `overseek-wc-plugin` folder to `/wp-content/plugins/`
+2. **Activate** - Go to WordPress Admin -> Plugins -> Activate "OverSeek WooCommerce Integration"
+3. **Configure** - Navigate to WooCommerce -> OverSeek and paste your configuration JSON from the OverSeek dashboard
 
 ## Configuration
 
-After activating, go to **WooCommerce → OverSeek** in your WordPress admin.
+After activating, go to **WooCommerce -> OverSeek** in your WordPress admin.
 
 ### Required Settings
 
@@ -82,15 +82,15 @@ The plugin registers the following endpoints under `wp-json/overseek/v1/`:
 
 ### "Plugin endpoint not found"
 - Ensure the plugin is activated
-- Check that permalinks are configured (Settings → Permalinks → Save)
+- Check that permalinks are configured (Settings -> Permalinks -> Save)
 - Verify your `.htaccess` is writable
 
 ### Events not tracking
-- Check the OverSeek dashboard → Settings → Plugin Health
+- Check the OverSeek dashboard -> Settings -> Plugin Health
 - Verify your Secret Key matches in both OverSeek and WordPress
 
 ### Live chat not appearing
-- Ensure "Enable Live Chat" is turned on in WooCommerce → OverSeek
+- Ensure "Enable Live Chat" is turned on in WooCommerce -> OverSeek
 - Clear any page caches
 - Check for JavaScript errors in browser console
 
@@ -104,18 +104,25 @@ API URL: http://localhost:3000
 
 ## Changelog
 
-### 2.12.0 — 2026-04-14
+### 2.12.1 - 2026-04-27
+- **Improved:** Fingerprint bot defense moved from fail-open to fail-soft, adding contextual risk scoring for missing tokens and suspicious user agents.
+- **Added:** Checkout velocity scoring (IP, visitor, and billing email windows) to detect short-burst automated checkout attempts.
+- **Improved:** Fingerprint interaction heuristics now include trusted pointer and keyboard signal checks to reduce scripted bypasses.
+- **Improved:** Browser and server tracking now share event IDs for add-to-cart, checkout-start, purchase, and product-view events to improve cross-channel deduplication accuracy.
+- **Fixed:** Visitor ID fallback now uses `_os_vid` consistently in pixel tracking.
+
+### 2.12.0 - 2026-04-14
 - **Security:** Browser fingerprint bot detection at checkout. A lightweight JS collector gathers behavioral signals (interaction timing, pointer events, visibility, webdriver flag) and scores them to block automated checkout attempts. Real customers are never affected (fail-open on missing tokens, conservative thresholds).
-- **Added:** `OverSeek_Fingerprint` class — nonce-based challenge-response, weighted scoring, WooCommerce Blocks support via `X-OS-FP` header, suspicious order flagging via `_os_fp_suspicious` order meta.
+- **Added:** `OverSeek_Fingerprint` class - nonce-based challenge-response, weighted scoring, WooCommerce Blocks support via `X-OS-FP` header, suspicious order flagging via `_os_fp_suspicious` order meta.
 - **Improved:** FraudService now incorporates fingerprint bot score as an additional fraud factor.
 
-### 2.11.0 — 2026-04-14
+### 2.11.0 - 2026-04-14
 - **Security:** Crawler Guard now blocks known bots on the WooCommerce Store API checkout endpoint (`/wc/store/v1/checkout`), preventing bot-placed fake orders. Previously all REST API requests bypassed the guard.
 - **Improved:** New accounts are automatically seeded with block rules for harmful bots (security scanners) and HTTP clients (cURL, Puppeteer, Selenium, etc.) so the Bot Shield works out of the box without manual rule configuration.
 
-### 2.4.2 — 2026-03-06
+### 2.4.2 - 2026-03-06
 - **Fixed:** Real visitor User-Agent is now sent via the HTTP `User-Agent` header in `wp_remote_post`, preventing WordPress's default UA from being parsed for device/browser/OS detection
-- **Added:** Filter out crawler bots with `/wp-admin/` or `/wp-login.php` referrers — events are silently dropped before queuing
+- **Added:** Filter out crawler bots with `/wp-admin/` or `/wp-login.php` referrers - events are silently dropped before queuing
 - **Improved:** Better compatibility with ua-parser-js v2 browser naming conventions (Mobile Chrome, Mobile Safari, etc.)
 
 ### 2.4.1
@@ -126,4 +133,4 @@ API URL: http://localhost:3000
 
 ## License
 
-MIT — Same as the main OverSeek project.
+MIT - Same as the main OverSeek project.

@@ -10,7 +10,7 @@
  * when switching tabs.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Target, TrendingUp, Globe, ChevronDown } from 'lucide-react';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { SeoKeywordsPanel } from '../components/Seo/SeoKeywordsPanel';
@@ -39,7 +39,7 @@ function prettySiteUrl(raw: string): string {
 export function SeoPage() {
     const [activeTab, setActiveTab] = useState<TabId>('overview');
     const status = useSearchConsoleStatus();
-    const sites = status.data?.sites ?? [];
+    const sites = useMemo(() => status.data?.sites ?? [], [status.data?.sites]);
     const [selectedSiteUrl, setSelectedSiteUrl] = useState<string | undefined>();
     const setDefaultSite = useSetDefaultSite();
 
@@ -49,7 +49,9 @@ export function SeoPage() {
             const defaultUrl = status.data?.defaultSiteUrl;
             // Use the persisted default if it's still in the connected sites list
             const validDefault = defaultUrl && sites.some((s: { siteUrl: string }) => s.siteUrl === defaultUrl);
-            setSelectedSiteUrl(validDefault ? defaultUrl : sites[0].siteUrl);
+            queueMicrotask(() => {
+                setSelectedSiteUrl(validDefault ? defaultUrl : sites[0].siteUrl);
+            });
         }
     }, [sites, selectedSiteUrl, status.data?.defaultSiteUrl]);
 

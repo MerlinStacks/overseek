@@ -11,7 +11,7 @@ export interface CachedOrder {
     id: string;
     wooId: number;
     accountId: string;
-    data: any;
+    data: unknown;
     syncedAt: number;
 }
 
@@ -21,7 +21,7 @@ export interface CachedProduct {
     accountId: string;
     name: string;
     sku: string;
-    data: any;
+    data: unknown;
     syncedAt: number;
 }
 
@@ -31,13 +31,13 @@ export interface CachedCustomer {
     accountId: string;
     email: string;
     name: string;
-    data: any;
+    data: unknown;
     syncedAt: number;
 }
 
 export interface CacheMeta {
     key: string;
-    value: any;
+    value: unknown;
 }
 
 export class HotTierDB extends Dexie {
@@ -74,7 +74,7 @@ const CACHE_CONFIG = {
 export async function getLastSyncTime(table: 'orders' | 'products' | 'customers', accountId: string): Promise<number | null> {
     const key = `lastSync:${table}:${accountId}`;
     const meta = await hotTierDB.meta.get(key);
-    return meta?.value || null;
+    return typeof meta?.value === 'number' ? meta.value : null;
 }
 
 /**

@@ -193,7 +193,7 @@ export function MobileChat() {
                                             : 'bg-slate-800/80 backdrop-blur-sm border border-white/10 text-white rounded-bl-md shadow-sm'
                                             }`}
                                     >
-                                        {/\<[a-z][\s\S]*\>/i.test(msg.body) ? (
+                                        {/<[a-z][\s\S]*>/i.test(msg.body) ? (
                                             <div
                                                 className="text-sm [&_a]:text-indigo-300 [&_a]:underline [&_img]:max-w-full [&_img]:rounded"
                                                 dangerouslySetInnerHTML={{

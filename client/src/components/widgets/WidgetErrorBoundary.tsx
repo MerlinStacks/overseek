@@ -1,5 +1,6 @@
 import { Component, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { widgetCardClass } from './widgetStyles';
 
 interface Props {
     children: ReactNode;
@@ -32,7 +33,7 @@ export class WidgetErrorBoundary extends Component<Props, State> {
                 this.state.error?.message?.includes('dynamically imported module');
 
             return (
-                <div className="h-full flex flex-col items-center justify-center gap-3 p-4 bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50">
+                <div className={`${widgetCardClass} h-full flex flex-col items-center justify-center gap-3 p-4`}>
                     <div className="p-2 bg-red-50 dark:bg-red-500/10 rounded-full">
                         <AlertTriangle className="w-5 h-5 text-red-500 dark:text-red-400" />
                     </div>

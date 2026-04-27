@@ -130,6 +130,49 @@ export class QueueFactory {
         return worker;
     }
 
+    /**
+     * Returns queue depth health data for operational monitoring.
+     */
+    static async getQueueDepthSnapshot() {
+        const queueNames = [...new Set([
+            ...Object.values(QUEUES),
+            'scheduler',
+            ...Array.from(queues.keys())
+        ])];
+
+        const entries = await Promise.all(queueNames.map(async (name) => {
+            const queue = this.getQueue(name);
+            const counts = await queue.getJobCounts(
+                'waiting',
+                'active',
+                'delayed',
+                'failed',
+                'completed',
+                'paused',
+                'prioritized'
+            );
+
+            const waiting = counts.waiting || 0;
+            const active = counts.active || 0;
+            const delayed = counts.delayed || 0;
+            const paused = counts.paused || 0;
+            const prioritized = counts.prioritized || 0;
+
+            return [name, {
+                waiting,
+                active,
+                delayed,
+                failed: counts.failed || 0,
+                completed: counts.completed || 0,
+                paused,
+                prioritized,
+                backlog: waiting + active + delayed + paused + prioritized
+            }] as const;
+        }));
+
+        return Object.fromEntries(entries);
+    }
+
     // Bull Board Setup
     static createBoard() {
         const serverAdapter = new FastifyAdapter();

@@ -57,13 +57,13 @@ export function SetupWizard() {
         }
     }, [authLoading, token, navigate]);
 
-    // Detect when an account is created mid-wizard (via StoreStep early-create)
-    // and suppress the redirect so the user can proceed to the Plugin step.
+    // Mark this as a wizard-created session only after store/account creation
+    // has been successfully verified in this flow.
     useEffect(() => {
-        if (currentAccount?.id && currentStep === ONBOARDING_STEPS.STORE) {
+        if (draft.store.connectionVerified) {
             createdInSession.current = true;
         }
-    }, [currentAccount, currentStep]);
+    }, [draft.store.connectionVerified]);
 
     // Redirect to dashboard if user already has accounts (unless adding new
     // or the account was just created within this wizard session).
@@ -81,8 +81,8 @@ export function SetupWizard() {
             Logger.debug('SetupWizard: Resuming from saved draft', { step: saved.currentStep });
             setDraft(saved.draft);
             setCurrentStep(saved.currentStep);
-            // Preserve wizard session flag across page reloads / new tabs
-            if (saved.wizardSessionActive) {
+            // Preserve wizard-created session across reloads if store was already verified.
+            if (saved.wizardSessionActive && saved.draft?.store?.connectionVerified) {
                 createdInSession.current = true;
             }
         }
@@ -99,7 +99,7 @@ export function SetupWizard() {
     // Navigation Handlers
     // ─────────────────────────────────────────────────────────────────────────
 
-    const handleNext = useCallback(() => {
+    const handleNext = () => {
         // Validate current step
         const validation = validateStep(currentStep, draft);
         if (!validation.isValid) {
@@ -121,9 +121,9 @@ export function SetupWizard() {
         if (currentStep < ONBOARDING_STEPS.TOTAL) {
             setCurrentStep(prev => prev + 1);
         } else {
-            handleFinalize();
+            void handleFinalize();
         }
-    }, [currentStep, draft]);
+    };
 
     const handleBack = useCallback(() => {
         if (currentStep > ONBOARDING_STEPS.STORE) {
@@ -173,8 +173,8 @@ export function SetupWizard() {
         setError(null);
 
         try {
-            // Check if account was already created in StoreStep
-            if (currentAccount?.id) {
+            // If this wizard already created/verified the account, avoid duplicate creation.
+            if (currentAccount?.id && createdInSession.current && draft.store.connectionVerified) {
                 // Account exists - just update additional settings if needed
                 Logger.info('SetupWizard: Account already exists, skipping creation', { accountId: currentAccount.id });
 

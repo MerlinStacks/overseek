@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -89,7 +89,7 @@ function useBackups() {
     const [includeAnalytics, setIncludeAnalytics] = useState(false);
 
     /** Shared auth headers to avoid repeating `Bearer ${token}` everywhere. */
-    const authHeaders = { Authorization: `Bearer ${token}` };
+    const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
     // ── Fetchers ──
 
@@ -103,7 +103,7 @@ function useBackups() {
         } finally {
             setLoading(false);
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const fetchPreview = useCallback(async (accountId: string) => {
         if (!accountId) { setPreview(null); return; }
@@ -118,7 +118,7 @@ function useBackups() {
         } finally {
             setPreviewLoading(false);
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const fetchSettings = useCallback(async (accountId: string) => {
         try {
@@ -127,7 +127,7 @@ function useBackups() {
         } catch (err) {
             Logger.error('Settings fetch error:', { error: err });
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const fetchStoredBackups = useCallback(async (accountId: string) => {
         try {
@@ -136,7 +136,7 @@ function useBackups() {
         } catch (err) {
             Logger.error('Stored backups fetch error:', { error: err });
         }
-    }, [token]);
+    }, [authHeaders]);
 
     // ── Actions ──
 
@@ -164,13 +164,14 @@ function useBackups() {
             });
             if (!res.ok) throw new Error('Failed to save backup');
             await fetchStoredBackups(selectedAccountId);
-        } catch (err: any) {
+        } catch (err: unknown) {
             Logger.error('Backup save error:', { error: err });
-            alert('Backup failed: ' + err.message);
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            alert('Backup failed: ' + message);
         } finally {
             setSavingBackup(false);
         }
-    }, [selectedAccountId, includeAuditLogs, includeAnalytics, token, fetchStoredBackups]);
+    }, [selectedAccountId, includeAuditLogs, includeAnalytics, authHeaders, fetchStoredBackups]);
 
     const handleDownloadBackup = useCallback(async () => {
         if (!selectedAccountId) return;
@@ -184,13 +185,14 @@ function useBackups() {
             if (!res.ok) throw new Error('Failed to generate backup');
             const fallback = `backup_${new Date().toISOString().split('T')[0]}.json`;
             downloadBlob(await res.blob(), parseFilename(res, fallback));
-        } catch (err: any) {
+        } catch (err: unknown) {
             Logger.error('Backup download error:', { error: err });
-            alert('Backup failed: ' + err.message);
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            alert('Backup failed: ' + message);
         } finally {
             setDownloading(false);
         }
-    }, [selectedAccountId, includeAuditLogs, includeAnalytics, token]);
+    }, [selectedAccountId, includeAuditLogs, includeAnalytics, authHeaders]);
 
     const handleDownloadStored = useCallback(async (backupId: string, filename: string) => {
         try {
@@ -200,7 +202,7 @@ function useBackups() {
         } catch (err) {
             Logger.error('Download error:', { error: err });
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const handleDeleteBackup = useCallback(async (backupId: string) => {
         if (!confirm('Delete this backup?')) return;
@@ -213,7 +215,7 @@ function useBackups() {
         } catch (err) {
             Logger.error('Delete backup error:', { error: err });
         }
-    }, [token]);
+    }, [authHeaders]);
 
     const handleUpdateSettings = useCallback(async (updates: Partial<BackupSettings>) => {
         if (!selectedAccountId) return;
@@ -230,7 +232,7 @@ function useBackups() {
         } finally {
             setSavingSettings(false);
         }
-    }, [selectedAccountId, token]);
+    }, [selectedAccountId, authHeaders]);
 
     const handleRestore = useCallback(async (backupId: string, confirmName: string) => {
         try {
@@ -246,11 +248,12 @@ function useBackups() {
             }
             alert('Restore failed: ' + data.error);
             return false;
-        } catch (err: any) {
-            alert('Restore failed: ' + err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            alert('Restore failed: ' + message);
             return false;
         }
-    }, [token]);
+    }, [authHeaders]);
 
     useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
@@ -428,7 +431,7 @@ export function AdminBackupsPage() {
                                         <label className="block text-xs text-slate-500 mb-1">Frequency</label>
                                         <select
                                             value={settings.frequency}
-                                            onChange={(e) => handleUpdateSettings({ frequency: e.target.value as any })}
+                                    onChange={(e) => handleUpdateSettings({ frequency: e.target.value as BackupSettings['frequency'] })}
                                             disabled={savingSettings}
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                                         >

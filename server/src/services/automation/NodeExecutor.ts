@@ -84,13 +84,19 @@ export class NodeExecutor {
         }
     }
 
-        private async executeAssignConversation(config: any, enrollment: any): Promise<void> {
+    private async executeAssignConversation(config: any, enrollment: any): Promise<void> {
         const conversationId = enrollment.contextData?.conversationId;
         if (!conversationId || !config.userId) return;
 
-        Logger.info(`Assigning conversation ${conversationId} to ${config.userId}`);
-        await prisma.conversation.update({
-            where: { id: conversationId },
+        const scopedConversationId = await this.getScopedConversationId(enrollment, conversationId);
+        if (!scopedConversationId) return;
+
+        Logger.info(`Assigning conversation ${scopedConversationId} to ${config.userId}`);
+        await prisma.conversation.updateMany({
+            where: {
+                id: scopedConversationId,
+                accountId: enrollment.automation.accountId
+            },
             data: { assignedTo: config.userId }
         });
     }
@@ -99,10 +105,25 @@ export class NodeExecutor {
         const conversationId = enrollment.contextData?.conversationId;
         if (!conversationId || !config.labelId) return;
 
-        Logger.info(`Adding tag ${config.labelId} to ${conversationId}`);
+        const scopedConversationId = await this.getScopedConversationId(enrollment, conversationId);
+        if (!scopedConversationId) return;
+
+        const label = await prisma.conversationLabel.findFirst({
+            where: { id: config.labelId, accountId: enrollment.automation.accountId },
+            select: { id: true }
+        });
+        if (!label) {
+            Logger.warn('Cannot add tag: label not found in account scope', {
+                labelId: config.labelId,
+                accountId: enrollment.automation.accountId
+            });
+            return;
+        }
+
+        Logger.info(`Adding tag ${config.labelId} to ${scopedConversationId}`);
         await prisma.conversationLabelAssignment.upsert({
-            where: { conversationId_labelId: { conversationId, labelId: config.labelId } },
-            create: { conversationId, labelId: config.labelId },
+            where: { conversationId_labelId: { conversationId: scopedConversationId, labelId: config.labelId } },
+            create: { conversationId: scopedConversationId, labelId: config.labelId },
             update: {}
         });
     }
@@ -111,9 +132,15 @@ export class NodeExecutor {
         const conversationId = enrollment.contextData?.conversationId;
         if (!conversationId) return;
 
-        Logger.info(`Closing conversation ${conversationId}`);
-        await prisma.conversation.update({
-            where: { id: conversationId },
+        const scopedConversationId = await this.getScopedConversationId(enrollment, conversationId);
+        if (!scopedConversationId) return;
+
+        Logger.info(`Closing conversation ${scopedConversationId}`);
+        await prisma.conversation.updateMany({
+            where: {
+                id: scopedConversationId,
+                accountId: enrollment.automation.accountId
+            },
             data: { status: 'CLOSED' }
         });
     }
@@ -122,10 +149,13 @@ export class NodeExecutor {
         const conversationId = enrollment.contextData?.conversationId;
         if (!conversationId || !config.content) return;
 
-        Logger.info(`Adding note to ${conversationId}`);
+        const scopedConversationId = await this.getScopedConversationId(enrollment, conversationId);
+        if (!scopedConversationId) return;
+
+        Logger.info(`Adding note to ${scopedConversationId}`);
         await prisma.conversationNote.create({
             data: {
-                conversationId,
+                conversationId: scopedConversationId,
                 content: renderTemplate(config.content, enrollment.contextData),
                 createdById: config.createdById || enrollment.contextData?.assignedTo || 'system'
             }
@@ -136,16 +166,19 @@ export class NodeExecutor {
         const conversationId = enrollment.contextData?.conversationId;
         if (!conversationId || !config.cannedResponseId) return;
 
-        const canned = await prisma.cannedResponse.findUnique({
-            where: { id: config.cannedResponseId }
+        const scopedConversationId = await this.getScopedConversationId(enrollment, conversationId);
+        if (!scopedConversationId) return;
+
+        const canned = await prisma.cannedResponse.findFirst({
+            where: { id: config.cannedResponseId, accountId: enrollment.automation.accountId }
         });
         if (!canned) return;
 
-        Logger.info(`Sending canned response to ${conversationId}`);
+        Logger.info(`Sending canned response to ${scopedConversationId}`);
         const content = renderTemplate(canned.content, enrollment.contextData);
         await prisma.message.create({
             data: {
-                conversationId,
+                conversationId: scopedConversationId,
                 content,
                 senderType: 'AGENT',
                 contentType: 'TEXT'
@@ -179,7 +212,7 @@ export class NodeExecutor {
                 const subject = renderTemplate(config.subject || 'Automated Email', context);
                 const body = renderTemplate(config.body || config.html || '', context);
 
-                await this.emailService.sendEmail(
+                const sendResult = await this.emailService.sendEmail(
                     enrollment.automation.accountId,
                     emailAccountId,
                     enrollment.email,
@@ -187,6 +220,17 @@ export class NodeExecutor {
                     body || `<p>Email Template: ${config.templateId}</p>`,
                     enrollment.contextData?.attachments
                 );
+
+                if (sendResult && typeof sendResult === 'object' && 'skipped' in sendResult && sendResult.skipped) {
+                    const reason = 'reason' in sendResult ? sendResult.reason : undefined;
+                    Logger.info('Automation email skipped', {
+                        accountId: enrollment.automation.accountId,
+                        automationId: enrollment.automationId,
+                        recipient: enrollment.email,
+                        reason
+                    });
+                    return;
+                }
 
                 // Track send event for ROI
                 await campaignTrackingService.trackSend(
@@ -284,5 +328,28 @@ export class NodeExecutor {
         if (!result.success) {
             Logger.error('SMS send failed', { error: result.error, phone });
         }
+    }
+
+    private async getScopedConversationId(enrollment: any, conversationId?: string): Promise<string | null> {
+        if (!conversationId) return null;
+
+        const conversation = await prisma.conversation.findFirst({
+            where: {
+                id: conversationId,
+                accountId: enrollment.automation.accountId
+            },
+            select: { id: true }
+        });
+
+        if (!conversation) {
+            Logger.warn('Skipping automation conversation action: conversation outside account scope', {
+                conversationId,
+                accountId: enrollment.automation.accountId,
+                automationId: enrollment.automationId
+            });
+            return null;
+        }
+
+        return conversation.id;
     }
 }

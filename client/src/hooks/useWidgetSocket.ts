@@ -9,7 +9,7 @@ import { useSocket } from '../context/SocketContext';
  * @param onEvent - Callback when event is received
  * @param enabled - Optional flag to disable listening
  */
-export function useWidgetSocket<T = any>(
+export function useWidgetSocket<T = unknown>(
     eventName: string,
     onEvent: (data: T) => void,
     enabled: boolean = true
@@ -44,7 +44,7 @@ export function useWidgetSocket<T = any>(
  * Uses ref to prevent re-subscription on every render.
  */
 export function useWidgetSocketMulti(
-    events: Array<{ event: string; handler: (data: any) => void }>,
+    events: Array<{ event: string; handler: (data: unknown) => void }>,
     enabled: boolean = true
 ) {
     const { socket, isConnected } = useSocket();
@@ -61,7 +61,7 @@ export function useWidgetSocketMulti(
         /** Stable wrappers that delegate to the latest handlers via ref */
         const wrappers = eventsRef.current.map(({ event }) => ({
             event,
-            fn: (data: any) => {
+            fn: (data: unknown) => {
                 const current = eventsRef.current.find(e => e.event === event);
                 current?.handler(data);
             }
@@ -76,8 +76,6 @@ export function useWidgetSocketMulti(
                 socket.off(event, fn);
             }
         };
-    // Only re-subscribe when socket connection state or enabled flag changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [socket, isConnected, enabled]);
 
     return { isConnected };

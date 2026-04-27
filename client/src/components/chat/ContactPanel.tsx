@@ -1,11 +1,10 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import {
     User, Mail,
     MoreVertical,
     ChevronDown, ChevronRight,
-    ShoppingBag, Package, ExternalLink
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { format } from 'date-fns';
@@ -90,6 +89,7 @@ interface PreviousConversation {
     status: string;
     updatedAt: string;
     channel: string;
+    priority?: string;
     messages?: { content: string }[];
 }
 
@@ -103,6 +103,80 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
     const customer = conversation?.wooCustomer;
 
 
+    const fetchCustomerOrders = useCallback(async (wooCustomerId: number, signal?: AbortSignal) => {
+        setIsLoadingOrders(true);
+        try {
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'x-account-id': currentAccount?.id || '',
+            };
+
+            // Fetch orders and conversations in parallel
+            const [ordersRes, convsRes] = await Promise.all([
+                fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers, signal }),
+                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}&limit=20&sort=priority`, { headers, signal })
+            ]);
+
+            if (ordersRes.ok) {
+                const ordersData: unknown = await ordersRes.json();
+                setRecentOrders((ordersData as { orders?: Order[] }).orders || []);
+            }
+
+            if (convsRes.ok) {
+                const convsData: unknown = await convsRes.json();
+                const source = Array.isArray(convsData)
+                    ? convsData
+                    : ((convsData as { conversations?: PreviousConversation[] }).conversations || []);
+                const otherConvs = source.filter((c: PreviousConversation) => c.id !== conversation?.id);
+                setPreviousConversations(otherConvs);
+            }
+        } catch (error: unknown) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            Logger.error('Failed to fetch customer data:', { error });
+        } finally {
+            setIsLoadingOrders(false);
+        }
+    }, [conversation?.id, token, currentAccount?.id]);
+
+    const fetchOrdersByEmail = useCallback(async (email: string, signal?: AbortSignal) => {
+        setIsLoadingOrders(true);
+        try {
+            const ordersRes = await fetch(`/api/orders?billingEmail=${encodeURIComponent(email)}&limit=5`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || '',
+                },
+                signal,
+            });
+            if (ordersRes.ok) {
+                const ordersData: unknown = await ordersRes.json();
+                setRecentOrders((ordersData as { orders?: Order[] }).orders || []);
+            }
+
+            // Also hydrate previous conversations for guest email contacts.
+            const convsRes = await fetch(`/api/chat/conversations?guestEmail=${encodeURIComponent(email)}&limit=20&sort=priority`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || '',
+                },
+                signal,
+            });
+            if (convsRes.ok) {
+                const convsData: unknown = await convsRes.json();
+                const source = Array.isArray(convsData)
+                    ? convsData
+                    : ((convsData as { conversations?: PreviousConversation[] }).conversations || []);
+                const otherConvs = source.filter((c: PreviousConversation) => c.id !== conversation?.id);
+                setPreviousConversations(otherConvs);
+            }
+        } catch (error: unknown) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            Logger.error('Failed to fetch orders by email:', { error });
+        } finally {
+            setIsLoadingOrders(false);
+        }
+    }, [conversation?.id, token, currentAccount?.id]);
+
     // Fetch recent orders when customer changes or for guest emails
     useEffect(() => {
         const controller = new AbortController();
@@ -115,74 +189,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
             setPreviousConversations([]);
         }
         return () => controller.abort();
-    }, [customer?.wooId, conversation?.guestEmail, token, currentAccount?.id]);
-
-    const fetchCustomerOrders = async (wooCustomerId: number, signal?: AbortSignal) => {
-        setIsLoadingOrders(true);
-        try {
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                'x-account-id': currentAccount?.id || '',
-            };
-
-            // Fetch orders and conversations in parallel
-            const [ordersRes, convsRes] = await Promise.all([
-                fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers, signal }),
-                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}`, { headers, signal })
-            ]);
-
-            if (ordersRes.ok) {
-                const ordersData = await ordersRes.json();
-                setRecentOrders(ordersData.orders || []);
-            }
-
-            if (convsRes.ok) {
-                const convsData = await convsRes.json();
-                const otherConvs = Array.isArray(convsData)
-                    ? convsData.filter((c: PreviousConversation) => c.id !== conversation?.id)
-                    : [];
-                setPreviousConversations(otherConvs);
-            }
-        } catch (error: any) {
-            if (error.name === 'AbortError') return;
-            Logger.error('Failed to fetch customer data:', { error: error });
-        } finally {
-            setIsLoadingOrders(false);
-        }
-    };
-
-    const fetchOrdersByEmail = async (email: string, signal?: AbortSignal) => {
-        setIsLoadingOrders(true);
-        try {
-            const ordersRes = await fetch(`/api/orders?billingEmail=${encodeURIComponent(email)}&limit=5`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || '',
-                },
-                signal,
-            });
-            if (ordersRes.ok) {
-                const ordersData = await ordersRes.json();
-                setRecentOrders(ordersData.orders || []);
-            }
-        } catch (error: any) {
-            if (error.name === 'AbortError') return;
-            Logger.error('Failed to fetch orders by email:', { error: error });
-        } finally {
-            setIsLoadingOrders(false);
-        }
-    };
-
-    const getOrderStatusColor = (status: string) => {
-        switch (status.toLowerCase()) {
-            case 'completed': return 'bg-green-100 text-green-700';
-            case 'processing': return 'bg-blue-100 text-blue-700';
-            case 'on-hold': return 'bg-yellow-100 text-yellow-700';
-            case 'cancelled':
-            case 'refunded': return 'bg-red-100 text-red-700';
-            default: return 'bg-gray-100 text-gray-700';
-        }
-    };
+    }, [customer?.wooId, conversation?.guestEmail, token, currentAccount?.id, fetchCustomerOrders, fetchOrdersByEmail]);
 
     if (!conversation) return null;
 
@@ -191,6 +198,26 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
         : conversation.guestName || conversation.guestEmail || 'Anonymous';
     const email = customer?.email || conversation.guestEmail;
     const initials = (name || 'A').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+
+    const totalSpent = customer?.totalSpent || 0;
+    const ordersCount = customer?.ordersCount || recentOrders.length || 0;
+    const avgOrderValue = ordersCount > 0 ? totalSpent / ordersCount : 0;
+    const lastOrderDate = recentOrders.length > 0 ? recentOrders[0].dateCreated : null;
+    const openIssueCount = previousConversations.filter(c => c.status === 'OPEN' || c.status === 'SNOOZED').length;
+
+    const ltvTier = totalSpent >= 5000 ? 'VIP' : totalSpent >= 1000 ? 'High Value' : totalSpent >= 250 ? 'Growing' : 'Standard';
+    const likelyReason = (() => {
+        const recentOrder = recentOrders[0];
+        if (recentOrder?.status?.toLowerCase() === 'on-hold') return 'Order currently on hold';
+        if (recentOrder?.status?.toLowerCase() === 'processing') return 'Order status follow-up';
+        if (recentOrder?.status?.toLowerCase() === 'refunded') return 'Refund clarification';
+
+        const recentText = previousConversations[0]?.messages?.[0]?.content?.toLowerCase() || '';
+        if (recentText.includes('refund')) return 'Refund-related question';
+        if (recentText.includes('shipping') || recentText.includes('delivery')) return 'Shipping update request';
+        if (recentText.includes('cancel')) return 'Cancellation request';
+        return 'General support follow-up';
+    })();
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -321,6 +348,36 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                             <span className="text-gray-900 text-xs">
                                 {format(new Date(conversation.createdAt), 'MMM d, yyyy')}
                             </span>
+                        </div>
+                    </div>
+                </Section>
+
+                {/* Customer Insights */}
+                <Section title="Customer Insights" defaultOpen={true}>
+                    <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">LTV Tier</span>
+                            <span className="font-medium text-gray-900">{ltvTier}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Avg Order Value</span>
+                            <span className="text-gray-900">${avgOrderValue.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Open Issues</span>
+                            <span className={cn("font-medium", openIssueCount > 0 ? "text-amber-700" : "text-gray-900")}>
+                                {openIssueCount}
+                            </span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Last Order</span>
+                            <span className="text-gray-900 text-xs">
+                                {lastOrderDate ? format(new Date(lastOrderDate), 'MMM d, yyyy') : 'No orders'}
+                            </span>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                            <div className="text-gray-500 text-xs mb-1">Likely reason for contact</div>
+                            <div className="text-gray-900 font-medium">{likelyReason}</div>
                         </div>
                     </div>
                 </Section>

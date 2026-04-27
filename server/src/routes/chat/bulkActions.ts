@@ -79,8 +79,9 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                         if (!labelId) {
                             return reply.code(400).send({ error: 'labelId is required for addLabel action' });
                         }
-                        await labelService.bulkAssignLabel(conversationIds, labelId);
-                        result.updated = conversationIds.length;
+                        if (!accountId) return reply.code(400).send({ error: 'Account required' });
+                        const assignments = await labelService.bulkAssignLabel(accountId, conversationIds, labelId);
+                        result.updated = assignments.length;
                         break;
                     }
 
@@ -88,7 +89,8 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                         if (!labelId) {
                             return reply.code(400).send({ error: 'labelId is required for removeLabel action' });
                         }
-                        const removeResult = await labelService.bulkRemoveLabel(conversationIds, labelId);
+                        if (!accountId) return reply.code(400).send({ error: 'Account required' });
+                        const removeResult = await labelService.bulkRemoveLabel(accountId, conversationIds, labelId);
                         result.updated = removeResult.count;
                         break;
                     }
@@ -145,7 +147,7 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                             Logger.warn('Bulk merge: source not in account', { sourceId, accountId });
                             continue;
                         }
-                        await chatService.mergeConversations(targetId, sourceId);
+                        await chatService.mergeConversations(accountId!, targetId, sourceId);
                         mergedCount++;
                     } catch (mergeError: any) {
                         Logger.warn('Failed to merge individual conversation', {

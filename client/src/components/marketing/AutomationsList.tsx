@@ -9,10 +9,18 @@ import { useAccount } from '../../context/AccountContext';
 import { Plus, Zap, Play, Pause, Trash2, Loader2, GitBranch } from 'lucide-react';
 import { Toast, ToastType } from '../ui/Toast';
 
+interface FlowRecord {
+    id: string;
+    name: string;
+    isActive: boolean;
+    triggerType?: string;
+    enrollments?: unknown[];
+}
+
 export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string) => void }) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [flows, setFlows] = useState<any[]>([]);
+    const [flows, setFlows] = useState<FlowRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // Create Modal - simplified: name only
@@ -26,11 +34,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         setToastMessage(message); setToastType(type); setToastVisible(true);
     }, []);
 
-    useEffect(() => {
-        fetchData();
-    }, [currentAccount, token]);
-
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/marketing/automations', {
@@ -41,7 +45,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             });
             if (res.ok) {
                 const data = await res.json();
-                if (Array.isArray(data)) setFlows(data);
+                if (Array.isArray(data)) setFlows(data as FlowRecord[]);
                 else setFlows([]);
             } else {
                 Logger.error('Failed to fetch flows', { status: res.status });
@@ -49,7 +53,11 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             }
         } catch (err) { Logger.error('An error occurred', { error: err }); setFlows([]); }
         finally { setIsLoading(false); }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
@@ -83,7 +91,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         } catch (err) { Logger.error('Failed to create flow', { error: err }); showToast('Failed to create flow — network error'); }
     }
 
-    async function toggleActive(flow: any) {
+    async function toggleActive(flow: FlowRecord) {
         try {
             const detailRes = await fetch(`/api/marketing/automations/${flow.id}`, {
                 headers: {

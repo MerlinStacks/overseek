@@ -48,6 +48,11 @@ export interface ApiErrorData {
     context?: Record<string, unknown>;
 }
 
+interface ErrorWithCode extends Error {
+    code?: string;
+    isRecoverable?: boolean;
+}
+
 /**
  * Gets a user-friendly message for an error code.
  */
@@ -62,7 +67,7 @@ export function getFriendlyMessage(code: string | undefined): string {
 export function getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
         // Check if it's our ApiError with code
-        const apiError = error as any;
+        const apiError = error as ErrorWithCode;
         if (apiError.code) {
             return getFriendlyMessage(apiError.code);
         }
@@ -87,7 +92,7 @@ export function getErrorMessage(error: unknown): string {
  */
 export function isRecoverableError(error: unknown): boolean {
     if (error instanceof Error) {
-        const apiError = error as any;
+        const apiError = error as ErrorWithCode;
         if (typeof apiError.isRecoverable === 'boolean') {
             return apiError.isRecoverable;
         }

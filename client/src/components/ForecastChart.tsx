@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -16,6 +16,16 @@ interface ForecastData {
     isForecast?: boolean;
 }
 
+interface SalesHistoryRow {
+    date: string;
+    sales: number;
+}
+
+interface ForecastRow {
+    date: string;
+    sales: number;
+}
+
 interface ForecastProps {
     dateRange: { startDate: string, endDate: string };
 }
@@ -26,13 +36,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
     const [data, setData] = useState<ForecastData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchForecast();
-        }
-    }, [currentAccount, token, dateRange]);
-
-    async function fetchForecast() {
+    const fetchForecast = useCallback(async () => {
         setIsLoading(true);
         try {
             // First get actual history
@@ -48,10 +52,10 @@ export function ForecastChart({ dateRange }: ForecastProps) {
             );
 
             if (historyRes.ok && forecastRes.ok) {
-                const history = await historyRes.json();
-                const forecast = await forecastRes.json();
+                const history: SalesHistoryRow[] = await historyRes.json();
+                const forecast: ForecastRow[] = await forecastRes.json();
 
-                const processed: ForecastData[] = history.map((d: any) => ({
+                const processed: ForecastData[] = history.map((d) => ({
                     date: d.date,
                     historySales: d.sales,
                     forecastSales: null
@@ -64,7 +68,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 }
 
                 // Add the rest of the forecast
-                forecast.forEach((d: any) => {
+                forecast.forEach((d) => {
                     if (!processed.find(p => p.date === d.date)) {
                         processed.push({
                             date: d.date,
@@ -82,7 +86,13 @@ export function ForecastChart({ dateRange }: ForecastProps) {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [dateRange.startDate, dateRange.endDate, token, currentAccount?.id]);
+
+    useEffect(() => {
+        if (currentAccount && token) {
+            fetchForecast();
+        }
+    }, [currentAccount, token, dateRange, fetchForecast]);
 
     const getChartOptions = (): EChartsOption => {
         const dates = data.map(d => {

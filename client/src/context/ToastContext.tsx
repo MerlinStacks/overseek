@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { type ToastType } from '../components/ui/Toast';
 import { Check, X, AlertCircle } from 'lucide-react';
 
@@ -23,13 +23,10 @@ let nextId = 0;
 
 /** Self-contained toast item that manages its own auto-dismiss timer */
 function ToastEntry({ item, onRemove }: { item: ToastItem; onRemove: (id: number) => void }) {
-    const onRemoveRef = useRef(onRemove);
-    onRemoveRef.current = onRemove;
-
     useEffect(() => {
-        const timer = setTimeout(() => onRemoveRef.current(item.id), item.duration);
+        const timer = setTimeout(() => onRemove(item.id), item.duration);
         return () => clearTimeout(timer);
-    }, [item.id, item.duration]);
+    }, [item.id, item.duration, onRemove]);
 
     const bgColors = { success: 'bg-gray-900', error: 'bg-red-600', info: 'bg-blue-600' };
     const iconBgColors = { success: 'bg-green-500', error: 'bg-white/20', info: 'bg-white/20' };

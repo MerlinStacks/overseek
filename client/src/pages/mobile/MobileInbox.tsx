@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck } from 'lucide-react';
@@ -63,36 +63,7 @@ export function MobileInbox() {
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
 
-    useEffect(() => {
-        fetchConversations();
-        const handleRefresh = () => fetchConversations();
-        window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [currentAccount, token]);
-
-    // Socket listener for real-time updates
-    const { socket } = useSocket();
-    useEffect(() => {
-        if (!socket || !currentAccount) return;
-
-        /**
-         * Handle new/updated conversations from socket events.
-         * Refreshes conversation list to get full data.
-         */
-        const handleConversationUpdated = () => {
-            // Trigger haptic on incoming message
-            triggerHaptic(5);
-            fetchConversations();
-        };
-
-        socket.on('conversation:updated', handleConversationUpdated);
-
-        return () => {
-            socket.off('conversation:updated', handleConversationUpdated);
-        };
-    }, [socket, currentAccount]);
-
-    const fetchConversations = async () => {
+    const fetchConversations = useCallback(async () => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
@@ -133,7 +104,36 @@ export function MobileInbox() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        fetchConversations();
+        const handleRefresh = () => fetchConversations();
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+    }, [fetchConversations]);
+
+    // Socket listener for real-time updates
+    const { socket } = useSocket();
+    useEffect(() => {
+        if (!socket || !currentAccount) return;
+
+        /**
+         * Handle new/updated conversations from socket events.
+         * Refreshes conversation list to get full data.
+         */
+        const handleConversationUpdated = () => {
+            // Trigger haptic on incoming message
+            triggerHaptic(5);
+            fetchConversations();
+        };
+
+        socket.on('conversation:updated', handleConversationUpdated);
+
+        return () => {
+            socket.off('conversation:updated', handleConversationUpdated);
+        };
+    }, [socket, currentAccount, fetchConversations, triggerHaptic]);
 
     const handleArchive = async (id: string) => {
         triggerHaptic(15);

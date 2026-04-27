@@ -153,37 +153,6 @@ export function usePWAUpdate() {
     const [showModal, setShowModal] = useState(false);
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ type: 'minor' });
 
-    useEffect(() => {
-        // Listen for service worker updates
-        const handleSWUpdate = (event: MessageEvent) => {
-            if (event.data?.type === 'SW_UPDATED') {
-                Logger.info('[PWA] Service worker updated');
-                setUpdateAvailable(true);
-
-                // Check if this is a major update
-                const storedVersion = localStorage.getItem('pwa-version');
-                if (storedVersion && storedVersion !== APP_VERSION) {
-                    const [storedMajor] = storedVersion.split('.');
-                    const [currentMajor] = APP_VERSION.split('.');
-
-                    if (storedMajor !== currentMajor) {
-                        setUpdateInfo({ type: 'major' });
-                        setShowModal(true);
-                    }
-                }
-            }
-        };
-
-        navigator.serviceWorker?.addEventListener('message', handleSWUpdate);
-
-        // Check version on mount
-        checkVersion();
-
-        return () => {
-            navigator.serviceWorker?.removeEventListener('message', handleSWUpdate);
-        };
-    }, []);
-
     const checkVersion = async () => {
         try {
             // Check version from server
@@ -239,6 +208,39 @@ export function usePWAUpdate() {
         // Store current version
         localStorage.setItem('pwa-version', APP_VERSION);
     };
+
+    useEffect(() => {
+        // Listen for service worker updates
+        const handleSWUpdate = (event: MessageEvent) => {
+            if (event.data?.type === 'SW_UPDATED') {
+                Logger.info('[PWA] Service worker updated');
+                setUpdateAvailable(true);
+
+                // Check if this is a major update
+                const storedVersion = localStorage.getItem('pwa-version');
+                if (storedVersion && storedVersion !== APP_VERSION) {
+                    const [storedMajor] = storedVersion.split('.');
+                    const [currentMajor] = APP_VERSION.split('.');
+
+                    if (storedMajor !== currentMajor) {
+                        setUpdateInfo({ type: 'major' });
+                        setShowModal(true);
+                    }
+                }
+            }
+        };
+
+        navigator.serviceWorker?.addEventListener('message', handleSWUpdate);
+
+        // Check version on mount
+        queueMicrotask(() => {
+            void checkVersion();
+        });
+
+        return () => {
+            navigator.serviceWorker?.removeEventListener('message', handleSWUpdate);
+        };
+    }, []);
 
     const handleUpdate = () => {
         // Clear caches and reload

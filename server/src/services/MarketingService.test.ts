@@ -30,6 +30,15 @@ const mocks = vi.hoisted(() => ({
             deleteMany: vi.fn(),
         }
     },
+    emailService: {
+        sendEmail: vi.fn().mockResolvedValue({ id: 'msg-1' }),
+    },
+    emailAccount: {
+        id: 'email-account-1',
+    },
+    campaignTrackingService: {
+        trackSend: vi.fn().mockResolvedValue(undefined),
+    },
     logger: {
         info: vi.fn(),
         error: vi.fn(),
@@ -60,6 +69,20 @@ vi.mock('./SegmentService', () => {
     };
 });
 
+vi.mock('../utils/getDefaultEmailAccount', () => ({
+    getDefaultEmailAccount: vi.fn(async () => mocks.emailAccount),
+}));
+
+vi.mock('./EmailService', () => ({
+    EmailService: class {
+        sendEmail = mocks.emailService.sendEmail;
+    }
+}));
+
+vi.mock('./CampaignTrackingService', () => ({
+    campaignTrackingService: mocks.campaignTrackingService,
+}));
+
 describe('MarketingService Optimization', () => {
     let marketingService: MarketingService;
 
@@ -78,7 +101,9 @@ describe('MarketingService Optimization', () => {
         mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({
             id: campaignId,
             accountId,
-            segmentId: null
+            segmentId: null,
+            subject: 'Hello {{customer.firstName}}',
+            content: '<p>Body</p>'
         });
 
         // Mock count
@@ -122,7 +147,9 @@ describe('MarketingService Optimization', () => {
         mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({
             id: campaignId,
             accountId,
-            segmentId
+            segmentId,
+            subject: 'Hello {{customer.firstName}}',
+            content: '<p>Body</p>'
         });
 
         mocks.segmentService.getSegmentCount.mockResolvedValue(500);

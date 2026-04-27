@@ -1,13 +1,13 @@
 /**
- * useProductSearchInsights — React Query hook for product-level GSC analytics.
+ * useProductSearchInsights — fetch hook for product-level GSC analytics.
  *
  * Why a dedicated hook: keeps the component thin and allows independent
  * cache invalidation from the global SEO keyword hooks. Product-level
  * data is scoped to a single permalink and doesn't need site-wide caches.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import { useApi } from './useApi';
+import { useApiQuery } from './useApiQuery';
 import { useSearchConsoleStatus } from './useSeoKeywords';
 
 /** Single query row returned by the page-analytics endpoint */
@@ -36,7 +36,7 @@ export function useProductSearchInsights(permalink: string | undefined) {
     const status = useSearchConsoleStatus();
     const isConnected = status.data?.connected ?? false;
 
-    const queryResult = useQuery<ProductQueryRow[]>({
+    const queryResult = useApiQuery<ProductQueryRow[]>({
         queryKey: ['product-search-insights', permalink],
         queryFn: async () => {
             if (!permalink) return [];

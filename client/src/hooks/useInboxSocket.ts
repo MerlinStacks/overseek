@@ -8,6 +8,7 @@
 import { useEffect, startTransition, type MutableRefObject } from 'react';
 import { Logger } from '../utils/logger';
 import type { Socket } from 'socket.io-client';
+import type { InboxConversation, InboxMessage } from '../types/inbox';
 
 /** Shared auth headers builder — mirrors useInbox */
 function buildHeaders(token: string, accountId: string) {
@@ -22,9 +23,16 @@ interface UseInboxSocketParams {
     selectedId: string | null;
     token: string | null;
     accountId: string | undefined;
-    messagesCache: MutableRefObject<Map<string, any[]>>;
-    setConversations: React.Dispatch<React.SetStateAction<any[]>>;
-    setMessages: React.Dispatch<React.SetStateAction<any[]>>;
+    messagesCache: MutableRefObject<Map<string, InboxMessage[]>>;
+    shouldIncludeConversation: (conversation: InboxConversation) => boolean;
+    setConversations: React.Dispatch<React.SetStateAction<InboxConversation[]>>;
+    setMessages: React.Dispatch<React.SetStateAction<InboxMessage[]>>;
+}
+
+interface ConversationUpdatedPayload {
+    id: string;
+    lastMessage?: InboxMessage;
+    updatedAt: string;
 }
 
 /**
@@ -38,6 +46,7 @@ export function useInboxSocket({
     token,
     accountId,
     messagesCache,
+    shouldIncludeConversation,
     setConversations,
     setMessages,
 }: UseInboxSocketParams) {
@@ -54,7 +63,8 @@ export function useInboxSocket({
                     headers: buildHeaders(token, accountId),
                 });
                 if (res.ok) {
-                    const newConv = await res.json();
+                    const newConv = await res.json() as InboxConversation;
+                    if (!shouldIncludeConversation(newConv)) return;
                     setConversations(prev => {
                         if (prev.find(c => c.id === id)) return prev;
                         return [newConv, ...prev];
@@ -65,8 +75,9 @@ export function useInboxSocket({
             }
         };
 
-        socket.on('conversation:updated', async (data: any) => {
+        socket.on('conversation:updated', async (data: ConversationUpdatedPayload) => {
             let needsFetch = false;
+            const lastMessage = data.lastMessage;
             startTransition(() => {
                 setConversations(prev => {
                     const idx = prev.findIndex(c => c.id === data.id);
@@ -80,7 +91,7 @@ export function useInboxSocket({
                     const updated = [...prev];
                     updated[idx] = {
                         ...updated[idx],
-                        messages: [data.lastMessage],
+                        messages: lastMessage ? [lastMessage] : updated[idx].messages,
                         updatedAt: data.updatedAt,
                         isRead: selectedId === data.id,
                     };
@@ -89,10 +100,10 @@ export function useInboxSocket({
             });
             if (needsFetch) fetchNewConversation(data.id);
 
-            if (selectedId === data.id && data.lastMessage) {
+            if (selectedId === data.id && lastMessage) {
                 setMessages(prev => {
-                    if (prev.find(m => m.id === data.lastMessage.id)) return prev;
-                    return [...prev, data.lastMessage];
+                    if (prev.find(m => m.id === lastMessage.id)) return prev;
+                    return [...prev, lastMessage];
                 });
             }
         });
@@ -105,20 +116,22 @@ export function useInboxSocket({
             });
         });
 
-        socket.on('message:new', (msg: any) => {
-            if (selectedId === msg.conversationId) {
+        socket.on('message:new', (msg: InboxMessage) => {
+            const conversationId = msg.conversationId;
+            if (!conversationId) return;
+            if (selectedId === conversationId) {
                 setMessages(prev => {
                     // Why: conversation:updated can also append this message via lastMessage,
                     // causing duplicates. Guard against it here.
                     if (prev.find(m => m.id === msg.id)) return prev;
                     const updated = [...prev, msg];
-                    messagesCache.current.set(msg.conversationId, updated);
+                    messagesCache.current.set(conversationId, updated);
                     return updated;
                 });
             } else {
-                const cached = messagesCache.current.get(msg.conversationId);
+                const cached = messagesCache.current.get(conversationId);
                 if (cached) {
-                    messagesCache.current.set(msg.conversationId, [...cached, msg]);
+                    messagesCache.current.set(conversationId, [...cached, msg]);
                 }
             }
         });
@@ -128,5 +141,5 @@ export function useInboxSocket({
             socket.off('conversation:read');
             socket.off('message:new');
         };
-    }, [socket, selectedId, accountId, token, messagesCache, setConversations, setMessages]);
+    }, [socket, selectedId, accountId, token, messagesCache, shouldIncludeConversation, setConversations, setMessages]);
 }

@@ -6,9 +6,10 @@
  */
 
 import React, { useState } from 'react';
-import { Mail, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Mail, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
+import { useAccount } from '../../../context/AccountContext';
 import { Logger } from '../../../utils/logger';
 
 /**
@@ -16,9 +17,9 @@ import { Logger } from '../../../utils/logger';
  */
 export function EmailStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting }: OnboardingStepProps) {
     const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [testError, setTestError] = useState<string | null>(null);
-    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const handleChange = (field: keyof typeof draft.email, value: string | number | boolean) => {
         setDraft(prev => ({
@@ -46,18 +47,20 @@ export function EmailStep({ draft, setDraft, onNext, onBack, onSkip, isSubmittin
         setTestError(null);
 
         try {
-            const res = await fetch('/api/email/test-smtp', {
+            const res = await fetch('/api/email/test', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount?.id || ''
                 },
                 body: JSON.stringify({
+                    protocol: 'SMTP',
                     host: draft.email.smtpHost,
                     port: draft.email.smtpPort,
                     username: draft.email.smtpUsername,
                     password: draft.email.smtpPassword,
-                    secure: draft.email.smtpSecure
+                    isSecure: draft.email.smtpSecure
                 })
             });
 
@@ -79,7 +82,8 @@ export function EmailStep({ draft, setDraft, onNext, onBack, onSkip, isSubmittin
 
     const canTest = draft.email.smtpHost.trim() &&
         draft.email.smtpUsername.trim() &&
-        draft.email.smtpPassword.trim();
+        draft.email.smtpPassword.trim() &&
+        !!currentAccount?.id;
 
     return (
         <div className="space-y-6">

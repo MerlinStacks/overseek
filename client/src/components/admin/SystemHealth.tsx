@@ -1,15 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Activity, Download, Trash2, RefreshCw, Server, Mail, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
+interface SystemStats {
+    uptime?: string;
+    [key: string]: unknown;
+}
+
+interface LogsResponse {
+    files?: string[];
+}
+
 export function SystemHealth() {
     const { token } = useAuth();
-    const [stats, setStats] = useState<any>(null);
+    const [stats, setStats] = useState<SystemStats | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    const fetchStats = async () => {
+    const fetchStats = useCallback(async () => {
         setIsLoading(true);
         try {
             // Placeholder: accessing a hypothetical system-stats endpoint
@@ -27,28 +36,28 @@ export function SystemHealth() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [token]);
 
-    const fetchLogs = async () => {
+    const fetchLogs = useCallback(async () => {
         try {
             const res = await fetch('/api/admin/logs', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
-                const data = await res.json(); // Assuming returns { files: ["error.log", "debug.log"] }
+                const data: LogsResponse = await res.json(); // Assuming returns { files: ["error.log", "debug.log"] }
                 setLogs(data.files || []);
             }
         } catch (error) {
             Logger.error('Failed to fetch logs', { error: error });
         }
-    };
+    }, [token]);
 
     useEffect(() => {
         if (token) {
             fetchStats();
             fetchLogs();
         }
-    }, [token]);
+    }, [token, fetchStats, fetchLogs]);
 
     const handleDownloadLog = async (filename: string) => {
         try {

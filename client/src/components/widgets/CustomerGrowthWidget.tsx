@@ -1,41 +1,75 @@
 import { WidgetProps } from './WidgetRegistry';
 import { Logger } from '../../utils/logger';
-import { Users, Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Users } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import { echarts, graphic, type EChartsOption } from '../../utils/echarts';
+import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
+import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass } from './widgetStyles';
 
+interface CustomerGrowthPoint {
+    date?: string;
+    newCustomers?: number;
+}
+
+interface TooltipParam {
+    axisValue: string;
+    dataIndex: number;
+    value: number;
+}
 
 export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<CustomerGrowthPoint[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const fetchAbortRef = useRef<AbortController | null>(null);
+
+    const fetchGrowth = useCallback(async () => {
+        if (!currentAccount || !token) return;
+
+        fetchAbortRef.current?.abort();
+        const controller = new AbortController();
+        fetchAbortRef.current = controller;
+        setLoading(true);
+        setError(null);
+
+        try {
+            const res = await fetch(`/api/analytics/customer-growth?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                signal: controller.signal
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const resData = await res.json();
+            if (controller.signal.aborted) return;
+            setData(Array.isArray(resData) ? resData : []);
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
+            Logger.error('Failed to fetch customer growth', { error: err });
+            setError('Failed to load customer growth');
+        } finally {
+            if (!controller.signal.aborted) {
+                setLoading(false);
+            }
+        }
+    }, [currentAccount, dateRange.endDate, dateRange.startDate, token]);
 
     useEffect(() => {
-        if (!currentAccount) return;
-
-        fetch(`/api/analytics/customer-growth?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-        })
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-            })
-            .then(resData => setData(Array.isArray(resData) ? resData : []))
-            .catch(e => Logger.error('Failed to fetch customer growth', { error: e }))
-            .finally(() => setLoading(false));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token, dateRange]);
+        fetchGrowth();
+        return () => {
+            fetchAbortRef.current?.abort();
+        };
+    }, [fetchGrowth]);
 
     const getChartOptions = (): EChartsOption => {
-        const dates = data.map(d => {
+        const dates = data.map((d) => {
             const date = new Date(String(d.date));
             return isNaN(date.getTime()) ? String(d.date) : date.toLocaleDateString('en-US', { month: 'short' });
         });
-        const values = data.map(d => d.newCustomers || 0);
+        const values = data.map((d) => d.newCustomers || 0);
 
         const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
         const axisColor = isDark ? '#94a3b8' : '#6b7280';
@@ -55,11 +89,12 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: (params: any) => {
+                formatter: (params: unknown) => {
                     if (!Array.isArray(params) || params.length === 0) return '';
-                    const date = new Date(String(data[params[0].dataIndex]?.date));
-                    const label = isNaN(date.getTime()) ? params[0].axisValue : date.toLocaleDateString();
-                    return `<div style="font-weight:600;margin-bottom:4px">${label}</div><div>New Customers: ${params[0].value}</div>`;
+                    const points = params as TooltipParam[];
+                    const date = new Date(String(data[points[0].dataIndex]?.date));
+                    const label = isNaN(date.getTime()) ? points[0].axisValue : date.toLocaleDateString();
+                    return `<div style="font-weight:600;margin-bottom:4px">${label}</div><div>New Customers: ${points[0].value}</div>`;
                 }
             },
             series: [{
@@ -81,19 +116,21 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
     };
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 overflow-hidden min-h-[200px] transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`} style={{ minHeight: '200px' }}>
-            <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold text-slate-900 dark:text-white">Customer Growth</h3>
-                <div className="p-2 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg text-white shadow-md shadow-blue-500/20">
+        <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden min-h-[200px] ${className || ''}`} style={{ minHeight: '200px' }}>
+            <div className={widgetHeaderRowClass}>
+                <h3 className={widgetTitleClass}>Customer Growth</h3>
+                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-cyan-400 to-blue-500 shadow-blue-500/20`}>
                     <Users size={16} />
                 </div>
             </div>
 
             <div className="flex-1 w-full relative">
                 {loading ? (
-                    <div className="absolute inset-0 flex justify-center items-center"><Loader2 className="animate-spin text-slate-400" /></div>
+                    <WidgetLoadingState message="Loading chart..." className="absolute inset-0" />
+                ) : error ? (
+                    <WidgetErrorState message={error} onRetry={fetchGrowth} className="absolute inset-0" />
                 ) : data.length === 0 ? (
-                    <div className="absolute inset-0 flex justify-center items-center text-slate-400 dark:text-slate-500 text-sm">No data available</div>
+                    <WidgetEmptyState message="No data available" className="absolute inset-0" />
                 ) : (
                     <ReactEChartsCore
                         echarts={echarts}

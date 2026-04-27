@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -17,7 +17,7 @@ interface PurchaseOrder {
     expectedDate: string | null;
     createdAt: string;
     trackingLink: string | null;
-    items?: any[];
+    items?: unknown[];
 }
 
 type StatusFilter = 'ALL' | 'DRAFT' | 'ORDERED' | 'RECEIVED' | 'CANCELLED';
@@ -29,6 +29,9 @@ const STATUS_TABS: { key: StatusFilter; label: string; icon: React.ReactNode }[]
     { key: 'RECEIVED', label: 'Received', icon: <CheckCircle2 size={16} /> },
 ];
 
+/** Status priority: ORDERED first, DRAFT second, everything else last */
+const STATUS_PRIORITY: Record<string, number> = { ORDERED: 0, DRAFT: 1, RECEIVED: 2, CANCELLED: 3 };
+
 export function PurchaseOrderList() {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -38,13 +41,7 @@ export function PurchaseOrderList() {
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
-    useEffect(() => {
-        if (currentAccount) {
-            fetchOrders();
-        }
-    }, [currentAccount, token]);
-
-    async function fetchOrders() {
+    const fetchOrders = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
@@ -63,7 +60,13 @@ export function PurchaseOrderList() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (currentAccount) {
+            void fetchOrders();
+        }
+    }, [currentAccount, fetchOrders]);
 
     // Compute stats
     const stats = useMemo(() => {
@@ -83,10 +86,7 @@ export function PurchaseOrderList() {
         return { drafts, pendingOrders: ordered.length, pendingValue, receivedThisMonth };
     }, [orders]);
 
-    /** Status priority: ORDERED first, DRAFT second, everything else last */
-    const STATUS_PRIORITY: Record<string, number> = { ORDERED: 0, DRAFT: 1, RECEIVED: 2, CANCELLED: 3 };
-
-    // Filter then sort by status priority → newest date first within each group
+    // Filter then sort by status priority -> newest date first within each group
     const filteredOrders = useMemo(() => {
         const base = statusFilter === 'ALL' ? orders : orders.filter(o => o.status === statusFilter);
 

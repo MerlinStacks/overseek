@@ -1,7 +1,7 @@
 /**
  * FraudBadge - Displays fraud risk score with color-coded indicator.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { ShieldAlert, ShieldCheck, ShieldQuestion, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -26,11 +26,7 @@ export function FraudBadge({ orderId, className }: FraudBadgeProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [showTooltip, setShowTooltip] = useState(false);
 
-    useEffect(() => {
-        fetchFraudScore();
-    }, [orderId, currentAccount]);
-
-    const fetchFraudScore = async () => {
+    const fetchFraudScore = useCallback(async () => {
         if (!orderId || !token || !currentAccount) return;
         setIsLoading(true);
         try {
@@ -48,7 +44,11 @@ export function FraudBadge({ orderId, className }: FraudBadgeProps) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, orderId, token]);
+
+    useEffect(() => {
+        fetchFraudScore();
+    }, [fetchFraudScore]);
 
     if (isLoading) {
         return (

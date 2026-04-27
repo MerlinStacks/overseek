@@ -397,7 +397,7 @@ export class SearchCampaignAdvisor {
             // Formula: CPC = AOV * conversion_rate / target_ROAS
             const suggestedCpc = (avgOrderValue * estimatedConversionRate) / targetRoas;
             const maxCpc = suggestedCpc * 2;
-            const cpcSource: 'estimated' = 'estimated';
+            const cpcSource = 'estimated' as const;
 
             const projectedRevenue = dailyBudget * 30 * targetRoas;
 

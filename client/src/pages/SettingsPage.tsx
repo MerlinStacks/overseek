@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
@@ -55,7 +55,11 @@ function useTabFromUrl(): [TabId, (tab: TabId) => void] {
     const activeTab: TabId = tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : 'general';
 
     const setActiveTab = useCallback((tab: TabId) => {
-        setSearchParams({ tab }, { replace: true });
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', tab);
+            return next;
+        }, { replace: true });
     }, [setSearchParams]);
 
     return [activeTab, setActiveTab];
@@ -72,10 +76,8 @@ export function SettingsPage() {
     const isAIEnabled = useAccountFeature('AI_WRITER');
     const [activeTab, setActiveTab] = useTabFromUrl();
 
-    if (!currentAccount) return <SettingsPageSkeleton />;
-
     // Grouped categories for sidebar navigation
-    const categories: Category[] = [
+    const categories: Category[] = useMemo(() => [
         {
             name: 'Store',
             tabs: [
@@ -99,7 +101,7 @@ export function SettingsPage() {
                 { id: 'email', label: 'Email', icon: Mail },
                 { id: 'channels', label: 'Channels', icon: Share2 },
                 { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
-                { id: 'conversions', label: 'Tracking Pixels', icon: Zap },
+                { id: 'conversions', label: 'Tracking Pixels', icon: Zap, hidden: !isAdTrackingEnabled },
                 { id: 'webhooks', label: 'Webhooks', icon: Webhook },
                 { id: 'sync', label: 'Sync Status', icon: RefreshCw },
             ]
@@ -114,104 +116,99 @@ export function SettingsPage() {
                 { id: 'notifications', label: 'Notifications', icon: Bell },
             ]
         }
-    ];
+    ], [isAIEnabled, isGoldPriceEnabled, isAdTrackingEnabled]);
 
     // Flat list for mobile tabs
-    const allTabs = categories.flatMap(c => c.tabs).filter(t => !t.hidden);
+    const allTabs = useMemo(
+        () => categories.flatMap(c => c.tabs).filter(t => !t.hidden),
+        [categories]
+    );
+
+    // Keep URL tab valid when feature flags hide a previously-selected tab.
+    useEffect(() => {
+        const hasActiveTab = allTabs.some((tab) => tab.id === activeTab);
+        if (!hasActiveTab && allTabs[0]) {
+            setActiveTab(allTabs[0].id);
+        }
+    }, [activeTab, allTabs, setActiveTab]);
 
     const renderContent = () => {
-        switch (activeTab) {
-            case 'general':
-                return <GeneralSettings />;
-            case 'orderTags':
-                return <OrderTagSettings />;
-            case 'goldPrice':
-                return <GoldPriceSettings />;
-            case 'appearance':
-                return (
-                    <SettingsCard title="Whitelabeling & Appearance" description="Customize the look and feel of your dashboard.">
-                        <AppearanceSettings />
+        const contentByTab: Record<TabId, React.ReactNode> = {
+            general: <GeneralSettings />,
+            appearance: (
+                <SettingsCard title="Whitelabeling & Appearance" description="Customize the look and feel of your dashboard.">
+                    <AppearanceSettings />
+                </SettingsCard>
+            ),
+            team: <TeamSettings />,
+            roles: (
+                <SettingsCard title="Roles & Permissions" description="Create custom roles with granular permissions for STAFF members.">
+                    <RoleManager />
+                </SettingsCard>
+            ),
+            chat: (
+                <SettingsCard title="Live Chat Configuration" description="Manage auto-replies, business hours, and widget behavior.">
+                    <ChatSettings />
+                </SettingsCard>
+            ),
+            channels: (
+                <SettingsCard title="Social Channels" description="Connect Facebook, Instagram, and TikTok to receive messages in your inbox.">
+                    <SocialChannelsSettings />
+                </SettingsCard>
+            ),
+            intelligence: (
+                <SettingsCard title="Intelligence Configuration" description="Manage AI model selection and API keys.">
+                    <AISettings />
+                </SettingsCard>
+            ),
+            analytics: (
+                <div className="space-y-6">
+                    <SettingsCard title="Analytics Configuration" description="Setup the tracking script to enable Live View and Real-time Cart tracking.">
+                        <TrackingScriptHelper />
                     </SettingsCard>
-                );
-            case 'chat':
-                return (
-                    <SettingsCard title="Live Chat Configuration" description="Manage auto-replies, business hours, and widget behavior.">
-                        <ChatSettings />
-                    </SettingsCard>
-                );
-            case 'intelligence':
-                return (
-                    <SettingsCard title="Intelligence Configuration" description="Manage AI model selection and API keys.">
-                        <AISettings />
-                    </SettingsCard>
-                );
-            case 'analytics':
-                return (
-                    <div className="space-y-6">
-                        <SettingsCard title="Analytics Configuration" description="Setup the tracking script to enable Live View and Real-time Cart tracking.">
-                            <TrackingScriptHelper />
-                        </SettingsCard>
-                        <TrackingExclusionSettings />
-                    </div>
-                );
-            case 'inventory':
-                return (
-                    <SettingsCard title="Inventory Management" description="Configure stock alerts per account.">
-                        <InventoryAlertsSettings />
-                    </SettingsCard>
-                );
-            case 'sync':
-                return (
-                    <SettingsCard title="Data Sync" description="Manage WooCommerce ↔ OverSeek data synchronization.">
-                        <SyncStatus />
-                    </SettingsCard>
-                );
-            case 'email':
-                return <EmailSettings />;
-            case 'channels':
-                return (
-                    <SettingsCard title="Social Channels" description="Connect Facebook, Instagram, and TikTok to receive messages in your inbox.">
-                        <SocialChannelsSettings />
-                    </SettingsCard>
-                );
-            case 'notifications':
-                return <NotificationSettings />;
-            case 'cannedResponses':
-                return (
-                    <SettingsCard title="Canned Responses" description="Create reusable message templates with placeholders.">
-                        <CannedResponsesSettings />
-                    </SettingsCard>
-                );
-            case 'team':
-                return <TeamSettings />;
-            case 'roles':
-                return (
-                    <SettingsCard title="Roles & Permissions" description="Create custom roles with granular permissions for STAFF members.">
-                        <RoleManager />
-                    </SettingsCard>
-                );
-            case 'webhooks':
-                return (
-                    <SettingsCard title="Webhook Configuration" description="Configure WooCommerce webhooks for instant order sync and notifications.">
-                        <WebhookSettings />
-                    </SettingsCard>
-                );
-            case 'ads':
-                return (
-                    <SettingsCard title="Ad Accounts" description="Connect and manage your Meta and Google Ads accounts.">
-                        <AdAccountSettings />
-                    </SettingsCard>
-                );
-            case 'conversions':
-                return (
-                    <SettingsCard title="Tracking Pixels & CAPI" description="Manage client-side pixel tags and server-side conversion tracking for all ad platforms.">
-                        <CAPISettings />
-                    </SettingsCard>
-                );
-            default:
-                return null;
-        }
+                    <TrackingExclusionSettings />
+                </div>
+            ),
+            sync: (
+                <SettingsCard title="Data Sync" description="Manage WooCommerce <-> OverSeek data synchronization.">
+                    <SyncStatus />
+                </SettingsCard>
+            ),
+            email: <EmailSettings />,
+            inventory: (
+                <SettingsCard title="Inventory Management" description="Configure stock alerts per account.">
+                    <InventoryAlertsSettings />
+                </SettingsCard>
+            ),
+            orderTags: <OrderTagSettings />,
+            goldPrice: <GoldPriceSettings />,
+            notifications: <NotificationSettings />,
+            webhooks: (
+                <SettingsCard title="Webhook Configuration" description="Configure WooCommerce webhooks for instant order sync and notifications.">
+                    <WebhookSettings />
+                </SettingsCard>
+            ),
+            ads: (
+                <SettingsCard title="Ad Accounts" description="Connect and manage your Meta and Google Ads accounts.">
+                    <AdAccountSettings />
+                </SettingsCard>
+            ),
+            cannedResponses: (
+                <SettingsCard title="Canned Responses" description="Create reusable message templates with placeholders.">
+                    <CannedResponsesSettings />
+                </SettingsCard>
+            ),
+            conversions: (
+                <SettingsCard title="Tracking Pixels & CAPI" description="Manage client-side pixel tags and server-side conversion tracking for all ad platforms.">
+                    <CAPISettings />
+                </SettingsCard>
+            ),
+        };
+
+        return contentByTab[activeTab] ?? null;
     };
+
+    if (!currentAccount) return <SettingsPageSkeleton />;
 
     return (
         <div className="min-h-[calc(100vh-6rem)]">

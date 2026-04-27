@@ -5,8 +5,8 @@
  * Supports OAuth for Google and token-based auth for Meta.
  */
 
-import React, { useState } from 'react';
-import { TrendingUp, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { TrendingUp, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
@@ -44,74 +44,79 @@ export function AdsStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting 
     const [metaToken, setMetaToken] = useState(draft.ads.metaAccessToken || '');
     const [metaAccountId, setMetaAccountId] = useState(draft.ads.metaAdAccountId || '');
     const [metaError, setMetaError] = useState<string | null>(null);
-    const [metaSuccess, setMetaSuccess] = useState(false);
-
-    const handleGoogleOAuth = async () => {
-        setGoogleLoading(true);
+    const syncAdConnections = useCallback(async () => {
+        if (!token || !currentAccount?.id) return;
         try {
-            // Request OAuth URL from backend
-            const res = await fetch('/api/ads/google/auth-url', {
+            const res = await fetch('/api/ads', {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-Id': currentAccount?.id || ''
+                    'X-Account-ID': currentAccount.id
+                }
+            });
+            if (!res.ok) return;
+
+            const accounts = await res.json() as Array<{
+                platform: string;
+                externalId?: string;
+                name?: string;
+            }>;
+
+            const googleAccount = accounts.find(a => a.platform === 'GOOGLE');
+            const metaAccount = accounts.find(a => a.platform === 'META');
+
+            setDraft(prev => ({
+                ...prev,
+                ads: {
+                    ...prev.ads,
+                    googleConnected: !!googleAccount,
+                    googleAccountId: googleAccount?.externalId || prev.ads.googleAccountId,
+                    googleAccountName: googleAccount?.name || prev.ads.googleAccountName,
+                    metaConnected: !!metaAccount,
+                    metaAdAccountId: metaAccount?.externalId || prev.ads.metaAdAccountId
+                }
+            }));
+        } catch (error) {
+            Logger.error('Failed to sync ad account connection state', { error });
+        }
+    }, [token, currentAccount, setDraft]);
+
+    useEffect(() => {
+        void syncAdConnections();
+    }, [syncAdConnections]);
+
+    const handleGoogleOAuth = async () => {
+        if (!token || !currentAccount?.id) return;
+        setGoogleLoading(true);
+        try {
+            const redirect = `${window.location.pathname}${window.location.search}`;
+            const params = new URLSearchParams({ redirect });
+            const res = await fetch(`/api/oauth/google/authorize?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
                 }
             });
 
-            if (!res.ok) throw new Error('Failed to get auth URL');
+            if (!res.ok) throw new Error('Failed to initialize Google OAuth');
 
-            const data = await res.json();
-
-            // Open OAuth window
+            const data = await res.json() as { authUrl?: string };
             if (data.authUrl) {
-                const popup = window.open(data.authUrl, 'google-ads-auth', 'width=600,height=700');
-
-                // Poll for completion
-                const checkInterval = setInterval(() => {
-                    if (popup?.closed) {
-                        clearInterval(checkInterval);
-                        // Check if connection was successful
-                        checkGoogleConnection();
-                    }
-                }, 500);
+                window.location.href = data.authUrl;
             }
         } catch (error) {
             Logger.error('Google OAuth failed', { error });
+            setMetaError('Failed to start Google OAuth');
         } finally {
             setGoogleLoading(false);
         }
     };
 
-    const checkGoogleConnection = async () => {
-        try {
-            const res = await fetch('/api/ads/accounts', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-Id': currentAccount?.id || ''
-                }
-            });
-
-            if (res.ok) {
-                const accounts = await res.json();
-                const googleAccount = accounts.find((a: { platform: string }) => a.platform === 'GOOGLE_ADS');
-                if (googleAccount) {
-                    setDraft(prev => ({
-                        ...prev,
-                        ads: {
-                            ...prev.ads,
-                            googleConnected: true,
-                            googleAccountId: googleAccount.externalId,
-                            googleAccountName: googleAccount.name
-                        }
-                    }));
-                }
-            }
-        } catch (error) {
-            Logger.error('Failed to check Google connection', { error });
-        }
-    };
-
     const handleMetaConnect = async () => {
+        if (!token || !currentAccount?.id) {
+            setMetaError('No account selected');
+            return;
+        }
         if (!metaToken.trim() || !metaAccountId.trim()) {
             setMetaError('Both access token and account ID are required');
             return;
@@ -121,22 +126,21 @@ export function AdsStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting 
         setMetaError(null);
 
         try {
-            const res = await fetch('/api/ads/accounts', {
+            const res = await fetch('/api/ads/connect', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-Id': currentAccount?.id || ''
+                    'X-Account-ID': currentAccount.id
                 },
                 body: JSON.stringify({
-                    platform: 'META_ADS',
+                    platform: 'META',
                     accessToken: metaToken,
                     externalId: metaAccountId
                 })
             });
 
             if (res.ok) {
-                setMetaSuccess(true);
                 setDraft(prev => ({
                     ...prev,
                     ads: {
@@ -146,6 +150,7 @@ export function AdsStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting 
                         metaAdAccountId: metaAccountId
                     }
                 }));
+                await syncAdConnections();
             } else {
                 const data = await res.json();
                 setMetaError(data.error || 'Failed to connect Meta Ads');

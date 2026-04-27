@@ -48,7 +48,7 @@ export function useLoadingTimeout({
     // Start timeout when loading begins
     useEffect(() => {
         if (!isLoading) {
-            setHasTimedOut(false);
+            queueMicrotask(() => setHasTimedOut(false));
             return;
         }
 

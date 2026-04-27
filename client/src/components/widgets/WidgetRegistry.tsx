@@ -1,6 +1,7 @@
 import { ReactNode, lazy, Suspense, ComponentType } from 'react';
 import { Loader2 } from 'lucide-react';
 import { WidgetErrorBoundary } from './WidgetErrorBoundary';
+import { widgetCardClass } from './widgetStyles';
 
 /**
  * Lazy-loaded widget imports for code-splitting.
@@ -39,7 +40,7 @@ const CustomerGrowthWidget = lazy(() => import('./CustomerGrowthWidget').then(m 
 const SalesChartWidget = lazy(() => import('./SalesChartWidget').then(m => ({ default: m.SalesChartWidget })));
 
 export interface WidgetProps {
-    settings?: any;
+    settings?: Record<string, unknown>;
     className?: string;
     dateRange: { startDate: string, endDate: string };
     comparison?: { startDate: string, endDate: string } | null;
@@ -53,7 +54,7 @@ type LazyWidget = React.LazyExoticComponent<ComponentType<WidgetProps>>;
  */
 function WidgetSkeleton() {
     return (
-        <div className="card-premium h-full flex items-center justify-center bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className={`${widgetCardClass} h-full flex items-center justify-center`}>
             <div className="flex flex-col items-center gap-2 text-slate-400">
                 <Loader2 className="animate-spin" size={20} />
                 <span className="text-xs">Loading...</span>

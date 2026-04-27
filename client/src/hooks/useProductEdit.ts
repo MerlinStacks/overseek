@@ -5,7 +5,7 @@
  * Extracted from ProductEditPage.tsx for maintainability.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useCollaboration } from './useCollaboration';
@@ -36,10 +36,21 @@ export interface ProductFormData {
     width: string;
     height: string;
     cogs: string;
-    miscCosts: any[];
+    miscCosts: unknown[];
     supplierId: string;
     binLocation: string;
-    images: any[];
+    images: unknown[];
+}
+
+interface SeoData {
+    focusKeyword?: string;
+}
+
+interface ProductVariantData {
+    id: number;
+    sku?: string;
+    price?: string | number;
+    attributes?: Array<{ name: string; option: string }>;
 }
 
 export interface ProductData {
@@ -56,25 +67,27 @@ export interface ProductData {
     stockStatus: string;
     stockQuantity: number | null;
     manageStock: boolean;
+    backorders?: 'no' | 'notify' | 'yes';
     weight: string;
     dimensions: { length: string; width: string; height: string };
     binLocation?: string;
     mainImage?: string;
     seoScore?: number;
-    seoData?: any;
+    seoData?: SeoData;
     merchantCenterScore?: number;
-    merchantCenterIssues?: any;
+    merchantCenterIssues?: unknown;
     cogs?: string;
-    miscCosts?: any[];
+    miscCosts?: unknown[];
     supplierId?: string;
-    images?: any[];
+    images?: unknown[];
     isGoldPriceApplied?: boolean;
+    goldPriceType?: string | null;
     type?: string;
-    variations?: number[];
-    rawData?: any;
+    variations?: Array<number | ProductVariantData>;
+    rawData?: unknown;
     categories?: { id: number; name: string; slug: string }[];
     tags?: { id: number; name: string; slug: string }[];
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 const initialFormData: ProductFormData = {
@@ -101,7 +114,7 @@ const initialFormData: ProductFormData = {
     images: []
 };
 
-/** 24 hours in ms — drafts older than this are discarded */
+/** 24 hours in ms - drafts older than this are discarded */
 const MAX_DRAFT_AGE_MS = 24 * 60 * 60 * 1000;
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -122,11 +135,11 @@ export function useProductEdit(productId: string | undefined) {
     const [isSyncing, setIsSyncing] = useState(false);
     const [product, setProduct] = useState<ProductData | null>(null);
     const [formData, setFormData] = useState<ProductFormData>(initialFormData);
-    const [variants, setVariants] = useState<any[]>([]);
-    const [suppliers, setSuppliers] = useState<any[]>([]);
+    const [variants, setVariants] = useState<unknown[]>([]);
+    const [suppliers, setSuppliers] = useState<unknown[]>([]);
     const [productViews, setProductViews] = useState<{ views7d: number; views30d: number } | null>(null);
     const [mainImageFailed, setMainImageFailed] = useState(false);
-    /** Whether a draft was restored — drives the "Discard Draft" button visibility */
+    /** Whether a draft was restored - drives the "Discard Draft" button visibility */
     const [hasDraft, setHasDraft] = useState(false);
 
     // Refs for child panels
@@ -140,9 +153,11 @@ export function useProductEdit(productId: string | undefined) {
     tokenRef.current = token;
     const accountRef = useRef(currentAccount);
     accountRef.current = currentAccount;
+    const formDataRef = useRef(formData);
+    formDataRef.current = formData;
 
     // --- Draft persistence state ---
-    /** Whether any field has changed since the last save — drives beforeunload guard */
+    /** Whether any field has changed since the last save - drives beforeunload guard */
     const isDirtyRef = useRef(false);
     const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     /** Tracks whether `fetchProduct` has populated formData at least once */
@@ -151,6 +166,19 @@ export function useProductEdit(productId: string | undefined) {
     const initialFormSetRef = useRef(false);
     /** Prevents draft restore from firing more than once per product session */
     const draftRestoredRef = useRef(false);
+    /** Unwritten formData waiting on the debounce timer - used to flush synchronously
+     *  on unmount, account switch, product switch, and page unload so in-flight
+     *  keystrokes survive error boundaries, reloads, and account changes. */
+    const pendingDraftRef = useRef<ProductFormData | null>(null);
+
+    const writeDraftSync = useCallback((acctId: string, pId: string, data: ProductFormData) => {
+        try {
+            const key = buildProductDraftKey(acctId, pId);
+            localStorage.setItem(key, JSON.stringify({ formData: data, savedAt: Date.now() }));
+        } catch (err) {
+            Logger.error('Failed to persist product draft', { error: err });
+        }
+    }, []);
 
     // Why: reset draft tracking refs when productId changes (user navigates between products)
     useEffect(() => {
@@ -158,6 +186,7 @@ export function useProductEdit(productId: string | undefined) {
         initialFormSetRef.current = false;
         draftRestoredRef.current = false;
         isDirtyRef.current = false;
+        pendingDraftRef.current = null;
     }, [productId]);
 
     // SEO scoring (derived state)
@@ -168,6 +197,7 @@ export function useProductEdit(productId: string | undefined) {
         images: formData.images,
         price: formData.price
     }, formData.focusKeyword);
+    const formDataSnapshot = useMemo(() => JSON.stringify(formData), [formData]);
 
     const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
         globalToast.toast(message, type);
@@ -192,17 +222,22 @@ export function useProductEdit(productId: string | undefined) {
     }, []);
 
     // Fetch product
-    const fetchProduct = useCallback(async (background = false) => {
+    // Why: `skipFormReset` prevents the post-save refetch from clobbering keystrokes
+    // the user made during the network round-trip. `product` is still refreshed so
+    // server-computed fields (seoScore, etc.) stay current.
+    const fetchProduct = useCallback(async (background = false, skipFormReset = false) => {
         const acct = accountRef.current;
         const tkn = tokenRef.current;
         if (!acct || !tkn || !productId) return;
         if (!background) setIsLoading(true);
 
         try {
-            const data = await ProductService.getProduct(productId, tkn, acct.id);
+            const data = await ProductService.getProduct(productId, tkn, acct.id) as ProductData;
             Logger.debug('Product data loaded', { productId, wooId: data.wooId });
             setProduct(data);
             setMainImageFailed(false);
+
+            if (skipFormReset) return;
 
             setFormData({
                 name: data.name || '',
@@ -233,8 +268,8 @@ export function useProductEdit(productId: string | undefined) {
                 if (typeof data.variations[0] === 'object') {
                     setVariants(data.variations);
                 } else {
-                    setVariants(data.variations.map((id: number) => ({
-                        id, sku: '', price: '', attributes: []
+                    setVariants(data.variations.map((id) => ({
+                        id: Number(id), sku: '', price: '', attributes: []
                     })));
                 }
             }
@@ -314,8 +349,9 @@ export function useProductEdit(productId: string | undefined) {
             }
             isDirtyRef.current = false;
             setHasDraft(false);
+            pendingDraftRef.current = null;
 
-            fetchProduct(true);
+            fetchProduct(true, true);
         } catch (error) {
             Logger.error('An error occurred', { error });
             showToast('Failed to save changes', 'error');
@@ -332,24 +368,26 @@ export function useProductEdit(productId: string | undefined) {
         setIsSyncing(true);
 
         try {
-            const updated = await ProductService.syncProduct(productId, tkn, acct.id);
+            const updated = await ProductService.syncProduct(productId, tkn, acct.id) as { wooId?: number };
             Logger.debug('Product synced', { productId, wooId: updated?.wooId });
             // Why: sync overwrites formData from server, so clear any saved draft
             const key = buildProductDraftKey(acct.id, productId);
             localStorage.removeItem(key);
             isDirtyRef.current = false;
             setHasDraft(false);
+            pendingDraftRef.current = null;
             await fetchProduct(true);
             showToast('Product synced successfully from WooCommerce.');
-        } catch (error: any) {
+        } catch (error: unknown) {
             Logger.error('Sync failed:', { error });
-            showToast(`Sync failed: ${error.message}`, 'error');
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            showToast(`Sync failed: ${message}`, 'error');
         } finally {
             setIsSyncing(false);
         }
     }, [productId, fetchProduct, showToast]);
 
-    // Effects — depend on stable primitives (currentAccount?.id) not object references
+    // Effects - depend on stable primitives (currentAccount?.id) not object references
     useEffect(() => {
         if (currentAccount?.id) fetchSuppliers();
     }, [currentAccount?.id, fetchSuppliers]);
@@ -372,22 +410,34 @@ export function useProductEdit(productId: string | undefined) {
             return;
         }
 
+        // Why: track pending data so flush-on-unmount/unload can write it
+        // synchronously if the timer hasn't fired yet.
+        pendingDraftRef.current = formDataRef.current;
+
         if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
         draftTimerRef.current = setTimeout(() => {
-            try {
-                const key = buildProductDraftKey(acct.id, productId);
-                localStorage.setItem(key, JSON.stringify({
-                    formData,
-                    savedAt: Date.now(),
-                }));
-            } catch (err) {
-                Logger.error('Failed to persist product draft', { error: err });
-            }
+            writeDraftSync(acct.id, productId, formDataRef.current);
+            pendingDraftRef.current = null;
         }, SAVE_DEBOUNCE_MS);
 
         return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, productId, JSON.stringify(formData)]);
+    }, [currentAccount?.id, productId, formDataSnapshot, writeDraftSync]);
+
+    // --- Flush pending draft on account switch, product switch, or unmount ---
+    // Why: closures capture the PREVIOUS productId + accountId, so when deps change
+    // the cleanup writes the unflushed keystrokes under the OLD keys before the
+    // new product/account takes over. Also covers ErrorBoundary-triggered unmounts
+    // and React tree unmounts from route changes.
+    useEffect(() => {
+        const acctId = currentAccount?.id;
+        return () => {
+            const pending = pendingDraftRef.current;
+            if (pending && acctId && productId) {
+                writeDraftSync(acctId, productId, pending);
+                pendingDraftRef.current = null;
+            }
+        };
+    }, [currentAccount?.id, productId, writeDraftSync]);
 
     // --- Draft restore: after server data loads, check for a saved draft ---
     useEffect(() => {
@@ -419,19 +469,25 @@ export function useProductEdit(productId: string | undefined) {
         } catch {
             localStorage.removeItem(key);
         }
-        // Why: only run once after the initial product load, not on every formData change
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, productId, isLoading, product]);
+    }, [currentAccount?.id, productId, isLoading, product, formData, showToast]);
 
-    // --- Beforeunload guard: warn when navigating away with unsaved changes ---
+    // --- Beforeunload guard: flush + warn when navigating away with unsaved changes ---
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
+            // Why: flush any unwritten keystrokes synchronously before the page dies.
+            // Covers user-initiated reloads (including ErrorBoundary's Reload button).
+            const pending = pendingDraftRef.current;
+            const acct = accountRef.current;
+            if (pending && acct && productId) {
+                writeDraftSync(acct.id, productId, pending);
+                pendingDraftRef.current = null;
+            }
             if (!isDirtyRef.current) return;
             e.preventDefault();
         };
         window.addEventListener('beforeunload', handler);
         return () => window.removeEventListener('beforeunload', handler);
-    }, []);
+    }, [productId, writeDraftSync]);
 
     /** Discard the saved draft and reset form to server state */
     const discardDraft = useCallback(() => {
@@ -441,6 +497,7 @@ export function useProductEdit(productId: string | undefined) {
         localStorage.removeItem(key);
         isDirtyRef.current = false;
         setHasDraft(false);
+        pendingDraftRef.current = null;
         // Re-fetch server data to reset form
         fetchProduct(false);
     }, [productId, fetchProduct]);

@@ -31,7 +31,6 @@ export function useConversationPresence(conversationId: string | null): UseConve
 
     useEffect(() => {
         if (!socket || !conversationId || !user) {
-            setViewers([]);
             return;
         }
 

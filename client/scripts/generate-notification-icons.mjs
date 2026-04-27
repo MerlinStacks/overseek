@@ -21,7 +21,7 @@ const APP_ICON = path.join(__dirname, '..', 'public', 'app-icon.png');
 
 async function generateNotificationIcon() {
     const img = sharp(APP_ICON);
-    const { width, height } = await img.metadata();
+    await img.metadata();
 
     // Extract raw pixel data to remove the white/near-white background
     const { data, info } = await img

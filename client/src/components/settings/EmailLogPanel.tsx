@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -38,7 +38,7 @@ export function EmailLogPanel() {
     const [offset, setOffset] = useState(0);
     const limit = 20;
 
-    const fetchLogs = async () => {
+    const fetchLogs = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
 
@@ -60,11 +60,11 @@ export function EmailLogPanel() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, offset, token]);
 
     useEffect(() => {
         fetchLogs();
-    }, [currentAccount, token, offset]);
+    }, [fetchLogs]);
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);

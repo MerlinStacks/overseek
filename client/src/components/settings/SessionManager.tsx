@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +19,7 @@ export const SessionManager: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [revoking, setRevoking] = useState<string | null>(null);
 
-    const fetchSessions = async () => {
+    const fetchSessions = useCallback(async () => {
         if (!token) return; // Don't fetch without auth token
         try {
             setLoading(true);
@@ -30,11 +30,11 @@ export const SessionManager: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [token]);
 
     useEffect(() => {
         fetchSessions();
-    }, [token]); // Re-fetch when token becomes available
+    }, [fetchSessions]); // Re-fetch when token becomes available
 
     const revokeSession = async (id: string) => {
         if (!token) return;

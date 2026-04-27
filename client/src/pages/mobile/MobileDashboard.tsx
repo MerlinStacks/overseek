@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -105,16 +105,9 @@ export function MobileDashboard() {
 
     const firstName = user?.fullName?.split(' ')[0] || 'there';
 
-    useEffect(() => {
-        fetchDashboardData();
+    const accountCurrency = currentAccount?.currency || 'USD';
 
-        // Listen for pull-to-refresh
-        const handleRefresh = () => fetchDashboardData();
-        window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [currentAccount, token]);
-
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = useCallback(async () => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
@@ -204,7 +197,7 @@ export function MobileDashboard() {
                         id: order.id,
                         type: 'order' as const,
                         title: `Order #${order.orderNumber || String(order.id).slice(-6)}`,
-                        subtitle: `${formatCurrency(Number(order.total || 0), currentAccount?.currency || 'USD')}`,
+                        subtitle: `${formatCurrency(Number(order.total || 0), accountCurrency)}`,
                         time: formatTimeAgo(order.date_created || order.createdAt || ''),
                         status: order.status
                     }));
@@ -215,11 +208,20 @@ export function MobileDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [accountCurrency, currentAccount, token]);
+
+    useEffect(() => {
+        fetchDashboardData();
+
+        // Listen for pull-to-refresh
+        const handleRefresh = () => fetchDashboardData();
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+    }, [fetchDashboardData]);
 
     // Currency formatting helper using centralized utility with account currency
     const formatAccountCurrency = (amount: number) =>
-        formatCurrency(amount, currentAccount?.currency || 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        formatCurrency(amount, accountCurrency, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
     // Calculate trend percentages
     const ordersTrend = stats?.yesterdayOrders

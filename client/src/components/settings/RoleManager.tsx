@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Plus, Trash2, Edit2, Shield } from 'lucide-react';
 
 interface Role {
@@ -30,12 +31,13 @@ export default function RoleManager() {
     const { hasPermission } = usePermissions();
     const { currentAccount } = useAccount();
     const { token } = useAuth();
+    const toast = useToast();
     const [roles, setRoles] = useState<Role[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [currentRole, setCurrentRole] = useState<Partial<Role>>({});
 
-    const fetchRoles = async () => {
+    const fetchRoles = useCallback(async () => {
         if (!token || !currentAccount?.id) {
             setIsLoading(false);
             return;
@@ -56,21 +58,20 @@ export default function RoleManager() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [token, currentAccount?.id]);
 
     useEffect(() => {
         fetchRoles();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, currentAccount?.id]);
+    }, [fetchRoles]);
 
     const handleSave = async () => {
         // Client-side validation
         if (!currentRole.name || currentRole.name.trim() === '') {
-            alert('Role name is required');
+            toast.error('Role name is required.');
             return;
         }
         if (!token || !currentAccount?.id) {
-            alert('No account context available');
+            toast.error('No account context available.');
             return;
         }
 
@@ -97,11 +98,11 @@ export default function RoleManager() {
                 fetchRoles();
             } else {
                 const errorData = await res.json().catch(() => ({ error: 'Failed to save role' }));
-                alert(errorData.error || 'Failed to save role');
+                toast.error(errorData.error || 'Failed to save role.');
             }
         } catch (e) {
             Logger.error('Error saving role', { error: e });
-            alert('Error saving role');
+            toast.error('Error saving role.');
         }
     };
 
@@ -119,7 +120,7 @@ export default function RoleManager() {
             });
             if (res.ok) fetchRoles();
         } catch (e) {
-            alert('Error deleting role');
+            toast.error('Error deleting role.');
         }
     };
 

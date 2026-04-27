@@ -2,6 +2,16 @@
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
+import { randomUUID } from 'crypto';
+import {
+    DEFAULT_INVOICE_TEMPLATE_SETTINGS,
+    buildInvoiceNumber,
+    formatInvoiceCurrency,
+    formatInvoiceDate,
+    mergeInvoiceSettings,
+    resolveInvoiceTemplateString,
+} from '../../../packages/overseek-core/dist/invoiceRenderModel';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 
@@ -11,7 +21,69 @@ if (!fs.existsSync(INVOICE_DIR)) {
     fs.mkdirSync(INVOICE_DIR, { recursive: true });
 }
 
+type InvoiceTemplateLayout = {
+    grid: any[];
+    items: any[];
+    settings: any;
+    versions: Array<{
+        id: string;
+        createdAt: string;
+        name: string;
+        layout: {
+            grid: any[];
+            items: any[];
+            settings: any;
+        };
+    }>;
+};
+
+
 export class InvoiceService {
+    private normalizeLayout(layout: any): InvoiceTemplateLayout {
+        let parsed = layout;
+
+        if (typeof parsed === 'string') {
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (error) {
+                Logger.warn('[InvoiceService] Failed to parse template layout string', { error });
+                parsed = {};
+            }
+        }
+
+        const baseSettings = parsed?.settings && typeof parsed.settings === 'object'
+            ? parsed.settings
+            : {};
+
+        const versions = Array.isArray(parsed?.versions) ? parsed.versions : [];
+
+        return {
+            grid: Array.isArray(parsed?.grid) ? parsed.grid : [],
+            items: Array.isArray(parsed?.items) ? parsed.items : [],
+            settings: mergeInvoiceSettings(baseSettings),
+            versions: versions
+                .filter((v: any) => v?.id && v?.layout)
+                .slice(0, 25)
+        };
+    }
+
+    private createVersionSnapshot(name: string, layout: InvoiceTemplateLayout) {
+        return {
+            id: randomUUID(),
+            createdAt: new Date().toISOString(),
+            name,
+            layout: {
+                grid: layout.grid,
+                items: layout.items,
+                settings: layout.settings
+            }
+        };
+    }
+
+    private nextVersionList(existingLayout: InvoiceTemplateLayout, currentName: string) {
+        const snapshot = this.createVersionSnapshot(currentName, existingLayout);
+        return [snapshot, ...existingLayout.versions].slice(0, 25);
+    }
 
     /**
      * Creates or updates the single invoice template for an account.
@@ -23,13 +95,43 @@ export class InvoiceService {
             where: { accountId }
         });
 
+        const incomingLayout = this.normalizeLayout(data.layout);
+
         if (existing) {
+            const existingLayout = this.normalizeLayout(existing.layout);
             // Update existing template
             return await prisma.invoiceTemplate.update({
                 where: { id: existing.id },
                 data: {
                     name: data.name,
-                    layout: data.layout
+                    layout: {
+                        ...incomingLayout,
+                        settings: {
+                            ...existingLayout.settings,
+                            ...incomingLayout.settings,
+                            locale: {
+                                ...existingLayout.settings.locale,
+                                ...(incomingLayout.settings.locale || {})
+                            },
+                            numbering: {
+                                ...existingLayout.settings.numbering,
+                                ...(incomingLayout.settings.numbering || {})
+                            },
+                            compliance: {
+                                ...existingLayout.settings.compliance,
+                                ...(incomingLayout.settings.compliance || {})
+                            },
+                            payment: {
+                                ...existingLayout.settings.payment,
+                                ...(incomingLayout.settings.payment || {})
+                            },
+                            branding: {
+                                ...existingLayout.settings.branding,
+                                ...(incomingLayout.settings.branding || {})
+                            }
+                        },
+                        versions: this.nextVersionList(existingLayout, existing.name)
+                    }
                 }
             });
         }
@@ -39,7 +141,7 @@ export class InvoiceService {
             data: {
                 accountId,
                 name: data.name,
-                layout: data.layout
+                layout: incomingLayout
             }
         });
     }
@@ -52,24 +154,102 @@ export class InvoiceService {
 
         if (!existing) throw new Error("Template not found or access denied");
 
+        const existingLayout = this.normalizeLayout(existing.layout);
+        const incomingLayout = data.layout
+            ? this.normalizeLayout(data.layout)
+            : existingLayout;
+
+        const mergedLayout = {
+            ...incomingLayout,
+            settings: {
+                ...existingLayout.settings,
+                ...incomingLayout.settings,
+                locale: {
+                    ...existingLayout.settings.locale,
+                    ...(incomingLayout.settings.locale || {})
+                },
+                numbering: {
+                    ...existingLayout.settings.numbering,
+                    ...(incomingLayout.settings.numbering || {})
+                },
+                compliance: {
+                    ...existingLayout.settings.compliance,
+                    ...(incomingLayout.settings.compliance || {})
+                },
+                payment: {
+                    ...existingLayout.settings.payment,
+                    ...(incomingLayout.settings.payment || {})
+                },
+                branding: {
+                    ...existingLayout.settings.branding,
+                    ...(incomingLayout.settings.branding || {})
+                }
+            },
+            versions: this.nextVersionList(existingLayout, existing.name)
+        };
+
         return await prisma.invoiceTemplate.update({
             where: { id },
             data: {
-                ...data
+                name: data.name ?? existing.name,
+                layout: mergedLayout
             }
         });
     }
 
     async getTemplate(id: string, accountId: string) {
-        return await prisma.invoiceTemplate.findFirst({
+        const template = await prisma.invoiceTemplate.findFirst({
             where: { id, accountId }
         });
+        if (!template) return template;
+        return {
+            ...template,
+            layout: this.normalizeLayout(template.layout)
+        };
     }
 
     async getTemplates(accountId: string) {
-        return await prisma.invoiceTemplate.findMany({
+        const templates = await prisma.invoiceTemplate.findMany({
             where: { accountId },
             orderBy: { createdAt: 'desc' }
+        });
+        return templates.map((template) => ({
+            ...template,
+            layout: this.normalizeLayout(template.layout)
+        }));
+    }
+
+    async getTemplateVersions(id: string, accountId: string) {
+        const template = await prisma.invoiceTemplate.findFirst({
+            where: { id, accountId }
+        });
+        if (!template) throw new Error("Template not found or access denied");
+        const layout = this.normalizeLayout(template.layout);
+        return layout.versions;
+    }
+
+    async rollbackTemplateVersion(id: string, accountId: string, versionId: string) {
+        const template = await prisma.invoiceTemplate.findFirst({
+            where: { id, accountId }
+        });
+        if (!template) throw new Error("Template not found or access denied");
+
+        const currentLayout = this.normalizeLayout(template.layout);
+        const targetVersion = currentLayout.versions.find((version) => version.id === versionId);
+        if (!targetVersion) throw new Error("Version not found");
+
+        const rollbackLayout = this.normalizeLayout(targetVersion.layout);
+        const versionsAfterRollback = this.nextVersionList(currentLayout, template.name)
+            .filter((version) => version.id !== versionId);
+
+        return await prisma.invoiceTemplate.update({
+            where: { id: template.id },
+            data: {
+                layout: {
+                    ...rollbackLayout,
+                    versions: versionsAfterRollback
+                }
+            }
         });
     }
 
@@ -90,9 +270,17 @@ export class InvoiceService {
      * Uses pdfkit to generate a professional PDF invoice.
      */
     async generateInvoicePdf(accountId: string, orderId: string, templateId: string): Promise<{ relativeUrl: string, absolutePath: string }> {
-        // 1. Fetch Order Data with raw JSON
-        const order = await prisma.wooOrder.findUnique({
-            where: { id: orderId }
+        // 1. Fetch Order Data with account scoping.
+        // Allow either internal WooOrder.id (uuid) or WooCommerce wooId (numeric).
+        const parsedWooId = Number(orderId);
+        const order = await prisma.wooOrder.findFirst({
+            where: {
+                accountId,
+                OR: [
+                    { id: orderId },
+                    ...(Number.isFinite(parsedWooId) ? [{ wooId: parsedWooId }] : [])
+                ]
+            }
         });
 
         if (!order) throw new Error("Order not found");
@@ -104,6 +292,9 @@ export class InvoiceService {
 
         if (!template) throw new Error("Invoice Template not found");
 
+        const normalizedLayout = this.normalizeLayout(template.layout);
+        const settings = normalizedLayout.settings;
+
         Logger.info(`Generating PDF for Order`, { orderNumber: order.number, templateName: template.name });
 
         // 3. Parse raw order data for invoice details
@@ -111,11 +302,69 @@ export class InvoiceService {
         const billing = rawData.billing || {};
         const lineItems = rawData.line_items || [];
 
+        const mergedSettings = mergeInvoiceSettings(settings);
+        const nextNumber = Math.max(1, Number(mergedSettings.numbering.nextNumber ?? 1001));
+        const invoiceNumber = buildInvoiceNumber(mergedSettings);
+        const issueDate = new Date();
+        const termsDays = Number(mergedSettings.compliance.paymentTermsDays ?? 14);
+        const dueDate = new Date(issueDate);
+        dueDate.setDate(issueDate.getDate() + Math.max(0, termsDays));
+
+        const mergedContext = {
+            ...rawData,
+            order: { ...order, ...rawData },
+            invoice: {
+                number: invoiceNumber,
+                issueDate: formatInvoiceDate(issueDate, mergedSettings),
+                dueDate: formatInvoiceDate(dueDate, mergedSettings),
+                paymentTermsDays: Math.max(0, termsDays)
+            }
+        };
+
+        const paymentUrlTemplate = mergedSettings.payment.payNowUrl || '';
+        const paymentUrl = paymentUrlTemplate
+            ? resolveInvoiceTemplateString(paymentUrlTemplate, mergedContext)
+            : '';
+
+        let paymentQrBuffer: Buffer | null = null;
+        if (paymentUrl && settings?.payment?.includeQrCode !== false) {
+            try {
+                paymentQrBuffer = await QRCode.toBuffer(paymentUrl, { type: 'png', width: 220, margin: 0 });
+            } catch (error) {
+                Logger.warn('[InvoiceService] Failed to generate payment QR', { error });
+            }
+        }
+
+        const invoiceContext = {
+            number: invoiceNumber,
+            issueDate: formatInvoiceDate(issueDate, mergedSettings),
+            dueDate: formatInvoiceDate(dueDate, mergedSettings),
+            paymentTermsDays: Math.max(0, termsDays),
+            paymentUrl,
+            paymentQrBuffer
+        };
+
+        await prisma.invoiceTemplate.update({
+            where: { id: template.id },
+            data: {
+                layout: {
+                    ...normalizedLayout,
+                    settings: {
+                        ...normalizedLayout.settings,
+                        numbering: {
+                            ...normalizedLayout.settings.numbering,
+                            nextNumber: nextNumber + 1
+                        }
+                    }
+                }
+            }
+        });
+
         // 4. Generate PDF invoice
         const fileName = `invoice-${order.number}-${Date.now()}.pdf`;
         const filePath = path.join(INVOICE_DIR, fileName);
 
-        await this.createPdf(filePath, order, billing, lineItems, template);
+        await this.createPdf(filePath, order, billing, lineItems, template, normalizedLayout, invoiceContext);
 
         Logger.info(`Invoice PDF saved`, { filePath });
 
@@ -129,7 +378,22 @@ export class InvoiceService {
     /**
      * Create PDF file using PDFKit based on the saved template layout
      */
-    private createPdf(filePath: string, order: any, billing: any, lineItems: any[], template: any): Promise<void> {
+    private createPdf(
+        filePath: string,
+        order: any,
+        billing: any,
+        lineItems: any[],
+        template: any,
+        normalizedLayout?: InvoiceTemplateLayout,
+        invoiceContext?: {
+            number: string;
+            issueDate: string;
+            dueDate: string;
+            paymentTermsDays: number;
+            paymentUrl?: string;
+            paymentQrBuffer?: Buffer | null;
+        }
+    ): Promise<void> {
         return new Promise((resolve, reject) => {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
             const stream = fs.createWriteStream(filePath);
@@ -138,7 +402,7 @@ export class InvoiceService {
             doc.pipe(stream);
 
             // Parse template layout
-            let layoutData = template.layout;
+            let layoutData: any = normalizedLayout || template.layout;
             Logger.info('Template layout raw type', { type: typeof layoutData, hasLayout: !!layoutData });
 
             if (typeof layoutData === 'string') {
@@ -152,6 +416,11 @@ export class InvoiceService {
 
             const grid = layoutData?.grid || [];
             const items = layoutData?.items || [];
+            const settings = mergeInvoiceSettings(layoutData?.settings || DEFAULT_INVOICE_TEMPLATE_SETTINGS);
+            const localeSettings = settings.locale;
+            const complianceSettings = settings.compliance;
+            const paymentSettings = settings.payment;
+            const brandingSettings = settings.branding;
 
             Logger.info('Template layout extracted', {
                 gridCount: grid.length,
@@ -160,15 +429,11 @@ export class InvoiceService {
             });
 
             // Helpers — use Intl.NumberFormat with order currency for consistency with HTML preview
-            const orderCurrency = (order.rawData as any)?.currency || 'AUD';
+            const orderCurrency = (order.rawData as any)?.currency || localeSettings.currency || 'AUD';
             const formatCurrency = (val: any) => {
-                try {
-                    return new Intl.NumberFormat('en-US', { style: 'currency', currency: orderCurrency }).format(parseFloat(val || 0));
-                } catch {
-                    return `$${parseFloat(val || 0).toFixed(2)}`;
-                }
+                return formatInvoiceCurrency(parseFloat(val || 0), settings, orderCurrency);
             };
-            const formatDate = (d: Date) => d.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const formatDate = (d: Date) => formatInvoiceDate(d, settings);
 
             /** Decode HTML entities (&#NNN; and common named entities) to actual characters. */
             const decodeEntities = (text: string): string => {
@@ -181,6 +446,7 @@ export class InvoiceService {
                     .replace(/&quot;/g, '"')
                     .replace(/&apos;/g, "'");
             };
+            const rawData = order.rawData as any || {};
 
             // Page dimensions (A4 with 50pt margins)
             const pageWidth = 495; // 595 - 100 (margins)
@@ -188,14 +454,22 @@ export class InvoiceService {
             const rowHeight = 30;
             const marginLeft = 50;
             const marginTop = 50;
+            const pageHeight = 742;
+            const rowsPerPage = Math.max(1, Math.floor(pageHeight / rowHeight));
 
             // Sort grid items by Y position
-            const sortedGrid = [...grid].sort((a: any, b: any) => a.y - b.y);
-
-            let currentY = marginTop;
+            const sortedGrid = [...grid].sort((a: any, b: any) => (a.y - b.y) || (a.x - b.x));
 
             // Find item config by ID
             const getItemConfig = (id: string) => items.find((i: any) => i.id === id);
+
+            let currentPageIndex = 0;
+            const ensurePage = (targetIndex: number) => {
+                while (currentPageIndex < targetIndex) {
+                    doc.addPage();
+                    currentPageIndex += 1;
+                }
+            };
 
             // Render a single block
             const renderBlock = (itemConfig: any, x: number, width: number, startY: number): number => {
@@ -214,6 +488,13 @@ export class InvoiceService {
                                 doc.text(line, x + width - 200, startY + (i * 12), { width: 200, align: 'right' });
                             });
                             blockHeight = Math.max(blockHeight, lines.length * 12 + 10);
+                        }
+                        if (complianceSettings?.taxIdValue) {
+                            const taxLabel = complianceSettings.taxIdLabel || 'Tax ID';
+                            doc.font('Helvetica-Bold').fontSize(9);
+                            doc.text(`${taxLabel}: ${complianceSettings.taxIdValue}`, x + width - 200, startY + blockHeight, { width: 200, align: 'right' });
+                            doc.font('Helvetica').fontSize(10);
+                            blockHeight += 14;
                         }
                         if (itemConfig.logo) {
                             try {
@@ -288,6 +569,9 @@ export class InvoiceService {
                             : formatDate(order.createdAt);
 
                         const detailsData = [
+                            ['Invoice Number:', invoiceContext?.number || 'N/A'],
+                            ['Invoice Date:', invoiceContext?.issueDate || orderDate],
+                            ['Due Date:', invoiceContext?.dueDate || orderDate],
                             ['Order Number:', order.number],
                             ['Order Date:', orderDate],
                             ['Payment Method:', paymentMethod],
@@ -305,10 +589,10 @@ export class InvoiceService {
                     }
 
                     case 'order_table': {
-                        // Use full page width for the table regardless of grid placement
+                        // Respect saved grid width/position so generated output follows designer layout.
                         doc.fontSize(9).font('Helvetica-Bold');
-                        const tableX = 50; // marginLeft
-                        const fullTableWidth = pageWidth;
+                        const tableX = x;
+                        const fullTableWidth = width;
                         const descWidth = fullTableWidth * 0.55;
                         const qtyWidth = 40;
                         const priceWidth = 70;
@@ -335,7 +619,16 @@ export class InvoiceService {
                             // Check for page break
                             if (tableY > 720) {
                                 doc.addPage();
+                                currentPageIndex += 1;
                                 tableY = 50;
+                                doc.fontSize(9).font('Helvetica-Bold');
+                                doc.text('Description', tableX, tableY);
+                                doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
+                                doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
+                                doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
+                                doc.moveTo(tableX, tableY + 12).lineTo(tableX + fullTableWidth, tableY + 12).stroke();
+                                tableY += 18;
+                                doc.font('Helvetica').fontSize(9);
                             }
 
                             const itemName = item.name || 'Product';
@@ -455,33 +748,46 @@ export class InvoiceService {
                         break;
                     }
 
+                    case 'payment_block': {
+                        doc.fontSize(10).font('Helvetica-Bold');
+                        doc.text('Payment', x, startY, { width });
+                        let payY = startY + 16;
+
+                        const paymentUrl = itemConfig.content
+                            ? resolveInvoiceTemplateString(itemConfig.content, {
+                                ...rawData,
+                                order: { ...order, ...rawData },
+                                invoice: invoiceContext || {}
+                            })
+                            : (invoiceContext?.paymentUrl || '');
+                        if (paymentUrl) {
+                            doc.fontSize(9).font('Helvetica').fillColor(brandingSettings.primaryColor || '#4f46e5');
+                            doc.text(`${paymentSettings?.payNowLabel || 'Pay now'}: ${paymentUrl}`, x, payY, { width });
+                            doc.fillColor('black');
+                            payY += 16;
+                        }
+
+                        if (invoiceContext?.paymentQrBuffer) {
+                            try {
+                                doc.image(invoiceContext.paymentQrBuffer, x, payY, { fit: [90, 90] });
+                                payY += 96;
+                            } catch (error) {
+                                Logger.warn('Failed to render payment QR', { error });
+                            }
+                        }
+
+                        blockHeight = Math.max(24, payY - startY);
+                        break;
+                    }
+
                     case 'text': {
                         let textContent = itemConfig.content || '';
-                        const rawData = order.rawData as any || {};
-                        // Handlebars replacement with dot-notation support
-                        textContent = textContent.replace(/\{\{(.*?)\}\}/g, (_: string, key: string) => {
-                            const k = key.trim();
-                            // Try order fields first, then rawData for WooCommerce fields
-                            if (k.includes('.')) {
-                                const parts = k.split('.');
-                                // Check rawData first (has billing, shipping, etc.)
-                                let value: any = rawData;
-                                for (const part of parts) {
-                                    value = value?.[part];
-                                }
-                                if (value != null) return String(value);
-                                // Fallback to order model
-                                value = order;
-                                for (const part of parts) {
-                                    value = (value as any)?.[part];
-                                }
-                                return value != null ? String(value) : `{{${k}}}`;
-                            }
-                            // Top-level keys: check order model then rawData
-                            if ((order as any)[k] != null) return String((order as any)[k]);
-                            if (rawData[k] != null) return String(rawData[k]);
-                            return `{{${k}}}`;
-                        });
+                        const mergedContext = {
+                            ...rawData,
+                            order: { ...order, ...rawData },
+                            invoice: invoiceContext || {}
+                        };
+                        textContent = resolveInvoiceTemplateString(textContent, mergedContext);
 
                         const style = itemConfig.style || {};
                         doc.fontSize(parseInt(style.fontSize) || 10);
@@ -520,7 +826,11 @@ export class InvoiceService {
 
                     case 'footer': {
                         doc.fontSize(9).font('Helvetica');
-                        const footerText = itemConfig.content || 'Thank you for your business!';
+                        const footerParts = [itemConfig.content || 'Thank you for your business!'];
+                        if (complianceSettings?.legalFooter) {
+                            footerParts.push(String(complianceSettings.legalFooter));
+                        }
+                        const footerText = footerParts.join('\n');
                         doc.text(footerText, x, startY, { width, align: 'center' });
                         blockHeight = doc.heightOfString(footerText, { width }) + 10;
                         break;
@@ -553,22 +863,21 @@ export class InvoiceService {
                 return blockHeight;
             };
 
-            // Render each grid item in order
+            // Render each grid item using designer coordinates (x/y/w) to preserve layout.
             sortedGrid.forEach((gridItem: any) => {
                 const itemConfig = getItemConfig(gridItem.i);
                 if (!itemConfig) return;
 
-                const x = marginLeft + (gridItem.x * colWidth);
-                const width = gridItem.w * colWidth;
+                const rowIndex = Number(gridItem.y || 0);
+                const pageIndex = Math.floor(rowIndex / rowsPerPage);
+                const localRow = rowIndex % rowsPerPage;
+                ensurePage(pageIndex);
 
-                // Check for page break
-                if (currentY > 720 && itemConfig.type !== 'footer') {
-                    doc.addPage();
-                    currentY = marginTop;
-                }
+                const itemX = marginLeft + ((gridItem.x || 0) * colWidth);
+                const itemWidth = Math.max(colWidth, (gridItem.w || 1) * colWidth);
+                const itemY = marginTop + (localRow * rowHeight);
 
-                const blockHeight = renderBlock(itemConfig, x, width, currentY);
-                currentY += blockHeight + 10; // Add spacing between blocks
+                renderBlock(itemConfig, itemX, itemWidth, itemY);
             });
 
             // Register handlers before ending doc to avoid race condition

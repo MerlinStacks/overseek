@@ -1,6 +1,6 @@
 /**
- * QuickProductsWidget - Fast local product search using Hot Tier
- * 
+ * QuickProductsWidget - Fast local product search using Hot Tier.
+ *
  * Provides instant search results from IndexedDB cache.
  */
 
@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 import { searchProductsLocal, CachedProduct } from '../../services/db';
 import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetListRowClass, widgetMicroLabelClass } from './widgetStyles';
 
 export function QuickProductsWidget({ className }: WidgetProps) {
     const { currentAccount } = useAccount();
@@ -31,7 +32,7 @@ export function QuickProductsWidget({ className }: WidgetProps) {
                 const found = await searchProductsLocal(currentAccount.id, query);
                 setResults(found.slice(0, 5));
             } catch (error) {
-                Logger.error('Local search failed', { error: error });
+                Logger.error('Local search failed', { error });
             } finally {
                 setSearching(false);
             }
@@ -42,11 +43,11 @@ export function QuickProductsWidget({ className }: WidgetProps) {
     }, [query, currentAccount?.id]);
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 p-4 h-full flex flex-col shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`}>
-            <div className="flex items-center gap-2 mb-3">
+        <div className={`${widgetCardClass} p-4 h-full flex flex-col ${className || ''}`}>
+            <div className={`${widgetHeaderRowClass} gap-2`}>
                 <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                <h3 className="font-semibold text-slate-900 dark:text-white">Quick Products</h3>
-                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">⚡ Instant</span>
+                <h3 className={widgetTitleClass}>Quick Products</h3>
+                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">Instant</span>
             </div>
 
             <div className="relative mb-3">
@@ -71,14 +72,14 @@ export function QuickProductsWidget({ className }: WidgetProps) {
                     <div
                         key={product.id}
                         onClick={() => navigate(`/inventory/product/${product.id}`)}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer group"
+                        className={`flex items-center gap-3 ${widgetListRowClass} hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer group`}
                     >
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
                                 {product.name}
                             </p>
                             {product.sku && (
-                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                <p className={`${widgetMicroLabelClass} truncate`}>
                                     SKU: {product.sku}
                                 </p>
                             )}

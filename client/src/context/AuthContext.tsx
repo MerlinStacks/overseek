@@ -95,11 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshTimeoutRef.current = setTimeout(async () => {
             const success = await silentRefresh();
             if (success) {
-                // Schedule next refresh with new token
-                const newToken = localStorage.getItem('token');
-                if (newToken) {
-                    scheduleRefresh(newToken);
-                }
+                // Next schedule is handled by token state update.
             }
         }, refreshIn);
     }, [silentRefresh]);
@@ -146,6 +142,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, [silentRefresh, scheduleRefresh]);
 
+    useEffect(() => {
+        if (!token) {
+            if (refreshTimeoutRef.current) {
+                clearTimeout(refreshTimeoutRef.current);
+            }
+            return;
+        }
+        scheduleRefresh(token);
+    }, [token, scheduleRefresh]);
+
     const login = (newToken: string, newUser: User, refreshToken?: string) => {
         localStorage.setItem('token', newToken);
         localStorage.setItem('user', JSON.stringify(newUser));
@@ -154,7 +160,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setToken(newToken);
         setUser(newUser);
-        scheduleRefresh(newToken);
     };
 
     const logout = () => {

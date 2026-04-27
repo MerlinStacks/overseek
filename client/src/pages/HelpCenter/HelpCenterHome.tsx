@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { getHelpCollections } from '../../data/helpContent';
 import { HelpSearch } from '../../components/HelpCenter/HelpSearch';
 import { useNavigate } from 'react-router-dom';

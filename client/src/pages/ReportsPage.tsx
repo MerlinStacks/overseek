@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
-import { Loader2, TrendingUp, DollarSign, Users, Package, BarChart3, PieChart, FileText, LayoutGrid, Lock } from 'lucide-react';
+import { Loader2, TrendingUp, DollarSign, Users, Package, FileText, Lock } from 'lucide-react';
 
 import { ReportBuilder } from '../components/ReportBuilder';
 import { Toast, ToastType } from '../components/ui/Toast';
@@ -11,7 +11,7 @@ import { Toast, ToastType } from '../components/ui/Toast';
 import { ReportsSidebar } from '../components/analytics/ReportsSidebar';
 import { StockVelocityReport } from '../components/analytics/StockVelocityReport';
 import { ProfitabilityReport } from '../components/analytics/ProfitabilityReport';
-import { getDateRange, getComparisonRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
+import { getDateRange, DateRangeOption, ComparisonOption } from '../utils/dateUtils';
 import { ReportTemplate } from '../types/analytics';
 
 interface SalesData {
@@ -59,12 +59,7 @@ export function ReportsPage() {
         setToastMessage(message); setToastType(type); setToastVisible(true);
     }, []);
 
-    useEffect(() => {
-        fetchTemplates();
-        fetchData();
-    }, [currentAccount, token, dateOption]);
-
-    const fetchTemplates = async () => {
+    const fetchTemplates = useCallback(async () => {
         if (!currentAccount || !token) return;
         try {
             const res = await fetch('/api/analytics/templates', {
@@ -74,7 +69,7 @@ export function ReportsPage() {
                 setTemplates(await res.json());
             }
         } catch (e) { Logger.error('Failed to load templates', { error: e }); showToast('Failed to load report templates'); }
-    };
+    }, [currentAccount, token, showToast]);
 
     const handleSelectTemplate = (template: ReportTemplate) => {
         setCustomReportConfig({
@@ -99,11 +94,11 @@ export function ReportsPage() {
         } catch (e) { Logger.error('Delete failed', { error: e }); showToast('Failed to delete template'); }
     };
 
-    const handleTemplateSaved = () => {
+    const handleTemplateSaved = useCallback(() => {
         fetchTemplates();
-    };
+    }, [fetchTemplates]);
 
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
 
@@ -128,7 +123,12 @@ export function ReportsPage() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token, dateOption, showToast]);
+
+    useEffect(() => {
+        fetchTemplates();
+        fetchData();
+    }, [fetchTemplates, fetchData]);
 
     const totalRevenue = salesData.reduce((acc, curr) => acc + curr.sales, 0);
     const newCustomersCount = customerGrowth.reduce((acc, curr) => acc + curr.newCustomers, 0);

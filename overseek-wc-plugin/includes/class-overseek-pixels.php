@@ -267,7 +267,8 @@ class OverSeek_Pixels
         $value = (float) $product->get_price();
         $currency = get_woocommerce_currency();
         $name = $product->get_name();
-        $event_id = wp_generate_uuid4();
+        // Shared with server-side product_view event for cross-channel deduplication.
+        $event_id = $this->get_shared_product_view_event_id((int) $product->get_id());
 
         $js = '';
         if (!empty($config['meta']['pixelId'])) {
@@ -353,8 +354,26 @@ class OverSeek_Pixels
         return <<<JS
 (function(){
     var p={$platforms};
-    function fireATC(productName,productId,value,currency){
-        var eid=crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random()).toString(36);
+    function makeEid(){
+        return (crypto.randomUUID?crypto.randomUUID():'os_'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+    }
+    function ensureButtonEid(btn){
+        var b=jQuery(btn);
+        var eid=b.attr('data-overseek-event-id')||b.attr('data-os-eid')||'';
+        if(!eid){
+            eid=makeEid();
+            b.attr('data-overseek-event-id',eid);
+            b.attr('data-os-eid',eid);
+        }
+        var href=b.attr('href')||'';
+        if(href && href.indexOf('overseek_event_id=')===-1){
+            var sep=href.indexOf('?')===-1?'?':'&';
+            b.attr('href',href+sep+'overseek_event_id='+encodeURIComponent(eid));
+        }
+        return eid;
+    }
+    function fireATC(productName,productId,value,currency,eid){
+        eid=eid||makeEid();
         if(p.meta) fbq('track','AddToCart',{content_ids:[productId],content_type:'product',content_name:productName,value:value,currency:currency},{eventID:eid});
         if(p.tiktok) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency});
         if(p.pinterest) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency});
@@ -364,18 +383,26 @@ class OverSeek_Pixels
         if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency});}
         if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1});
     }
+    jQuery(document).on('click','.add_to_cart_button, .ajax_add_to_cart',function(){
+        ensureButtonEid(this);
+    });
     jQuery(document.body).on('added_to_cart',function(e,fragments,cart_hash,btn){
+        var eid=btn?ensureButtonEid(btn):makeEid();
         var name=btn&&btn.data('product_name')||'';
         var id=btn&&btn.data('product_id')||'';
         var price=btn&&btn.data('product_price')||0;
-        fireATC(name,String(id),parseFloat(price)||0,'{$this->get_currency()}');
+        fireATC(name,String(id),parseFloat(price)||0,'{$this->get_currency()}',eid);
     });
     jQuery('form.cart').on('submit',function(){
         var form=jQuery(this);
+        var eidInput=form.find('input[name="overseek_event_id"]');
+        var eid=eidInput.val()||makeEid();
+        if(!eidInput.length){eidInput=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});form.append(eidInput);}
+        eidInput.val(eid);
         var name=form.closest('.product').find('.product_title').text()||'';
         var id=form.find('input[name=product_id],button[name=add-to-cart]').val()||'';
         var price=form.closest('.product').find('.price ins .amount, .price > .amount').first().text().replace(/[^0-9.]/g,'')||0;
-        fireATC(name.trim(),String(id),parseFloat(price)||0,'{$this->get_currency()}');
+        fireATC(name.trim(),String(id),parseFloat(price)||0,'{$this->get_currency()}',String(eid));
     });
 })();
 JS;
@@ -434,6 +461,7 @@ JS;
         $value = (float) $cart->get_total('edit');
         $currency = get_woocommerce_currency();
         $num_items = $cart->get_cart_contents_count();
+        // Persisted into checkout form so server-side checkout_start can reuse it.
         $event_id = wp_generate_uuid4();
 
         $js = '';
@@ -463,6 +491,8 @@ JS;
         if (!empty($config['microsoft']['tagId'])) {
             $js .= "window.uetq=window.uetq||[];window.uetq.push('event','begin_checkout',{revenue_value:" . $value . ",currency:'" . esc_js($currency) . "'});";
         }
+        // Ensure form submission carries the same event ID for server-side dedup.
+        $js .= "(function(){function setOverseekEventId(){var f=jQuery('form.checkout').first();if(!f.length)return;var i=f.find('input[name=\"overseek_event_id\"]');if(!i.length){i=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});f.append(i);}i.val('{$event_id}');}setOverseekEventId();jQuery(document.body).on('updated_checkout',setOverseekEventId);})();";
         return $js;
     }
 
@@ -535,7 +565,12 @@ JS;
 
         $total = (float) $order->get_total();
         $currency = $order->get_currency();
-        $event_id = $order->get_meta('_overseek_event_id') ?: wp_generate_uuid4();
+        $event_id = $order->get_meta('_overseek_event_id');
+        if (empty($event_id)) {
+            $event_id = wp_generate_uuid4();
+            $order->update_meta_data('_overseek_event_id', $event_id);
+            $order->save();
+        }
 
         if (!empty($config['meta']['excludeShipping'])) $total -= (float) $order->get_shipping_total();
         if (!empty($config['meta']['excludeTax'])) $total -= (float) $order->get_total_tax();
@@ -684,7 +719,17 @@ JS;
         if ($user->ID > 0) return 'wc_' . $user->ID;
 
         // Fall back to OverSeek visitor ID cookie
-        return isset($_COOKIE['_osv']) ? sanitize_text_field($_COOKIE['_osv']) : '';
+        return isset($_COOKIE['_os_vid']) ? sanitize_text_field($_COOKIE['_os_vid']) : '';
+    }
+
+    /**
+     * Deterministic event ID for product_view so browser + server can deduplicate.
+     */
+    private function get_shared_product_view_event_id(int $product_id): string
+    {
+        $visitor = isset($_COOKIE['_os_vid']) ? sanitize_text_field($_COOKIE['_os_vid']) : '';
+        $material = implode('|', ['overseek', 'product_view', (string) $product_id, $visitor]);
+        return 'os_pv_' . substr(hash('sha256', $material), 0, 32);
     }
 
     /**

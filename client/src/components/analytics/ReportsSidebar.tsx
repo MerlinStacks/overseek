@@ -46,7 +46,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
         filteredTemplates
             .filter(t => t.type.includes('SYSTEM'))
             .forEach(t => {
-                const category = (t as any).category || 'Sales';
+                const category = t.category || 'Sales';
                 if (grouped[category]) {
                     grouped[category].push(t);
                 }
@@ -64,7 +64,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
     const renderTemplateButton = (t: ReportTemplate) => {
         const isActive = selectedTemplateId === t.id;
         const isSystem = t.type.includes('SYSTEM');
-        const category = (t as any).category || 'Sales';
+        const category = t.category || 'Sales';
         const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Sales;
 
         return (

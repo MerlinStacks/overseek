@@ -4,8 +4,13 @@ import { MiscCostsEditor, MiscCost } from './MiscCostsEditor';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface PricingPanelProps {
-    formData: any;
-    onChange?: (updates: any) => void;
+    formData: {
+        price: string;
+        salePrice: string;
+        cogs: string;
+        miscCosts?: MiscCost[];
+    };
+    onChange?: (updates: Partial<PricingPanelProps['formData']>) => void;
 }
 
 export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }) => {
@@ -60,7 +65,9 @@ export const PricingPanel: React.FC<PricingPanelProps> = ({ formData, onChange }
                                 onChange={(e) => {
                                     // Limit input length to prevent performance issues
                                     if (e.target.value.length <= 10) {
-                                        onChange && onChange({ cogs: e.target.value });
+                                        if (onChange) {
+                                            onChange({ cogs: e.target.value });
+                                        }
                                     }
                                 }}
                                 className="w-full pl-8 pr-4 py-2 bg-white/50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden transition-all"

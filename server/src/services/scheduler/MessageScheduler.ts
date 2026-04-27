@@ -33,6 +33,9 @@ export class MessageScheduler {
      * Start all message-related tickers
      */
     static start() {
+        // Defensive: avoid duplicate intervals if start() is called more than once.
+        this.stop();
+
         // Email Polling (every 2 minutes)
         Logger.info('[Email Polling] Starting immediate email check on startup');
         this.pollEmails();
@@ -49,6 +52,28 @@ export class MessageScheduler {
             () => this.checkSnoozedConversations().catch(e => Logger.error('Snooze Check Error', { error: e })),
             60 * 1000
         );
+    }
+
+    /**
+     * Stop all message-related tickers and release singleton references.
+     */
+    static stop() {
+        if (this.emailPollingInterval) {
+            clearInterval(this.emailPollingInterval);
+            this.emailPollingInterval = null;
+        }
+
+        if (this.scheduledMsgInterval) {
+            clearInterval(this.scheduledMsgInterval);
+            this.scheduledMsgInterval = null;
+        }
+
+        if (this.snoozeCheckInterval) {
+            clearInterval(this.snoozeCheckInterval);
+            this.snoozeCheckInterval = null;
+        }
+
+        this.emailServiceInstance = null;
     }
 
     /**
@@ -123,47 +148,62 @@ export class MessageScheduler {
 
         for (const message of dueMessages) {
             try {
+                let shouldClearSchedule = false;
+
                 if (message.conversation.channel === 'EMAIL') {
                     const emailService = await this.getEmailService();
 
                     const recipientEmail = message.conversation.wooCustomer?.email
                         || message.conversation.guestEmail;
 
-                    if (recipientEmail) {
-                        // Use cached account — no per-message DB query
-                        const emailAccount = emailAccountCache.get(message.conversation.accountId);
-
-                        if (emailAccount) {
-                            // Parse stored attachments (JSON array of { filename, path, contentType })
-                            const attachments = message.attachmentPaths
-                                ? (message.attachmentPaths as Array<{ filename: string; path: string; contentType: string }>)
-                                : undefined;
-
-                            // Use conversation title for threading
-                            const subject = message.conversation.title
-                                ? (message.conversation.title.startsWith('Re:') ? message.conversation.title : `Re: ${message.conversation.title}`)
-                                : 'Re: Conversation';
-
-                            await emailService.sendEmail(
-                                message.conversation.accountId,
-                                emailAccount.id,
-                                recipientEmail,
-                                subject,
-                                message.content,
-                                attachments // Now passes attachments!
-                            );
-
-                            Logger.info(`[Scheduler] Sent scheduled message ${message.id}`, {
-                                attachmentCount: attachments?.length || 0
-                            });
-                        }
+                    if (!recipientEmail) {
+                        Logger.warn('[Scheduler] Skipping scheduled message with no recipient email', {
+                            messageId: message.id,
+                            conversationId: message.conversationId
+                        });
+                        continue;
                     }
+
+                    const emailAccount = emailAccountCache.get(message.conversation.accountId);
+                    if (!emailAccount) {
+                        Logger.warn('[Scheduler] Skipping scheduled message with no sending account', {
+                            messageId: message.id,
+                            accountId: message.conversation.accountId
+                        });
+                        continue;
+                    }
+
+                    const attachments = message.attachmentPaths
+                        ? (message.attachmentPaths as Array<{ filename: string; path: string; contentType: string }>)
+                        : undefined;
+
+                    const subject = message.conversation.title
+                        ? (message.conversation.title.startsWith('Re:') ? message.conversation.title : `Re: ${message.conversation.title}`)
+                        : 'Re: Conversation';
+
+                    await emailService.sendEmail(
+                        message.conversation.accountId,
+                        emailAccount.id,
+                        recipientEmail,
+                        subject,
+                        message.content,
+                        attachments
+                    );
+
+                    Logger.info(`[Scheduler] Sent scheduled message ${message.id}`, {
+                        attachmentCount: attachments?.length || 0
+                    });
+                    shouldClearSchedule = true;
+                } else {
+                    shouldClearSchedule = true;
                 }
 
-                await prisma.message.update({
-                    where: { id: message.id },
-                    data: { scheduledFor: null, attachmentPaths: null }, // Clear after sending
-                });
+                if (shouldClearSchedule) {
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: { scheduledFor: null, attachmentPaths: null },
+                    });
+                }
 
             } catch (error) {
                 Logger.error(`[Scheduler] Failed to send scheduled message ${message.id}`, { error });
@@ -231,3 +271,4 @@ export class MessageScheduler {
         }
     }
 }
+

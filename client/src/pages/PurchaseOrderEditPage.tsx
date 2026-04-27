@@ -28,7 +28,23 @@ interface Supplier {
     id: string;
     name: string;
     currency: string;
-    items: any[];
+    items: Array<Record<string, unknown>>;
+}
+
+type POStatus = 'DRAFT' | 'ORDERED' | 'RECEIVED' | 'CANCELLED';
+
+interface POResponseItem {
+    id: string;
+    productId?: string;
+    supplierItemId?: string;
+    name: string;
+    sku?: string;
+    wooId?: number;
+    product?: { wooId?: number };
+    variationWooId?: number | null;
+    quantity: number;
+    unitCost: number | string;
+    totalCost: number | string;
 }
 
 export function PurchaseOrderEditPage() {
@@ -43,7 +59,7 @@ export function PurchaseOrderEditPage() {
 
     // Form State
     const [supplierId, setSupplierId] = useState('');
-    const [status, setStatus] = useState('DRAFT');
+    const [status, setStatus] = useState<POStatus>('DRAFT');
     const [notes, setNotes] = useState('');
     const [orderDate, setOrderDate] = useState('');
     const [expectedDate, setExpectedDate] = useState('');
@@ -62,7 +78,6 @@ export function PurchaseOrderEditPage() {
     const [poNumber, setPoNumber] = useState('');
 
     /** Whether the server data has loaded — prevents draft from overwriting fetched PO */
-    const serverDataLoadedRef = useRef(false);
     /** Whether any field has been touched since last save — drives beforeunload guard */
     const isDirtyRef = useRef(false);
     /** Prevents draft restore from firing more than once per PO session */
@@ -75,29 +90,6 @@ export function PurchaseOrderEditPage() {
         formState: { supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items },
         enabled: !!currentAccount && !isLoading,
     });
-
-    useEffect(() => {
-        if (currentAccount) {
-            fetchSuppliers();
-            if (!isNew) {
-                fetchPO(id!);
-            } else {
-                // Why: for new POs, try to restore a saved draft
-                const draft = loadDraft();
-                if (draft) {
-                    setSupplierId(draft.supplierId);
-                    setStatus(draft.status);
-                    setNotes(draft.notes);
-                    setOrderDate(draft.orderDate);
-                    setExpectedDate(draft.expectedDate);
-                    setTrackingNumber(draft.trackingNumber);
-                    setTrackingLink(draft.trackingLink);
-                    setItems(draft.items);
-                    showToast('Draft restored from your last session', 'success');
-                }
-            }
-        }
-    }, [currentAccount, token, id]);
 
     // Why: warn the user before they accidentally close/refresh with unsaved changes
     useEffect(() => {
@@ -116,26 +108,28 @@ export function PurchaseOrderEditPage() {
         isDirtyRef.current = true;
     }, [supplierId, status, notes, orderDate, expectedDate, trackingNumber, trackingLink, items]);
 
-    async function fetchSuppliers() {
+    const fetchSuppliers = useCallback(async () => {
         // Assume endpoint exists
+        if (!token || !currentAccount?.id) return;
         try {
             const res = await fetch(`/api/inventory/suppliers`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount!.id }
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             if (res.ok) setSuppliers(await res.json());
         } catch (err) { Logger.error('An error occurred', { error: err }); }
-    }
+    }, [token, currentAccount?.id]);
 
-    async function fetchPO(poId: string) {
+    const fetchPO = useCallback(async (poId: string) => {
+        if (!token || !currentAccount?.id) return;
         setIsLoading(true);
         try {
             const res = await fetch(`/api/inventory/purchase-orders/${poId}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount!.id }
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             if (res.ok) {
                 const data = await res.json();
                 setSupplierId(data.supplierId);
-                setStatus(data.status);
+                setStatus(data.status as POStatus);
                 setNotes(data.notes || '');
                 setOrderDate(data.orderDate ? data.orderDate.split('T')[0] : '');
                 setExpectedDate(data.expectedDate ? data.expectedDate.split('T')[0] : '');
@@ -144,7 +138,7 @@ export function PurchaseOrderEditPage() {
                 setPoNumber(data.orderNumber || '');
 
                 // Map items
-                const serverItems = data.items.map((i: any) => ({
+                const serverItems = (data.items as POResponseItem[]).map((i) => ({
                     id: i.id,
                     productId: i.productId,
                     supplierItemId: i.supplierItemId,
@@ -164,7 +158,7 @@ export function PurchaseOrderEditPage() {
                     const draft = loadDraft();
                     if (draft) {
                         setSupplierId(draft.supplierId);
-                        setStatus(draft.status);
+                        setStatus(draft.status as POStatus);
                         setNotes(draft.notes);
                         setOrderDate(draft.orderDate);
                         setExpectedDate(draft.expectedDate);
@@ -178,13 +172,36 @@ export function PurchaseOrderEditPage() {
             }
         } catch (err) { Logger.error('An error occurred', { error: err }); }
         finally { setIsLoading(false); }
-    }
+    }, [token, currentAccount?.id, loadDraft, showToast]);
+
+    useEffect(() => {
+        if (currentAccount) {
+            fetchSuppliers();
+            if (!isNew && id) {
+                fetchPO(id);
+            } else {
+                // Why: for new POs, try to restore a saved draft
+                const draft = loadDraft();
+                if (draft) {
+                    setSupplierId(draft.supplierId);
+                    setStatus(draft.status as POStatus);
+                    setNotes(draft.notes);
+                    setOrderDate(draft.orderDate);
+                    setExpectedDate(draft.expectedDate);
+                    setTrackingNumber(draft.trackingNumber);
+                    setTrackingLink(draft.trackingLink);
+                    setItems(draft.items);
+                    showToast('Draft restored from your last session', 'success');
+                }
+            }
+        }
+    }, [currentAccount, isNew, id, fetchSuppliers, fetchPO, loadDraft, showToast]);
 
     const addItem = () => {
         setItems([...items, { name: '', quantity: 1, unitCost: 0, totalCost: 0 }]);
     };
 
-    const updateItem = (index: number, field: keyof POItem, value: any) => {
+    const updateItem = <K extends keyof POItem>(index: number, field: K, value: POItem[K]) => {
         const newItems = [...items];
         newItems[index] = { ...newItems[index], [field]: value };
 
@@ -302,7 +319,6 @@ export function PurchaseOrderEditPage() {
     }
 
     const grandTotal = items.reduce((acc, item) => acc + (item.totalCost || 0), 0);
-    const selectedSupplier = suppliers.find(s => s.id === supplierId);
     // Lock the PO from editing once marked as received
     const isLocked = status === 'RECEIVED';
 
@@ -377,7 +393,7 @@ export function PurchaseOrderEditPage() {
             {/* Status Stepper */}
             {!isNew && (
                 <POStatusStepper
-                    status={status as any}
+                    status={status}
                     onStatusChange={(newStatus) => setStatus(newStatus)}
                     disabled={isLocked}
                 />
@@ -500,7 +516,7 @@ export function PurchaseOrderEditPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                             <select
                                 value={status}
-                                onChange={(e) => setStatus(e.target.value)}
+                                onChange={(e) => setStatus(e.target.value as POStatus)}
                                 disabled={isLocked}
                                 className="w-full border border-gray-300 rounded-lg p-2.5 outline-hidden focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                             >

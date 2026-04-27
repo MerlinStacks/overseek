@@ -27,6 +27,14 @@ import { ProductSalesHistory } from '../components/products/ProductSalesHistory'
 import { PresenceAvatars } from '../components/common/PresenceAvatars';
 import { useProductEdit } from '../hooks/useProductEdit';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
+import type { MerchantIssue } from '../components/Seo/MerchantCenterPanel';
+import type { MerchantCenterIssue } from '../components/Seo/MerchantCenterScoreBadge';
+import type { ProductVariant as VariantType } from '../components/products/variantTypes';
+
+type SupplierOption = { id: string; name: string };
+type GalleryImage = { id: string | number; src: string; alt?: string };
+type MiscCost = { amount: number; note: string };
+type GoldPriceType = '18ct' | '9ct' | '18ctWhite' | '9ctWhite' | 'legacy' | null;
 
 export function ProductEditPage() {
     const { id } = useParams<{ id: string }>();
@@ -91,7 +99,7 @@ export function ProductEditPage() {
                             formData={formData}
                             onChange={updateFormData}
                             product={product}
-                            suppliers={suppliers}
+                            suppliers={suppliers as unknown as SupplierOption[]}
                         />
                     </div>
                     <div className="space-y-6">
@@ -101,9 +109,9 @@ export function ProductEditPage() {
                                     <ImageOff size={48} />
                                     <span className="text-sm mt-2">Image unavailable</span>
                                 </div>
-                            ) : (product.mainImage || formData.images?.[0]?.src) ? (
+                            ) : (product.mainImage || (formData.images as unknown as Array<{ src?: string }>)?.[0]?.src) ? (
                                 <img
-                                    src={product.mainImage || formData.images?.[0]?.src}
+                                    src={product.mainImage || (formData.images as unknown as Array<{ src?: string }>)?.[0]?.src}
                                     alt=""
                                     className="w-full h-auto rounded-lg border border-gray-100 shadow-xs"
                                     referrerPolicy="no-referrer"
@@ -117,7 +125,7 @@ export function ProductEditPage() {
                         </div>
                         <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
                             <ImageGallery
-                                images={formData.images || []}
+                                images={(formData.images as unknown as GalleryImage[]) || []}
                                 onChange={(imgs) => updateFormData({ images: imgs })}
                             />
                         </div>
@@ -132,9 +140,17 @@ export function ProductEditPage() {
             icon: <DollarSign size={16} />,
             content: (
                 <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <PricingPanel formData={formData} onChange={updateFormData} />
+                    <PricingPanel
+                        formData={{
+                            price: formData.price,
+                            salePrice: formData.salePrice,
+                            cogs: formData.cogs,
+                            miscCosts: (formData.miscCosts as unknown as MiscCost[]) || []
+                        }}
+                        onChange={updateFormData}
+                    />
                     <GoldPricePanel
-                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied, goldPriceType: formData.goldPriceType, weight: formData.weight }}
+                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied, goldPriceType: (formData.goldPriceType as GoldPriceType), weight: formData.weight }}
                         onChange={updateFormData}
                         hasVariants={!!(product.variations?.length)}
                     />
@@ -152,7 +168,7 @@ export function ProductEditPage() {
                         productWooId={product.wooId}
                         weightUnit={currentAccount?.weightUnit}
                         dimensionUnit={currentAccount?.dimensionUnit}
-                        variants={variants}
+                        variants={variants as unknown as Array<{ id: number; sku?: string; attributes?: Array<{ name: string; option: string }>; stock_quantity?: number | null; stock_status?: string }>}
                         onChange={updateFormData}
                         stockPanelRef={stockPanelRef}
                     />
@@ -179,9 +195,9 @@ export function ProductEditPage() {
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <VariationsPanel
                         ref={variationsPanelRef}
-                        product={product}
-                        variants={variants}
-                        onUpdate={setVariants}
+                        product={{ ...product, variations: ((product.variations || []).map((variant) => typeof variant === 'number' ? variant : variant.id)) }}
+                        variants={variants as unknown as VariantType[]}
+                        onUpdate={(updatedVariants) => setVariants(updatedVariants as unknown[])}
                     />
                 </div>
             )
@@ -218,7 +234,7 @@ export function ProductEditPage() {
                         <div className="space-y-6">
                             <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/40 p-6">
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-slate-100 uppercase tracking-wide mb-4">Merchant Center Status</h3>
-                                <MerchantCenterPanel score={product.merchantCenterScore || 0} issues={product.merchantCenterIssues || []} />
+                                <MerchantCenterPanel score={product.merchantCenterScore || 0} issues={(product.merchantCenterIssues as MerchantIssue[]) || []} />
                             </div>
                         </div>
                     </div>
@@ -267,7 +283,7 @@ export function ProductEditPage() {
                                 </h1>
                                 <div className="flex items-center gap-3 mt-1">
                                     <SeoScoreBadge score={seoResult.score || 0} size="sm" tests={seoResult.tests} />
-                                    <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues} />
+                                    <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues as MerchantCenterIssue[] | undefined} />
                                 </div>
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
                                     <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded-sm text-xs text-gray-600">ID: {product.wooId}</span>

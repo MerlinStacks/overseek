@@ -6,6 +6,7 @@ import { EmailAccountForm, type EmailAccount } from './EmailAccountForm';
 import { EmailAccountList } from './EmailAccountList';
 import { EmailLogPanel } from './EmailLogPanel';
 import { RefreshCw } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
 
 /**
  * Email Settings page - manages unified email accounts with SMTP/IMAP.
@@ -13,6 +14,7 @@ import { RefreshCw } from 'lucide-react';
 export function EmailSettings() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -76,7 +78,7 @@ export function EmailSettings() {
             setEditingAccount(null);
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            alert('Failed to save account');
+            toast.error('Failed to save email account.');
         } finally {
             setIsSaving(false);
         }
@@ -97,7 +99,7 @@ export function EmailSettings() {
             setAccounts(accounts.filter(a => a.id !== id));
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            alert('Failed to delete account');
+            toast.error('Failed to delete email account.');
         }
     };
 

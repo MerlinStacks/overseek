@@ -37,18 +37,17 @@ export function useDrafts() {
         content: ''
     });
 
-    // Create the debounced writer exactly once and reuse it.
-    const debouncedSaveRef = useRef(
-        debounce(() => {
+    const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
+
+    // Create the debounced writer once after mount and clean up on unmount.
+    useEffect(() => {
+        debouncedSaveRef.current = debounce(() => {
             const { conversationId, content } = latestArgsRef.current;
             if (conversationId) writeDraft(conversationId, content);
-        }, 500)
-    );
+        }, 500);
 
-    // Cleanup on unmount
-    useEffect(() => {
         const fn = debouncedSaveRef.current;
-        return () => fn.cancel();
+        return () => fn?.cancel();
     }, []);
 
     /**
@@ -69,6 +68,10 @@ export function useDrafts() {
     const saveDraft = useCallback((conversationId: string, content: string) => {
         if (!conversationId) return;
         latestArgsRef.current = { conversationId, content };
+        if (!debouncedSaveRef.current) {
+            writeDraft(conversationId, content);
+            return;
+        }
         debouncedSaveRef.current();
     }, []);
 

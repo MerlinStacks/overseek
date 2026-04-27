@@ -3,10 +3,12 @@ import { Logger } from '../../utils/logger';
 import { Save, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useToast } from '../../context/ToastContext';
 
 export function GeneralSettings() {
     const { token } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
 
@@ -39,11 +41,11 @@ export function GeneralSettings() {
 
     const validateForm = () => {
         if (!formData.name.trim()) {
-            alert("Store Name is required");
+            toast.error('Store name is required.');
             return false;
         }
         if (formData.wooUrl && !isValidUrl(formData.wooUrl)) {
-            alert("Please enter a valid Store URL (must start with http:// or https://)");
+            toast.error('Please enter a valid Store URL (must start with http:// or https://).');
             return false;
         }
         return true;
@@ -76,10 +78,10 @@ export function GeneralSettings() {
             if (!res.ok) throw new Error('Failed to update settings');
 
             await refreshAccounts(); // Refresh context to reflect changes
-            alert('Settings saved successfully');
+            toast.success('Settings saved successfully.');
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            alert('Failed to save settings: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            toast.error(`Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsSaving(false);
         }
@@ -101,10 +103,10 @@ export function GeneralSettings() {
 
             const data = await res.json();
             await refreshAccounts();
-            alert(`Synced from WooCommerce:\n• Weight Unit: ${data.weightUnit}\n• Dimension Unit: ${data.dimensionUnit}\n• Currency: ${data.currency}`);
+            toast.success(`Synced WooCommerce units: ${data.weightUnit} / ${data.dimensionUnit} / ${data.currency}`);
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            alert('Failed to sync settings: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            toast.error(`Failed to sync settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsSyncing(false);
         }

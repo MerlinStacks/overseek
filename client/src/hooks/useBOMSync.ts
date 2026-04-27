@@ -107,6 +107,7 @@ export interface UseBOMSyncReturn {
 export function useBOMSync(): UseBOMSyncReturn {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
 
     // Data state
     const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
@@ -122,7 +123,7 @@ export function useBOMSync(): UseBOMSyncReturn {
     const [syncingProductId, setSyncingProductId] = useState<string | null>(null);
     const [syncResult, setSyncResult] = useState<{ synced: number; failed: number } | null>(null);
     const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
-    /** Ref to break the fetchPendingChanges → syncErrors → useEffect loop */
+    /** Ref to break the fetchPendingChanges -> syncErrors -> useEffect loop */
     const syncErrorsRef = useRef(syncErrors);
     syncErrorsRef.current = syncErrors;
 
@@ -145,13 +146,13 @@ export function useBOMSync(): UseBOMSyncReturn {
     const [nextSyncIn, setNextSyncIn] = useState<string | null>(null);
 
     const fetchPendingChanges = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         setIsLoadingPending(true);
         try {
             const res = await fetch('/api/inventory/bom/pending-changes', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -173,16 +174,16 @@ export function useBOMSync(): UseBOMSyncReturn {
         } finally {
             setIsLoadingPending(false);
         }
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     const fetchSyncHistory = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         setIsLoadingHistory(true);
         try {
             const res = await fetch('/api/inventory/bom/sync-history?limit=20', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -194,16 +195,16 @@ export function useBOMSync(): UseBOMSyncReturn {
         } finally {
             setIsLoadingHistory(false);
         }
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     /** Fetch BOM consumption history (deduction ledger entries) */
     const fetchConsumptionHistory = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         try {
             const res = await fetch('/api/inventory/bom/consumption-history?limit=50', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -213,15 +214,15 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to fetch consumption history', { error: err });
         }
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     const checkSyncStatus = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return null;
         try {
             const res = await fetch('/api/inventory/bom/sync-status', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -232,15 +233,19 @@ export function useBOMSync(): UseBOMSyncReturn {
                     if (data.progress) {
                         setSyncProgress({ current: data.progress.current, total: data.progress.total });
                     }
+                } else {
+                    setIsSyncing(false);
                 }
+                return data;
             }
         } catch (err) {
             Logger.error('Failed to check sync status', { error: err });
         }
-    }, [currentAccount?.id, token]);
+        return null;
+    }, [accountId, token]);
 
     const handleSyncSingle = useCallback(async (productId: string, variationId: number) => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         const key = `${productId}-${variationId}`;
         setSyncingProductId(key);
         setSyncErrors(prev => ({ ...prev, [key]: '' }));
@@ -250,7 +255,7 @@ export function useBOMSync(): UseBOMSyncReturn {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             const data = await res.json();
@@ -266,17 +271,17 @@ export function useBOMSync(): UseBOMSyncReturn {
             } else if (!data.success) {
                 setSyncErrors(prev => ({ ...prev, [key]: data.error || 'Sync returned success=false' }));
             }
-        } catch (err: any) {
-            const errorMsg = err.message || 'Network error';
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : 'Network error';
             setSyncErrors(prev => ({ ...prev, [key]: errorMsg }));
             Logger.error('Failed to sync single product', { error: err });
         } finally {
             setSyncingProductId(null);
         }
-    }, [currentAccount?.id, token, fetchPendingChanges, fetchSyncHistory]);
+    }, [accountId, token, fetchPendingChanges, fetchSyncHistory]);
 
     const handleSyncAll = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         // Clean up any existing poll from a previous invocation
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -292,7 +297,7 @@ export function useBOMSync(): UseBOMSyncReturn {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 },
                 body: JSON.stringify({})
             });
@@ -303,20 +308,21 @@ export function useBOMSync(): UseBOMSyncReturn {
                 if (data.status === 'queued' || data.status === 'started') {
                     setSyncResult({ synced: -2, failed: 0 });
 
-                    let pollCount = 0;
                     pollIntervalRef.current = setInterval(async () => {
                         // Why ref: the closure captures stale isPaused, ref always has latest
                         if (isPausedRef.current) return;
-                        pollCount++;
                         await fetchPendingChanges();
                         await fetchSyncHistory();
-                        await checkSyncStatus();
-
-                        if (pollCount >= 12) {
+                        const status = await checkSyncStatus();
+                        if (status && !status.isSyncing) {
                             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                             pollIntervalRef.current = null;
+                            if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+                            pollTimeoutRef.current = null;
                             setIsSyncing(false);
                             setSyncProgress(null);
+                            await fetchPendingChanges();
+                            await fetchSyncHistory();
                         }
                     }, 5000);
 
@@ -326,7 +332,7 @@ export function useBOMSync(): UseBOMSyncReturn {
                         pollTimeoutRef.current = null;
                         setIsSyncing(false);
                         setSyncProgress(null);
-                    }, 60000);
+                    }, 10 * 60 * 1000);
                 } else if (data.status === 'already_running') {
                     setSyncResult({ synced: -3, failed: 0 });
                     setIsSyncing(false);
@@ -348,7 +354,7 @@ export function useBOMSync(): UseBOMSyncReturn {
             setIsSyncing(false);
             setSyncProgress(null);
         }
-    }, [currentAccount?.id, token, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
+    }, [accountId, token, fetchPendingChanges, fetchSyncHistory, checkSyncStatus]);
 
     const handleRetryFailed = useCallback(async () => {
         const failedItems = pendingChanges.filter(item => syncErrors[`${item.productId}-${item.variationId}`]);
@@ -358,13 +364,13 @@ export function useBOMSync(): UseBOMSyncReturn {
     }, [pendingChanges, syncErrors, handleSyncSingle]);
 
     const handleCancelSync = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         try {
             const res = await fetch('/api/inventory/bom/sync-cancel', {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -376,7 +382,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to cancel sync', { error: err });
         }
-    }, [currentAccount?.id, token, fetchPendingChanges]);
+    }, [accountId, token, fetchPendingChanges]);
 
     const handleTogglePause = useCallback(() => {
         setIsPaused(prev => !prev);
@@ -384,12 +390,12 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     /** Fetch deactivated BOM items for the banner */
     const fetchDeactivatedItems = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         try {
             const res = await fetch('/api/inventory/bom/deactivated-items', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -399,7 +405,7 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to fetch deactivated items', { error: err });
         }
-    }, [currentAccount?.id, token]);
+    }, [accountId, token]);
 
     const handleRefresh = useCallback(() => {
         fetchPendingChanges();
@@ -410,13 +416,13 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     /** Reactivate a single deactivated item, then refresh the list */
     const handleReactivateItem = useCallback(async (itemId: string) => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
         try {
             const res = await fetch(`/api/inventory/bom/items/${itemId}/reactivate`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
+                    'x-account-id': accountId
                 }
             });
             if (res.ok) {
@@ -426,13 +432,13 @@ export function useBOMSync(): UseBOMSyncReturn {
         } catch (err) {
             Logger.error('Failed to reactivate BOM item', { error: err });
         }
-    }, [currentAccount?.id, token, fetchDeactivatedItems, fetchPendingChanges]);
+    }, [accountId, token, fetchDeactivatedItems, fetchPendingChanges]);
 
     // Why: fires 5 concurrent fetches. Combined with other page polling,
     // this can exhaust the rate limit budget. Consider a single API endpoint
     // that returns all BOM status data if rate limits become an issue.
     useEffect(() => {
-        if (currentAccount && token) {
+        if (accountId && token) {
             fetchPendingChanges();
             fetchSyncHistory();
             fetchConsumptionHistory();
@@ -452,8 +458,7 @@ export function useBOMSync(): UseBOMSyncReturn {
 
             return () => clearInterval(syncTimerId);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [accountId, token, fetchPendingChanges, fetchSyncHistory, fetchConsumptionHistory, fetchDeactivatedItems, checkSyncStatus]);
 
     // Cleanup polling on unmount to prevent setState on unmounted component
     useEffect(() => {
@@ -497,7 +502,7 @@ export function getErrorDetails(error: string): { message: string; fix: string }
     const errorMap: Record<string, { message: string; fix: string }> = {
         'rest_product_invalid_id': {
             message: 'Product not found in WooCommerce',
-            fix: 'Re-sync products from Settings → WooCommerce'
+            fix: 'Re-sync products from Settings -> WooCommerce'
         },
         'woocommerce_rest_cannot_edit': {
             message: 'Product is read-only in WooCommerce',
@@ -540,3 +545,4 @@ export function getErrorDetails(error: string): { message: string; fix: string }
         fix: 'Check logs for more details or contact support'
     };
 }
+

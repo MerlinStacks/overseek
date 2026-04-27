@@ -1256,6 +1256,7 @@ class OverSeek_Server_Tracking
     public function track_add_to_cart($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data)
     {
         $product = $this->get_product_safely($product_id);
+        $request_event_id = $this->get_request_event_id();
 
         $payload = array(
             'productId' => $product_id,
@@ -1264,7 +1265,7 @@ class OverSeek_Server_Tracking
             'name' => $product ? $product->get_name() : '',
             'price' => $product ? floatval($product->get_price()) : 0,
             'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
-            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
+            'eventId' => $request_event_id ?: wp_generate_uuid4(), // CAPI deduplication key
         );
 
         // Get cart total using safe wrapper
@@ -1317,11 +1318,12 @@ class OverSeek_Server_Tracking
     public function track_checkout_start()
     {
         $email = isset($_POST['billing_email']) ? sanitize_email($_POST['billing_email']) : '';
+        $request_event_id = $this->get_request_event_id();
 
         $payload = array(
             'email' => $email,
             'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
-            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
+            'eventId' => $request_event_id ?: wp_generate_uuid4(), // CAPI deduplication key
         );
 
         // Use safe cart wrapper
@@ -1377,6 +1379,13 @@ class OverSeek_Server_Tracking
             );
         }
 
+        $event_id = $order->get_meta('_overseek_event_id');
+        if (empty($event_id)) {
+            $event_id = wp_generate_uuid4();
+            $order->update_meta_data('_overseek_event_id', $event_id);
+            $order->save();
+        }
+
         $payload = array(
             'orderId' => $order_id,
             'total' => floatval($order->get_total()),
@@ -1390,7 +1399,7 @@ class OverSeek_Server_Tracking
             'customerId' => $order->get_customer_id(),
             'paymentMethod' => $order->get_payment_method(),
             'couponCodes' => $order->get_coupon_codes(),
-            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
+            'eventId' => $event_id, // Shared with browser Purchase event for deduplication
             // Billing PII for server-side hashed matching (Meta/TikTok/Google/Pinterest)
             'billingPhone' => $order->get_billing_phone(),
             'billingCity' => $order->get_billing_city(),
@@ -1502,7 +1511,7 @@ class OverSeek_Server_Tracking
             'inStock' => $product->is_in_stock(),
             'categories' => $categories,
             'productType' => $product->get_type(),
-            'eventId' => wp_generate_uuid4(), // CAPI deduplication key
+            'eventId' => $this->get_shared_product_view_event_id((int) $product->get_id()), // Shared with browser ViewContent
         );
 
         // Forward ad platform cookies for server-side attribution
@@ -1678,6 +1687,44 @@ class OverSeek_Server_Tracking
         if (isset($_COOKIE['twclid'])) {
             $payload['twclid'] = sanitize_text_field($_COOKIE['twclid']);
         }
+    }
+
+    /**
+     * Parse and validate inbound event ID from checkout/add-to-cart request params.
+     */
+    private function get_request_event_id()
+    {
+        $raw = '';
+        if (isset($_POST['overseek_event_id'])) {
+            $raw = sanitize_text_field(wp_unslash($_POST['overseek_event_id']));
+        } elseif (isset($_REQUEST['overseek_event_id'])) {
+            $raw = sanitize_text_field(wp_unslash($_REQUEST['overseek_event_id']));
+        } elseif (isset($_POST['os_eid'])) {
+            $raw = sanitize_text_field(wp_unslash($_POST['os_eid']));
+        } elseif (isset($_REQUEST['os_eid'])) {
+            $raw = sanitize_text_field(wp_unslash($_REQUEST['os_eid']));
+        }
+
+        if (empty($raw)) {
+            return '';
+        }
+
+        // Allow UUID or prefixed hash IDs (e.g. os_xxx) up to 100 chars.
+        if (preg_match('/^[A-Za-z0-9_-]{8,100}$/', $raw)) {
+            return $raw;
+        }
+
+        return '';
+    }
+
+    /**
+     * Deterministic event ID for product_view so browser + server can deduplicate.
+     */
+    private function get_shared_product_view_event_id($product_id)
+    {
+        $visitor = $this->get_visitor_id();
+        $material = implode('|', array('overseek', 'product_view', (string) $product_id, (string) $visitor));
+        return 'os_pv_' . substr(hash('sha256', $material), 0, 32);
     }
 }
 

@@ -1,18 +1,26 @@
-
 import { useState, useCallback } from 'react';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { Logger } from '../../utils/logger';
 import { ShoppingCart, CreditCard, LogOut, CheckCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
+
+interface EcommerceItem {
+    name?: string;
+}
+
+interface EcommercePayload {
+    items?: EcommerceItem[];
+    total?: number;
+}
 
 interface AnalyticsEvent {
     id: string;
     type: string;
     createdAt: string;
-    payload?: any;
+    payload?: EcommercePayload;
     pageTitle?: string;
     session?: {
         visitorId: string;
@@ -22,9 +30,14 @@ interface AnalyticsEvent {
     };
 }
 
+interface EcommerceLogResponse {
+    data?: AnalyticsEvent[];
+}
+
 const EcommerceLogWidget = () => {
     const [events, setEvents] = useState<AnalyticsEvent[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -39,18 +52,20 @@ const EcommerceLogWidget = () => {
                     'x-account-id': currentAccount.id
                 }
             });
-            if (res.ok) {
-                const json = await res.json();
-                setEvents(json.data);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
             }
+            const json = await res.json() as EcommerceLogResponse;
+            setEvents(Array.isArray(json.data) ? json.data : []);
+            setError(null);
         } catch (err) {
             Logger.error('An error occurred', { error: err });
+            setError('Failed to load ecommerce stream');
         } finally {
             setLoading(false);
         }
-    }, [token, currentAccount]);
+    }, [currentAccount, token]);
 
-    // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchLog, 15000, [fetchLog], 'ecommerce-log');
 
     const getIcon = (type: string) => {
@@ -66,16 +81,17 @@ const EcommerceLogWidget = () => {
         }
     };
 
-    const getLabel = (e: AnalyticsEvent) => {
-        const who = e.session?.email || 'Guest';
-        switch (e.type) {
-            case 'add_to_cart':
-                const products = e.payload?.items?.map((item: any) => item.name).filter(Boolean).slice(0, 2);
+    const getLabel = (event: AnalyticsEvent) => {
+        const who = event.session?.email || 'Guest';
+        switch (event.type) {
+            case 'add_to_cart': {
+                const products = event.payload?.items?.map((item) => item.name).filter(Boolean).slice(0, 2);
                 const productLabel = products?.length
-                    ? products.join(', ') + (e.payload?.items?.length > 2 ? ` +${e.payload.items.length - 2} more` : '')
+                    ? products.join(', ') + ((event.payload?.items?.length || 0) > 2 ? ` +${(event.payload?.items?.length || 0) - 2} more` : '')
                     : 'items';
-                const total = e.payload?.total ? ` ($${e.payload.total})` : '';
+                const total = event.payload?.total ? ` ($${event.payload.total})` : '';
                 return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> added <span className="text-slate-700 dark:text-slate-300">{productLabel}</span>{total}</span>;
+            }
             case 'remove_from_cart':
                 return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> removed items from cart</span>;
             case 'checkout_start':
@@ -83,42 +99,47 @@ const EcommerceLogWidget = () => {
             case 'checkout_success':
             case 'purchase':
                 return <span><span className="font-semibold text-emerald-700 dark:text-emerald-400">{who} completed a purchase!</span></span>;
-            case 'cart_view':
-                const cartTotal = e.payload?.total ? ` ($${e.payload.total})` : '';
+            case 'cart_view': {
+                const cartTotal = event.payload?.total ? ` ($${event.payload.total})` : '';
                 return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> viewed cart{cartTotal}</span>;
-            case 'checkout_view':
-                const checkoutTotal = e.payload?.total ? ` ($${e.payload.total})` : '';
+            }
+            case 'checkout_view': {
+                const checkoutTotal = event.payload?.total ? ` ($${event.payload.total})` : '';
                 return <span><span className="font-semibold text-slate-800 dark:text-slate-200">{who}</span> viewing checkout{checkoutTotal}</span>;
+            }
             default:
-                return <span>{who} performed {e.type}</span>;
+                return <span>{who} performed {event.type}</span>;
         }
     };
 
-    if (loading && events.length === 0) return <div className="p-4 text-xs text-slate-500 dark:text-slate-400">Loading stream...</div>;
+    if (loading && events.length === 0) {
+        return <WidgetLoadingState message="Loading stream..." />;
+    }
+
+    if (error && events.length === 0) {
+        return <WidgetErrorState message={error} onRetry={fetchLog} />;
+    }
 
     return (
         <div className="h-full overflow-y-auto custom-scrollbar p-2 space-y-2">
             {events.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
-                    <ShoppingCart className="w-6 h-6 mb-2 opacity-50" />
-                    <span className="text-xs">No recent commerce activity</span>
-                </div>
+                <WidgetEmptyState message="No recent commerce activity" />
             ) : (
-                events.map(e => (
-                    <div key={e.id} className="flex gap-3 p-3 bg-white dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 rounded-lg shadow-xs">
+                events.map((event) => (
+                    <div key={event.id} className="flex gap-3 p-3 bg-white dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 rounded-lg shadow-xs">
                         <div className="mt-0.5 shrink-0 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-full h-fit">
-                            {getIcon(e.type)}
+                            {getIcon(event.type)}
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="text-sm text-slate-600 dark:text-slate-300 truncate">
-                                {getLabel(e)}
+                                {getLabel(event)}
                             </div>
                             <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-                                <span>{formatDistanceToNow(new Date(e.createdAt), { addSuffix: true })}</span>
-                                {e.session?.country && (
+                                <span>{formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}</span>
+                                {event.session?.country && (
                                     <>
-                                        <span>•</span>
-                                        <span>{e.session.city ? `${e.session.city}, ` : ''}{e.session.country}</span>
+                                        <span>&middot;</span>
+                                        <span>{event.session.city ? `${event.session.city}, ` : ''}{event.session.country}</span>
                                     </>
                                 )}
                             </div>

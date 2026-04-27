@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw, UserPlus, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw, UserPlus } from 'lucide-react';
 
 interface DatabaseInfo {
     source: 'manual' | 'auto';
@@ -40,7 +40,7 @@ export function AdminSettingsPage() {
     const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
     const [togglingRegistration, setTogglingRegistration] = useState(false);
 
-    const fetchStatus = async () => {
+    const fetchStatus = useCallback(async () => {
         try {
             const res = await fetch('/api/admin/geoip-status', {
                 headers: { Authorization: `Bearer ${token}` }
@@ -54,9 +54,9 @@ export function AdminSettingsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [token]);
 
-    const fetchPlatformSettings = async () => {
+    const fetchPlatformSettings = useCallback(async () => {
         try {
             const res = await fetch('/api/admin/platform-settings', {
                 headers: { Authorization: `Bearer ${token}` }
@@ -68,7 +68,7 @@ export function AdminSettingsPage() {
         } catch (e) {
             Logger.error('Failed to fetch platform settings:', { error: e });
         }
-    };
+    }, [token]);
 
     const handleToggleRegistration = async () => {
         if (!platformSettings) return;
@@ -108,7 +108,7 @@ export function AdminSettingsPage() {
     useEffect(() => {
         fetchStatus();
         fetchPlatformSettings();
-    }, [token]);
+    }, [fetchStatus, fetchPlatformSettings]);
 
     const handleForceUpdate = async () => {
         setForcingUpdate(true);
@@ -172,8 +172,9 @@ export function AdminSettingsPage() {
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                 xhr.send(formData);
             });
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message || 'Upload failed' });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Upload failed';
+            setMessage({ type: 'error', text: message });
         } finally {
             setUploading(false);
             setUploadProgress(0);

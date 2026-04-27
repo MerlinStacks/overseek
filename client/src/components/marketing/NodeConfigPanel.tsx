@@ -10,8 +10,14 @@ import { TriggerConfig, ActionConfig, DelayConfig, ConditionConfig } from './nod
 interface NodeConfigPanelProps {
     node: Node | null;
     onClose: () => void;
-    onUpdate: (nodeId: string, data: any) => void;
+    onUpdate: (nodeId: string, data: NodeDataState) => void;
     onDelete: (nodeId: string) => void;
+}
+
+interface NodeDataState {
+    label?: string;
+    config?: Record<string, unknown>;
+    [key: string]: unknown;
 }
 
 export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
@@ -20,12 +26,14 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     onUpdate,
     onDelete
 }) => {
-    const [localData, setLocalData] = useState<any>({});
+    const [localData, setLocalData] = useState<NodeDataState>({});
 
     // Sync local state when node changes
     useEffect(() => {
         if (node) {
-            setLocalData({ ...node.data });
+            queueMicrotask(() => {
+                setLocalData({ ...(node.data as Record<string, unknown>) });
+            });
         }
     }, [node]);
 
@@ -41,15 +49,15 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         }
     };
 
-    const updateConfig = (key: string, value: any) => {
-        setLocalData((prev: any) => ({
+    const updateConfig = (key: string, value: unknown) => {
+        setLocalData((prev) => ({
             ...prev,
-            config: { ...prev.config, [key]: value }
+            config: { ...(prev.config || {}), [key]: value }
         }));
     };
 
     const updateLabel = (label: string) => {
-        setLocalData((prev: any) => ({ ...prev, label }));
+        setLocalData((prev) => ({ ...prev, label }));
     };
 
     // Get panel title and icon based on node type

@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, Users, Edit2, Trash2 } from 'lucide-react';
 import { SegmentBuilder, SegmentCriteria } from '../components/segments/SegmentBuilder';
-import { useNavigate } from 'react-router-dom';
 import { Toast, ToastType } from '../components/ui/Toast';
 
 interface Segment {
@@ -13,12 +12,11 @@ interface Segment {
     name: string;
     description: string;
     criteria: SegmentCriteria;
-    campaigns?: any[];
+    campaigns?: Array<Record<string, unknown>>;
     _count?: { campaigns: number };
 }
 
 export function SegmentsPage() {
-    const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [segments, setSegments] = useState<Segment[]>([]);
@@ -34,11 +32,7 @@ export function SegmentsPage() {
     const showToast = useCallback((message: string, type: ToastType = 'error') => {
         setToastMessage(message); setToastType(type); setToastVisible(true);
     }, []);
-    useEffect(() => {
-        fetchSegments();
-    }, [currentAccount, token]);
-
-    async function fetchSegments() {
+    const fetchSegments = useCallback(async () => {
         if (!currentAccount || !token) return;
         try {
             const res = await fetch(`/api/segments`, {
@@ -56,7 +50,11 @@ export function SegmentsPage() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        fetchSegments();
+    }, [fetchSegments]);
 
     async function handleSave(criteria: SegmentCriteria) {
         if (!currentAccount || !token) return;
@@ -109,7 +107,7 @@ export function SegmentsPage() {
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
-            showToast('Failed to save segment — network error');
+            showToast('Failed to save segment - network error');
         }
     }
 
@@ -270,3 +268,4 @@ export function SegmentsPage() {
         </div>
     );
 }
+

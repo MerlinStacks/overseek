@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Tag, Plus, X, ChevronDown, Search, Loader2 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
@@ -34,12 +34,6 @@ export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, 
     const [searchQuery, setSearchQuery] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            loadMappings();
-        }
-    }, [currentAccount, token]);
-
     // Close dropdown on outside click
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -52,7 +46,7 @@ export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, 
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    async function loadMappings() {
+    const loadMappings = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
@@ -68,7 +62,13 @@ export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, 
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (currentAccount && token) {
+            loadMappings();
+        }
+    }, [currentAccount, token, loadMappings]);
 
     /** Gets available tags that aren't already applied to this order */
     function getAvailableTags(): TagMapping[] {

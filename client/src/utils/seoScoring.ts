@@ -13,7 +13,7 @@ export function calculateSeoScore(
         name: string;
         description: string;
         permalink: string;
-        images: any[];
+        images: unknown[];
         price: string;
     },
     focusKeyword?: string

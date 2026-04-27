@@ -35,7 +35,7 @@ interface TabMessage {
  * }
  */
 export function useTabLeader(channelName: string): { isLeader: boolean; tabId: string } {
-    const [isLeader, setIsLeader] = useState(false);
+    const [isLeader, setIsLeader] = useState(() => typeof BroadcastChannel === 'undefined');
     const channelRef = useRef<BroadcastChannel | null>(null);
     const knownTabsRef = useRef<Map<string, number>>(new Map());
     const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,8 +88,6 @@ export function useTabLeader(channelName: string): { isLeader: boolean; tabId: s
     useEffect(() => {
         // BroadcastChannel not supported in all environments (e.g., SSR, older browsers)
         if (typeof BroadcastChannel === 'undefined') {
-            // Fallback: this tab is always leader
-            setIsLeader(true);
             return;
         }
 
@@ -127,7 +125,7 @@ export function useTabLeader(channelName: string): { isLeader: boolean; tabId: s
         leaderCheckIntervalRef.current = setInterval(determineLeadership, HEARTBEAT_INTERVAL);
 
         // Initial leadership determination
-        determineLeadership();
+        queueMicrotask(determineLeadership);
 
         // Cleanup on unmount
         return () => {

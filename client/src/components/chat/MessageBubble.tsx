@@ -274,7 +274,7 @@ export const MessageBubble = memo(function MessageBubble({
                         )}
                     </div>
 
-                    {/* Reactions (if any) */}
+                                    {/* Reactions (if present) */}
                     {message.reactions && Object.keys(message.reactions).length > 0 && (
                         <div className={cn(
                             "flex flex-wrap gap-1 mt-1",

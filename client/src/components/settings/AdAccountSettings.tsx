@@ -42,9 +42,27 @@ export function AdAccountSettings() {
         setToastMessage(message); setToastType(type); setToastVisible(true);
     }, []);
 
-    useEffect(() => { fetchAccounts(); }, [currentAccount, token]);
+    const fetchInsights = useCallback(async (adAccountId: string) => {
+        setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
+        setInsightErrors(prev => ({ ...prev, [adAccountId]: '' }));
+        try {
+            const res = await fetch(`/api/ads/${adAccountId}/insights`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
+            });
+            if (!res.ok) throw new Error(`Failed to load insights (${res.status})`);
+            const data = await res.json();
+            if (!data.error) setInsights(prev => ({ ...prev, [adAccountId]: data }));
+            else setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Connection error';
+            setInsightErrors(prev => ({ ...prev, [adAccountId]: message }));
+            setInsights(prev => { const n = { ...prev }; delete n[adAccountId]; return n; });
+        } finally {
+            setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
+        }
+    }, [token, currentAccount?.id]);
 
-    async function fetchAccounts() {
+    const fetchAccounts = useCallback(async () => {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/ads', { headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id } });
@@ -58,26 +76,9 @@ export function AdAccountSettings() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token, fetchInsights]);
 
-    async function fetchInsights(adAccountId: string) {
-        setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
-        setInsightErrors(prev => ({ ...prev, [adAccountId]: '' }));
-        try {
-            const res = await fetch(`/api/ads/${adAccountId}/insights`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
-            });
-            if (!res.ok) throw new Error(`Failed to load insights (${res.status})`);
-            const data = await res.json();
-            if (!data.error) setInsights(prev => ({ ...prev, [adAccountId]: data }));
-            else setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
-        } catch (err: any) {
-            setInsightErrors(prev => ({ ...prev, [adAccountId]: err.message || 'Connection error' }));
-            setInsights(prev => { const n = { ...prev }; delete n[adAccountId]; return n; });
-        } finally {
-            setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
-        }
-    }
+    useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
     async function handleGoogleOAuth(existingAccountId?: string) {
         if (!currentAccount) return;
@@ -176,7 +177,7 @@ export function AdAccountSettings() {
             showToast(`OAuth Error: ${params.get('error')}${params.get('message') ? ` - ${params.get('message')}` : ''}`);
             window.history.replaceState({}, '', '/settings?tab=ads');
         }
-    }, []);
+    }, [fetchAccounts, showToast]);
 
     return (
         <div className="space-y-6">

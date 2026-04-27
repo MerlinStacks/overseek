@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Users, Loader2, Mail, ShoppingBag, Calendar, RefreshCw } from 'lucide-react';
+import { Search, Users, Mail, ShoppingBag, Calendar } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -30,7 +30,6 @@ export function CustomersPage() {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
-    const [totalItems, setTotalItems] = useState(0);
 
     const [debouncedQuery, setDebouncedQuery] = useState('');
     const currency = currentAccount?.currency || 'USD';
@@ -43,11 +42,7 @@ export function CustomersPage() {
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
-    useEffect(() => {
-        fetchCustomers();
-    }, [currentAccount, token, debouncedQuery, page, limit]);
-
-    async function fetchCustomers() {
+    const fetchCustomers = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         setIsLoading(true);
@@ -69,14 +64,17 @@ export function CustomersPage() {
                 const data = await res.json();
                 setCustomers(data.customers);
                 setTotalPages(data.totalPages);
-                setTotalItems(data.total);
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token, page, limit, debouncedQuery]);
+
+    useEffect(() => {
+        fetchCustomers();
+    }, [fetchCustomers]);
 
     return (
         <div className="space-y-6">

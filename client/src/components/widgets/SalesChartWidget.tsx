@@ -1,84 +1,116 @@
 import { WidgetProps } from './WidgetRegistry';
 import { Logger } from '../../utils/logger';
 import { formatCurrency } from '../../utils/format';
-import { BarChart3, Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { BarChart3 } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import { echarts, graphic, type EChartsOption, type SeriesOption } from '../../utils/echarts';
+import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
+import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass } from './widgetStyles';
 
+interface SalesChartRow {
+    date?: string;
+    sales?: number;
+}
+
+interface SalesChartPoint {
+    date: string;
+    sales: number;
+    comparisonSales?: number;
+}
+
+interface TooltipParam {
+    axisValue: string;
+    value: number;
+    color: string;
+    seriesName: string;
+}
 
 export function SalesChartWidget({ className, dateRange, comparison }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<SalesChartPoint[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const fetchAbortRef = useRef<AbortController | null>(null);
 
-    useEffect(() => {
-        if (!currentAccount) return;
+    const fetchData = useCallback(async () => {
+        if (!currentAccount || !token) return;
 
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                // Fetch Current
-                const currentRes = await fetch(`/api/analytics/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&interval=day`, {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+        fetchAbortRef.current?.abort();
+        const controller = new AbortController();
+        fetchAbortRef.current = controller;
+        setLoading(true);
+        setError(null);
+
+        try {
+            const headers = { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id };
+            const currentRequest = fetch(
+                `/api/analytics/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&interval=day`,
+                { headers, signal: controller.signal }
+            ).then(async (res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json() as Promise<SalesChartRow[]>;
+            });
+
+            const comparisonRequest = comparison
+                ? fetch(
+                    `/api/analytics/sales-chart?startDate=${comparison.startDate}&endDate=${comparison.endDate}&interval=day`,
+                    { headers, signal: controller.signal }
+                ).then(async (res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json() as Promise<SalesChartRow[]>;
+                })
+                : Promise.resolve([]);
+
+            const [currentRaw, comparisonRaw] = await Promise.all([currentRequest, comparisonRequest]);
+            if (controller.signal.aborted) return;
+
+            const currentArr = Array.isArray(currentRaw) ? currentRaw : [];
+            const comparisonArr = Array.isArray(comparisonRaw) ? comparisonRaw : [];
+            const processedData: SalesChartPoint[] = [];
+            const maxLength = Math.max(currentArr.length, comparisonArr.length);
+
+            for (let i = 0; i < maxLength; i++) {
+                const curr = currentArr[i] || {};
+                const comp = comparisonArr[i] || {};
+                processedData.push({
+                    date: curr.date || `Day ${i + 1}`,
+                    sales: curr.sales || 0,
+                    comparisonSales: comparison ? (comp.sales || 0) : undefined
                 });
-                if (!currentRes.ok) throw new Error(`HTTP ${currentRes.status}`);
-                const currentRaw = await currentRes.json();
+            }
 
-                const processedData: any[] = [];
-                const currentArr = Array.isArray(currentRaw) ? currentRaw : [];
-
-                // Fetch Comparison if needed
-                let comparisonArr: any[] = [];
-                if (comparison) {
-                    const compRes = await fetch(`/api/analytics/sales-chart?startDate=${comparison.startDate}&endDate=${comparison.endDate}&interval=day`, {
-                        headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                    });
-                    if (!compRes.ok) throw new Error(`HTTP ${compRes.status}`);
-                    comparisonArr = await compRes.json();
-                    if (!Array.isArray(comparisonArr)) comparisonArr = [];
-                }
-
-                // Merge Data
-                const maxLength = Math.max(currentArr.length, comparisonArr.length);
-
-                for (let i = 0; i < maxLength; i++) {
-                    const curr = currentArr[i] || {};
-                    const comp = comparisonArr[i] || {};
-
-                    processedData.push({
-                        date: curr.date || `Day ${i + 1}`,
-                        sales: curr.sales || 0,
-                        comparisonSales: comparison ? (comp.sales || 0) : undefined,
-                    });
-                }
-
-                setData(processedData);
-
-            } catch (err) {
-                Logger.error('An error occurred', { error: err });
-            } finally {
+            setData(processedData);
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
+            Logger.error('An error occurred', { error: err });
+            setError('Failed to load sales trend');
+        } finally {
+            if (!controller.signal.aborted) {
                 setLoading(false);
             }
-        };
+        }
+    }, [comparison, currentAccount, dateRange.endDate, dateRange.startDate, token]);
 
+    useEffect(() => {
         fetchData();
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token, dateRange, comparison]);
+        return () => {
+            fetchAbortRef.current?.abort();
+        };
+    }, [fetchData]);
 
     const getChartOptions = (): EChartsOption => {
-        const dates = data.map(d => {
+        const dates = data.map((d) => {
             const s = String(d.date);
             if (s.startsWith('Day')) return s;
             const date = new Date(s);
             return isNaN(date.getTime()) ? s : date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
         });
-        const salesValues = data.map(d => d.sales);
-        const comparisonValues = comparison ? data.map(d => d.comparisonSales ?? 0) : [];
+        const salesValues = data.map((d) => d.sales);
+        const comparisonValues = comparison ? data.map((d) => d.comparisonSales ?? 0) : [];
 
         const series: SeriesOption[] = [
             {
@@ -142,11 +174,12 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: (params: any) => {
+                formatter: (params: unknown) => {
                     if (!Array.isArray(params) || params.length === 0) return '';
-                    const date = params[0].axisValue;
+                    const points = params as TooltipParam[];
+                    const date = points[0].axisValue;
                     let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`;
-                    params.forEach((p: any) => {
+                    points.forEach((p) => {
                         const value = formatCurrency(p.value || 0);
                         html += `<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${p.color}"></span>${p.seriesName}: ${value}</div>`;
                     });
@@ -158,21 +191,23 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
     };
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 h-full w-full p-5 flex flex-col rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-slate-200/80 dark:border-slate-700/50 overflow-hidden min-h-[300px] transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`} style={{ minHeight: '300px' }}>
-            <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold text-slate-900 dark:text-white">
+        <div className={`${widgetCardClass} h-full w-full p-5 flex flex-col overflow-hidden min-h-[300px] ${className || ''}`} style={{ minHeight: '300px' }}>
+            <div className={widgetHeaderRowClass}>
+                <h3 className={widgetTitleClass}>
                     Sales Trend {currentAccount?.revenueTaxInclusive !== false ? '(Tax Inclusive)' : '(Tax Exclusive)'}
                 </h3>
-                <div className="p-2 bg-gradient-to-br from-blue-400 to-violet-500 rounded-lg text-white shadow-md shadow-blue-500/20">
+                <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-blue-400 to-violet-500 shadow-blue-500/20`}>
                     <BarChart3 size={16} />
                 </div>
             </div>
 
             <div className="flex-1 w-full relative">
                 {loading ? (
-                    <div className="absolute inset-0 flex justify-center items-center"><Loader2 className="animate-spin text-slate-400" /></div>
+                    <WidgetLoadingState message="Loading chart..." className="absolute inset-0" />
+                ) : error ? (
+                    <WidgetErrorState message={error} onRetry={fetchData} className="absolute inset-0" />
                 ) : data.length === 0 ? (
-                    <div className="absolute inset-0 flex justify-center items-center text-slate-400 dark:text-slate-500 text-sm">No data available</div>
+                    <WidgetEmptyState message="No data available" className="absolute inset-0" />
                 ) : (
                     <ReactEChartsCore
                         echarts={echarts}

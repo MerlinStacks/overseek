@@ -6,11 +6,12 @@ import { useAccount } from '../../context/AccountContext';
 import { useNavigate } from 'react-router-dom';
 import { WidgetProps } from './WidgetRegistry';
 import { AdContextModal } from '../marketing/AdContextModal';
+import { widgetGlassCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass } from './widgetStyles';
 
 interface AdSuggestionsData {
     suggestions: string[];
     action_items: string[];
-    summary?: any;
+    summary?: Record<string, unknown>;
     message?: string;
 }
 
@@ -42,7 +43,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
                 }
             });
             if (res.ok) {
-                const result = await res.json();
+                const result = await res.json() as AdSuggestionsData;
                 setData(result);
                 setError(null);
             } else {
@@ -54,31 +55,24 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
             setLoading(false);
             setRefreshing(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token]);
+    }, [currentAccount, token]);
 
-    // Use visibility-aware polling with tab coordination
     useVisibilityPolling(fetchSuggestions, 300000, [fetchSuggestions], 'ad-suggestions');
 
-    /**
-     * Determines the icon for a suggestion based on its content.
-     */
     const getSuggestionIcon = (suggestion: string) => {
-        if (suggestion.includes('🔴') || suggestion.includes('Underperforming')) {
+        const normalized = suggestion.toLowerCase();
+        if (normalized.includes('underperforming') || normalized.includes('declining') || normalized.includes('drop')) {
             return <TrendingUp size={16} className="text-red-500 shrink-0" />;
         }
-        if (suggestion.includes('🟢') || suggestion.includes('High Performer')) {
+        if (normalized.includes('high performer') || normalized.includes('best') || normalized.includes('winning')) {
             return <TrendingUp size={16} className="text-green-500 shrink-0" />;
         }
-        if (suggestion.includes('✅')) {
+        if (normalized.includes('complete') || normalized.includes('done')) {
             return <CheckCircle size={16} className="text-green-500 shrink-0" />;
         }
         return <Lightbulb size={16} className="text-amber-500 shrink-0" />;
     };
 
-    /**
-     * Cleans emoji and markdown from suggestion for compact display.
-     */
     const cleanSuggestion = (text: string) => {
         return text
             .replace(/[\u{1F534}\u{1F7E2}\u{1F4CA}\u{1F4B0}\u{1F680}\u{1F4C1}\u{2705}\u{1F6D2}\u{1F50D}\u{2B50}]/gu, '')
@@ -90,22 +84,22 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
         navigate('/marketing/ai');
     };
 
-    // Loading state
     if (loading) {
         return (
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex items-center justify-center">
+            <div className={`${widgetGlassCardClass} p-6 h-full flex items-center justify-center`}>
                 <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
             </div>
         );
     }
 
-    // No ad accounts connected message
     if (data?.message) {
         return (
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex flex-col">
-                <div className="flex items-center gap-2 mb-4">
-                    <Lightbulb size={20} className="text-amber-500" />
-                    <h3 className="font-semibold text-gray-900">Ad Suggestions</h3>
+            <div className={`${widgetGlassCardClass} p-6 h-full flex flex-col`}>
+                <div className={`${widgetHeaderRowClass} justify-start gap-2`}>
+                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/20`}>
+                        <Lightbulb size={16} />
+                    </div>
+                    <h3 className={widgetTitleClass}>Ad Suggestions</h3>
                 </div>
                 <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
@@ -123,22 +117,22 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
         );
     }
 
-    // Error state
     if (error || !data) {
         return (
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex flex-col items-center justify-center">
+            <div className={`${widgetGlassCardClass} p-6 h-full flex flex-col items-center justify-center`}>
                 <p className="text-sm text-gray-500">{error || 'No data available'}</p>
             </div>
         );
     }
 
     return (
-        <div className="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow-xs border border-gray-200/50 h-full flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
+        <div className={`${widgetGlassCardClass} p-6 h-full flex flex-col overflow-hidden`}>
+            <div className={widgetHeaderRowClass}>
                 <div className="flex items-center gap-2">
-                    <Lightbulb size={20} className="text-amber-500" />
-                    <h3 className="font-semibold text-gray-900">Ad Suggestions</h3>
+                    <div className={`${widgetHeaderIconBadgeClass} bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/20`}>
+                        <Lightbulb size={16} />
+                    </div>
+                    <h3 className={widgetTitleClass}>Ad Suggestions</h3>
                 </div>
                 <div className="flex items-center gap-1">
                     <button
@@ -165,14 +159,12 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
                 </div>
             </div>
 
-            {/* Context Modal */}
             <AdContextModal
                 isOpen={showContextModal}
                 onClose={() => setShowContextModal(false)}
                 onSaved={() => fetchSuggestions(true)}
             />
 
-            {/* Suggestions List */}
             <div className="flex-1 space-y-3 overflow-y-auto">
                 {data.suggestions.slice(0, 4).map((suggestion, idx) => (
                     <div
@@ -187,7 +179,6 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
                 ))}
             </div>
 
-            {/* Action Items Footer */}
             {data.action_items && data.action_items.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                     <p className="text-xs font-medium text-gray-500 mb-2">TOP ACTIONS</p>

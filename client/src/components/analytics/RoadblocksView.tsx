@@ -3,7 +3,7 @@
  * Displays pages where visitors with cart value exit, indicating friction points
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -38,16 +38,12 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
     const [funnel, setFunnel] = useState<{ funnel: FunnelStage[]; overallConversionRate: number } | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
+    const fetchData = useCallback(async () => {
         if (!token || !currentAccount) return;
-        fetchData();
-    }, [token, currentAccount, dateRange]);
-
-    const fetchData = async () => {
         setLoading(true);
         try {
             // Use shared date utility for consistent timezone handling
-            const range = getDateRange(dateRange as any);
+            const range = getDateRange(dateRange);
 
             const [roadblocksRes, funnelRes] = await Promise.all([
                 fetch(`/api/analytics/behaviour/roadblocks?startDate=${range.startDate}&endDate=${range.endDate}`, {
@@ -65,7 +61,11 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [token, currentAccount, dateRange]);
+
+    useEffect(() => {
+        void fetchData();
+    }, [fetchData]);
 
     if (loading) {
         return (
@@ -123,7 +123,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
                     <h3 className="text-sm font-semibold text-gray-900 mb-4">Checkout Funnel Drop-off</h3>
                     <div className="flex items-end justify-between gap-4 h-32">
-                        {funnel.funnel.map((stage, i) => {
+                        {funnel.funnel.map((stage) => {
                             const maxCount = Math.max(...funnel.funnel.map(s => s.count));
                             const height = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
                             return (

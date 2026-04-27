@@ -2,10 +2,23 @@ import React, { useState } from 'react';
 import { Clock } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 
+export interface ReportSchedule {
+    frequency: string;
+    dayOfWeek?: number;
+    dayOfMonth?: number;
+    time: string;
+    emailRecipients: string[];
+}
+
+export interface SaveReportPayload {
+    name: string;
+    schedule: ReportSchedule | null;
+}
+
 interface SaveReportModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: any) => Promise<void>;
+    onSave: (data: SaveReportPayload) => Promise<void>;
 }
 
 export function SaveReportModal({ isOpen, onClose, onSave }: SaveReportModalProps) {

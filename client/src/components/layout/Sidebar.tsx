@@ -108,6 +108,7 @@ const navItems = [
 export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const { user, token } = useAuth();
     const { socket } = useSocket();
     const { hasPermission } = usePermissions(); // Permission hook
@@ -157,7 +158,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
     // Fetch unread conversations count and listen for new messages
     useEffect(() => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         // Check for unread conversations count
         const checkUnread = async () => {
@@ -165,7 +166,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 const res = await fetch('/api/chat/unread-count', {
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
+                        'x-account-id': accountId
                     }
                 });
                 if (res.ok) {
@@ -203,8 +204,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 socket.off('conversation:read', handleConversationRead);
             };
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentAccount?.id, token, socket]);
+    }, [accountId, token, socket, location.pathname]);
 
     // Clear unread when on inbox page
     useEffect(() => {
@@ -294,7 +294,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             </div>
 
             <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 no-scrollbar">
-                {filteredNavItems.map((item, index) => {
+                {filteredNavItems.map((item) => {
                     if (item.type === 'link') {
                         const isInbox = item.label === 'Inbox';
                         return (

@@ -19,6 +19,18 @@ interface AdGroup {
     campaignId: string;
 }
 
+interface AddKeywordAction {
+    actionType: 'add_keyword';
+    keyword?: string;
+    matchType?: 'BROAD' | 'PHRASE' | 'EXACT';
+    suggestedCpc?: number;
+    campaignId?: string;
+}
+
+function isAddKeywordAction(action: unknown): action is AddKeywordAction {
+    return typeof action === 'object' && action !== null && (action as { actionType?: string }).actionType === 'add_keyword';
+}
+
 export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: AddKeywordModalProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -28,19 +40,17 @@ export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: 
     const [adGroupId, setAdGroupId] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [adGroups, setAdGroups] = useState<AdGroup[]>([]);
-    const [fetchingGroups, setFetchingGroups] = useState(false);
 
     // Initialize from recommendation
     useEffect(() => {
         if (isOpen && recommendation) {
-            const action = recommendation.action as any;
-            if (action.actionType === 'add_keyword') {
+            const action: unknown = recommendation.action;
+            if (isAddKeywordAction(action)) {
                 setKeyword(action.keyword || '');
                 setMatches(action.matchType || 'PHRASE');
                 setBid(action.suggestedCpc || 1.00);
 
                 if (action.campaignId && token && currentAccount) {
-                    setFetchingGroups(true);
                     fetch(`/api/ads/campaigns/${action.campaignId}/adgroups`, {
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -57,9 +67,6 @@ export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: 
                         .catch(err => {
                             Logger.error('An error occurred', { error: err });
                             setAdGroups([]);
-                        })
-                        .finally(() => {
-                            setFetchingGroups(false);
                         });
                 }
             }
@@ -118,7 +125,7 @@ export function AddKeywordModal({ isOpen, onClose, recommendation, onConfirm }: 
                         <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
                         <select
                             value={matches}
-                            onChange={(e) => setMatches(e.target.value as any)}
+                            onChange={(e) => setMatches(e.target.value as 'BROAD' | 'PHRASE' | 'EXACT')}
                             className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all bg-white"
                         >
                             <option value="BROAD">Broad</option>

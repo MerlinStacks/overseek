@@ -24,6 +24,29 @@ interface UseHotCacheOptions {
     staleTime?: number; // How old data can be before refetching (ms)
 }
 
+interface ServerProduct {
+    id: string;
+    wooId: number;
+    name?: string;
+    sku?: string;
+    [key: string]: unknown;
+}
+
+interface ServerOrder {
+    id: string;
+    wooId: number;
+    [key: string]: unknown;
+}
+
+interface ServerCustomer {
+    id: string;
+    wooId: number;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    [key: string]: unknown;
+}
+
 const DEFAULT_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 /**
@@ -44,11 +67,11 @@ export function useHotProducts(options: UseHotCacheOptions = {}) {
 
         setSyncing(true);
         try {
-            const serverProducts = await api.get<any[]>('/api/products', token, accountId);
+            const serverProducts = await api.get<ServerProduct[]>('/api/products', token, accountId);
             const now = Date.now();
 
             // Transform and store
-            const cached: CachedProduct[] = serverProducts.map((p: any) => ({
+            const cached: CachedProduct[] = serverProducts.map((p) => ({
                 id: p.id,
                 wooId: p.wooId,
                 accountId,
@@ -126,10 +149,10 @@ export function useHotOrders(options: UseHotCacheOptions = {}) {
 
         setSyncing(true);
         try {
-            const serverOrders = await api.get<any[]>('/api/sync/orders/search?limit=1000', token, accountId);
+            const serverOrders = await api.get<ServerOrder[]>('/api/sync/orders/search?limit=1000', token, accountId);
             const now = Date.now();
 
-            const cached: CachedOrder[] = serverOrders.map((o: any) => ({
+            const cached: CachedOrder[] = serverOrders.map((o) => ({
                 id: o.id,
                 wooId: o.wooId,
                 accountId,
@@ -202,10 +225,10 @@ export function useHotCustomers(options: UseHotCacheOptions = {}) {
 
         setSyncing(true);
         try {
-            const serverCustomers = await api.get<any[]>('/api/customers', token, accountId);
+            const serverCustomers = await api.get<ServerCustomer[]>('/api/customers', token, accountId);
             const now = Date.now();
 
-            const cached: CachedCustomer[] = serverCustomers.map((c: any) => ({
+            const cached: CachedCustomer[] = serverCustomers.map((c) => ({
                 id: c.id,
                 wooId: c.wooId,
                 accountId,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { formatTimeAgo } from '../utils/format';
 
 /**
@@ -6,22 +6,16 @@ import { formatTimeAgo } from '../utils/format';
  * Use this instead of static formatTimeAgo() when the timestamp should stay fresh.
  */
 export function useRelativeTime(date: string | Date | undefined, intervalMs = 60_000): string {
-    // Stabilize to a primitive so Date objects don't cause infinite re-runs
-    const dateMs = useMemo(() => {
-        if (!date) return 0;
-        return typeof date === 'string' ? new Date(date).getTime() : date.getTime();
-    }, [date instanceof Date ? date.getTime() : date]);
-
-    const [text, setText] = useState(() => dateMs ? formatTimeAgo(new Date(dateMs)) : '');
+    const [tick, setTick] = useState(0);
 
     useEffect(() => {
-        if (!dateMs) { setText(''); return; }
-
-        const d = new Date(dateMs);
-        setText(formatTimeAgo(d));
-        const id = setInterval(() => setText(formatTimeAgo(d)), intervalMs);
+        if (!date) return;
+        const id = setInterval(() => setTick((t) => t + 1), intervalMs);
         return () => clearInterval(id);
-    }, [dateMs, intervalMs]);
+    }, [date, intervalMs]);
 
-    return text;
+    void tick;
+    if (!date) return '';
+    const normalizedDate = typeof date === 'string' ? new Date(date) : date;
+    return formatTimeAgo(normalizedDate);
 }

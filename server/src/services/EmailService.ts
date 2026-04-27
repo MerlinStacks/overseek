@@ -95,6 +95,32 @@ export class EmailService {
             throw new Error("Email account not found");
         }
 
+        // Suppress sends to unsubscribed recipients for this tenant.
+        const unsubscribe = await prisma.emailUnsubscribe.findFirst({
+            where: {
+                accountId,
+                email: { equals: to, mode: 'insensitive' }
+            },
+            select: { id: true }
+        });
+        if (unsubscribe) {
+            await prisma.emailLog.create({
+                data: {
+                    accountId,
+                    emailAccountId,
+                    to,
+                    subject,
+                    status: 'SKIPPED',
+                    errorMessage: 'Recipient is unsubscribed',
+                    source: options?.source,
+                    sourceId: options?.sourceId,
+                    canRetry: false
+                }
+            });
+            Logger.info('Skipping email to unsubscribed recipient', { accountId, to, source: options?.source });
+            return { skipped: true, reason: 'unsubscribed' };
+        }
+
         // Generate tracking ID for read receipts
         const trackingId = crypto.randomUUID();
         const trackingPixelUrl = `${process.env.API_URL || 'http://localhost:3000'}/api/email/track/${trackingId}.png`;
@@ -286,6 +312,19 @@ export class EmailService {
                     ...payload.options
                 }
             );
+
+            if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+                const reason = 'reason' in result ? result.reason : 'email skipped';
+                await prisma.emailLog.update({
+                    where: { id: emailLogId },
+                    data: {
+                        canRetry: false,
+                        status: 'FAILED',
+                        errorMessage: `Retry blocked: ${reason}`
+                    }
+                });
+                return { success: false, error: reason };
+            }
 
             // Mark original as superseded (can't retry again)
             await prisma.emailLog.update({

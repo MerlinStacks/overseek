@@ -124,7 +124,7 @@ export function TableRowSkeleton({
                     ) : (
                         <Skeleton
                             className="h-4"
-                            width={`${60 + Math.random() * 40}%`}
+                            width={`${60 + ((i * 11) % 40)}%`}
                         />
                     )}
                 </td>

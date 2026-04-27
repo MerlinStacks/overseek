@@ -61,14 +61,14 @@ export function MobileCustomers() {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
 
-    const fetchCustomers = useCallback(async (reset = false) => {
+    const fetchCustomers = useCallback(async (targetPage: number, reset = false) => {
         if (!currentAccount || !token) return;
 
         try {
             if (reset) setLoading(true);
 
             const params = new URLSearchParams();
-            params.append('page', reset ? '1' : page.toString());
+            params.append('page', targetPage.toString());
             params.append('limit', '20');
             if (searchQuery) params.append('q', searchQuery);
 
@@ -105,25 +105,30 @@ export function MobileCustomers() {
         } finally {
             setLoading(false);
         }
-    }, [currentAccount, token, searchQuery, page]);
+    }, [currentAccount, searchQuery, token]);
 
     useEffect(() => {
-        fetchCustomers(true);
-        const handleRefresh = () => fetchCustomers(true);
+        fetchCustomers(1, true);
+        const handleRefresh = () => fetchCustomers(1, true);
         window.addEventListener('mobile-refresh', handleRefresh);
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [currentAccount, token]);
+    }, [fetchCustomers]);
+
+    useEffect(() => {
+        if (page > 1) {
+            fetchCustomers(page, false);
+        }
+    }, [fetchCustomers, page]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         triggerHaptic();
-        fetchCustomers(true);
+        fetchCustomers(1, true);
     };
 
     const loadMore = () => {
         if (!loading && hasMore) {
             setPage(p => p + 1);
-            fetchCustomers(false);
         }
     };
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -6,26 +6,43 @@ import { Plus, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../ui/Modal';
 
+interface MarketingCampaign {
+    id: string;
+    name: string;
+    subject?: string;
+    status: 'SENT' | 'DRAFT' | string;
+    sentCount: number;
+    openedCount: number;
+    scheduledAt?: string | null;
+}
+
+interface SegmentItem {
+    id: string;
+    name: string;
+    _count?: { campaigns?: number };
+}
+
+interface NewCampaignInput {
+    name: string;
+    subject: string;
+    segmentId?: string;
+}
+
 export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, subject?: string) => void }) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const toast = useToast();
-    const [campaigns, setCampaigns] = useState<any[]>([]);
+    const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // Create Modal state
     const [showCreate, setShowCreate] = useState(false);
-    const [newItem, setNewItem] = useState({ name: '', subject: '' });
+    const [newItem, setNewItem] = useState<NewCampaignInput>({ name: '', subject: '' });
 
-    const [segments, setSegments] = useState<any[]>([]);
+    const [segments, setSegments] = useState<SegmentItem[]>([]);
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchData();
-        fetchSegments();
-    }, [currentAccount, token]);
-
-    async function fetchSegments() {
+    const fetchSegments = useCallback(async () => {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/segments', {
@@ -40,9 +57,9 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 Logger.error('Failed to fetch segments', { status: res.status });
             }
         } catch (e) { Logger.error('An error occurred', { error: e }); }
-    }
+    }, [currentAccount, token]);
 
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/marketing/campaigns', {
@@ -70,7 +87,12 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        void fetchData();
+        void fetchSegments();
+    }, [fetchData, fetchSegments]);
 
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
@@ -152,8 +174,8 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                 <label className="block text-sm font-medium mb-1">Recipient Segment</label>
                                 <select
                                     className="w-full p-2 border rounded-sm"
-                                    value={(newItem as any).segmentId || ''}
-                                    onChange={e => setNewItem({ ...newItem, segmentId: e.target.value } as any)}
+                                    value={newItem.segmentId || ''}
+                                    onChange={e => setNewItem({ ...newItem, segmentId: e.target.value })}
                                 >
                                     <option value="">All Customers</option>
                                     {segments.map(s => (

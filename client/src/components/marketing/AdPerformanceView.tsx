@@ -3,7 +3,7 @@ import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { GoogleAdsCampaigns } from './GoogleAdsCampaigns';
-import { Loader2, Megaphone, Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { Loader2, Megaphone, Plus } from 'lucide-react';
 
 interface AdAccount {
     id: string;
@@ -48,11 +48,7 @@ export function AdPerformanceView() {
         }
     }, [currentAccount, token]);
 
-    useEffect(() => {
-        fetchAccounts();
-    }, [currentAccount, token]);
-
-    async function fetchAccounts() {
+    const fetchAccounts = useCallback(async () => {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/ads', {
@@ -73,7 +69,11 @@ export function AdPerformanceView() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, selectedAccountId, token]);
+
+    useEffect(() => {
+        fetchAccounts();
+    }, [fetchAccounts]);
 
     if (isLoading) {
         return (

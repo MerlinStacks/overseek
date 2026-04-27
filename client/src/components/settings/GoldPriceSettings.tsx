@@ -3,10 +3,12 @@ import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
 
 export function GoldPriceSettings() {
     const { currentAccount, refreshAccounts } = useAccount();
     const isEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(false);
 
     const [priceInput, setPriceInput] = useState(currentAccount?.goldPrice?.toString() || '0');
@@ -45,10 +47,11 @@ export function GoldPriceSettings() {
             if (res.ok) {
                 await refreshAccounts(); // Update context, which triggers useEffect
             } else {
-                alert('Failed to fetch live price');
+                toast.error('Failed to fetch live gold price.');
             }
         } catch (e) {
             Logger.error('An error occurred', { error: e });
+            toast.error('Failed to fetch live gold price.');
         } finally {
             setIsLoading(false);
         }

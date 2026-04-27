@@ -6,7 +6,7 @@
  * Belt-and-braces for sensitive financial data.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DollarSign, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -50,12 +50,7 @@ export function OrderCOGSPanel({ orderId, currency }: OrderCOGSPanelProps) {
     const [loading, setLoading] = useState(false);
     const [expanded, setExpanded] = useState(true);
 
-    useEffect(() => {
-        if (!canViewCogs || !orderId || !currentAccount || !token) return;
-        fetchCOGS();
-    }, [orderId, currentAccount, token, canViewCogs]);
-
-    async function fetchCOGS() {
+    const fetchCOGS = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`/api/orders/${orderId}/cogs`, {
@@ -72,7 +67,12 @@ export function OrderCOGSPanel({ orderId, currency }: OrderCOGSPanelProps) {
         } finally {
             setLoading(false);
         }
-    }
+    }, [currentAccount?.id, orderId, token]);
+
+    useEffect(() => {
+        if (!canViewCogs || !orderId || !currentAccount || !token) return;
+        fetchCOGS();
+    }, [orderId, currentAccount, token, canViewCogs, fetchCOGS]);
 
     // Permission gate — nothing rendered for unauthorized users
     if (!canViewCogs) return null;

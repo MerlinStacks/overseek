@@ -10,6 +10,35 @@ import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 import { BOMInventorySyncService } from '../../services/BOMInventorySyncService';
+import { z } from 'zod';
+
+const variationQuerySchema = z.object({
+    variationId: z.coerce.number().int().nonnegative().default(0)
+});
+
+const limitQuerySchema = z.object({
+    limit: z.coerce.number().int().positive().max(100).default(50)
+});
+
+async function mapWithConcurrency<T, R>(
+    items: T[],
+    concurrency: number,
+    mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let cursor = 0;
+
+    const worker = async () => {
+        while (true) {
+            const index = cursor++;
+            if (index >= items.length) break;
+            results[index] = await mapper(items[index], index);
+        }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+    return results;
+}
 
 export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -21,8 +50,11 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { productId: string } }>('/products/:productId/bom/sync', async (request, reply) => {
         const accountId = request.accountId!;
         const { productId } = request.params;
-        const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0', 10);
+        const parsedQuery = variationQuerySchema.safeParse(request.query);
+        if (!parsedQuery.success) {
+            return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+        }
+        const { variationId } = parsedQuery.data;
 
         try {
             const result = await BOMInventorySyncService.syncProductToWoo(accountId, productId, variationId);
@@ -48,8 +80,11 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/diagnose', async (request, reply) => {
         const accountId = request.accountId!;
         const { productId } = request.params;
-        const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0', 10);
+        const parsedQuery = variationQuerySchema.safeParse(request.query);
+        if (!parsedQuery.success) {
+            return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+        }
+        const { variationId } = parsedQuery.data;
 
         try {
             // Step 1: Check if product exists
@@ -119,7 +154,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             const internalItems = activeItems.filter(i => i.internalProductId);
 
             // Step 4: Try the calculation
-            const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(productId, variationId);
+            const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(accountId, productId, variationId);
 
             return {
                 status: 'ok',
@@ -227,7 +262,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         await queue.add(QUEUES.BOM_SYNC, { accountId }, {
             jobId,
             priority: 10,
-            removeOnComplete: true,
+            removeOnComplete: 20,
             removeOnFail: 100
         });
 
@@ -256,8 +291,18 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             const existingJob = await queue.getJob(jobId);
             if (existingJob) {
                 const state = await existingJob.getState();
+                const rawProgress = existingJob.progress as any;
+                const progress = rawProgress && typeof rawProgress === 'object'
+                    ? {
+                        current: Number(rawProgress.current || 0),
+                        total: Number(rawProgress.total || 0),
+                        synced: Number(rawProgress.synced || 0),
+                        skipped: Number(rawProgress.skipped || 0),
+                        failed: Number(rawProgress.failed || 0)
+                    }
+                    : null;
                 if (['active', 'waiting', 'delayed'].includes(state)) {
-                    return { isSyncing: true, state };
+                    return { isSyncing: true, state, progress };
                 }
             }
             return { isSyncing: false, state: null };
@@ -405,72 +450,73 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
             Logger.info(`[BOMSync] Found ${bomsWithChildProducts.length} BOMs with child products`, { accountId });
 
-            const pendingChanges = [];
             let calculationFailures = 0;
 
-            for (const bom of bomsWithChildProducts) {
+            const mapped = await mapWithConcurrency(bomsWithChildProducts, 8, async (bom) => {
                 try {
                     const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(
+                        accountId,
                         bom.productId,
                         bom.variationId
                     );
 
-                    if (calculation) {
-                        // For variants, get variant-specific data
-                        let displayName = bom.product.name;
-                        let displaySku = bom.product.sku;
-                        let displayImage = bom.product.mainImage;
-                        let displayWooId = bom.product.wooId;
-
-                        if (bom.variationId > 0) {
-                            // Find the matching variation
-                            const variation = bom.product.variations.find(v => v.wooId === bom.variationId);
-                            if (variation) {
-                                displayWooId = variation.wooId;
-                                displaySku = variation.sku || displaySku;
-
-                                // Get variant name from rawData or construct from attributes
-                                const rawData = variation.rawData as any;
-                                if (rawData?.attributes?.length > 0) {
-                                    const attrStr = rawData.attributes
-                                        .map((a: any) => a.option)
-                                        .filter(Boolean)
-                                        .join(', ');
-                                    displayName = `${bom.product.name} - ${attrStr}`;
-                                } else {
-                                    displayName = `${bom.product.name} (Variant #${variation.wooId})`;
-                                }
-
-                                // Get variant image
-                                const images = variation.images as any[];
-                                if (images?.length > 0 && images[0]?.src) {
-                                    displayImage = images[0].src;
-                                } else if (rawData?.image?.src) {
-                                    displayImage = rawData.image.src;
-                                }
-                            }
-                        }
-
-                        pendingChanges.push({
-                            productId: bom.product.id,
-                            wooId: displayWooId,
-                            name: displayName,
-                            sku: displaySku,
-                            mainImage: displayImage,
-                            variationId: bom.variationId,
-                            currentWooStock: calculation.currentWooStock,
-                            effectiveStock: calculation.effectiveStock,
-                            needsSync: calculation.needsSync,
-                            components: calculation.components
-                        });
-                    } else {
+                    if (!calculation) {
                         calculationFailures++;
                         Logger.warn(`[BOMSync] calculateEffectiveStock returned null for product`, {
                             productId: bom.productId,
                             variationId: bom.variationId,
                             productName: bom.product.name
                         });
+                        return null;
                     }
+
+                    // For variants, get variant-specific data
+                    let displayName = bom.product.name;
+                    let displaySku = bom.product.sku;
+                    let displayImage = bom.product.mainImage;
+                    let displayWooId = bom.product.wooId;
+
+                    if (bom.variationId > 0) {
+                        // Find the matching variation
+                        const variation = bom.product.variations.find(v => v.wooId === bom.variationId);
+                        if (variation) {
+                            displayWooId = variation.wooId;
+                            displaySku = variation.sku || displaySku;
+
+                            // Get variant name from rawData or construct from attributes
+                            const rawData = variation.rawData as any;
+                            if (rawData?.attributes?.length > 0) {
+                                const attrStr = rawData.attributes
+                                    .map((a: any) => a.option)
+                                    .filter(Boolean)
+                                    .join(', ');
+                                displayName = `${bom.product.name} - ${attrStr}`;
+                            } else {
+                                displayName = `${bom.product.name} (Variant #${variation.wooId})`;
+                            }
+
+                            // Get variant image
+                            const images = variation.images as any[];
+                            if (images?.length > 0 && images[0]?.src) {
+                                displayImage = images[0].src;
+                            } else if (rawData?.image?.src) {
+                                displayImage = rawData.image.src;
+                            }
+                        }
+                    }
+
+                    return {
+                        productId: bom.product.id,
+                        wooId: displayWooId,
+                        name: displayName,
+                        sku: displaySku,
+                        mainImage: displayImage,
+                        variationId: bom.variationId,
+                        currentWooStock: calculation.currentWooStock,
+                        effectiveStock: calculation.effectiveStock,
+                        needsSync: calculation.needsSync,
+                        components: calculation.components
+                    };
                 } catch (calcError) {
                     calculationFailures++;
                     Logger.error(`[BOMSync] calculateEffectiveStock threw error`, {
@@ -478,8 +524,11 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                         variationId: bom.variationId,
                         error: calcError
                     });
+                    return null;
                 }
-            }
+            });
+
+            const pendingChanges = mapped.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
             Logger.info(`[BOMSync] Results: ${pendingChanges.length} success, ${calculationFailures} failures`, { accountId });
 
@@ -506,8 +555,11 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/bom/sync-history', async (request, reply) => {
         const accountId = request.accountId!;
-        const query = request.query as { limit?: string };
-        const limit = Math.min(parseInt(query.limit || '50', 10), 100);
+        const parsedLimit = limitQuerySchema.safeParse(request.query);
+        if (!parsedLimit.success) {
+            return reply.code(400).send({ error: parsedLimit.error.issues[0]?.message || 'Invalid limit' });
+        }
+        const { limit } = parsedLimit.data;
 
         try {
             const logs = await prisma.auditLog.findMany({
@@ -567,8 +619,11 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/bom/consumption-history', async (request, reply) => {
         const accountId = request.accountId!;
-        const query = request.query as { limit?: string };
-        const limit = Math.min(parseInt(query.limit || '50', 10), 100);
+        const parsedLimit = limitQuerySchema.safeParse(request.query);
+        if (!parsedLimit.success) {
+            return reply.code(400).send({ error: parsedLimit.error.issues[0]?.message || 'Invalid limit' });
+        }
+        const { limit } = parsedLimit.data;
 
         try {
             const entries = await prisma.bOMDeductionLedger.findMany({

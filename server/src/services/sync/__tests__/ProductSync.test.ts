@@ -7,10 +7,14 @@ import { IndexingService } from '../../search/IndexingService';
 const mockPrisma = vi.hoisted(() => ({
     wooProduct: {
         findMany: vi.fn(),
+        count: vi.fn(),
         upsert: vi.fn().mockResolvedValue({}),
         delete: vi.fn(),
-        deleteMany: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         update: vi.fn().mockResolvedValue({}),
+    },
+    productVariation: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     account: {
         findUnique: vi.fn(),
@@ -30,6 +34,7 @@ vi.mock('../../search/IndexingService', () => ({
     IndexingService: {
         deleteProduct: vi.fn().mockResolvedValue(undefined),
         indexProduct: vi.fn().mockResolvedValue(undefined),
+        bulkIndexProducts: vi.fn().mockResolvedValue(undefined),
     }
 }));
 
@@ -98,7 +103,9 @@ describe('ProductSync Reconciliation Performance', () => {
         }));
 
         mockPrisma.wooProduct.findMany.mockResolvedValue(localProducts);
+        mockPrisma.wooProduct.count.mockResolvedValueOnce(productCount).mockResolvedValueOnce(productCount);
         mockPrisma.wooProduct.delete.mockResolvedValue({});
+        mockPrisma.wooProduct.deleteMany.mockResolvedValue({ count: productCount });
 
         // Run sync (non-incremental to trigger reconciliation)
         // Accessing protected member via any cast
@@ -115,9 +122,11 @@ describe('ProductSync Reconciliation Performance', () => {
         // Verify deleteMany args
         const deleteManyArgs = mockPrisma.wooProduct.deleteMany.mock.calls[0][0];
         expect(deleteManyArgs).toEqual({
-            where: { id: { in: expect.any(Array) } }
+            where: {
+                accountId,
+                updatedAt: { lt: expect.any(Date) }
+            }
         });
-        expect(deleteManyArgs.where.id.in).toHaveLength(productCount);
 
         // Verify IndexingService is still called for each product
         expect(IndexingService.deleteProduct).toHaveBeenCalledTimes(productCount);

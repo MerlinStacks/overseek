@@ -4,12 +4,13 @@
  * Displays cached data counts and provides refresh controls.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
-import { Database, RefreshCw, HardDrive, Trash2 } from 'lucide-react';
+import { RefreshCw, HardDrive, Trash2 } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
-import { getCacheStats, clearAccountCache, hotTierDB } from '../../services/db';
+import { getCacheStats, clearAccountCache } from '../../services/db';
 import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass, widgetTitleClass } from './widgetStyles';
 
 interface CacheStats {
     orders: number;
@@ -28,8 +29,9 @@ export function HotCacheWidget({ className }: WidgetProps) {
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
     const [confirmClear, setConfirmClear] = useState(false);
+    const clearConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const loadStats = async () => {
+    const loadStats = useCallback(async () => {
         if (!currentAccount?.id) return;
         setLoading(true);
         try {
@@ -40,11 +42,20 @@ export function HotCacheWidget({ className }: WidgetProps) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount?.id]);
 
     useEffect(() => {
         loadStats();
-    }, [currentAccount?.id]);
+    }, [loadStats]);
+
+    useEffect(() => {
+        return () => {
+            if (clearConfirmTimeoutRef.current) {
+                clearTimeout(clearConfirmTimeoutRef.current);
+                clearConfirmTimeoutRef.current = null;
+            }
+        };
+    }, []);
 
     /** Two-step clear: first click shows confirmation, second click executes */
     const handleClear = async () => {
@@ -53,7 +64,10 @@ export function HotCacheWidget({ className }: WidgetProps) {
         if (!confirmClear) {
             setConfirmClear(true);
             // Auto-dismiss after 3 seconds
-            setTimeout(() => setConfirmClear(false), 3000);
+            if (clearConfirmTimeoutRef.current) {
+                clearTimeout(clearConfirmTimeoutRef.current);
+            }
+            clearConfirmTimeoutRef.current = setTimeout(() => setConfirmClear(false), 3000);
             return;
         }
 
@@ -83,11 +97,11 @@ export function HotCacheWidget({ className }: WidgetProps) {
     const totalItems = stats ? stats.orders + stats.products + stats.customers : 0;
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 p-4 h-full shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] ${className}`}>
+        <div className={`${widgetCardClass} p-4 h-full ${className || ''}`}>
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                     <HardDrive className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                    <h3 className="font-semibold text-slate-900 dark:text-white">Hot Cache</h3>
+                    <h3 className={widgetTitleClass}>Hot Cache</h3>
                 </div>
                 <div className="flex gap-1">
                     <button

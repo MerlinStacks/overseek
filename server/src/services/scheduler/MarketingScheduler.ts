@@ -87,6 +87,9 @@ export class MarketingScheduler {
      * Start all marketing-related tickers
      */
     static start() {
+        // Defensive: avoid duplicate intervals if start() is called more than once.
+        this.stop();
+
         // Marketing Automation (every minute)
         this.automationInterval = setInterval(
             () => automationEngine.runTicker().catch(e => Logger.error('Marketing Ticker Error', { error: e })),
@@ -104,6 +107,26 @@ export class MarketingScheduler {
             () => this.checkReportSchedules().catch(e => Logger.error('Report Scheduler Error', { error: e })),
             15 * 60 * 1000
         );
+    }
+
+    /**
+     * Stop all marketing-related tickers.
+     */
+    static stop() {
+        if (this.automationInterval) {
+            clearInterval(this.automationInterval);
+            this.automationInterval = null;
+        }
+
+        if (this.abandonedCartInterval) {
+            clearInterval(this.abandonedCartInterval);
+            this.abandonedCartInterval = null;
+        }
+
+        if (this.reportInterval) {
+            clearInterval(this.reportInterval);
+            this.reportInterval = null;
+        }
     }
 
     /**

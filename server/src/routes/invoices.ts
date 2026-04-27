@@ -25,7 +25,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get all templates for account
     fastify.get('/templates', async (request, reply) => {
-        const accountId = request.user?.accountId;
+        const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         try {
@@ -39,7 +39,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get specific template
     fastify.get<{ Params: { id: string } }>('/templates/:id', async (request, reply) => {
-        const accountId = request.user?.accountId;
+        const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         try {
@@ -53,7 +53,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Create template
     fastify.post('/templates', async (request, reply) => {
-        const accountId = request.user?.accountId;
+        const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         try {
@@ -70,7 +70,7 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Update template
     fastify.put<{ Params: { id: string } }>('/templates/:id', async (request, reply) => {
-        const accountId = request.user?.accountId;
+        const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         try {
@@ -81,9 +81,40 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // Get template version history
+    fastify.get<{ Params: { id: string } }>('/templates/:id/versions', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        try {
+            const versions = await invoiceService.getTemplateVersions(request.params.id, accountId);
+            return { versions };
+        } catch (error) {
+            return reply.code(500).send({ error: 'Failed to fetch template versions' });
+        }
+    });
+
+    // Rollback template to a previous version
+    fastify.post<{ Params: { id: string }; Body: { versionId: string } }>('/templates/:id/rollback', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+        if (!request.body?.versionId) return reply.code(400).send({ error: 'versionId is required' });
+
+        try {
+            const template = await invoiceService.rollbackTemplateVersion(
+                request.params.id,
+                accountId,
+                request.body.versionId
+            );
+            return template;
+        } catch (error) {
+            return reply.code(500).send({ error: 'Failed to rollback template version' });
+        }
+    });
+
     // Upload image for invoice template (using @fastify/multipart)
     fastify.post('/templates/upload-image', async (request, reply) => {
-        const accountId = request.user?.accountId;
+        const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         let writeStream: fs.WriteStream | undefined;

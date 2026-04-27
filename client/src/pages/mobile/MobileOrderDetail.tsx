@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag } from 'lucide-react';
@@ -92,15 +92,22 @@ export function MobileOrderDetail() {
     const { hasPermission } = usePermissions();
     const canViewCogs = hasPermission('view_cogs');
 
-    useEffect(() => {
-        if (id) fetchOrder();
-        // Listen for refresh events from pull-to-refresh
-        const handleRefresh = () => { if (id) fetchOrder(); };
-        window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
-    }, [id, token, currentAccount]);
+    const fetchAttribution = useCallback(async () => {
+        if (!currentAccount || !token || !id) return;
+        try {
+            const res = await fetch(`/api/orders/${id}/attribution`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAttribution(data.attribution);
+            }
+        } catch {
+            Logger.warn('[MobileOrderDetail] Could not load attribution');
+        }
+    }, [currentAccount, id, token]);
 
-    const fetchOrder = async () => {
+    const fetchOrder = useCallback(async () => {
         if (!currentAccount || !token || !id) return;
 
         try {
@@ -151,24 +158,18 @@ export function MobileOrderDetail() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount, fetchAttribution, id, token]);
 
-    const fetchAttribution = async () => {
-        if (!currentAccount || !token || !id) return;
-        try {
-            const res = await fetch(`/api/orders/${id}/attribution`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setAttribution(data.attribution);
-            }
-        } catch (err) {
-            console.warn('Could not load attribution');
-        }
-    };
+    useEffect(() => {
+        fetchOrder();
+        // Listen for refresh events from pull-to-refresh
+        const handleRefresh = () => {
+            fetchOrder();
+        };
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+    }, [fetchOrder]);
 
-    const formatMoney = (amount: number) => formatCurrency(amount, currentAccount?.currency || 'USD');
     const formatDate = (date: string) => formatDateTime(date);
     const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); if ('vibrate' in navigator) navigator.vibrate(10); };
 
@@ -434,33 +435,6 @@ export function MobileOrderDetail() {
         </div>
     );
 }
-
-/**
- * Extracts an image URL from a meta value.
- * Handles compound values like "filename.webp | https://example.com/path/to/image.webp"
- */
-const extractImageUrl = (value: string): string | null => {
-    if (typeof value !== 'string') return null;
-
-    const imagePattern = /\.(jpg|jpeg|png|gif|webp|svg|bmp)/i;
-
-    // Direct image URL
-    if (imagePattern.test(value) && value.startsWith('http')) {
-        return value;
-    }
-
-    // Look for URLs within the value (handles "filename | url" format)
-    const urlMatch = value.match(/(https?:\/\/[^\s|]+)/g);
-    if (urlMatch) {
-        for (const url of urlMatch) {
-            if (imagePattern.test(url)) {
-                return url.trim();
-            }
-        }
-    }
-
-    return null;
-};
 
 /**
  * Extracts ALL image URLs from a meta value.

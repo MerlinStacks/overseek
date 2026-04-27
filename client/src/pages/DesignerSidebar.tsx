@@ -1,11 +1,12 @@
-import { Type, Image as ImageIcon, Table, DollarSign, User, LayoutTemplate, Heading, Rows, FileText } from 'lucide-react';
+import { Type, Image as ImageIcon, Table, DollarSign, User, LayoutTemplate, Heading, Rows, FileText, QrCode } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { TOOLBOX_ITEMS } from './invoiceUtils';
 
 interface DesignerSidebarProps {
     onAddItem: (type: string) => void;
 }
 
-const ICONS: Record<string, any> = {
+const ICONS: Record<string, LucideIcon> = {
     row: Rows,
     header: Heading,
     text: Type,
@@ -14,6 +15,7 @@ const ICONS: Record<string, any> = {
     customer_details: User,
     order_table: Table,
     totals: DollarSign,
+    payment_block: QrCode,
     footer: LayoutTemplate
 };
 
@@ -25,6 +27,7 @@ const COLORS: Record<string, { bg: string; hover: string; icon: string }> = {
     customer_details: { bg: 'bg-indigo-50', hover: 'hover:border-indigo-400', icon: 'text-indigo-600' },
     order_table: { bg: 'bg-emerald-50', hover: 'hover:border-emerald-400', icon: 'text-emerald-600' },
     totals: { bg: 'bg-amber-50', hover: 'hover:border-amber-400', icon: 'text-amber-600' },
+    payment_block: { bg: 'bg-cyan-50', hover: 'hover:border-cyan-400', icon: 'text-cyan-600' },
     footer: { bg: 'bg-slate-50', hover: 'hover:border-slate-400', icon: 'text-slate-600' }
 };
 
@@ -74,6 +77,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
                                         {item.type === 'customer_details' && 'Bill to/Ship to info'}
                                         {item.type === 'order_table' && 'Line items table'}
                                         {item.type === 'totals' && 'Subtotal, tax, total'}
+                                        {item.type === 'payment_block' && 'Pay link + QR code'}
                                         {item.type === 'footer' && 'Last page footer'}
                                     </span>
                                 </div>
@@ -86,7 +90,7 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
             {/* Tips Section */}
             <div className="p-4 border-t border-slate-100">
                 <div className="p-4 bg-linear-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
-                    <p className="font-semibold text-indigo-700 text-xs mb-1.5">💡 Quick Tip</p>
+                    <p className="font-semibold text-indigo-700 text-xs mb-1.5">Quick Tip</p>
                     <p className="text-xs text-indigo-600/80 leading-relaxed">
                         Click components to add them. Drag to reorder and resize on canvas.
                     </p>
@@ -95,3 +99,4 @@ export function DesignerSidebar({ onAddItem }: DesignerSidebarProps) {
         </div>
     );
 }
+

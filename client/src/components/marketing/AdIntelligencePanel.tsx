@@ -6,7 +6,7 @@
  * for instant perceived load.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Skeleton, SkeletonText } from '../ui/Skeleton';
@@ -22,6 +22,7 @@ import {
     Search,
     DollarSign
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 
 /* ────────── Types (mirrors server response shapes) ────────── */
@@ -108,7 +109,7 @@ function SummaryCardsSkeleton() {
 
 /** Expandable section wrapper */
 function Section({ title, icon: Icon, count, color, children, defaultOpen = false }: {
-    title: string; icon: any; count: number; color: string; children: React.ReactNode; defaultOpen?: boolean;
+    title: string; icon: LucideIcon; count: number; color: string; children: React.ReactNode; defaultOpen?: boolean;
 }) {
     const [open, setOpen] = useState(defaultOpen);
 
@@ -143,19 +144,27 @@ export function AdIntelligencePanel() {
     const [error, setError] = useState<string | null>(null);
 
     /** Build auth headers fresh on each request to avoid stale closures */
-    function getHeaders() {
+    const getHeaders = useCallback(() => {
         return {
             'Authorization': `Bearer ${token}`,
             'X-Account-ID': currentAccount?.id || ''
         };
-    }
+    }, [token, currentAccount?.id]);
 
-    /** Load summary immediately, correlation lazily */
-    useEffect(() => {
-        loadSummary();
-    }, [currentAccount?.id]);
+    const loadCorrelation = useCallback(async () => {
+        setLoadingCorrelation(true);
+        try {
+            const res = await fetch(`/api/ads/intelligence/correlation`, { headers: getHeaders() });
+            if (!res.ok) throw new Error('Failed to load correlation data');
+            setCorrelation(await res.json());
+        } catch (err: unknown) {
+            Logger.error('Intelligence correlation load failed', { error: err });
+        } finally {
+            setLoadingCorrelation(false);
+        }
+    }, [getHeaders]);
 
-    async function loadSummary() {
+    const loadSummary = useCallback(async () => {
         setLoadingSummary(true);
         setError(null);
         try {
@@ -166,26 +175,19 @@ export function AdIntelligencePanel() {
 
             // Auto-load full correlation after summary renders
             if (data.hasData) loadCorrelation();
-        } catch (err: any) {
-            Logger.error('Intelligence summary load failed', err);
-            setError(err.message);
+        } catch (err: unknown) {
+            Logger.error('Intelligence summary load failed', { error: err });
+            const message = err instanceof Error ? err.message : 'Failed to load intelligence summary';
+            setError(message);
         } finally {
             setLoadingSummary(false);
         }
-    }
+    }, [getHeaders, loadCorrelation]);
 
-    async function loadCorrelation() {
-        setLoadingCorrelation(true);
-        try {
-            const res = await fetch(`/api/ads/intelligence/correlation`, { headers: getHeaders() });
-            if (!res.ok) throw new Error('Failed to load correlation data');
-            setCorrelation(await res.json());
-        } catch (err: any) {
-            Logger.error('Intelligence correlation load failed', err);
-        } finally {
-            setLoadingCorrelation(false);
-        }
-    }
+    /** Load summary immediately, correlation lazily */
+    useEffect(() => {
+        loadSummary();
+    }, [loadSummary]);
 
     /* ── No data ── */
     if (!loadingSummary && summary && !summary.hasData) {

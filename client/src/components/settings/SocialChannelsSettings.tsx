@@ -4,7 +4,7 @@
  * for direct messaging integration with the Inbox.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
@@ -18,6 +18,13 @@ interface SocialAccount {
     externalId: string;
     tokenExpiry: string | null;
     createdAt: string;
+}
+
+interface SmsSettings {
+    accountSid: string;
+    authToken: string;
+    fromNumber: string;
+    enabled: boolean;
 }
 
 /**
@@ -34,13 +41,69 @@ export function SocialChannelsSettings() {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     // SMS Settings State
-    const [smsSettings, setSmsSettings] = useState({
+    const [smsSettings, setSmsSettings] = useState<SmsSettings>({
         accountSid: '',
         authToken: '',
         fromNumber: '',
         enabled: true
     });
     const [smsLoading, setSmsLoading] = useState(false);
+
+    const fetchAccounts = useCallback(async () => {
+        if (!token || !currentAccount) return;
+
+        try {
+            setLoading(true);
+            const response = await api.get<{ socialAccounts: SocialAccount[] }>(
+                '/api/oauth/social-accounts',
+                token,
+                currentAccount.id
+            );
+            setAccounts(response.socialAccounts || []);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to load connected accounts.');
+        } finally {
+            setLoading(false);
+        }
+    }, [token, currentAccount]);
+
+    const fetchSmsSettings = useCallback(async () => {
+        if (!token || !currentAccount) return;
+        try {
+            const data = await api.get<Partial<SmsSettings>>('/api/sms/settings', token, currentAccount.id);
+            if (data && data.accountSid) {
+                setSmsSettings({
+                    accountSid: data.accountSid ?? '',
+                    authToken: data.authToken ?? '', // Usually masked or encrypted, but for now...
+                    fromNumber: data.fromNumber ?? '',
+                    enabled: data.enabled ?? true
+                });
+            }
+        } catch (err) {
+            Logger.error('Failed to fetch SMS settings', { error: err });
+        }
+    }, [token, currentAccount]);
+
+    const saveSmsSettings = async () => {
+        if (!token || !currentAccount) return;
+        try {
+            setSmsLoading(true);
+            await api.post('/api/sms/settings', smsSettings, token, currentAccount.id);
+            setSuccessMessage('SMS settings saved successfully.');
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to save SMS settings.');
+        } finally {
+            setSmsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (token && currentAccount) {
+            void fetchAccounts();
+            void fetchSmsSettings();
+        }
+    }, [currentAccount, token, fetchAccounts, fetchSmsSettings]);
 
     // Check URL params for OAuth callback status
     useEffect(() => {
@@ -59,8 +122,8 @@ export function SocialChannelsSettings() {
             // Clear params from URL
             window.history.replaceState({}, '', window.location.pathname + '?tab=channels');
             if (token && currentAccount) {
-                fetchAccounts();
-                fetchSmsSettings();
+                void fetchAccounts();
+                void fetchSmsSettings();
             }
         }
 
@@ -74,63 +137,7 @@ export function SocialChannelsSettings() {
             setError(errorMessages[errorParam] || message || 'Connection failed.');
             window.history.replaceState({}, '', window.location.pathname + '?tab=channels');
         }
-    }, [token, currentAccount]);
-
-    const fetchAccounts = async () => {
-        if (!token || !currentAccount) return;
-
-        try {
-            setLoading(true);
-            const response = await api.get<{ socialAccounts: SocialAccount[] }>(
-                '/api/oauth/social-accounts',
-                token,
-                currentAccount.id
-            );
-            setAccounts(response.socialAccounts || []);
-        } catch (err: any) {
-            setError(err.message || 'Failed to load connected accounts.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchSmsSettings = async () => {
-        if (!token || !currentAccount) return;
-        try {
-            const data = await api.get<any>('/api/sms/settings', token, currentAccount.id);
-            if (data && data.accountSid) {
-                setSmsSettings({
-                    accountSid: data.accountSid,
-                    authToken: data.authToken, // Usually masked or encrypted, but for now...
-                    fromNumber: data.fromNumber,
-                    enabled: data.enabled
-                });
-            }
-        } catch (err) {
-            Logger.error('Failed to fetch SMS settings', { error: err });
-        }
-    };
-
-    const saveSmsSettings = async () => {
-        if (!token || !currentAccount) return;
-        try {
-            setSmsLoading(true);
-            await api.post('/api/sms/settings', smsSettings, token, currentAccount.id);
-            setSuccessMessage('SMS settings saved successfully.');
-            setTimeout(() => setSuccessMessage(null), 3000);
-        } catch (err: any) {
-            setError(err.message || 'Failed to save SMS settings.');
-        } finally {
-            setSmsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (token && currentAccount) {
-            fetchAccounts();
-            fetchSmsSettings();
-        }
-    }, [currentAccount, token]);
+    }, [token, currentAccount, fetchAccounts, fetchSmsSettings]);
 
     const connectPlatform = async (platform: 'meta' | 'tiktok') => {
         if (!token || !currentAccount) return;
@@ -151,8 +158,8 @@ export function SocialChannelsSettings() {
 
             // Redirect to OAuth consent screen
             window.location.href = response.authUrl;
-        } catch (err: any) {
-            setError(err.message || `Failed to start ${platform} connection.`);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : `Failed to start ${platform} connection.`);
             setConnecting(null);
         }
     };
@@ -172,8 +179,12 @@ export function SocialChannelsSettings() {
             );
             setAccounts(prev => prev.filter(a => a.id !== accountId));
             setSuccessMessage(`${platform} disconnected.`);
-        } catch (err: any) {
-            setError(err.response?.data?.error || 'Failed to disconnect.');
+        } catch (err: unknown) {
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : 'Failed to disconnect.';
+            setError(message);
         }
     };
 

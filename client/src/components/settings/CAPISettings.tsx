@@ -16,7 +16,7 @@ import {
 
 interface PlatformConfig {
     enabled: boolean;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
     updatedAt: string | null;
 }
 
@@ -183,6 +183,17 @@ export function CAPISettings() {
     const [consentAutoAccept, setConsentAutoAccept] = useState(false);
     const [savingConsent, setSavingConsent] = useState(false);
 
+    const getStringValue = (value: unknown): string => {
+        if (typeof value === 'string') return value;
+        if (typeof value === 'number') return String(value);
+        return '';
+    };
+
+    const getEventsConfig = (value: unknown): Record<string, boolean> => {
+        if (!value || typeof value !== 'object') return {};
+        return value as Record<string, boolean>;
+    };
+
     /** Ref guard prevents re-fetch from overwriting local edits */
     const hasFetched = useRef(false);
 
@@ -227,14 +238,15 @@ export function CAPISettings() {
         try {
             const result = await post<{ success: boolean; message: string }>(`/api/capi/test/${platformKey}`, { accountId });
             setTestResult({ platform: platformKey, success: result.success, message: result.message });
-        } catch (e: any) {
-            setTestResult({ platform: platformKey, success: false, message: e.message || 'Test failed' });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Test failed';
+            setTestResult({ platform: platformKey, success: false, message });
         }
         finally { setTesting(null); }
     };
 
     /** Update a field in local state */
-    const updateField = (platformKey: string, fieldName: string, value: any) => {
+    const updateField = (platformKey: string, fieldName: string, value: unknown) => {
         setConfigs(prev => ({
             ...prev,
             [platformKey]: {
@@ -409,7 +421,7 @@ export function CAPISettings() {
                                                         <>
                                                             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
                                                             <select
-                                                                value={config.config[field.name] || field.options?.[0]?.value || ''}
+                                                                value={getStringValue(config.config[field.name]) || field.options?.[0]?.value || ''}
                                                                 onChange={(e) => updateField(platform.key, field.name, e.target.value)}
                                                                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                                                             >
@@ -422,7 +434,7 @@ export function CAPISettings() {
                                                             <div className="relative">
                                                                 <input
                                                                     type={field.type === 'password' && !showPasswords[`${platform.key}-${field.name}`] ? 'password' : 'text'}
-                                                                    value={config.config[field.name] || ''}
+                                                                    value={getStringValue(config.config[field.name])}
                                                                     onChange={(e) => updateField(platform.key, field.name, e.target.value)}
                                                                     placeholder={field.placeholder}
                                                                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-100 font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10"
@@ -447,18 +459,23 @@ export function CAPISettings() {
                                     <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-3 mb-2">📊 Event Tracking</p>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                         {EVENT_TOGGLES.map(evt => (
+                                            (() => {
+                                                const events = getEventsConfig(config.config.events);
+                                                return (
                                             <label key={evt.key} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors" title={evt.help}>
                                                 <input
                                                     type="checkbox"
-                                                    checked={config.config.events?.[evt.key] !== false}
+                                                    checked={events[evt.key] !== false}
                                                     onChange={(e) => {
-                                                        const events = { ...(config.config.events || {}), [evt.key]: e.target.checked };
-                                                        updateField(platform.key, 'events', events);
+                                                        const nextEvents = { ...events, [evt.key]: e.target.checked };
+                                                        updateField(platform.key, 'events', nextEvents);
                                                     }}
                                                     className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500"
                                                 />
                                                 <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{evt.label}</span>
                                             </label>
+                                                );
+                                            })()
                                         ))}
                                     </div>
                                 </div>

@@ -33,7 +33,7 @@ export function BroadcastsPage() {
         setEditingItem(null);
     };
 
-    const handleSaveEmail = async (html: string, design: any) => {
+    const handleSaveEmail = async (html: string, design: unknown) => {
         if (!editingItem || !currentAccount) return;
         try {
             await fetch(`/api/marketing/campaigns/${editingItem.id}`, {

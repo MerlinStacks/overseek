@@ -137,7 +137,7 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                     return reply.code(403).send({ error: 'Unauthorized access to conversation' });
                 }
 
-                const msg = await chatService.addMessage(conversationId, sanitized, 'CUSTOMER');
+                const msg = await chatService.addMessage(conversationId, sanitized, 'CUSTOMER', undefined, false, conversation.accountId);
                 return msg;
             } catch (error) {
                 Logger.error('Public message error', { error });

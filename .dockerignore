@@ -38,5 +38,9 @@ README.md
 # Bundle analysis
 bundle-analysis.html
 
+# Keep shared core compiled output in Docker context (used by server runtime import)
+!packages/overseek-core/dist/
+!packages/overseek-core/dist/**
+
 # Client (not needed for API build - separate build)
 # client/

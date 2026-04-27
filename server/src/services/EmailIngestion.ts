@@ -247,6 +247,7 @@ export class EmailIngestion {
             const subjectMatchConv = await prisma.conversation.findFirst({
                 where: {
                     accountId,
+                    channel: 'EMAIL',
                     mergedIntoId: null,
                     title: cleanTitle,
                     updatedAt: { gte: SEVEN_DAYS_AGO },
@@ -272,14 +273,14 @@ export class EmailIngestion {
         const customer = await prisma.wooCustomer.findFirst({ where: { accountId, email: fromEmail } });
         if (customer) {
             const conv = await prisma.conversation.findFirst({
-                where: { accountId, wooCustomerId: customer.id, mergedIntoId: null },
+                where: { accountId, wooCustomerId: customer.id, mergedIntoId: null, channel: 'EMAIL' },
                 orderBy: { updatedAt: 'desc' }
             });
             if (conv) return conv;
         }
 
         const guestConv = await prisma.conversation.findFirst({
-            where: { accountId, guestEmail: fromEmail, mergedIntoId: null },
+            where: { accountId, guestEmail: fromEmail, mergedIntoId: null, channel: 'EMAIL' },
             orderBy: { updatedAt: 'desc' }
         });
         if (guestConv) {

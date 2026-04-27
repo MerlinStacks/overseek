@@ -1,9 +1,20 @@
 import { Modal } from '../ui/Modal';
 import { SeoAnalysisPanel } from '../Seo/SeoAnalysisPanel';
 import { MerchantCenterPanel } from '../Seo/MerchantCenterPanel';
+import type { SeoTest } from '../Seo/SeoAnalysisPanel';
+import type { MerchantIssue } from '../Seo/MerchantCenterPanel';
 
 interface ProductSeoModalProps {
-    product: any; // We'll type this better
+    product: {
+        name?: string;
+        seoScore?: number;
+        merchantCenterScore?: number;
+        seoData?: {
+            analysis?: unknown[];
+            focusKeyword?: string;
+        };
+        merchantCenterIssues?: unknown[];
+    } | null;
     isOpen: boolean;
     onClose: () => void;
 }
@@ -12,10 +23,25 @@ export function ProductSeoModal({ product, isOpen, onClose }: ProductSeoModalPro
     if (!product) return null;
 
     const seoData = product.seoData || {};
-    const seoTests = seoData.analysis || [];
+    const seoTests = Array.isArray(seoData.analysis)
+        ? seoData.analysis.filter((test): test is SeoTest => (
+            typeof test === 'object' &&
+            test !== null &&
+            typeof (test as SeoTest).test === 'string' &&
+            typeof (test as SeoTest).passed === 'boolean' &&
+            typeof (test as SeoTest).message === 'string'
+        ))
+        : [];
     const focusKeyword = seoData.focusKeyword || '';
 
-    const mcIssues = product.merchantCenterIssues || [];
+    const mcIssues = Array.isArray(product.merchantCenterIssues)
+        ? product.merchantCenterIssues.filter((issue): issue is MerchantIssue => (
+            typeof issue === 'object' &&
+            issue !== null &&
+            ((issue as MerchantIssue).severity === 'error' || (issue as MerchantIssue).severity === 'warning') &&
+            typeof (issue as MerchantIssue).message === 'string'
+        ))
+        : [];
 
     return (
         <Modal

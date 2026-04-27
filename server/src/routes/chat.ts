@@ -13,6 +13,7 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
 import { EmailService } from '../services/EmailService';
@@ -54,7 +55,15 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // GET /conversations
         fastify.get('/conversations', async (request, reply) => {
             try {
-                const query = request.query as { status?: string; assignedTo?: string; limit?: string; cursor?: string };
+                const query = request.query as {
+                    status?: string;
+                    assignedTo?: string;
+                    limit?: string;
+                    cursor?: string;
+                    wooCustomerId?: string;
+                    guestEmail?: string;
+                    sort?: 'updated' | 'priority';
+                };
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
@@ -65,7 +74,12 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     query.status,
                     query.assignedTo,
                     limit + 1,
-                    query.cursor
+                    query.cursor,
+                    {
+                        wooCustomerId: query.wooCustomerId,
+                        guestEmail: query.guestEmail,
+                        sort: query.sort || 'updated'
+                    }
                 );
 
                 const hasMore = conversations.length > limit;
@@ -90,8 +104,57 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 if (!q || q.trim().length < 2) return reply.code(400).send({ error: 'Search query must be at least 2 characters' });
 
-                const searchTerm = q.trim().toLowerCase();
+                const rawQuery = q.trim();
+                const searchTerm = rawQuery.toLowerCase();
                 const maxResults = Math.min(parseInt(limit, 10), 50);
+
+                // Supports search patterns:
+                // - "file:pdf" to find attachment file types
+                // - "attachment:invoice" to find attachment filenames
+                const fileTypeMatch = rawQuery.match(/file:([a-z0-9]+)/i);
+                const attachmentNameMatch = rawQuery.match(/attachment:([^\s]+)/i);
+                const fileType = fileTypeMatch?.[1]?.toLowerCase();
+                const attachmentName = attachmentNameMatch?.[1]?.toLowerCase();
+                const genericAttachmentNeedle = rawQuery
+                    .replace(/file:[a-z0-9]+/gi, '')
+                    .replace(/attachment:[^\s]+/gi, '')
+                    .trim()
+                    .toLowerCase();
+
+                const attachmentFilters: Prisma.ConversationWhereInput[] = [];
+                if (fileType) {
+                    attachmentFilters.push({
+                        messages: {
+                            some: {
+                                content: { contains: `.${fileType}](/uploads/attachments/`, mode: 'insensitive' }
+                            }
+                        }
+                    });
+                }
+                if (attachmentName) {
+                    attachmentFilters.push({
+                        messages: {
+                            some: {
+                                AND: [
+                                    { content: { contains: '/uploads/attachments/', mode: 'insensitive' } },
+                                    { content: { contains: attachmentName, mode: 'insensitive' } }
+                                ]
+                            }
+                        }
+                    });
+                }
+                if (genericAttachmentNeedle) {
+                    attachmentFilters.push({
+                        messages: {
+                            some: {
+                                AND: [
+                                    { content: { contains: '/uploads/attachments/', mode: 'insensitive' } },
+                                    { content: { contains: genericAttachmentNeedle, mode: 'insensitive' } }
+                                ]
+                            }
+                        }
+                    });
+                }
 
                 const conversations = await prisma.conversation.findMany({
                     where: {
@@ -102,7 +165,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                             { guestName: { contains: searchTerm, mode: 'insensitive' } },
                             { wooCustomer: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
                             { wooCustomer: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
-                            { wooCustomer: { email: { contains: searchTerm, mode: 'insensitive' } } }
+                            { wooCustomer: { email: { contains: searchTerm, mode: 'insensitive' } } },
+                            ...attachmentFilters
                         ]
                     },
                     include: {
@@ -230,7 +294,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     });
                 }
 
-                await chatService.addMessage(conversation.id, fullContent, 'AGENT', userId, false);
+                await chatService.addMessage(conversation.id, fullContent, 'AGENT', userId, false, accountId);
 
                 const emailService = new EmailService();
                 await emailService.sendEmail(accountId, emailAccountId, to, subject, body, attachments, {
@@ -319,7 +383,9 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // GET /:id
         fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-            const conv = await chatService.getConversation(request.params.id);
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const conv = await chatService.getConversation(accountId, request.params.id);
             if (!conv) return reply.code(404).send({ error: 'Not found' });
             return conv;
         });
@@ -336,7 +402,9 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     }
                 });
 
-                if (!conv) return reply.code(404).send({ error: 'Not found' });
+                if (!conv || conv.accountId !== request.accountId) {
+                    return reply.code(404).send({ error: 'Not found' });
+                }
 
                 const channels: Array<{ channel: string; identifier: string; available: boolean }> = [];
 
@@ -403,25 +471,37 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // PUT /:id
         fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
-            const { status, assignedTo, wooCustomerId } = request.body as any;
+            const body = request.body as { status?: string; assignedTo?: string | null; wooCustomerId?: string };
+            const { status, wooCustomerId } = body;
             const { id } = request.params;
-            if (status) await chatService.updateStatus(id, status);
-            if (assignedTo) await chatService.assignConversation(id, assignedTo);
-            if (wooCustomerId) await chatService.linkCustomer(id, wooCustomerId);
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+            if (status) await chatService.updateStatus(accountId, id, status);
+            if (Object.prototype.hasOwnProperty.call(body, 'assignedTo')) {
+                await chatService.assignConversation(accountId, id, body.assignedTo || null);
+            }
+            if (wooCustomerId) await chatService.linkCustomer(accountId, id, wooCustomerId);
             return { success: true };
         });
 
         // POST /:id/merge
         fastify.post<{ Params: { id: string } }>('/:id/merge', async (request, reply) => {
             const { sourceId } = request.body as any;
-            await chatService.mergeConversations(request.params.id, sourceId);
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+            await chatService.mergeConversations(accountId, request.params.id, sourceId);
             return { success: true };
         });
 
         // POST /:id/read
         fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
             try {
-                await chatService.markAsRead(request.params.id);
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+                await chatService.markAsRead(accountId, request.params.id);
                 return { success: true };
             } catch (error) {
                 Logger.error('Failed to mark conversation as read', { error });

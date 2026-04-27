@@ -43,8 +43,8 @@ export function LoginPage() {
             // EDGE CASE FIX: Pass refresh token to auth context for silent refresh
             login(data.token, data.user, data.refreshToken);
             navigate('/dashboard');
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Login failed');
         } finally {
             setLoading(false);
         }
@@ -124,7 +124,7 @@ export function LoginPage() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="block w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl placeholder-slate-400 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all duration-200 text-sm"
-                                placeholder="••••••••"
+                                placeholder="********"
                             />
                         </div>
 
@@ -169,3 +169,4 @@ export function LoginPage() {
         </div>
     );
 }
+

@@ -5,7 +5,6 @@ import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { SyncStatusBadge } from './SyncStatusBadge';
 import { useCommandPalette } from '../../hooks/useCommandPalette';
 
 interface HeaderProps {
@@ -15,6 +14,14 @@ interface HeaderProps {
     showMenuButton?: boolean;
 }
 
+interface HeaderNotification {
+    id: string;
+    title: string;
+    message: string;
+    isRead: boolean;
+    createdAt: string;
+}
+
 export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     const { token, user, logout } = useAuth();
     const { currentAccount } = useAccount();
@@ -22,7 +29,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     // Notifications State
-    const [notifications, setNotifications] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [showNotifications, setShowNotifications] = useState(false);
 
@@ -34,15 +41,14 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             if (res.ok) {
-                const data = await res.json();
-                setNotifications(data.notifications);
-                setUnreadCount(data.unreadCount);
+                const data = await res.json() as { notifications?: HeaderNotification[]; unreadCount?: number };
+                setNotifications(Array.isArray(data.notifications) ? data.notifications : []);
+                setUnreadCount(data.unreadCount ?? 0);
             }
         } catch (error) {
             Logger.error('Notification poll failed', { error: error });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, currentAccount?.id]);
+    }, [token, currentAccount]);
 
     useVisibilityPolling(fetchNotifications, 30000, [fetchNotifications], 'notifications');
 
@@ -83,7 +89,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                     <Search className="text-gray-400 group-hover:text-gray-500" size={18} />
                     <span className="text-gray-400 flex-1 text-left">Search...</span>
                     <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-gray-200 bg-white px-1.5 font-mono text-[10px] font-medium text-gray-400 pointer-events-none">
-                        {navigator.platform.indexOf('Mac') > -1 ? '⌘' : 'Ctrl'}K
+                        {navigator.platform.indexOf('Mac') > -1 ? 'Cmd' : 'Ctrl'}K
                     </kbd>
                 </button>
 

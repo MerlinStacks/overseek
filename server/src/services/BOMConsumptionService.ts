@@ -37,6 +37,12 @@ interface ComponentDeduction {
     newStock: number;
 }
 
+function allowsBackorders(rawData: any): boolean {
+    if (!rawData || typeof rawData !== 'object') return false;
+    const backorders = String(rawData.backorders ?? '').toLowerCase();
+    return backorders === 'yes' || backorders === 'notify' || rawData.backorders_allowed === true;
+}
+
 /**
  * Retry a function with exponential backoff.
  * Best practice for external API calls that may transiently fail.
@@ -667,14 +673,14 @@ export class BOMConsumptionService {
             const updated = await prisma.productVariation.update({
                 where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
                 data: { stockQuantity: { decrement: qty } },
-                select: { stockQuantity: true }
+                select: { stockQuantity: true, rawData: true }
             });
-            // Clamp to 0 for WooCommerce — negative stock causes UX issues
-            const wooStock = Math.max(0, updated.stockQuantity ?? 0);
+            const allowBackorders = allowsBackorders(updated.rawData);
+            const wooStock = allowBackorders ? (updated.stockQuantity ?? 0) : Math.max(0, updated.stockQuantity ?? 0);
             if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
                 Logger.warn('[BOM] Component stock went negative after deduction', {
                     componentType: 'ProductVariation', wooId: deduction.wooId,
-                    dbStock: updated.stockQuantity, wooStock, deducted: qty
+                    dbStock: updated.stockQuantity, wooStock, deducted: qty, allowBackorders
                 });
             }
             await withRetry(
@@ -685,13 +691,14 @@ export class BOMConsumptionService {
             const updated = await prisma.wooProduct.update({
                 where: { id: deduction.componentId },
                 data: { stockQuantity: { decrement: qty } },
-                select: { stockQuantity: true }
+                select: { stockQuantity: true, rawData: true }
             });
-            const wooStock = Math.max(0, updated.stockQuantity ?? 0);
+            const allowBackorders = allowsBackorders(updated.rawData);
+            const wooStock = allowBackorders ? (updated.stockQuantity ?? 0) : Math.max(0, updated.stockQuantity ?? 0);
             if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
                 Logger.warn('[BOM] Component stock went negative after deduction', {
                     componentType: 'WooProduct', wooId: deduction.wooId,
-                    dbStock: updated.stockQuantity, wooStock, deducted: qty
+                    dbStock: updated.stockQuantity, wooStock, deducted: qty, allowBackorders
                 });
             }
             await withRetry(

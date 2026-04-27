@@ -131,12 +131,21 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
     // (client.navigate(url)) which window.location.pathname misses.
     const location = useLocation();
 
+    interface StandaloneNavigator extends Navigator {
+        standalone?: boolean;
+    }
+    interface CapacitorBridge {
+        isNativePlatform?: () => boolean;
+        platform?: string;
+    }
+
+    const standaloneNavigator = window.navigator as StandaloneNavigator;
     // Check if running as installed PWA (standalone)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true;
+        standaloneNavigator.standalone === true;
 
     // Check if running inside Capacitor native app
-    const capacitor = (window as any).Capacitor;
+    const capacitor = (window as Window & { Capacitor?: CapacitorBridge }).Capacitor;
     const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
 
     // Only redirect if in PWA mode or Capacitor native, not just mobile browser

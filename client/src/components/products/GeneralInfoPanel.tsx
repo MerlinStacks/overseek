@@ -6,10 +6,33 @@ import { useAccount } from '../../context/AccountContext';
 
 
 interface GeneralInfoPanelProps {
-    formData: any;
-    product: any;
-    suppliers?: any[];
-    onChange: (updates: any) => void;
+    formData: ProductFormData;
+    product: ProductData;
+    suppliers?: SupplierOption[];
+    onChange: (updates: Partial<ProductFormData>) => void;
+}
+
+interface ProductCategory {
+    name: string;
+}
+
+interface ProductData {
+    wooId?: number;
+    name?: string;
+    categories?: ProductCategory[];
+}
+
+interface SupplierOption {
+    id: string;
+    name: string;
+}
+
+interface ProductFormData {
+    name: string;
+    sku: string;
+    description?: string;
+    short_description?: string;
+    supplierId?: string;
 }
 
 /**
@@ -35,7 +58,7 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
         setRewriteError(null);
 
         try {
-            const categoryNames = product.categories?.map((c: any) => c.name).join(', ') || '';
+            const categoryNames = product.categories?.map((c) => c.name).join(', ') || '';
 
             const res = await fetch(`/api/products/${product.wooId}/rewrite-description`, {
                 method: 'POST',
@@ -72,8 +95,8 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                 onChange({ description: data.description });
                 setEditorKey(prev => prev + 1);
             }
-        } catch (err: any) {
-            setRewriteError(err.message || 'Network error');
+        } catch (err: unknown) {
+            setRewriteError(err instanceof Error ? err.message : 'Network error');
         } finally {
             setIsRewriting(false);
         }

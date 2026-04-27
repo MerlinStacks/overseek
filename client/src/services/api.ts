@@ -152,16 +152,16 @@ export const api = {
     get: <T>(endpoint: string, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'GET', token, accountId }),
 
-    post: <T>(endpoint: string, data: any, token?: string, accountId?: string) =>
+    post: <T, D = unknown>(endpoint: string, data: D, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'POST', body: JSON.stringify(data), token, accountId }),
 
-    patch: <T>(endpoint: string, data: any, token?: string, accountId?: string) =>
+    patch: <T, D = unknown>(endpoint: string, data: D, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'PATCH', body: JSON.stringify(data), token, accountId }),
 
     delete: <T>(endpoint: string, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'DELETE', token, accountId }),
 
-    put: <T>(endpoint: string, data: any, token?: string, accountId?: string) =>
+    put: <T, D = unknown>(endpoint: string, data: D, token?: string, accountId?: string) =>
         request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data), token, accountId }),
 
     /**

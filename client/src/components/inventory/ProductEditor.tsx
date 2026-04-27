@@ -9,13 +9,21 @@ interface ProductEditorProps {
     onClose: () => void;
 }
 
+interface EditableProduct {
+    name?: string;
+    sku?: string;
+    wooId?: string | number;
+    mainImage?: string;
+    binLocation?: string;
+}
+
 export function ProductEditor({ productId, onClose }: ProductEditorProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [product, setProduct] = useState<any>(null);
+    const [product, setProduct] = useState<EditableProduct | null>(null);
     const [binLocation, setBinLocation] = useState('');
 
     useEffect(() => {
@@ -28,7 +36,7 @@ export function ProductEditor({ productId, onClose }: ProductEditorProps) {
             }
         })
             .then(res => res.json())
-            .then(data => {
+            .then((data: EditableProduct) => {
                 setProduct(data);
                 setBinLocation(data.binLocation || '');
                 setLoading(false);
@@ -39,7 +47,7 @@ export function ProductEditor({ productId, onClose }: ProductEditorProps) {
                 alert('Failed to load product');
                 onClose();
             });
-    }, [productId, currentAccount, token]);
+    }, [productId, currentAccount, token, onClose]);
 
     const handleSave = async () => {
         setSaving(true);

@@ -22,8 +22,8 @@ export interface ProductVariant {
         height?: string;
     };
     image?: { src: string } | null;
-    images?: any[];
-    attributes: any[];
+    images?: Array<{ src?: string } | string>;
+    attributes: Array<{ name: string; option: string }>;
     isGoldPriceApplied?: boolean;
     goldPriceType?: string | null;
 }
@@ -34,7 +34,8 @@ export interface ProductVariant {
 export function getVariantImage(v: ProductVariant): string | null {
     if (v.image?.src) return v.image.src;
     if (v.images && v.images.length > 0) {
-        return v.images[0]?.src || v.images[0];
+        const first = v.images[0];
+        return typeof first === 'string' ? first : first?.src || null;
     }
     return null;
 }

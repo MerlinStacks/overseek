@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Send, AlertTriangle, CheckCircle, Info, MessageSquare, Bell } from 'lucide-react';
+import { Send, CheckCircle, Bell } from 'lucide-react';
 
 export function AdminBroadcastPage() {
     const { token } = useAuth();

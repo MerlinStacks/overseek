@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { getDateRange } from '../utils/dateUtils';
@@ -10,6 +10,7 @@ import { AnalyticsService } from '../services/AnalyticsService';
 import { ReportConfigPanel } from './reports/ReportConfigPanel';
 import { ReportResults } from './reports/ReportResults';
 import { SaveReportModal } from './reports/SaveReportModal';
+import type { SaveReportPayload } from './reports/SaveReportModal';
 
 interface ReportBuilderProps {
     initialConfig?: ReportTemplate['config'];
@@ -32,19 +33,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
 
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
-    useEffect(() => {
-        if (initialConfig) {
-            setMetrics(initialConfig.metrics);
-            setDimension(initialConfig.dimension);
-            setDateRange(initialConfig.dateRange);
-        }
-        // Auto-run if requested and we have a valid initial config (or just defaults)
-        if (autoRun) {
-            generateReport();
-        }
-    }, [initialConfig, autoRun]);
-
-    const handleSave = async (data: { name: string, schedule: any }) => {
+    const handleSave = async (data: SaveReportPayload) => {
         if (!currentAccount || !token) return;
 
         try {
@@ -56,7 +45,11 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
             if (data.schedule) {
                 await AnalyticsService.createSchedule(token, currentAccount.id, {
                     templateId: newTemplate.id,
-                    ...data.schedule
+                    frequency: data.schedule.frequency,
+                    dayOfWeek: data.schedule.dayOfWeek,
+                    dayOfMonth: data.schedule.dayOfMonth,
+                    time: data.schedule.time,
+                    emailRecipients: data.schedule.emailRecipients,
                 });
             }
 
@@ -69,7 +62,7 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
         }
     };
 
-    const generateReport = async () => {
+    const generateReport = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         setError(null);
@@ -89,13 +82,26 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
             });
 
             setResults(data);
-        } catch (error: any) {
-            Logger.error('Report failed', { error: error });
-            setError(error.message || 'An error occurred while generating the report.');
+        } catch (error: unknown) {
+            Logger.error('Report failed', { error });
+            const message = error instanceof Error ? error.message : 'An error occurred while generating the report.';
+            setError(message);
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token, metrics, dimension, dateRange]);
+
+    useEffect(() => {
+        if (initialConfig) {
+            setMetrics(initialConfig.metrics);
+            setDimension(initialConfig.dimension);
+            setDateRange(initialConfig.dateRange);
+        }
+        // Auto-run if requested and we have a valid initial config (or just defaults)
+        if (autoRun) {
+            generateReport();
+        }
+    }, [initialConfig, autoRun, generateReport]);
 
     return (
         <div className={`space - y - 6 ${viewMode ? 'h-full flex flex-col' : 'bg-white p-6 rounded-xl shadow-xs border border-gray-200'} `}>

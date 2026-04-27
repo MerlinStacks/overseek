@@ -75,7 +75,7 @@ export function MobileNav({ activeTab, ordersBadge, inboxBadge }: MobileNavProps
             />
 
             <div className="relative flex items-center justify-around h-16">
-                {navItems.map((item, index) => {
+                {navItems.map((item) => {
                     const isActive = activeTab === item.id;
                     const badge = getBadge(item.id);
                     const Icon = item.icon;

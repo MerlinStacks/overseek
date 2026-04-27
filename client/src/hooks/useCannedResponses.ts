@@ -119,7 +119,9 @@ export function useCannedResponses(): UseCannedResponsesReturn {
     }, [currentAccount, token]);
 
     useEffect(() => {
-        fetchCanned();
+        queueMicrotask(() => {
+            fetchCanned();
+        });
     }, [fetchCanned]);
 
     // Filter by shortcut, content, or label name

@@ -11,29 +11,15 @@ interface PaginationProps {
     className?: string;
 }
 
-export function Pagination({
-    currentPage,
-    totalPages,
-    onPageChange,
-    itemsPerPage,
-    onItemsPerPageChange,
-    allowItemsPerPage = false,
-    className
-}: PaginationProps) {
-    const isFirstPage = currentPage <= 1;
-    const isLastPage = currentPage >= totalPages;
+interface NavButtonProps {
+    onClick: () => void;
+    disabled: boolean;
+    children: React.ReactNode;
+    title: string;
+}
 
-    const Button = ({
-        onClick,
-        disabled,
-        children,
-        title
-    }: {
-        onClick: () => void;
-        disabled: boolean;
-        children: React.ReactNode;
-        title: string;
-    }) => (
+function NavButton({ onClick, disabled, children, title }: NavButtonProps) {
+    return (
         <button
             onClick={onClick}
             disabled={disabled}
@@ -46,6 +32,19 @@ export function Pagination({
             {children}
         </button>
     );
+}
+
+export function Pagination({
+    currentPage,
+    totalPages,
+    onPageChange,
+    itemsPerPage,
+    onItemsPerPageChange,
+    allowItemsPerPage = false,
+    className
+}: PaginationProps) {
+    const isFirstPage = currentPage <= 1;
+    const isLastPage = currentPage >= totalPages;
 
     return (
         <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 pr-24 bg-slate-50 border-t border-slate-100", className)}>
@@ -71,41 +70,41 @@ export function Pagination({
 
             {/* Pagination Controls */}
             <div className="flex items-center gap-2">
-                <Button
+                <NavButton
                     onClick={() => onPageChange(1)}
                     disabled={isFirstPage}
                     title="First Page"
                 >
                     <ChevronsLeft size={16} />
-                </Button>
+                </NavButton>
 
-                <Button
+                <NavButton
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={isFirstPage}
                     title="Previous Page"
                 >
                     <ChevronLeft size={16} />
-                </Button>
+                </NavButton>
 
                 <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
                     Page <span className="text-slate-900">{currentPage}</span> of <span className="text-slate-900">{Math.max(1, totalPages)}</span>
                 </span>
 
-                <Button
+                <NavButton
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={isLastPage}
                     title="Next Page"
                 >
                     <ChevronRight size={16} />
-                </Button>
+                </NavButton>
 
-                <Button
+                <NavButton
                     onClick={() => onPageChange(totalPages)}
                     disabled={isLastPage}
                     title="Last Page"
                 >
                     <ChevronsRight size={16} />
-                </Button>
+                </NavButton>
             </div>
         </div>
     );

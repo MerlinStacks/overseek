@@ -78,12 +78,10 @@ export function SchedulePickerModal({
     // Memoize presets to avoid impure function call during render
     const presets = useMemo(() => getPresetOptions(), []);
 
-    // Memoize minimum date calculation to avoid impure Date.now() call during render
+    // Keep date input bounded to today or later.
     const { minDateString } = useMemo(() => {
-        const minDate = new Date(Date.now() + 5 * 60 * 1000);
-        return {
-            minDateString: minDate.toISOString().split('T')[0],
-        };
+        const minDate = new Date();
+        return { minDateString: minDate.toISOString().split('T')[0] };
     }, []);
 
     const handlePresetSelect = (date: Date) => {

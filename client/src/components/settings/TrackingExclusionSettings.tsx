@@ -71,9 +71,10 @@ export function TrackingExclusionSettings() {
             const data = await res.json();
             setExcludedIps(data.excludedIps);
             setNewIp('');
-        } catch (err: any) {
+        } catch (err: unknown) {
             Logger.error('Failed to add excluded IP', { error: err });
-            setError(err.message || 'Failed to add IP');
+            const message = err instanceof Error ? err.message : 'Failed to add IP';
+            setError(message);
         } finally {
             setIsAdding(false);
         }
@@ -134,9 +135,10 @@ export function TrackingExclusionSettings() {
 
             const data = await res.json();
             setExcludedIps(data.excludedIps);
-        } catch (err: any) {
+        } catch (err: unknown) {
             Logger.error('Failed to add my IP', { error: err });
-            setError(err.message || 'Failed to detect and add your IP');
+            const message = err instanceof Error ? err.message : 'Failed to detect and add your IP';
+            setError(message);
         } finally {
             setIsDetecting(false);
         }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -30,11 +30,6 @@ export function OrderTagSettings() {
     const [searchQuery, setSearchQuery] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        if (!currentAccount || !token) return;
-        loadData();
-    }, [currentAccount, token]);
-
     // Close dropdown on outside click
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -47,7 +42,7 @@ export function OrderTagSettings() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    async function loadData() {
+    const loadData = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
 
@@ -71,7 +66,12 @@ export function OrderTagSettings() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (!currentAccount || !token) return;
+        loadData();
+    }, [currentAccount, token, loadData]);
 
     /** Product tags not yet added as mappings */
     function getAvailableTags(): string[] {

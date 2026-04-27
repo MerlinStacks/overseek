@@ -124,8 +124,14 @@ export class SchedulerService {
      * Gracefully close the scheduler worker on shutdown.
      */
     static async shutdown() {
+        // Stop interval tickers first so no new work is enqueued during shutdown.
+        MessageScheduler.stop();
+        MarketingScheduler.stop();
+        MaintenanceScheduler.stop();
+
         if (this.schedulerWorker) {
             await this.schedulerWorker.close();
+            this.schedulerWorker = null;
             Logger.info('Scheduler worker closed');
         }
     }

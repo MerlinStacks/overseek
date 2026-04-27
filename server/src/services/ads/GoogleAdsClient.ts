@@ -12,6 +12,8 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getCredentials } from './types';
 import { EventBus, EVENTS } from '../events';
+import { onShutdown } from '../../utils/shutdown';
+import { registerRuntimeMetricsProvider } from '../../utils/runtimeMetrics';
 
 // ─── Singleton GoogleAdsApi instance ────────────────────────────────────────
 // All accounts share the same developer token / client ID / secret, so there
@@ -75,6 +77,16 @@ const breakerCleanupInterval = setInterval(() => {
 export function cleanupGoogleAdsClient() {
     clearInterval(breakerCleanupInterval);
 }
+
+onShutdown(async () => {
+    cleanupGoogleAdsClient();
+});
+
+registerRuntimeMetricsProvider('googleAdsClient', () => ({
+    customerCacheSize: customerCache.size,
+    authBreakerSize: authBreakerMap.size,
+    grpcBreakerSize: grpcBreakerMap.size,
+}));
 
 /**
  * Check if the gRPC circuit-breaker is currently open for an ad account.

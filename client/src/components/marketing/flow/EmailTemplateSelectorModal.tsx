@@ -6,12 +6,12 @@ import { X, Search, Layout, FileText, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 
-interface EmailTemplate {
+export interface EmailTemplate {
     id: string;
     name: string;
     subject: string | null;
     content: string;
-    designJson: any;
+    designJson: unknown;
     createdAt: string;
     updatedAt: string;
 }
@@ -24,16 +24,17 @@ interface Props {
 export function EmailTemplateSelectorModal({ onSelect, onClose }: Props) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const [templates, setTemplates] = useState<EmailTemplate[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
 
     useEffect(() => {
         const fetchTemplates = async () => {
-            if (!currentAccount) return;
+            if (!accountId) return;
             try {
                 const res = await fetch('/api/marketing/templates', {
-                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id }
+                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId }
                 });
                 if (res.ok) {
                     const data = await res.json();
@@ -46,7 +47,7 @@ export function EmailTemplateSelectorModal({ onSelect, onClose }: Props) {
             }
         };
         fetchTemplates();
-    }, [token]);
+    }, [token, accountId]);
 
     const filtered = templates.filter(t =>
         t.name.toLowerCase().includes(search.toLowerCase()) ||

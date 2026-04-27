@@ -12,6 +12,7 @@ import { InventoryService } from '../services/InventoryService';
 import { BOMInventorySyncService } from '../services/BOMInventorySyncService';
 import { IndexingService } from '../services/search/IndexingService';
 import { invalidateCache } from '../utils/cache';
+import { z } from 'zod';
 
 // Modular sub-routes (extracted for maintainability)
 import { supplierRoutes } from './inventory/suppliers';
@@ -33,6 +34,30 @@ const reprocessProgress = new Map<string, {
 
 const poService = new PurchaseOrderService();
 const picklistService = new PicklistService();
+
+const bomVariationQuerySchema = z.object({
+    variationId: z.coerce.number().int().nonnegative().default(0)
+});
+
+const bomItemInputSchema = z.object({
+    supplierItemId: z.string().uuid().nullable().optional(),
+    childProductId: z.string().uuid().nullable().optional(),
+    childVariationId: z.coerce.number().int().positive().nullable().optional(),
+    internalProductId: z.string().uuid().nullable().optional(),
+    quantity: z.coerce.number().positive(),
+    wasteFactor: z.coerce.number().min(0).max(10).default(0)
+}).refine(
+    (item) => Boolean(item.supplierItemId || item.childProductId || item.internalProductId),
+    { message: 'Each BOM item must reference a supplier item, WooCommerce product, or internal product' }
+).refine(
+    (item) => !item.childVariationId || Boolean(item.childProductId),
+    { message: 'childVariationId requires childProductId' }
+);
+
+const bomSaveBodySchema = z.object({
+    variationId: z.coerce.number().int().nonnegative().default(0),
+    items: z.array(bomItemInputSchema).max(500)
+});
 
 const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -85,11 +110,23 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.get<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
+        const accountId = request.accountId!;
         const { productId } = request.params;
-        const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0', 10);
+        const parsedQuery = bomVariationQuerySchema.safeParse(request.query);
+        if (!parsedQuery.success) {
+            return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+        }
+        const { variationId } = parsedQuery.data;
 
         try {
+            const ownedProduct = await prisma.wooProduct.findFirst({
+                where: { id: productId, accountId },
+                select: { id: true }
+            });
+            if (!ownedProduct) {
+                return reply.code(404).send({ error: 'Product not found' });
+            }
+
             const bom = await prisma.bOM.findUnique({
                 where: {
                     productId_variationId: { productId, variationId }
@@ -240,12 +277,17 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
      * Returns the calculated effective stock for a product's BOM using local data only.
      */
     fastify.get<{ Params: { productId: string } }>('/products/:productId/bom/effective-stock', async (request, reply) => {
+        const accountId = request.accountId!;
         const { productId } = request.params;
-        const query = request.query as { variationId?: string };
-        const variationId = parseInt(query.variationId || '0', 10);
+        const parsedQuery = bomVariationQuerySchema.safeParse(request.query);
+        if (!parsedQuery.success) {
+            return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+        }
+        const { variationId } = parsedQuery.data;
 
         try {
             const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(
+                accountId,
                 productId,
                 variationId
             );
@@ -267,15 +309,69 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post<{ Params: { productId: string } }>('/products/:productId/bom', async (request, reply) => {
+        const accountId = request.accountId!;
         const { productId } = request.params;
-        const { items, variationId = 0 } = request.body as any;
+        const parsedBody = bomSaveBodySchema.safeParse(request.body);
+        if (!parsedBody.success) {
+            return reply.code(400).send({ error: parsedBody.error.issues[0]?.message || 'Invalid BOM payload' });
+        }
+        const { items, variationId } = parsedBody.data;
 
         try {
+            const parentProduct = await prisma.wooProduct.findFirst({
+                where: { id: productId, accountId },
+                select: { id: true }
+            });
+            if (!parentProduct) {
+                return reply.code(404).send({ error: 'Product not found' });
+            }
+
+            const childProductIds = [...new Set(items.map(i => i.childProductId).filter((id): id is string => Boolean(id)))];
+            const internalProductIds = [...new Set(items.map(i => i.internalProductId).filter((id): id is string => Boolean(id)))];
+            const supplierItemIds = [...new Set(items.map(i => i.supplierItemId).filter((id): id is string => Boolean(id)))];
+
+            const [validChildProducts, validInternalProducts, validSupplierItems] = await Promise.all([
+                childProductIds.length > 0
+                    ? prisma.wooProduct.findMany({
+                        where: { accountId, id: { in: childProductIds } },
+                        select: { id: true }
+                    })
+                    : [],
+                internalProductIds.length > 0
+                    ? prisma.internalProduct.findMany({
+                        where: { accountId, id: { in: internalProductIds } },
+                        select: { id: true }
+                    })
+                    : [],
+                supplierItemIds.length > 0
+                    ? prisma.supplierItem.findMany({
+                        where: {
+                            id: { in: supplierItemIds },
+                            supplier: { accountId }
+                        },
+                        select: { id: true }
+                    })
+                    : []
+            ]);
+
+            const validChildProductSet = new Set(validChildProducts.map(p => p.id));
+            const validInternalProductSet = new Set(validInternalProducts.map(p => p.id));
+            const validSupplierItemSet = new Set(validSupplierItems.map(p => p.id));
+
+            const invalidItem = items.find(item =>
+                (item.childProductId && !validChildProductSet.has(item.childProductId)) ||
+                (item.internalProductId && !validInternalProductSet.has(item.internalProductId)) ||
+                (item.supplierItemId && !validSupplierItemSet.has(item.supplierItemId))
+            );
+            if (invalidItem) {
+                return reply.code(400).send({ error: 'BOM contains one or more components not owned by this account' });
+            }
+
             const bom = await prisma.bOM.upsert({
                 where: {
-                    productId_variationId: { productId, variationId: Number(variationId) }
+                    productId_variationId: { productId, variationId }
                 },
-                create: { productId, variationId: Number(variationId) },
+                create: { productId, variationId },
                 update: {}
             });
 
@@ -295,7 +391,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
                             bomId: bom.id,
                             supplierItemId: item.supplierItemId || null,
                             childProductId: item.childProductId || null,
-                            childVariationId: item.childVariationId || (item.variationId ? Number(item.variationId) : null), // Support both formats
+                            childVariationId: item.childVariationId || null,
                             internalProductId: item.internalProductId || null, // Support internal products as components
                             quantity: Number(item.quantity),
                             wasteFactor: Number(item.wasteFactor || 0)

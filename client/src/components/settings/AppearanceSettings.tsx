@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
-import { Palette, Check, RefreshCw } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 
 export function AppearanceSettings() {
     const { currentAccount, refreshAccounts } = useAccount();
     const { token } = useAuth();
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
 
     // Default appearance settings
@@ -18,7 +20,7 @@ export function AppearanceSettings() {
 
     useEffect(() => {
         if (currentAccount?.appearance) {
-            const app = currentAccount.appearance as any;
+            const app = currentAccount.appearance;
             setSettings({
                 appName: app.appName || 'OverSeek',
                 primaryColor: app.primaryColor || '#2563eb',
@@ -49,10 +51,10 @@ export function AppearanceSettings() {
             if (!res.ok) throw new Error('Failed to update appearance');
 
             await refreshAccounts();
-            alert('Appearance settings saved successfully');
+            toast.success('Appearance settings saved.');
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            alert('Failed to save appearance settings');
+            toast.error('Failed to save appearance settings.');
         } finally {
             setIsSaving(false);
         }

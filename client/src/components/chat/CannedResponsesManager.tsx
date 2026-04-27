@@ -2,7 +2,7 @@
  * CannedResponsesManager - Modal for quickly managing canned responses from inbox.
  * Includes rich text editing and label support.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { X, Plus, Trash2, Zap, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -41,24 +41,7 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
     const [newLabelId, setNewLabelId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    useEffect(() => {
-        if (isOpen && currentAccount && token) {
-            fetchResponses();
-            fetchLabels();
-        }
-    }, [isOpen, currentAccount, token]);
-
-    // Close on Escape key
-    useEffect(() => {
-        if (!isOpen) return;
-        const handleKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', handleKey);
-        return () => document.removeEventListener('keydown', handleKey);
-    }, [isOpen, onClose]);
-
-    const fetchLabels = async () => {
+    const fetchLabels = useCallback(async () => {
         if (!currentAccount || !token) return;
         try {
             const res = await fetch('/api/chat/canned-labels', {
@@ -73,9 +56,9 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
         } catch (e) {
             Logger.error('Failed to fetch labels', { error: e });
         }
-    };
+    }, [currentAccount, token]);
 
-    const fetchResponses = async () => {
+    const fetchResponses = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
@@ -91,7 +74,24 @@ export function CannedResponsesManager({ isOpen, onClose, onUpdate }: CannedResp
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (isOpen && currentAccount && token) {
+            fetchResponses();
+            fetchLabels();
+        }
+    }, [isOpen, currentAccount, token, fetchResponses, fetchLabels]);
+
+    // Close on Escape key
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+    }, [isOpen, onClose]);
 
     const handleAdd = async () => {
         if (!newShortcut.trim() || !newContent.trim() || !currentAccount || !token) return;

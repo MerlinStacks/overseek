@@ -4,7 +4,7 @@
  * Creates a debounced function that delays invoking `fn` until after `ms` milliseconds
  * have elapsed since the last time the debounced function was invoked.
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: never[]) => unknown>(
     fn: T,
     ms: number
 ): T & { cancel: () => void } {

@@ -20,6 +20,8 @@ const PERIODIC_SYNC_TAG = 'refresh-dashboard';
 
 /** Auto-dismiss timeout for notifications (10 minutes in ms) */
 const NOTIFICATION_AUTO_DISMISS_MS = 10 * 60 * 1000;
+/** Ignore delayed push payloads older than 15 minutes to avoid replay storms */
+const STALE_PUSH_MAX_AGE_MS = 15 * 60 * 1000;
 
 // Assets to cache for offline app shell
 const PRECACHE_ASSETS = [
@@ -91,6 +93,28 @@ async function clearPendingAction(id) {
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
+}
+
+function deriveNotificationTag(payload) {
+    if (typeof payload?.tag === 'string' && payload.tag.length > 0) {
+        return payload.tag;
+    }
+    if (typeof payload?.data?.tag === 'string' && payload.data.tag.length > 0) {
+        return payload.data.tag;
+    }
+    const orderId = payload?.data?.orderId;
+    if (typeof orderId === 'string' || typeof orderId === 'number') {
+        return `order-${orderId}`;
+    }
+    const conversationId = payload?.data?.conversationId;
+    if (typeof conversationId === 'string' || typeof conversationId === 'number') {
+        return `conversation-${conversationId}`;
+    }
+    const productId = payload?.data?.productId;
+    if (typeof productId === 'string' || typeof productId === 'number') {
+        return `product-${productId}`;
+    }
+    return `overseek-${Date.now()}`;
 }
 
 // Install event - cache app shell
@@ -265,7 +289,13 @@ self.addEventListener('push', (event) => {
         data = { title: 'OverSeek', body: event.data?.text() || 'You have a new notification' };
     }
 
-    const tag = data.tag || `overseek-${Date.now()}`;
+    const sentAt = Number(data?.timestamp || data?.data?.timestamp || 0);
+    if (sentAt > 0 && Date.now() - sentAt > STALE_PUSH_MAX_AGE_MS) {
+        console.log('[SW] Skipping stale push payload', { ageMs: Date.now() - sentAt });
+        return;
+    }
+
+    const tag = deriveNotificationTag(data);
 
     const options = {
         body: data.body || 'You have a new notification',

@@ -8,10 +8,31 @@ import { EmailDesignEditor } from './EmailDesignEditor';
 import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
 import { SaveAsTemplateModal } from './flow/SaveAsTemplateModal';
 import { EmailPreviewModal } from './flow/EmailPreviewModal';
+import type { EmailTemplate } from './flow/EmailTemplateSelectorModal';
+
+interface SendEmailNodeConfig {
+    templateType?: 'visual' | 'richtext' | 'html';
+    to?: string;
+    subject?: string;
+    previewText?: string;
+    htmlContent?: string;
+    designJson?: unknown;
+    isTransactional?: boolean;
+    appendUtm?: boolean;
+    campaignSource?: string;
+    campaignMedium?: string;
+    campaignName?: string;
+    campaignTerm?: string;
+    campaignContent?: string;
+    overrideFrom?: boolean;
+    fromName?: string;
+    fromEmail?: string;
+    replyToEmail?: string;
+}
 
 interface SendEmailConfigProps {
-    config: any;
-    onUpdate: (key: string, value: any) => void;
+    config: SendEmailNodeConfig;
+    onUpdate: (key: string, value: unknown) => void;
 }
 
 export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
@@ -24,7 +45,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const templateType = config.templateType || 'visual';
 
     // Handle template selection
-    const handleTemplateSelect = (template: any) => {
+    const handleTemplateSelect = (template: EmailTemplate) => {
         onUpdate('htmlContent', template.content);
         onUpdate('designJson', template.designJson);
         if (template.subject) {
@@ -34,7 +55,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     };
 
     // Handle visual builder save
-    const handleVisualBuilderSave = (html: string, design: any) => {
+    const handleVisualBuilderSave = (html: string, design: unknown) => {
         onUpdate('htmlContent', html);
         onUpdate('designJson', design);
         setShowVisualBuilder(false);

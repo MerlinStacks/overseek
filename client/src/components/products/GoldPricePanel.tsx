@@ -1,12 +1,24 @@
-import { useState } from 'react';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { useAccount } from '../../context/AccountContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { AlertTriangle, Scale, DollarSign, Calculator } from 'lucide-react';
 
+type GoldPriceType = 'none' | 'legacy' | '18ct' | '9ct' | '18ctWhite' | '9ctWhite';
+
+interface ProductGoldPricingData {
+    weight?: string | null;
+    goldPriceType?: Exclude<GoldPriceType, 'none'> | null;
+    isGoldPriceApplied?: boolean;
+}
+
+interface GoldPriceUpdates {
+    isGoldPriceApplied: boolean;
+    goldPriceType: Exclude<GoldPriceType, 'none' | 'legacy'> | null;
+}
+
 interface GoldPricePanelProps {
-    product: any;
-    onChange: (updates: any) => void;
+    product: ProductGoldPricingData;
+    onChange: (updates: GoldPriceUpdates) => void;
     hasVariants?: boolean;
 }
 
@@ -41,10 +53,10 @@ export function GoldPricePanel({ product, onChange, hasVariants }: GoldPricePane
     // Determine current selection
     // If goldPriceType is set, use it.
     // If not, but isGoldPriceApplied is true, treat as "Legacy/Base"
-    const currentType = product.goldPriceType || (product.isGoldPriceApplied ? 'legacy' : 'none');
+    const currentType: GoldPriceType = product.goldPriceType || (product.isGoldPriceApplied ? 'legacy' : 'none');
 
     // Get price based on type
-    const getPrice = (type: string) => {
+    const getPrice = (type: GoldPriceType) => {
         switch (type) {
             case '18ct': return Number(currentAccount?.goldPrice18ct) || 0;
             case '9ct': return Number(currentAccount?.goldPrice9ct) || 0;
@@ -59,7 +71,7 @@ export function GoldPricePanel({ product, onChange, hasVariants }: GoldPricePane
     const calculatedCost = weight * selectedPrice;
 
     const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const newType = e.target.value;
+        const newType = e.target.value as GoldPriceType;
         if (newType === 'none') {
             onChange({ isGoldPriceApplied: false, goldPriceType: null });
         } else if (newType === 'legacy') {
@@ -131,7 +143,7 @@ export function GoldPricePanel({ product, onChange, hasVariants }: GoldPricePane
                     <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 p-3 rounded-md border border-amber-100">
                         <AlertTriangle size={16} className="mt-0.5" />
                         <p>
-                            This calculated cost (${calculatedCost.toFixed(2)}) will override any manual COGS or BOM cost for margin reports.
+                            This calculated cost (${calculatedCost.toFixed(2)}) will override all manual COGS or BOM cost for margin reports.
                         </p>
                     </div>
                 )}

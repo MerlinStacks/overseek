@@ -41,7 +41,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     // Page transition state
     const [isTransitioning, setIsTransitioning] = useState(false);
-    const [displayLocation, setDisplayLocation] = useState(location);
     const prevPathRef = useRef(location.pathname);
 
     // Pull-to-refresh state
@@ -78,7 +77,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
                 // Short delay for exit animation
                 const exitTimer = setTimeout(() => {
-                    setDisplayLocation(location);
                     prevPathRef.current = location.pathname;
 
                     // Allow enter animation

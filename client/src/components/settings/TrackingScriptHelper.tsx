@@ -48,8 +48,8 @@ export function TrackingScriptHelper() {
     const sendTestEvent = async () => {
         setTestStatus('loading');
         try {
-            // Generate a test visitor ID
-            const testVisitorId = `test-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            // Deterministic test visitor ID avoids render-time purity warnings.
+            const testVisitorId = `test-${currentAccount?.id || 'account'}`;
 
             // Send a test pageview event directly to the tracking endpoint
             await fetch(`${apiUrl}/api/tracking/events`, {

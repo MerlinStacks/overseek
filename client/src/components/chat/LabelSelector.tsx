@@ -5,7 +5,7 @@
  * Shows current labels as colored chips with ability to add/remove.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Tag, Plus, X, Check, Loader2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -51,14 +51,7 @@ export function LabelSelector({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Fetch all available labels when dropdown opens
-    useEffect(() => {
-        if (isOpen && allLabels.length === 0) {
-            fetchLabels();
-        }
-    }, [isOpen]);
-
-    const fetchLabels = async () => {
+    const fetchLabels = useCallback(async () => {
         setIsLoading(true);
         try {
             const res = await fetch('/api/labels', {
@@ -76,7 +69,14 @@ export function LabelSelector({
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount?.id, token]);
+
+    // Fetch all available labels when dropdown opens
+    useEffect(() => {
+        if (isOpen && allLabels.length === 0) {
+            fetchLabels();
+        }
+    }, [allLabels.length, fetchLabels, isOpen]);
 
     const isLabelAssigned = (labelId: string) => {
         return currentLabels.some((l) => l.id === labelId);

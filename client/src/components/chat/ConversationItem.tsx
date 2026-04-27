@@ -26,6 +26,10 @@ export interface Conversation {
     messages: { content: string, createdAt: string, senderType: string }[];
     updatedAt: string;
     status: string;
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    priorityTier?: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
+    priorityScore?: number;
+    priorityReasons?: string[];
     isRead?: boolean;
     labels?: { id: string; name: string; color: string }[];
 }
@@ -142,9 +146,22 @@ export const ConversationItem = memo(function ConversationItem({
                             Open
                         </span>
                     )}
+                    {conv.priorityTier && conv.priorityTier !== 'LOW' && (
+                        <span
+                            className={cn(
+                                "px-1.5 py-0.5 text-[10px] font-semibold rounded-sm",
+                                conv.priorityTier === 'CRITICAL' && "bg-red-100 text-red-700",
+                                conv.priorityTier === 'HIGH' && "bg-orange-100 text-orange-700",
+                                conv.priorityTier === 'NORMAL' && "bg-amber-100 text-amber-700"
+                            )}
+                            title={conv.priorityReasons?.join(' | ') || 'Priority ranked'}
+                        >
+                            {conv.priorityTier}
+                        </span>
+                    )}
                     {conv.assignee && (
                         <span className="text-[10px] text-gray-400">
-                            → {conv.assignee.fullName || 'Assigned'}
+                            {'->'} {conv.assignee.fullName || 'Assigned'}
                         </span>
                     )}
                     {hasDraft && (
@@ -174,3 +191,4 @@ export const ConversationItem = memo(function ConversationItem({
         </div>
     );
 });
+

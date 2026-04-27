@@ -1,7 +1,7 @@
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText, Rows, Plus } from 'lucide-react';
+import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText, Rows, Plus, QrCode } from 'lucide-react';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
@@ -15,7 +15,7 @@ interface InvoiceItemStyle {
 
 interface InvoiceItem {
     id: string;
-    type: 'header' | 'text' | 'image' | 'order_details' | 'customer_details' | 'order_table' | 'totals' | 'footer' | 'row';
+    type: 'header' | 'text' | 'image' | 'order_details' | 'customer_details' | 'order_table' | 'totals' | 'payment_block' | 'footer' | 'row';
     content?: string;
     logo?: string;
     businessDetails?: string;
@@ -23,12 +23,31 @@ interface InvoiceItem {
     children?: string[];  // IDs of nested items for 'row' type
 }
 
-// Note: layout uses any[] due to react-grid-layout/legacy type export incompatibilities
+interface CanvasLayoutItem {
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    minW?: number;
+    minH?: number;
+    maxW?: number;
+    maxH?: number;
+    [key: string]: unknown;
+}
+interface GridLayoutItem {
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
 interface DesignerCanvasProps {
-    layout: any[];
+    layout: CanvasLayoutItem[];
     items: InvoiceItem[];
     selectedId: string | null;
-    onLayoutChange: (layout: any) => void;
+    onLayoutChange: (layout: CanvasLayoutItem[]) => void;
     onSelect: (id: string | null) => void;
     onDropItem?: (type: string, targetRowId?: string) => void;
 }
@@ -38,6 +57,9 @@ interface DesignerCanvasProps {
  * Renders a paper-like preview with resizable grid items.
  */
 export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSelect, onDropItem }: DesignerCanvasProps) {
+    const handleGridLayoutChange = (nextLayout: readonly GridLayoutItem[]) => {
+        onLayoutChange(nextLayout.map((item) => ({ ...item })));
+    };
 
     // Handle drop on the canvas area
     const handleCanvasDrop = (e: React.DragEvent) => {
@@ -92,7 +114,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         </div>
                     </div>
                 );
-            case 'text':
+            case 'text': {
                 const style = itemConfig.style || {};
                 const isAutoFit = style.autoFit !== false; // Default to true for auto-fit
                 return (
@@ -122,6 +144,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         </div>
                     </div>
                 );
+            }
             case 'image':
                 return (
                     <div className="w-full h-full flex items-center justify-center overflow-hidden bg-linear-to-br from-slate-50 to-slate-100 rounded-lg relative">
@@ -248,6 +271,26 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         </div>
                     </div>
                 );
+            case 'payment_block':
+                return (
+                    <div className="p-4 h-full bg-linear-to-br from-cyan-50 to-sky-50 flex flex-col rounded-lg border border-dashed border-cyan-300">
+                        <div className="flex items-center gap-2 text-cyan-600 mb-3">
+                            <QrCode size={16} />
+                            <span className="text-xs font-semibold uppercase tracking-wider">Payment Block</span>
+                        </div>
+                        <div className="flex-1 flex items-center gap-3">
+                            <div className="w-16 h-16 rounded-lg border-2 border-cyan-200 bg-white grid grid-cols-4 gap-0.5 p-1">
+                                {Array.from({ length: 16 }).map((_, idx) => (
+                                    <div key={idx} className={`${idx % 3 === 0 ? 'bg-cyan-600' : 'bg-cyan-100'} rounded-xs`} />
+                                ))}
+                            </div>
+                            <div className="flex-1">
+                                <div className="h-3 w-24 bg-cyan-200/60 rounded-sm mb-2"></div>
+                                <div className="h-2.5 w-40 bg-cyan-200/60 rounded-sm"></div>
+                            </div>
+                        </div>
+                    </div>
+                );
             case 'footer':
                 return (
                     <div className="p-4 h-full bg-linear-to-br from-slate-50 to-gray-50 flex flex-col rounded-lg border border-dashed border-slate-300">
@@ -262,7 +305,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         </div>
                     </div>
                 );
-            case 'row':
+            case 'row': {
                 // Row container - renders children horizontally
                 const childItems = (itemConfig.children || []).map(childId =>
                     items.find(i => i.id === childId)
@@ -327,6 +370,7 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                         </div>
                     </div>
                 );
+            }
             default:
                 return <div className="p-3 text-slate-500 text-sm">{itemConfig.type}</div>;
         }
@@ -351,7 +395,9 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                     breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                     cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                     rowHeight={30}
-                    onLayoutChange={onLayoutChange}
+                    onLayoutChange={(nextLayout) => {
+                        handleGridLayoutChange(nextLayout as unknown as readonly GridLayoutItem[]);
+                    }}
                     isDroppable={true}
                 >
                     {layout.map(l => {

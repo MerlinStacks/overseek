@@ -180,14 +180,22 @@ export class ReviewSync extends BaseSync {
                     .map(r => (r as any).reviewer_email as string | undefined)
                     .filter((e): e is string => !!e)
             )];
+            const normalizedReviewerEmails = [...new Set(
+                reviewerEmails
+                    .map((e) => normalizeEmail(e))
+                    .filter((e): e is string => !!e)
+            )];
             const batchCustomers = reviewerEmails.length > 0
                 ? await prisma.wooCustomer.findMany({
-                    where: { accountId, email: { in: reviewerEmails } },
+                    where: { accountId, email: { in: normalizedReviewerEmails, mode: 'insensitive' } },
                     select: { id: true, wooId: true, email: true }
                 })
                 : [];
             const customerByEmail = new Map<string, { id: string; wooId: number; email: string }>(
-                batchCustomers.map(c => [c.email, c])
+                batchCustomers
+                    .map(c => ({ key: normalizeEmail(c.email), value: c }))
+                    .filter((c): c is { key: string; value: { id: string; wooId: number; email: string } } => !!c.key)
+                    .map(c => [c.key, c.value])
             );
 
             // --- N+1 FIX: Batch-check existing reviews for isRecent detection ---
@@ -206,7 +214,8 @@ export class ReviewSync extends BaseSync {
                 let wooCustomerId: string | null = null;
                 let customerData: { id: string; wooId: number; email: string } | null = null;
                 if (reviewerEmail) {
-                    customerData = customerByEmail.get(reviewerEmail) || null;
+                    const normalizedReviewerEmail = normalizeEmail(reviewerEmail);
+                    customerData = normalizedReviewerEmail ? customerByEmail.get(normalizedReviewerEmail) || null : null;
                     if (customerData) wooCustomerId = customerData.id;
                 }
 

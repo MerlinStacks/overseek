@@ -52,6 +52,13 @@ interface SignificanceResult {
     }[];
 }
 
+interface AdAccountOption {
+    id: string;
+    name: string;
+    platform: string;
+    externalId?: string;
+}
+
 export function ExperimentsPanel() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -329,14 +336,10 @@ function CreateExperimentModal({ onClose, onCreated }: CreateModalProps) {
     const [platform, setPlatform] = useState<'google' | 'meta'>('google');
     const [primaryMetric, setPrimaryMetric] = useState<'ctr' | 'conversions' | 'roas'>('ctr');
     const [adAccountId, setAdAccountId] = useState('');
-    const [adAccounts, setAdAccounts] = useState<{ id: string; name: string; platform: string }[]>([]);
+    const [adAccounts, setAdAccounts] = useState<AdAccountOption[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    useEffect(() => {
-        fetchAdAccounts();
-    }, []);
-
-    const fetchAdAccounts = async () => {
+    const fetchAdAccounts = useCallback(async () => {
         if (!currentAccount) return;
         try {
             const res = await fetch('/api/ads', {
@@ -346,13 +349,17 @@ function CreateExperimentModal({ onClose, onCreated }: CreateModalProps) {
                 }
             });
             const data = await res.json();
-            const active = data.filter((a: any) => a.externalId !== 'PENDING_SETUP');
+            const active = (data as AdAccountOption[]).filter((a) => a.externalId !== 'PENDING_SETUP');
             setAdAccounts(active);
             if (active.length > 0) setAdAccountId(active[0].id);
         } catch (err) {
             Logger.error('Failed to fetch ad accounts', { error: err });
         }
-    };
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        fetchAdAccounts();
+    }, [fetchAdAccounts]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -440,7 +447,7 @@ function CreateExperimentModal({ onClose, onCreated }: CreateModalProps) {
                         <select
                             className="w-full p-3 border border-gray-300 rounded-lg"
                             value={primaryMetric}
-                            onChange={e => setPrimaryMetric(e.target.value as any)}
+                            onChange={e => setPrimaryMetric(e.target.value as 'ctr' | 'conversions' | 'roas')}
                         >
                             <option value="ctr">Click-Through Rate (CTR)</option>
                             <option value="conversions">Conversion Rate</option>

@@ -16,6 +16,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import VisitorProfileModal from '../analytics/VisitorProfileModal';
 import { DeviceBrowserBadge } from '../analytics/DeviceBrowserIcons';
+import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass } from './widgetStyles';
 
 interface PayloadItem {
     id?: number;
@@ -294,7 +296,7 @@ function MiniFunnel({ stage, abandoned }: { stage: FunnelStage; abandoned: boole
 
 // --- Main widget ---
 
-const VisitorLogWidget = (_props: { settings?: any }) => {
+const VisitorLogWidget = (_props: WidgetProps) => {
     const [visitors, setVisitors] = useState<VisitorSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedVisitor, setSelectedVisitor] = useState<string | null>(null);
@@ -358,7 +360,7 @@ const VisitorLogWidget = (_props: { settings?: any }) => {
     }
 
     return (
-        <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-slate-800/90 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-xs">
+        <div className={`${widgetCardClass} h-full overflow-hidden flex flex-col`}>
             {/* Header */}
             <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
                 <div className="flex items-center gap-2">

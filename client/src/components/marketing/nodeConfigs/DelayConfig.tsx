@@ -4,15 +4,32 @@
  */
 import React from 'react';
 
+type DelayMode = 'SPECIFIC_PERIOD' | 'SPECIFIC_DATE' | 'CUSTOM_FIELD';
+
+interface DelayNodeConfig {
+    delayMode?: DelayMode;
+    duration?: number;
+    unit?: 'minutes' | 'hours' | 'days' | 'weeks' | 'months';
+    useContactTimezone?: boolean;
+    delayUntilTimeEnabled?: boolean;
+    delayUntilTime?: string;
+    delayUntilDaysEnabled?: boolean;
+    delayUntilDays?: string[];
+    jumpIfPassed?: boolean;
+    specificDate?: string;
+    customFieldKey?: string;
+}
+
 export interface DelayConfigProps {
-    config: any;
-    onUpdate: (key: string, value: any) => void;
+    config: DelayNodeConfig;
+    onUpdate: (key: string, value: unknown) => void;
 }
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
     const delayMode = config.delayMode || 'SPECIFIC_PERIOD';
+    const delayUntilDays = config.delayUntilDays ?? [];
 
     const toggleDay = (day: string) => {
         const current = config.delayUntilDays || [];
@@ -167,7 +184,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                             Delay of {config.duration || 1} {config.unit || 'hours'}
                             {config.useContactTimezone && " (contact's timezone)"}
                             {config.delayUntilTimeEnabled && ` until ${config.delayUntilTime || '09:00'}`}
-                            {config.delayUntilDaysEnabled && (config.delayUntilDays?.length > 0) && ` on ${config.delayUntilDays.join(', ')}`}.
+                            {config.delayUntilDaysEnabled && delayUntilDays.length > 0 && ` on ${delayUntilDays.join(', ')}`}.
                         </span>
                     </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -47,13 +47,7 @@ export function ProfitabilityReport({ startDate, endDate }: ProfitabilityReportP
     const [sortColumn, setSortColumn] = useState<SortColumn>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchData();
-        }
-    }, [currentAccount, token, startDate, endDate]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         try {
@@ -64,12 +58,16 @@ export function ProfitabilityReport({ startDate, endDate }: ProfitabilityReportP
             const json = await res.json();
             setData(json.breakdown);
             setSummary(json.summary);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to fetch profitability data');
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token, startDate, endDate]);
+
+    useEffect(() => {
+        void fetchData();
+    }, [fetchData]);
 
     const handleSort = (column: SortColumn) => {
         if (sortColumn === column) {

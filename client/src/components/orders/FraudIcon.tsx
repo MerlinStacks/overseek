@@ -2,7 +2,7 @@
  * FraudIcon - Compact fraud risk indicator for order lists.
  * Shows a small shield icon that fetches and displays risk level on hover.
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';

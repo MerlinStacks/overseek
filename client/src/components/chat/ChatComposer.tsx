@@ -9,6 +9,7 @@ import { InboxRichTextEditor } from './InboxRichTextEditor';
 import { ChannelSelector, ConversationChannel } from './ChannelSelector';
 import { CannedResponse } from '../../hooks/useCannedResponses';
 import { ComposerToolbar } from './ComposerToolbar';
+import type { OutboundSafetyIssue } from '../../utils/outboundSafety';
 
 interface ChannelOption {
     channel: ConversationChannel;
@@ -72,6 +73,13 @@ interface ChatComposerProps {
     emailAccounts?: EmailAccountOption[];
     selectedEmailAccountId?: string;
     onEmailAccountChange?: (accountId: string) => void;
+    // Collision-safety draft presence
+    activeDraftingAgents?: Array<{ id: string; name: string; avatarUrl?: string | null }>;
+    // Outbound safety gate
+    safetyIssues?: OutboundSafetyIssue[];
+    requiresSafetyApproval?: boolean;
+    onApproveSafetySend?: (channel?: ConversationChannel) => void;
+    onDismissSafetyWarnings?: () => void;
 }
 
 /**
@@ -112,13 +120,28 @@ export const ChatComposer = memo(function ChatComposer({
     currentChannel,
     emailAccounts,
     selectedEmailAccountId,
-    onEmailAccountChange
+    onEmailAccountChange,
+    activeDraftingAgents = [],
+    safetyIssues = [],
+    requiresSafetyApproval = false,
+    onApproveSafetySend,
+    onDismissSafetyWarnings
 }: ChatComposerProps) {
     const [selectedChannel, setSelectedChannel] = useState<ConversationChannel>(currentChannel || 'CHAT');
 
     const MAX_SMS_LENGTH = 1600;
     const plainTextLength = input.replace(/<[^>]*>/g, '').length;
     const isSmsTooLong = selectedChannel === 'SMS' && plainTextLength > MAX_SMS_LENGTH;
+    const quickSnippets = [
+        'Thanks for reaching out. We are reviewing this now and will update you shortly.',
+        'I understand the concern and I am on it. I will share the next steps in this thread.',
+        'Could you confirm your order number so I can check this immediately?'
+    ];
+
+    const insertSnippet = (snippet: string) => {
+        const trimmed = input.trim();
+        onInputChange(trimmed ? `${trimmed}<br/><br/>${snippet}` : snippet);
+    };
 
     return (
         <div className="border-t border-gray-200 bg-white">
@@ -254,6 +277,56 @@ export const ChatComposer = memo(function ChatComposer({
 
             {/* Compose Area */}
             <div className={cn("p-4", isInternal && "bg-yellow-50")}>
+                {!isInternal && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                        {quickSnippets.map((snippet, idx) => (
+                            <button
+                                key={idx}
+                                type="button"
+                                onClick={() => insertSnippet(snippet)}
+                                className="px-2 py-1 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                title={snippet}
+                            >
+                                Quick {idx + 1}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {activeDraftingAgents.length > 0 && !isInternal && (
+                    <div className="mb-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs">
+                        {activeDraftingAgents.length === 1
+                            ? `${activeDraftingAgents[0].name} is drafting a reply in this conversation.`
+                            : `${activeDraftingAgents.length} teammates are drafting replies in this conversation.`}
+                    </div>
+                )}
+                {safetyIssues.length > 0 && !isInternal && (
+                    <div className="mb-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs">
+                        <div className="font-semibold mb-1">Outbound safety check</div>
+                        {safetyIssues.slice(0, 3).map((issue) => (
+                            <div key={issue.code}>• {issue.message}</div>
+                        ))}
+                        <div className="mt-2 flex items-center gap-2">
+                            {requiresSafetyApproval && onApproveSafetySend && (
+                                <button
+                                    type="button"
+                                    onClick={() => onApproveSafetySend(selectedChannel)}
+                                    className="px-2.5 py-1 rounded bg-red-600 text-white text-[11px] font-semibold hover:bg-red-700"
+                                >
+                                    Approve And Send
+                                </button>
+                            )}
+                            {onDismissSafetyWarnings && (
+                                <button
+                                    type="button"
+                                    onClick={onDismissSafetyWarnings}
+                                    className="px-2.5 py-1 rounded bg-white border border-red-200 text-red-700 text-[11px] font-semibold hover:bg-red-100"
+                                >
+                                    Dismiss
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
                 <InboxRichTextEditor
                     value={input}
                     onChange={onInputChange}
@@ -347,6 +420,9 @@ export const ChatComposer = memo(function ChatComposer({
                     onSend={onSend}
                     onOpenSchedule={onOpenSchedule}
                 />
+                <div className="mt-2 text-[11px] text-gray-400">
+                    Ctrl/Cmd + Enter to send • Type / for canned responses
+                </div>
             </div>
         </div >
     );

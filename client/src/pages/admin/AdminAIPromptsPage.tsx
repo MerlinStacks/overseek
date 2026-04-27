@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -84,20 +84,10 @@ export function AdminAIPromptsPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
 
-    useEffect(() => {
-        fetchPrompts();
-        // Expand all panels by default
-        const initialExpanded: Record<string, boolean> = {};
-        PROMPT_CONFIGS.forEach(config => {
-            initialExpanded[config.id] = true;
-        });
-        setExpandedPanels(initialExpanded);
-    }, [token]);
-
     /**
      * Fetches all AI prompts from the server.
      */
-    async function fetchPrompts() {
+    const fetchPrompts = useCallback(async () => {
         try {
             const res = await fetch('/api/admin/ai-prompts', {
                 headers: { Authorization: `Bearer ${token}` }
@@ -120,7 +110,17 @@ export function AdminAIPromptsPage() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [token]);
+
+    useEffect(() => {
+        fetchPrompts();
+        // Expand all panels by default
+        const initialExpanded: Record<string, boolean> = {};
+        PROMPT_CONFIGS.forEach(config => {
+            initialExpanded[config.id] = true;
+        });
+        setExpandedPanels(initialExpanded);
+    }, [fetchPrompts]);
 
     /**
      * Initializes form data with existing prompts or placeholders.

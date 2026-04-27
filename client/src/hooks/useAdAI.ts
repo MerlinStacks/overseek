@@ -26,10 +26,44 @@ export interface SuggestionsData {
     suggestions: string[];
     prioritized: { text: string; priority: 1 | 2 | 3; category: string }[];
     actionableRecommendations?: ActionableRecommendation[];
-    summary?: any;
+    summary?: Record<string, unknown>;
     action_items?: string[];
     message?: string;
 }
+
+const mapThemeCategory = (category: string): StrategicTheme['category'] => {
+    switch (category) {
+        case 'budget':
+            return 'budget';
+        case 'creative':
+            return 'creative';
+        case 'audience':
+            return 'audience';
+        case 'structure':
+            return 'structure';
+        default:
+            return 'performance';
+    }
+};
+
+const getCampaignId = (rec: ActionableRecommendation): string | undefined => {
+    if ('campaignId' in rec.action) {
+        return rec.action.campaignId;
+    }
+    return undefined;
+};
+
+const getSuggestedBudget = (rec: ActionableRecommendation): number | undefined => {
+    if ('suggestedBudget' in rec.action) {
+        return rec.action.suggestedBudget;
+    }
+    return undefined;
+};
+
+const getAdAccountId = (rec: ActionableRecommendation): string | undefined => {
+    const value = (rec as ActionableRecommendation & { adAccountId?: string }).adAccountId;
+    return typeof value === 'string' ? value : undefined;
+};
 
 /**
  * Group recommendations into strategic themes by category.
@@ -64,7 +98,7 @@ function groupIntoThemes(recs: ActionableRecommendation[]): StrategicTheme[] {
 
         themes.push({
             id: cat,
-            category: cat as any,
+            category: mapThemeCategory(cat),
             title: meta.title,
             description: meta.description,
             platforms,
@@ -204,16 +238,17 @@ export function useAdAI() {
                     recommendationId: rec.id,
                     actionType: 'add_keyword',
                     platform: rec.platform,
-                    campaignId: (rec.action as any).campaignId,
-                    parameters: { keyword: keywordData.keyword, matchType: keywordData.matchType, bid: keywordData.bid, adGroupId: keywordData.adGroupId, adAccountId: (rec as any).adAccountId }
+                    campaignId: getCampaignId(rec),
+                    parameters: { keyword: keywordData.keyword, matchType: keywordData.matchType, bid: keywordData.bid, adGroupId: keywordData.adGroupId, adAccountId: getAdAccountId(rec) }
                 })
             });
             if (!res.ok) throw new Error((await res.json()).error || 'Failed to add keyword');
             Logger.info('Keyword added successfully');
-        } catch (err: any) {
+        } catch (err: unknown) {
             Logger.error('Failed to add keyword', { error: err });
             setData(originalData);
-            alert(`Failed to add keyword: ${err.message}`);
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            alert(`Failed to add keyword: ${message}`);
         }
     }, [token, currentAccount, data]);
 
@@ -232,11 +267,11 @@ export function useAdAI() {
         }
 
         try {
-            const parameters: Record<string, any> = {};
+            const parameters: Record<string, unknown> = {};
             let actionType = '';
 
             if (rec.action.actionType === 'budget_increase' || rec.action.actionType === 'budget_decrease') {
-                parameters.amount = (rec.action as any).suggestedBudget;
+                parameters.amount = getSuggestedBudget(rec);
                 actionType = rec.action.actionType;
             } else if (rec.action.actionType === 'pause' || rec.action.actionType === 'enable') {
                 actionType = rec.action.actionType;
@@ -249,14 +284,15 @@ export function useAdAI() {
             const res = await fetch('/api/ads/execute-action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount.id },
-                body: JSON.stringify({ recommendationId: rec.id, actionType, platform: rec.platform, campaignId: (rec.action as any).campaignId, parameters })
+                body: JSON.stringify({ recommendationId: rec.id, actionType, platform: rec.platform, campaignId: getCampaignId(rec), parameters })
             });
             if (!res.ok) throw new Error((await res.json()).error || 'Failed to execute action');
             Logger.info('Action executed successfully');
-        } catch (err: any) {
+        } catch (err: unknown) {
             Logger.error('Failed to apply recommendation', { error: err });
             setData(originalData);
-            alert(`Failed to apply action: ${err.message}`);
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            alert(`Failed to apply action: ${message}`);
         }
     }, [token, currentAccount, data]);
 

@@ -1,10 +1,9 @@
 
-import { formatDistanceToNow } from 'date-fns';
 import { Virtuoso } from 'react-virtuoso';
 import { Logger } from '../../utils/logger';
-import { Filter, ChevronDown, Eye, EyeOff, Plus, Search, X, Loader2, Tag, Square, CheckSquare } from 'lucide-react';
+import { Filter, Eye, EyeOff, Plus, Search, X, Loader2, Tag } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDrafts } from '../../hooks/useDrafts';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -33,14 +32,32 @@ interface ConversationListProps {
     hasMore?: boolean;
     isLoadingMore?: boolean;
     onLoadMore?: () => void;
+    filter?: FilterType;
+    onFilterChange?: (filter: FilterType) => void;
+    showResolved?: boolean;
+    onShowResolvedChange?: (show: boolean) => void;
 }
 
 type FilterType = 'all' | 'mine' | 'unassigned';
 
-export function ConversationList({ conversations, selectedId, onSelect, onPreload, currentUserId, onCompose, onRefresh, users = [], hasMore = false, isLoadingMore = false, onLoadMore }: ConversationListProps) {
-    const [filter, setFilter] = useState<FilterType>('all');
+export function ConversationList({
+    conversations,
+    selectedId,
+    onSelect,
+    onPreload,
+    currentUserId,
+    onCompose,
+    onRefresh,
+    users = [],
+    hasMore = false,
+    isLoadingMore = false,
+    onLoadMore,
+    filter = 'all',
+    onFilterChange,
+    showResolved = false,
+    onShowResolvedChange
+}: ConversationListProps) {
     const [showFilterMenu, setShowFilterMenu] = useState(false);
-    const [showResolved, setShowResolved] = useState(false);
     const { hasDraft } = useDrafts();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -69,6 +86,8 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
     const [searchResults, setSearchResults] = useState<Conversation[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const isSearchMode = searchQuery.trim().length >= 2;
+    const activeSearchController = useRef<AbortController | null>(null);
+    const searchRequestIdRef = useRef(0);
 
     // Fetch available labels
     useEffect(() => {
@@ -80,7 +99,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
             }
         })
             .then(res => res.json())
-            .then(data => setAllLabels(data.labels || []))
+            .then((data: unknown) => setAllLabels((data as { labels?: Label[] }).labels || []))
             .catch(e => Logger.error('Failed to fetch labels', { error: e }));
     }, [token, currentAccount]);
 
@@ -102,16 +121,6 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
         setIsSelectionMode(newSelected.size > 0);
     };
 
-    const toggleSelectAll = () => {
-        if (selectedIds.size === filteredConversations.length) {
-            setSelectedIds(new Set());
-            setIsSelectionMode(false);
-        } else {
-            setSelectedIds(new Set(filteredConversations.map(c => c.id)));
-            setIsSelectionMode(true);
-        }
-    };
-
     // Debounced search
     useEffect(() => {
         if (!isSearchMode || !token || !currentAccount) {
@@ -121,25 +130,39 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
 
         const timeout = setTimeout(async () => {
             setIsSearching(true);
+            const requestId = ++searchRequestIdRef.current;
+            activeSearchController.current?.abort();
+            const controller = new AbortController();
+            activeSearchController.current = controller;
             try {
                 const res = await fetch(`/api/chat/conversations/search?q=${encodeURIComponent(searchQuery)}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': currentAccount.id
-                    }
+                    },
+                    signal: controller.signal
                 });
                 if (res.ok) {
-                    const data = await res.json();
-                    setSearchResults(data.results || []);
+                    const data: unknown = await res.json();
+                    // Only apply newest in-flight result to avoid stale overwrite.
+                    if (requestId === searchRequestIdRef.current) {
+                        setSearchResults((data as { results?: Conversation[] }).results || []);
+                    }
                 }
-            } catch (e) {
+            } catch (e: unknown) {
+                if (e instanceof DOMException && e.name === 'AbortError') return;
                 Logger.error('Search failed', { error: e });
             } finally {
-                setIsSearching(false);
+                if (requestId === searchRequestIdRef.current) {
+                    setIsSearching(false);
+                }
             }
         }, 300);
 
-        return () => clearTimeout(timeout);
+        return () => {
+            clearTimeout(timeout);
+            activeSearchController.current?.abort();
+        };
     }, [searchQuery, token, currentAccount, isSearchMode]);
 
     // Memoized: Use search results when searching, otherwise normal filtered list
@@ -147,20 +170,13 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
         if (isSearchMode) return searchResults;
 
         return conversations.filter(conv => {
-            // Status filter: only show OPEN by default
-            if (!showResolved && conv.status !== 'OPEN') return false;
-
             // Label filter
             if (selectedLabelId) {
                 if (!conv.labels?.some(l => l.id === selectedLabelId)) return false;
             }
-
-            // Assignment filter
-            if (filter === 'mine') return conv.assignedTo === currentUserId;
-            if (filter === 'unassigned') return !conv.assignedTo;
             return true;
         });
-    }, [isSearchMode, searchResults, conversations, showResolved, selectedLabelId, filter, currentUserId]);
+    }, [isSearchMode, searchResults, conversations, selectedLabelId]);
 
     // Precompute which conversations have drafts — avoids per-item localStorage reads
     const draftIds = useMemo(() => {
@@ -240,7 +256,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
         content = content.replace(/\*\*Attachments:\*\*\s*/gi, '');
 
         // Strip HTML tags, then decode common entities
-        let preview = content
+        const preview = content
             .replace(/<[^>]*>/g, '')
             .replace(/&nbsp;/g, ' ')
             .replace(/&amp;/g, '&')
@@ -327,7 +343,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search conversations..."
+                        placeholder="Search, attachment:invoice, file:pdf..."
                         className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     {isSearching && (
@@ -356,7 +372,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                     <>
                         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                             <button
-                                onClick={() => setFilter('mine')}
+                                onClick={() => onFilterChange?.('mine')}
                                 className={cn(
                                     "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
                                     filter === 'mine' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
@@ -365,7 +381,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                                 Mine {counts.mine > 0 && <span className="ml-1 text-gray-400">{counts.mine}</span>}
                             </button>
                             <button
-                                onClick={() => setFilter('unassigned')}
+                                onClick={() => onFilterChange?.('unassigned')}
                                 className={cn(
                                     "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
                                     filter === 'unassigned' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
@@ -374,7 +390,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                                 Unassigned {counts.unassigned > 0 && <span className="ml-1 text-gray-400">{counts.unassigned}</span>}
                             </button>
                             <button
-                                onClick={() => setFilter('all')}
+                                onClick={() => onFilterChange?.('all')}
                                 className={cn(
                                     "flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors",
                                     filter === 'all' ? "bg-white text-blue-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
@@ -386,7 +402,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
 
                         {/* Show Resolved Toggle */}
                         <button
-                            onClick={() => setShowResolved(!showResolved)}
+                            onClick={() => onShowResolvedChange?.(!showResolved)}
                             className={cn(
                                 "flex items-center justify-center gap-1.5 w-full mt-2 py-1.5 text-xs rounded-md transition-colors",
                                 showResolved
@@ -412,19 +428,16 @@ export function ConversationList({ conversations, selectedId, onSelect, onPreloa
                         style={{ height: '100%' }}
                         data={filteredConversations}
                         overscan={5}
+                        endReached={() => {
+                            if (isSearchMode || !hasMore || !onLoadMore || isLoadingMore) return;
+                            onLoadMore();
+                        }}
                         components={{
-                            Footer: () => (!isSearchMode && hasMore && onLoadMore) ? (
-                                <button
-                                    onClick={onLoadMore}
-                                    disabled={isLoadingMore}
-                                    className="w-full py-3 text-sm text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    {isLoadingMore ? (
-                                        <><Loader2 size={14} className="animate-spin" />Loading...</>
-                                    ) : (
-                                        'Load more conversations'
-                                    )}
-                                </button>
+                            Footer: () => (!isSearchMode && (hasMore || isLoadingMore)) ? (
+                                <div className="w-full py-3 text-sm text-indigo-600 flex items-center justify-center gap-2">
+                                    <Loader2 size={14} className={cn(isLoadingMore ? 'animate-spin' : '')} />
+                                    {isLoadingMore ? 'Loading...' : 'Scroll for more'}
+                                </div>
                             ) : null
                         }}
                         itemContent={(index: number, conv: Conversation) => {

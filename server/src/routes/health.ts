@@ -9,6 +9,8 @@ import { prisma } from '../utils/prisma';
 import { redisClient } from '../utils/redis';
 import { esClient } from '../utils/elastic';
 import { Logger } from '../utils/logger';
+import { getLatestMemorySnapshot } from '../utils/memoryMonitor';
+import { QueueFactory } from '../services/queue/QueueFactory';
 
 interface HealthStatus {
     status: 'healthy' | 'degraded' | 'unhealthy';
@@ -19,6 +21,25 @@ interface HealthStatus {
         database: boolean;
         redis: boolean;
         elasticsearch: boolean;
+    };
+    runtime?: {
+        memory: {
+            heapUsedPct: number;
+            rssMb: number;
+            eventLoopLagP95Ms: number;
+            eventLoopLagMeanMs: number;
+            eventLoopLagMaxMs: number;
+        };
+        queues: Record<string, {
+            waiting: number;
+            active: number;
+            delayed: number;
+            failed: number;
+            completed: number;
+            paused: number;
+            prioritized: number;
+            backlog: number;
+        }>;
     };
 }
 
@@ -92,6 +113,23 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
             checks
         };
 
+        try {
+            const memory = getLatestMemorySnapshot();
+            const queues = await QueueFactory.getQueueDepthSnapshot();
+            status.runtime = {
+                memory: {
+                    heapUsedPct: memory.heapUsedPct,
+                    rssMb: memory.rssMb,
+                    eventLoopLagP95Ms: memory.eventLoopLagP95Ms,
+                    eventLoopLagMeanMs: memory.eventLoopLagMeanMs,
+                    eventLoopLagMaxMs: memory.eventLoopLagMaxMs,
+                },
+                queues
+            };
+        } catch (error) {
+            Logger.warn('[Health] Runtime telemetry collection failed', { error });
+        }
+
         // Return 200 for healthy/degraded, 503 only if ALL services are down
         // This allows the container to be marked healthy even if ES is still starting
         return reply.code(allDown ? 503 : 200).send(status);
@@ -122,6 +160,20 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
                 'Performance improvements',
                 'Bug fixes and stability'
             ]
+        };
+    });
+
+    /**
+     * GET /health/memory
+     * Returns latest process memory snapshot for operational monitoring.
+     */
+    fastify.get('/memory', async (_request, _reply) => {
+        const snapshot = getLatestMemorySnapshot();
+        return {
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            memory: snapshot
         };
     });
 };

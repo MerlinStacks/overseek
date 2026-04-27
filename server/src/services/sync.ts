@@ -17,7 +17,7 @@ export class SyncService {
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
         // OOM prevention: trim bloated queues before adding new jobs (sync queues only)
-        const SYNC_QUEUES = [QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS];
+        const SYNC_QUEUES = [QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS, QUEUES.BOM_SYNC];
         for (const queueName of SYNC_QUEUES) {
             await QueueFactory.enforceMaxQueueDepth(queueName);
         }
@@ -84,6 +84,11 @@ export class SyncService {
 
         if (types.includes('reviews')) {
             await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental, triggerSource } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
+        }
+
+        if (types.includes('bom')) {
+            // BOM sync is always computed against current state, so incremental has no effect.
+            await checkAndAddJob(QUEUES.BOM_SYNC, { accountId, triggerSource } as SyncJobData, `sync_bom_${accountId.replace(/:/g, '_')}`);
         }
 
         Logger.info(`Dispatched ${jobCount} jobs to queues`);

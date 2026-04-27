@@ -26,10 +26,6 @@ export function MobileAnalytics() {
     const [period, setPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
     const [liveCount, setLiveCount] = useState(0);
 
-    useEffect(() => {
-        fetchAnalytics();
-    }, [currentAccount, period, token]);
-
     // Memoized fetch for live count polling
     const fetchLiveCount = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -52,7 +48,7 @@ export function MobileAnalytics() {
     // Visibility-aware polling: pauses when app is backgrounded/screen off
     useVisibilityPolling(fetchLiveCount, 30000, [fetchLiveCount]);
 
-    const fetchAnalytics = async () => {
+    const fetchAnalytics = useCallback(async () => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
@@ -172,7 +168,11 @@ export function MobileAnalytics() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount, period, token]);
+
+    useEffect(() => {
+        fetchAnalytics();
+    }, [fetchAnalytics]);
 
     // Helper for account-aware currency
     const formatAccountCurrency = (amount: number) =>

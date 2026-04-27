@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Trash2, UserPlus, Shield, User, Edit2, Check, X, ChevronDown } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
+import { Trash2, UserPlus, Shield, User, Edit2, Check, X } from 'lucide-react';
 
 interface CustomRole {
     id: string;
@@ -37,6 +38,7 @@ const BASE_ROLES = [
 export function TeamSettings() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const [members, setMembers] = useState<Member[]>([]);
     const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
     const [email, setEmail] = useState('');
@@ -47,14 +49,7 @@ export function TeamSettings() {
     const [editValues, setEditValues] = useState<{ role: string; roleId: string | null }>({ role: 'STAFF', roleId: null });
     const [isSaving, setIsSaving] = useState(false);
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchMembers();
-            fetchCustomRoles();
-        }
-    }, [currentAccount, token]);
-
-    const fetchMembers = async () => {
+    const fetchMembers = useCallback(async () => {
         try {
             const res = await fetch(`/api/accounts/${currentAccount?.id}/users`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -65,9 +60,9 @@ export function TeamSettings() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount?.id, token]);
 
-    const fetchCustomRoles = async () => {
+    const fetchCustomRoles = useCallback(async () => {
         try {
             const res = await fetch('/api/roles', {
                 headers: {
@@ -82,7 +77,14 @@ export function TeamSettings() {
         } catch (e) {
             Logger.error('Failed to fetch custom roles', { error: e });
         }
-    };
+    }, [currentAccount?.id, token]);
+
+    useEffect(() => {
+        if (currentAccount && token) {
+            fetchMembers();
+            fetchCustomRoles();
+        }
+    }, [currentAccount, token, fetchMembers, fetchCustomRoles]);
 
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -110,8 +112,9 @@ export function TeamSettings() {
 
             setEmail('');
             fetchMembers();
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to add user';
+            setError(message);
         }
     };
 
@@ -164,8 +167,9 @@ export function TeamSettings() {
 
             setEditingUserId(null);
             fetchMembers();
-        } catch (err: any) {
-            alert(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to update user.';
+            toast.error(message);
         } finally {
             setIsSaving(false);
         }

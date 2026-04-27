@@ -11,12 +11,12 @@ import {
     TrendingUp,
     TrendingDown,
     ChevronDown,
-    ChevronUp,
     ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { WidgetProps } from './WidgetRegistry';
+import { widgetCardClass, widgetTitleClass } from './widgetStyles';
 
 /**
  * Health status levels matching backend API response.
@@ -201,7 +201,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
 
                                     let displayValue: string;
                                     if (value === null || value === undefined) {
-                                        displayValue = '—';
+                                        displayValue = '-';
                                     } else if (typeof value === 'number') {
                                         if (detailKey.toLowerCase().includes('revenue')) {
                                             displayValue = `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -237,12 +237,12 @@ export function StatusCenterWidget({ className }: WidgetProps) {
 
     if (isLoading) {
         return (
-            <div className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-sm p-6 ${className || ''}`}>
+            <div className={`${widgetCardClass} p-6 ${className || ''}`}>
                 <div className="flex items-center gap-3 mb-5">
                     <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <Activity className="text-blue-600 dark:text-blue-400 animate-pulse" size={20} />
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Status Center</h3>
+                    <h3 className={`${widgetTitleClass} text-lg`}>Status Center</h3>
                 </div>
                 <div className="space-y-3">
                     {[1, 2, 3, 4].map(i => (
@@ -255,12 +255,12 @@ export function StatusCenterWidget({ className }: WidgetProps) {
 
     if (error || !data) {
         return (
-            <div className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-sm p-6 ${className || ''}`}>
+            <div className={`${widgetCardClass} p-6 ${className || ''}`}>
                 <div className="flex items-center gap-3 mb-4">
                     <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg">
                         <Activity className="text-blue-600 dark:text-blue-400" size={20} />
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Status Center</h3>
+                    <h3 className={`${widgetTitleClass} text-lg`}>Status Center</h3>
                 </div>
                 <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="inline-flex p-3 bg-red-50 dark:bg-red-500/10 rounded-full mb-3">
@@ -282,7 +282,7 @@ export function StatusCenterWidget({ className }: WidgetProps) {
     const OverallIcon = overallConfig.icon;
 
     return (
-        <div className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)] overflow-hidden transition-all duration-300 hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3)] flex flex-col h-full ${className || ''}`}>
+        <div className={`${widgetCardClass} overflow-hidden flex flex-col h-full ${className || ''}`}>
             {/* Header with overall status */}
             <div className={`px-5 py-4 ${overallConfig.bgColor} border-b ${overallConfig.borderColor}`}>
                 <div className="flex items-center justify-between">

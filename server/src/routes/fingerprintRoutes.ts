@@ -25,9 +25,10 @@ const COLLECTOR_JS = `(function(){
 'use strict';
 var s=document.currentScript,n=s&&s.getAttribute('data-nonce')||'';
 if(!n)return;
-var pc=0,kc=0,vis=!document.hidden,t0=Date.now();
-document.addEventListener('pointermove',function(){pc++},{passive:true});
-document.addEventListener('keydown',function(){kc++},{passive:true});
+var pc=0,kc=0,pt=0,kt=0,vis=!document.hidden,t0=Date.now();
+document.addEventListener('pointermove',function(ev){if(ev&&ev.isTrusted)pc++},{passive:true});
+document.addEventListener('pointerdown',function(ev){if(ev&&ev.isTrusted)pt++},{passive:true});
+document.addEventListener('keydown',function(ev){kc++;if(ev&&ev.isTrusted)kt++},{passive:true});
 document.addEventListener('visibilitychange',function(){if(!document.hidden)vis=true});
 function sig(){
 return{
@@ -35,6 +36,8 @@ n:n,
 t:Date.now()-t0,
 e:pc,
 k:kc,
+pt:pt,
+kt:kt,
 v:vis?1:0,
 w:navigator.webdriver?1:0,
 s:screen.width+'x'+screen.height+':'+window.innerWidth+'x'+window.innerHeight,

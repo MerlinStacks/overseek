@@ -43,6 +43,11 @@ export interface SystemHealthData {
     };
 }
 
+interface AdminAccountResponseItem {
+    id: string;
+    name: string;
+}
+
 export interface PushSubscriptionEntry {
     id: string;
     userId: string;
@@ -135,8 +140,8 @@ export function useDiagnostics() {
             const data: PushSubscriptionData = await res.json();
             setSubscriptions(data);
             setExpandedAccounts(new Set(Object.keys(data.byAccount)));
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e: unknown) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to fetch subscriptions' });
         } finally {
             setLoading(false);
         }
@@ -149,8 +154,8 @@ export function useDiagnostics() {
                 headers: authHeaders(token),
             });
             if (res.ok) {
-                const data = await res.json();
-                setAccounts(data.map((a: any) => ({ id: a.id, name: a.name })));
+                const data: AdminAccountResponseItem[] = await res.json();
+                setAccounts(data.map((a) => ({ id: a.id, name: a.name })));
             }
         } catch (e) {
             Logger.error('Failed to fetch accounts', { error: e });
@@ -177,8 +182,8 @@ export function useDiagnostics() {
                     ? `Sent ${data.sent} notifications to ${data.accountName}`
                     : `No notifications sent. ${data.eligibleSubscriptions} eligible subscriptions found.`,
             });
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e: unknown) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Test push failed' });
         } finally {
             setLoading(false);
         }
@@ -196,8 +201,8 @@ export function useDiagnostics() {
                 setMessage({ type: 'success', text: 'Subscription deleted' });
                 fetchSubscriptions();
             }
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e: unknown) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to delete subscription' });
         }
     }, [token, fetchSubscriptions]);
 
@@ -217,8 +222,8 @@ export function useDiagnostics() {
                 setMessage({ type: 'success', text: `Deleted ${data.deleted} subscriptions` });
                 setSubscriptions(null);
             }
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e: unknown) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to delete all subscriptions' });
         } finally {
             setLoading(false);
         }

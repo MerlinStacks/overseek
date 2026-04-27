@@ -21,6 +21,15 @@ interface UsePushNotificationsReturn {
     updatePreferences: (prefs: Partial<PushPreferences>) => Promise<boolean>;
 }
 
+interface StandaloneNavigator extends Navigator {
+    standalone?: boolean;
+}
+
+interface CapacitorBridge {
+    isNativePlatform?: () => boolean;
+    platform?: string;
+}
+
 /**
  * React hook for managing Web Push notification subscriptions.
  * 
@@ -51,15 +60,16 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
             // Detect if running inside Capacitor native app
             // Capacitor injects a global object that we can check for
-            const capacitor = (window as any).Capacitor;
+            const capacitor = (window as Window & { Capacitor?: CapacitorBridge }).Capacitor;
             const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
 
             // Detect iOS
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
             // Check if running as installed PWA (standalone mode)
+            const standaloneNavigator = window.navigator as StandaloneNavigator;
             const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                (window.navigator as any).standalone === true;
+                standaloneNavigator.standalone === true;
 
             // On iOS, push only works when:
             // 1. Installed to Home Screen as PWA (standalone mode), OR

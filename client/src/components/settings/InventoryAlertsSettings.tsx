@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Save, Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useToast } from '../../context/ToastContext';
 
 export function InventoryAlertsSettings() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
 
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -16,12 +18,7 @@ export function InventoryAlertsSettings() {
     const [emailInput, setEmailInput] = useState('');
     const [emails, setEmails] = useState<string[]>([]);
 
-    useEffect(() => {
-        if (!currentAccount) return;
-        fetchSettings();
-    }, [currentAccount, token]);
-
-    const fetchSettings = async () => {
+    const fetchSettings = useCallback(async () => {
         try {
             // Need a backend endpoint for settings. 
             // Assuming GET /api/inventory/settings
@@ -39,7 +36,12 @@ export function InventoryAlertsSettings() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        if (!currentAccount) return;
+        fetchSettings();
+    }, [currentAccount, fetchSettings]);
 
     const handleSave = async () => {
         if (!currentAccount) return;
@@ -59,10 +61,10 @@ export function InventoryAlertsSettings() {
                 })
             });
             if (!res.ok) throw new Error('Failed to save');
-            alert('Settings saved successfully');
+            toast.success('Inventory alert settings saved.');
         } catch (error) {
             Logger.error('An error occurred', { error: error });
-            alert('Failed to save settings');
+            toast.error('Failed to save inventory alert settings.');
         } finally {
             setIsSaving(false);
         }

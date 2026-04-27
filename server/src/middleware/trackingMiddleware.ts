@@ -6,6 +6,8 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { onShutdown } from '../utils/shutdown';
+import { registerRuntimeMetricsProvider } from '../utils/runtimeMetrics';
 
 // Account validation cache
 const accountCache = new Map<string, number>();
@@ -92,4 +94,13 @@ const cleanupInterval = setInterval(() => {
 export function cleanupTrackingMiddleware() {
     clearInterval(cleanupInterval);
 }
+
+onShutdown(async () => {
+    cleanupTrackingMiddleware();
+});
+
+registerRuntimeMetricsProvider('trackingMiddleware', () => ({
+    accountValidationCacheSize: accountCache.size,
+    accountRateLimitMapSize: accountRateLimits.size,
+}));
 

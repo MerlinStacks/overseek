@@ -18,6 +18,8 @@ import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useInboxSocket } from '../hooks/useInboxSocket';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
+import type { AvailableChannelOption, InboxConversation, InboxMessage } from '../types/inbox';
+type ConversationFilterType = 'all' | 'mine' | 'unassigned';
 
 /** Shared auth headers builder — eliminates per-fetch boilerplate */
 function buildHeaders(token: string, accountId: string, json = false) {
@@ -35,20 +37,22 @@ export function useInbox() {
     const { currentAccount } = useAccount();
 
     // --- Core state ---
-    const [conversations, setConversations] = useState<any[]>([]);
+    const [conversations, setConversations] = useState<InboxConversation[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [messages, setMessages] = useState<any[]>([]);
+    const [messages, setMessages] = useState<InboxMessage[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
-    const [availableChannels, setAvailableChannels] = useState<Array<{ channel: ConversationChannel; identifier: string; available: boolean }>>([]);
+    const [availableChannels, setAvailableChannels] = useState<AvailableChannelOption[]>([]);
+    const [conversationFilter, setConversationFilter] = useState<ConversationFilterType>('all');
+    const [showResolved, setShowResolved] = useState(false);
 
     // Pagination
     const [hasMore, setHasMore] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
 
     // Caches / refs
-    const messagesCache = useRef<Map<string, any[]>>(new Map());
+    const messagesCache = useRef<Map<string, InboxMessage[]>>(new Map());
     const preloadingRef = useRef<Set<string>>(new Set());
     const initialLoadCompleteRef = useRef(false);
 
@@ -96,6 +100,13 @@ export function useInbox() {
     // Conversations list
     // -------------------------------------------------------
 
+    const shouldIncludeConversation = useCallback((conversation: InboxConversation) => {
+        if (!showResolved && conversation.status !== 'OPEN') return false;
+        if (conversationFilter === 'mine') return conversation.assignedTo === user?.id;
+        if (conversationFilter === 'unassigned') return !conversation.assignedTo;
+        return true;
+    }, [conversationFilter, showResolved, user?.id]);
+
     const fetchConversations = useCallback(async (cursor?: string) => {
         if (!currentAccount || !token) return;
 
@@ -111,15 +122,28 @@ export function useInbox() {
         try {
             const params = new URLSearchParams();
             params.set('limit', '50');
+            params.set('sort', 'priority');
             if (cursor) params.set('cursor', cursor);
+            if (!showResolved) params.set('status', 'OPEN');
+            if (conversationFilter === 'mine' && user?.id) {
+                params.set('assignedTo', user.id);
+            } else if (conversationFilter === 'unassigned') {
+                params.set('assignedTo', '__unassigned__');
+            }
 
             const res = await fetch(`/api/chat/conversations?${params}`, {
                 headers: buildHeaders(token, currentAccount.id),
             });
-            const data = await res.json();
+            const data: unknown = await res.json();
+            const parsed = Array.isArray(data)
+                ? { conversations: data as InboxConversation[], hasMore: false }
+                : {
+                    conversations: ((data as { conversations?: InboxConversation[] }).conversations || []),
+                    hasMore: Boolean((data as { hasMore?: unknown }).hasMore),
+                };
 
-            const newConversations = data.conversations || data;
-            setHasMore(data.hasMore ?? false);
+            const newConversations = parsed.conversations;
+            setHasMore(parsed.hasMore);
 
             if (isLoadMore) {
                 setConversations(prev => [...prev, ...newConversations]);
@@ -136,7 +160,7 @@ export function useInbox() {
             if (isInitialLoad) setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [currentAccount, token]);
+    }, [conversationFilter, currentAccount, showResolved, token, user?.id]);
 
     const loadMoreConversations = useCallback(() => {
         if (isLoadingMore || !hasMore || conversations.length === 0) return;
@@ -192,20 +216,16 @@ export function useInbox() {
             snoozeUntil: snoozeUntil?.toISOString(),
         });
         if (ok) {
-            setConversations(prev => prev.map(c =>
-                c.id === selectedId ? { ...c, status: newStatus } : c
-            ));
+            await fetchConversations();
         }
-    }, [patchConversation, selectedId]);
+    }, [fetchConversations, patchConversation]);
 
     const handleAssign = useCallback(async (userId: string) => {
         const ok = await patchConversation({ assignedTo: userId || null });
         if (ok) {
-            setConversations(prev => prev.map(c =>
-                c.id === selectedId ? { ...c, assignedTo: userId || null } : c
-            ));
+            await fetchConversations();
         }
-    }, [patchConversation, selectedId]);
+    }, [fetchConversations, patchConversation]);
 
     const handleMerge = useCallback(async (targetConversationId: string) => {
         if (!selectedId || !token || !currentAccount) return;
@@ -228,27 +248,23 @@ export function useInbox() {
             });
             if (res.ok) {
                 await patchConversation({ status: 'CLOSED' });
-                setConversations(prev => prev.map(c =>
-                    c.id === selectedId ? { ...c, status: 'CLOSED' } : c
-                ));
+                await fetchConversations();
             } else {
                 Logger.warn('Failed to block contact', { email: recipientEmail });
             }
         };
-    }, [recipientEmail, selectedId, token, currentAccount, patchConversation]);
+    }, [fetchConversations, recipientEmail, selectedId, token, currentAccount, patchConversation]);
 
     const updateConversationStatus = useCallback(async (status: 'OPEN' | 'CLOSED') => {
         try {
             const ok = await patchConversation({ status });
             if (ok) {
-                setConversations(prev => prev.map(c =>
-                    c.id === selectedId ? { ...c, status } : c
-                ));
+                await fetchConversations();
             }
         } catch (e) {
             Logger.error('Failed to update status', { error: e });
         }
-    }, [patchConversation, selectedId]);
+    }, [fetchConversations, patchConversation]);
 
     // -------------------------------------------------------
     // Send message
@@ -272,8 +288,9 @@ export function useInbox() {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || 'Failed to send message');
             }
-        } catch (error: any) {
-            Logger.error('Failed to send message', { error: error?.message || error });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            Logger.error('Failed to send message', { error: message });
             throw error;
         }
     }, [selectedId, token, currentAccount]);
@@ -298,9 +315,24 @@ export function useInbox() {
         token,
         accountId: currentAccount?.id,
         messagesCache,
+        shouldIncludeConversation,
         setConversations,
         setMessages,
     });
+
+    useEffect(() => {
+        // Refetch immediately when server-side list filters change.
+        fetchConversations();
+    }, [fetchConversations]);
+
+    useEffect(() => {
+        if (!selectedId) return;
+        const stillVisible = conversations.some(c => c.id === selectedId);
+        if (!stillVisible) {
+            setSelectedId(null);
+            setMessages([]);
+        }
+    }, [conversations, selectedId]);
 
     // Fetch messages when a conversation is selected
     useEffect(() => {
@@ -323,10 +355,11 @@ export function useInbox() {
             ]);
 
             if (messagesRes.ok) {
-                const data = await messagesRes.json();
-                if (data.messages) {
-                    setMessages(data.messages);
-                    messagesCache.current.set(selectedId, data.messages);
+                const data: unknown = await messagesRes.json();
+                const nextMessages = (data as { messages?: InboxMessage[] }).messages;
+                if (nextMessages) {
+                    setMessages(nextMessages);
+                    messagesCache.current.set(selectedId, nextMessages);
                     if (messagesCache.current.size > 20) {
                         const firstKey = messagesCache.current.keys().next().value;
                         if (firstKey) messagesCache.current.delete(firstKey);
@@ -339,8 +372,8 @@ export function useInbox() {
             ));
 
             if (channelsRes?.ok) {
-                const data = await channelsRes.json();
-                setAvailableChannels(data.channels || []);
+                const data: unknown = await channelsRes.json();
+                setAvailableChannels((data as { channels?: AvailableChannelOption[] }).channels || []);
             } else {
                 setAvailableChannels([]);
             }
@@ -378,6 +411,10 @@ export function useInbox() {
         isShortcutsHelpOpen,
         setIsShortcutsHelpOpen,
         availableChannels,
+        conversationFilter,
+        setConversationFilter,
+        showResolved,
+        setShowResolved,
         hasMore,
         isLoadingMore,
 

@@ -3,7 +3,7 @@ import { Logger } from '../../utils/logger';
 import { formatDate, formatCurrency } from '../../utils/format';
 import { Modal } from '../ui/Modal';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 
@@ -13,28 +13,42 @@ interface OrderPreviewModalProps {
     onClose: () => void;
 }
 
+interface OrderPreviewItem {
+    id: number | string;
+    name: string;
+    quantity: number;
+    price: number | string;
+    total: number | string;
+}
+
+interface OrderPreview {
+    status: string;
+    date_created: string;
+    billing?: {
+        first_name?: string;
+        last_name?: string;
+        email?: string;
+    };
+    line_items?: OrderPreviewItem[];
+    total: number | string;
+    currency?: string;
+}
+
 export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModalProps) {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const [order, setOrder] = useState<any>(null);
+    const accountId = currentAccount?.id;
+    const [order, setOrder] = useState<OrderPreview | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    useEffect(() => {
-        if (isOpen && orderId && currentAccount && token) {
-            fetchOrderDetails();
-        } else {
-            setOrder(null);
-        }
-    }, [isOpen, orderId, currentAccount, token]);
-
-    async function fetchOrderDetails() {
+    const fetchOrderDetails = useCallback(async () => {
         setIsLoading(true);
         try {
             const res = await fetch(`/api/orders/${orderId}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount?.id || ''
+                    'X-Account-ID': accountId || ''
                 }
             });
             if (res.ok) {
@@ -46,7 +60,15 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [accountId, orderId, token]);
+
+    useEffect(() => {
+        if (isOpen && orderId && accountId && token) {
+            fetchOrderDetails();
+        } else {
+            setOrder(null);
+        }
+    }, [isOpen, orderId, accountId, token, fetchOrderDetails]);
 
     return (
         <Modal
@@ -111,7 +133,7 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                                 <span className="text-xs font-medium text-gray-400 bg-gray-200/60 px-2 py-0.5 rounded-full">{order.line_items?.length || 0} item{order.line_items?.length !== 1 ? 's' : ''}</span>
                             </div>
                             <div className="divide-y divide-gray-100 bg-white max-h-48 overflow-y-auto">
-                                {order.line_items?.map((item: any) => (
+                                {order.line_items?.map((item) => (
                                     <div key={item.id} className="p-3.5 flex justify-between items-start gap-3 hover:bg-gray-50/50 transition-colors">
                                         <div className="flex items-start gap-3 flex-1 min-w-0">
                                             <div className="w-9 h-9 bg-linear-to-br from-gray-100 to-gray-50 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 shrink-0">
@@ -120,12 +142,12 @@ export function OrderPreviewModal({ orderId, isOpen, onClose }: OrderPreviewModa
                                             <div className="min-w-0 flex-1">
                                                 <div className="font-medium text-gray-900 text-sm leading-tight line-clamp-2">{item.name}</div>
                                                 <div className="text-xs text-gray-500 mt-1">
-                                                    {item.quantity} × {formatCurrency(item.price, order.currency)}
+                                                    {item.quantity} × {formatCurrency(Number(item.price), order.currency)}
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="font-semibold text-gray-900 text-sm shrink-0">
-                                            {formatCurrency(item.total, order.currency)}
+                                            {formatCurrency(Number(item.total), order.currency)}
                                         </div>
                                     </div>
                                 ))}

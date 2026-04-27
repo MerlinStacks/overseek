@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, MapPin, Monitor, Smartphone, Tablet, Globe, Clock, ShoppingCart, Eye, Search, CreditCard, Package, ChevronDown, ChevronRight } from 'lucide-react';
@@ -10,7 +10,7 @@ interface AnalyticsEvent {
     type: string;
     url?: string;
     pageTitle?: string;
-    payload?: any;
+    payload?: Record<string, unknown>;
     createdAt: string;
 }
 
@@ -124,6 +124,7 @@ function VisitSection({ visit, isFirst, displayNumber }: { visit: AnalyticsVisit
  */
 function EventItem({ event }: { event: AnalyticsEvent }) {
     const payload = event.payload || {};
+    const textValue = (value: unknown): string => (typeof value === 'string' || typeof value === 'number') ? String(value) : '';
 
     const getEventConfig = (type: string) => {
         switch (type) {
@@ -151,6 +152,13 @@ function EventItem({ event }: { event: AnalyticsEvent }) {
 
     const config = getEventConfig(event.type);
     const time = new Date(event.createdAt).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
+    const labelText = (() => {
+        if (event.type === 'product_view') return textValue(payload.productName) || event.pageTitle || config.label;
+        if (event.type === 'search') return `Searched "${textValue(payload.term) || textValue(payload.searchQuery) || 'unknown'}"`;
+        if (event.type === 'add_to_cart') return textValue(payload.name) || textValue(payload.productName) || 'Added to cart';
+        if (event.type === 'purchase') return '';
+        return event.pageTitle || config.label;
+    })();
 
     return (
         <div className="flex items-start gap-3">
@@ -160,15 +168,12 @@ function EventItem({ event }: { event: AnalyticsEvent }) {
             <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-900">
-                        {event.type === 'product_view' && (payload.productName || event.pageTitle || config.label)}
-                        {event.type === 'search' && `Searched "${payload.term || payload.searchQuery || 'unknown'}"`}
-                        {event.type === 'add_to_cart' && (payload.name || payload.productName || 'Added to cart')}
+                        {event.type !== 'purchase' && labelText}
                         {event.type === 'purchase' && (
                             <span className="text-green-600">
-                                Purchased {payload.total && `$${payload.total}`}
+                                Purchased {textValue(payload.total) ? `$${textValue(payload.total)}` : ''}
                             </span>
                         )}
-                        {!['product_view', 'search', 'add_to_cart', 'purchase'].includes(event.type) && (event.pageTitle || config.label)}
                     </span>
                     <span className="text-xs text-gray-400 ml-2">{time}</span>
                 </div>
@@ -192,11 +197,7 @@ export function MobileVisitorDetail() {
     const [data, setData] = useState<VisitorData | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchVisitorProfile();
-    }, [id, currentAccount, token]);
-
-    const fetchVisitorProfile = async () => {
+    const fetchVisitorProfile = useCallback(async () => {
         if (!currentAccount || !token || !id) {
             setLoading(false);
             return;
@@ -220,7 +221,11 @@ export function MobileVisitorDetail() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount, id, token]);
+
+    useEffect(() => {
+        fetchVisitorProfile();
+    }, [fetchVisitorProfile]);
 
     const getDeviceIcon = (deviceType: string | null | undefined) => {
         if (deviceType === 'mobile') return <Smartphone size={16} className="text-gray-500" />;

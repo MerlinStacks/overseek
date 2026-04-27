@@ -5,8 +5,8 @@ import { X, Save, Mail } from 'lucide-react';
 import { registerWooCommerceTools, getWooCommerceMergeTags } from '../../lib/unlayerWooCommerceTools';
 
 interface Props {
-    initialDesign?: any;
-    onSave: (html: string, design: any) => void;
+    initialDesign?: unknown;
+    onSave: (html: string, design: unknown) => void;
     onCancel: () => void;
 }
 
@@ -45,7 +45,9 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         }
 
         if (initialDesign && emailEditorRef.current?.editor) {
-            emailEditorRef.current.editor.loadDesign(initialDesign);
+            const editor = emailEditorRef.current.editor;
+            type LoadDesignArg = Parameters<typeof editor.loadDesign>[0];
+            editor.loadDesign(initialDesign as LoadDesignArg);
         }
     };
 

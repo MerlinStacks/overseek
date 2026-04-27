@@ -150,4 +150,25 @@ describe('ConversionForwarder', () => {
         expect(tiktokService.sendEvent).toHaveBeenCalledTimes(1);
         expect(metaService.sendEvent).toHaveBeenCalledTimes(1);
     });
+
+    it('should respect per-platform event toggles and skip disabled events', async () => {
+        (prisma.accountFeature.findMany as any).mockResolvedValue([
+            {
+                featureKey: 'META_CAPI',
+                isEnabled: true,
+                config: { pixelId: 'px123', accessToken: 'tok', events: { addToCart: false } },
+            },
+            {
+                featureKey: 'TIKTOK_EVENTS_API',
+                isEnabled: true,
+                config: { pixelCode: 'tt123', accessToken: 'tok', events: { addToCart: true } },
+            },
+        ]);
+
+        const addToCartData = { ...baseData, type: 'add_to_cart' };
+        await ConversionForwarder.forwardIfConversion(addToCartData as any, mockSession);
+
+        expect(metaService.sendEvent).not.toHaveBeenCalled();
+        expect(tiktokService.sendEvent).toHaveBeenCalledTimes(1);
+    });
 });

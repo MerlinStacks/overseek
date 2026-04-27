@@ -57,14 +57,7 @@ export function TeamPage() {
         setToastMessage(message); setToastType(type); setToastVisible(true);
     }, []);
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchMembers();
-            fetchCustomRoles();
-        }
-    }, [currentAccount, token]);
-
-    const fetchMembers = async () => {
+    const fetchMembers = useCallback(async () => {
         try {
             const res = await fetch(`/api/accounts/${currentAccount?.id}/users`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -75,9 +68,9 @@ export function TeamPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount?.id, token]);
 
-    const fetchCustomRoles = async () => {
+    const fetchCustomRoles = useCallback(async () => {
         try {
             const res = await fetch('/api/roles', {
                 headers: {
@@ -92,7 +85,14 @@ export function TeamPage() {
         } catch (e) {
             Logger.error('Failed to fetch custom roles', { error: e });
         }
-    };
+    }, [currentAccount?.id, token]);
+
+    useEffect(() => {
+        if (currentAccount && token) {
+            fetchMembers();
+            fetchCustomRoles();
+        }
+    }, [currentAccount, token, fetchMembers, fetchCustomRoles]);
 
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -120,9 +120,10 @@ export function TeamPage() {
             setEmail('');
             fetchMembers();
             showToast('User added to team', 'success');
-        } catch (err: any) {
-            setError(err.message);
-            showToast(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to add user';
+            setError(message);
+            showToast(message);
         }
     };
 
@@ -182,8 +183,9 @@ export function TeamPage() {
             setEditingUserId(null);
             fetchMembers();
             showToast('Role updated', 'success');
-        } catch (err: any) {
-            showToast(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to update user';
+            showToast(message);
         } finally {
             setIsSaving(false);
         }

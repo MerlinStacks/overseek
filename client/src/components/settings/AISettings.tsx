@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Save, Loader2, Bot, Key, ChevronDown, Check, Sparkles } from 'lucide-react';
 
 // Available embedding models from OpenRouter
@@ -13,19 +14,26 @@ const EMBEDDING_MODELS = [
     { id: 'cohere/embed-english-v3.0', name: 'Cohere Embed English v3', desc: 'English optimized' },
 ];
 
+interface AIModel {
+    id: string;
+    name: string;
+}
+
 export function AISettings() {
     const { currentAccount, refreshAccounts } = useAccount();
     const { token } = useAuth();
+    const toast = useToast();
 
     const [apiKey, setApiKey] = useState('');
     const [selectedModel, setSelectedModel] = useState('openai/gpt-4o');
     const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('openai/text-embedding-3-small');
-    const [models, setModels] = useState<any[]>([]);
+    const [models, setModels] = useState<AIModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const [isEmbeddingOpen, setIsEmbeddingOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const accountId = currentAccount?.id;
     const dropdownRef = useRef<HTMLDivElement>(null);
     const embeddingDropdownRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +88,7 @@ export function AISettings() {
 
     useEffect(() => {
         const fetchModels = async () => {
-            if (!currentAccount || !token) return;
+            if (!accountId || !token) return;
             // Only fetch if we have a key saved (or maybe standard list?)
             // If the user hasn't saved a key yet, we might not get models unless we use a default key on backend.
             // But let's try fetching anyway.
@@ -89,13 +97,13 @@ export function AISettings() {
                 const res = await fetch('/api/ai/models', {
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
+                        'x-account-id': accountId
                     }
                 });
                 if (res.ok) {
                     const data = await res.json();
                     if (Array.isArray(data)) {
-                        const sorted = data.sort((a: any, b: any) => a.id.localeCompare(b.id));
+                        const sorted = (data as AIModel[]).sort((a, b) => a.id.localeCompare(b.id));
                         setModels(sorted);
                     }
                 }
@@ -108,7 +116,7 @@ export function AISettings() {
 
         // Fetch on mount
         fetchModels();
-    }, [currentAccount?.id, token]); // Only re-fetch if account changes
+    }, [accountId, token]); // Only re-fetch if account changes
 
     const handleSave = async () => {
         if (!currentAccount || !token) return;
@@ -130,11 +138,11 @@ export function AISettings() {
             if (!res.ok) throw new Error('Failed to save');
 
             await refreshAccounts();
-            alert('AI Settings Saved');
+            toast.success('AI settings saved.');
 
         } catch (e) {
             Logger.error('An error occurred', { error: e });
-            alert('Failed to save');
+            toast.error('Failed to save AI settings.');
         } finally {
             setIsSaving(false);
         }

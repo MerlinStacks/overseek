@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BarChart3, Download, FileText, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { BarChart3, Download, FileText, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ReportResult, METRIC_OPTIONS } from '../../types/analytics';
@@ -62,13 +62,17 @@ export function ReportResults({
     error,
     hasSearched
 }: ReportResultsProps) {
+    const getMetricValue = (row: ReportResult, metric: string): number => {
+        const value = row[metric];
+        return typeof value === 'number' ? value : 0;
+    };
 
     const exportCSV = () => {
         if (results.length === 0) return;
         const headers = [getDimensionLabel(dimension), ...metrics.map(getMetricLabel)];
         const rows = results.map(row => [
             row.dimension,
-            ...metrics.map(m => (row as any)[m] || 0)
+            ...metrics.map(m => getMetricValue(row, m))
         ]);
 
         const csvContent = "data:text/csv;charset=utf-8,"
@@ -95,7 +99,7 @@ export function ReportResults({
         const tableColumn = [getDimensionLabel(dimension), ...metrics.map(getMetricLabel)];
         const tableRows = results.map(row => [
             row.dimension,
-            ...metrics.map(m => formatValue(m, (row as any)[m]))
+            ...metrics.map(m => formatValue(m, getMetricValue(row, m)))
         ]);
 
         autoTable(doc, {
@@ -111,7 +115,7 @@ export function ReportResults({
 
     // Calculate totals for summary
     const totals = metrics.reduce((acc, m) => {
-        acc[m] = results.reduce((sum, row) => sum + ((row as any)[m] || 0), 0);
+        acc[m] = results.reduce((sum, row) => sum + getMetricValue(row, m), 0);
         return acc;
     }, {} as Record<string, number>);
 
@@ -207,11 +211,11 @@ export function ReportResults({
                                             {row.dimension}
                                         </td>
                                         {metrics.map(m => (
-                                            <td key={m} className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 text-right font-mono tabular-nums">
-                                                {formatValue(m, (row as any)[m])}
-                                            </td>
-                                        ))}
-                                    </tr>
+                                        <td key={m} className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 text-right font-mono tabular-nums">
+                                                {formatValue(m, getMetricValue(row, m))}
+                                        </td>
+                                    ))}
+                                </tr>
                                 ))}
                             </tbody>
                             {/* Table Footer with Totals */}

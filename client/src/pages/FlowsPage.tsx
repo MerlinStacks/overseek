@@ -10,10 +10,21 @@ import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import type { Edge, Node } from '@xyflow/react';
 
 interface EditingItem {
     id: string;
     name: string;
+}
+
+interface FlowDefinition {
+    nodes: Node[];
+    edges: Edge[];
+}
+
+interface FlowRecord {
+    flowDefinition?: FlowDefinition | null;
+    [key: string]: unknown;
 }
 
 export function FlowsPage() {
@@ -22,7 +33,7 @@ export function FlowsPage() {
 
     const [isEditing, setIsEditing] = useState(false);
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
-    const [editingFlowData, setEditingFlowData] = useState<any>(null);
+    const [editingFlowData, setEditingFlowData] = useState<FlowRecord | null>(null);
 
     const handleEditFlow = async (id: string, name: string) => {
         setEditingItem({ id, name });
@@ -34,7 +45,7 @@ export function FlowsPage() {
                 }
             });
             if (res.ok) {
-                const data = await res.json();
+                const data: FlowRecord = await res.json();
                 setEditingFlowData(data);
                 setIsEditing(true);
             } else {
@@ -52,7 +63,7 @@ export function FlowsPage() {
         setEditingFlowData(null);
     };
 
-    const handleSaveFlow = async (flow: { nodes: any[]; edges: any[] }) => {
+    const handleSaveFlow = async (flow: FlowDefinition) => {
         if (!editingItem || !currentAccount) return;
         try {
             await fetch(`/api/marketing/automations/${editingItem.id}`, {

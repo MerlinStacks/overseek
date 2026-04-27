@@ -5,9 +5,18 @@
 import React from 'react';
 import { SendEmailConfig } from '../SendEmailConfig';
 
+interface ActionNodeConfig {
+    actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK';
+    smsMessage?: string;
+    isTransactional?: boolean;
+    tagName?: string;
+    webhookUrl?: string;
+    [key: string]: unknown;
+}
+
 export interface ActionConfigProps {
-    config: any;
-    onUpdate: (key: string, value: any) => void;
+    config: ActionNodeConfig;
+    onUpdate: (key: string, value: unknown) => void;
 }
 
 const ACTION_TYPES = [

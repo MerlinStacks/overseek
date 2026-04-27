@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, RefreshCw, Search, Loader2, CheckCircle, ExternalLink, Link2, MessageSquare } from 'lucide-react';
+import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
@@ -12,12 +12,25 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { RelativeTime } from '../components/ui/RelativeTime';
 import { useToast } from '../context/ToastContext';
 
+interface ReviewRow {
+    id: string;
+    productName?: string;
+    reviewer?: string;
+    reviewerEmail?: string;
+    rating: number;
+    content?: string;
+    dateCreated: string;
+    status: string;
+    customer?: { id: string; firstName?: string; lastName?: string };
+    order?: { number?: string };
+}
+
 export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const navigate = useNavigate();
     const toast = useToast();
-    const [reviews, setReviews] = useState<any[]>([]);
+    const [reviews, setReviews] = useState<ReviewRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isRematching, setIsRematching] = useState(false);
@@ -28,9 +41,10 @@ export const ReviewsPage = () => {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
-    const [totalReviews, setTotalReviews] = useState(0);
+    // Debounce search query to prevent API calls on every keystroke
+    const debouncedSearch = useDebouncedValue(searchQuery, 400);
 
-    const fetchReviews = async () => {
+    const fetchReviews = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         setIsLoading(true);
@@ -41,7 +55,7 @@ export const ReviewsPage = () => {
                 accountId: currentAccount.id
             });
 
-            if (searchQuery) params.append('search', searchQuery);
+            if (debouncedSearch) params.append('search', debouncedSearch);
             if (statusFilter !== 'all') params.append('status', statusFilter);
 
             const res = await fetch(`/api/reviews?${params.toString()}`, {
@@ -53,17 +67,17 @@ export const ReviewsPage = () => {
 
             if (!res.ok) throw new Error('Failed to fetch reviews');
 
-            const data = await res.json();
-            setReviews(data.reviews || []);
-            setTotalPages(data.pagination?.pages || 1);
-            setTotalReviews(data.pagination?.total || 0);
+            const data: unknown = await res.json();
+            const payload = data as { reviews?: ReviewRow[]; pagination?: { pages?: number } };
+            setReviews(payload.reviews || []);
+            setTotalPages(payload.pagination?.pages || 1);
 
         } catch (error) {
             Logger.error('Failed to fetch reviews', { error: error });
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentAccount, token, page, limit, debouncedSearch, statusFilter]);
 
     const handleSync = async () => {
         if (!currentAccount || !token) return;
@@ -122,9 +136,6 @@ export const ReviewsPage = () => {
         }
     };
 
-    // Debounce search query to prevent API calls on every keystroke
-    const debouncedSearch = useDebouncedValue(searchQuery, 400);
-
     // Reset page when filters change
     useEffect(() => {
         setPage(1);
@@ -133,7 +144,7 @@ export const ReviewsPage = () => {
     // Fetch on changes
     useEffect(() => {
         fetchReviews();
-    }, [currentAccount, token, page, limit, debouncedSearch, statusFilter]);
+    }, [currentAccount, token, page, limit, debouncedSearch, statusFilter, fetchReviews]);
 
     return (
         <div className="p-6 space-y-6">
@@ -221,7 +232,7 @@ export const ReviewsPage = () => {
                                                 <span className="font-medium">
                                                     {review.customer ? (
                                                         <button
-                                                            onClick={() => navigate(`/customers/${review.customer.id}`)}
+                                                            onClick={() => review.customer?.id && navigate(`/customers/${review.customer.id}`)}
                                                             className="text-blue-600 hover:underline flex items-center gap-1"
                                                         >
                                                             {review.customer.firstName ? `${review.customer.firstName} ${review.customer.lastName || ''}` : review.reviewer}

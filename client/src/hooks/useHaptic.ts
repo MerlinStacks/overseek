@@ -21,6 +21,19 @@ const PATTERN_DURATIONS: Record<HapticPattern, number | number[]> = {
     selection: 5
 };
 
+interface CapacitorHapticsBridge {
+    Haptics: {
+        impact: (options?: { style?: unknown }) => Promise<void>;
+        notification: (options: { type: 'success' | 'error' | 'warning' }) => Promise<void>;
+        selectionStart: () => Promise<void>;
+    };
+    ImpactStyle: {
+        Light: unknown;
+        Medium: unknown;
+        Heavy: unknown;
+    };
+}
+
 /**
  * Hook for haptic feedback across PWA and Capacitor native apps.
  *
@@ -45,7 +58,7 @@ const PATTERN_DURATIONS: Record<HapticPattern, number | number[]> = {
  */
 export function useHaptic() {
     // Cache the dynamic import result so we only resolve once
-    const capacitorRef = useRef<{ Haptics: any; ImpactStyle: any } | null | false>(null);
+    const capacitorRef = useRef<CapacitorHapticsBridge | null | false>(null);
 
     /**
      * Lazily loads @capacitor/haptics. Returns the module or null if unavailable.
@@ -56,7 +69,7 @@ export function useHaptic() {
 
         try {
             const mod = await import('@capacitor/haptics');
-            capacitorRef.current = { Haptics: mod.Haptics, ImpactStyle: mod.ImpactStyle };
+            capacitorRef.current = { Haptics: mod.Haptics, ImpactStyle: mod.ImpactStyle } as unknown as CapacitorHapticsBridge;
             return capacitorRef.current;
         } catch {
             capacitorRef.current = false; // mark as unavailable
@@ -109,10 +122,10 @@ export function useHaptic() {
                         await Haptics.impact({ style: ImpactStyle.Heavy });
                         break;
                     case 'success':
-                        await Haptics.notification({ type: 'success' as never });
+                        await Haptics.notification({ type: 'success' });
                         break;
                     case 'error':
-                        await Haptics.notification({ type: 'error' as never });
+                        await Haptics.notification({ type: 'error' });
                         break;
                     case 'selection':
                         await Haptics.selectionStart();

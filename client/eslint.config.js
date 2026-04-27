@@ -15,6 +15,14 @@ export default tseslint.config(
         },
         rules: {
             ...reactHooks.configs.recommended.rules,
+            // These React Compiler rules are useful but too strict for the current codebase.
+            // Keep them visible as warnings while we migrate incrementally.
+            'react-hooks/preserve-manual-memoization': 'warn',
+            'react-hooks/purity': 'warn',
+            'react-hooks/immutability': 'warn',
+            'react-hooks/set-state-in-effect': 'warn',
+            'react-hooks/static-components': 'warn',
+            'react-hooks/refs': 'warn',
             'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-unused-vars': ['warn', {
@@ -35,6 +43,17 @@ export default tseslint.config(
                 clients: 'readonly',
                 caches: 'readonly',
                 fetch: 'readonly',
+            },
+        },
+    },
+    // Node scripts
+    {
+        files: ['scripts/**/*.{js,mjs,cjs}'],
+        languageOptions: {
+            globals: {
+                console: 'readonly',
+                process: 'readonly',
+                Buffer: 'readonly',
             },
         },
     }

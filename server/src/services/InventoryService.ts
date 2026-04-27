@@ -39,8 +39,8 @@ export class InventoryService {
      *
      * @returns number of buildable units, or null if product has no BOM
      */
-    static async calculateBOMStock(_accountId: string, productId: string, variationId: number = 0): Promise<number | null> {
-        const result = await BOMInventorySyncService.calculateEffectiveStockLocal(productId, variationId);
+    static async calculateBOMStock(accountId: string, productId: string, variationId: number = 0): Promise<number | null> {
+        const result = await BOMInventorySyncService.calculateEffectiveStockLocal(accountId, productId, variationId);
         return result?.effectiveStock ?? null;
     }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { Search, Package2, AlertTriangle, Grid, List, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -43,11 +43,7 @@ export function MobileInventory() {
     const [filter, setFilter] = useState<'all' | 'low'>('all');
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
-    useEffect(() => {
-        fetchProducts();
-    }, [currentAccount, filter, token]);
-
-    const fetchProducts = async () => {
+    const fetchProducts = useCallback(async () => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
@@ -91,7 +87,11 @@ export function MobileInventory() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAccount, filter, searchQuery, token]);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();

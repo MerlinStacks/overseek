@@ -105,7 +105,7 @@ export const StockManagementPanel = forwardRef<StockManagementPanelRef, StockMan
      * Save stock for a variant or main product.
      * Returns true on success, false on failure.
      */
-    const handleSave = async (variantWooId?: number): Promise<boolean> => {
+    const handleSave = useCallback(async (variantWooId?: number): Promise<boolean> => {
         const tkn = tokenRef.current;
         const acct = accountRef.current;
         if (!tkn || !acct) return false;
@@ -163,7 +163,7 @@ export const StockManagementPanel = forwardRef<StockManagementPanelRef, StockMan
         } finally {
             setSavingVariantId(null);
         }
-    };
+    }, [editValues, onStockChange, productWooId, stockInfo?.variants]);
 
     const handleAdjust = (delta: number, variantWooId?: number) => {
         const targetId = variantWooId ?? 0;

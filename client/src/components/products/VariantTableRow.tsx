@@ -11,7 +11,7 @@ interface VariantTableRowProps {
     variant: ProductVariant;
     isExpanded: boolean;
     onToggleExpand: () => void;
-    onFieldChange: (field: keyof ProductVariant, value: any) => void;
+    onFieldChange: (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => void;
     stockEditValue: string;
     onStockEditChange: (value: string) => void;
     onStockAdjust: (delta: number) => void;
@@ -53,7 +53,7 @@ export const VariantTableRow = memo(function VariantTableRow({
             <td className="px-4 py-2">
                 <div className="flex flex-wrap gap-1">
                     {v.attributes?.length > 0 ? (
-                        v.attributes.map((attr: any, idx: number) => (
+                        v.attributes.map((attr, idx: number) => (
                             <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
                                 <span className="font-medium text-gray-500">{attr.name}:</span>
                                 <span className="ml-1">{attr.option}</span>

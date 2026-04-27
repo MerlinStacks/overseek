@@ -14,7 +14,7 @@ interface VariantExpandedDetailsProps {
     productId: string;
     bomPanelRef: (ref: BOMPanelRef | null) => void;
     onSyncComplete?: (newStock: number) => void;
-    onFieldChange: (field: keyof ProductVariant, value: any) => void;
+    onFieldChange: (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => void;
     onMultiFieldChange: (updates: Partial<ProductVariant>) => void;
     onBomCogsUpdate: (cogs: number) => void;
     canViewCogs: boolean;

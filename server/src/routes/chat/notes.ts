@@ -87,7 +87,9 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
     // GET /:id/labels - Get labels for a conversation
     fastify.get<{ Params: { id: string } }>('/:id/labels', async (request, reply) => {
         try {
-            const labels = await labelService.getConversationLabels(request.params.id);
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const labels = await labelService.getConversationLabels(accountId, request.params.id);
             return { labels };
         } catch (error) {
             Logger.error('Failed to get conversation labels', { error });
@@ -98,7 +100,9 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /:id/labels/:labelId - Assign a label to conversation
     fastify.post<{ Params: { id: string; labelId: string } }>('/:id/labels/:labelId', async (request, reply) => {
         try {
-            const assignment = await labelService.assignLabel(request.params.id, request.params.labelId);
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            const assignment = await labelService.assignLabel(accountId, request.params.id, request.params.labelId);
             return { success: true, label: assignment.label };
         } catch (error: any) {
             if (error.code === 'P2025') {
@@ -112,7 +116,9 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
     // DELETE /:id/labels/:labelId - Remove a label from conversation
     fastify.delete<{ Params: { id: string; labelId: string } }>('/:id/labels/:labelId', async (request, reply) => {
         try {
-            await labelService.removeLabel(request.params.id, request.params.labelId);
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            await labelService.removeLabel(accountId, request.params.id, request.params.labelId);
             return { success: true };
         } catch (error: any) {
             if (error.code === 'P2025') {

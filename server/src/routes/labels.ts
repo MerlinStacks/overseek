@@ -28,8 +28,11 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * GET /labels - List all labels for the current account
      */
-    fastify.get('/', async (request) => {
-        const { accountId } = request.user as { accountId: string };
+    fastify.get('/', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.status(400).send({ error: 'Account ID required' });
+        }
         const labels = await labelService.listLabels(accountId);
         return { labels };
     });
@@ -38,7 +41,10 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /labels - Create a new label
      */
     fastify.post('/', async (request, reply) => {
-        const { accountId } = request.user as { accountId: string };
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.status(400).send({ error: 'Account ID required' });
+        }
         const body = createLabelSchema.parse(request.body);
 
         try {
@@ -61,8 +67,12 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /labels/:id - Get a single label
      */
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.status(400).send({ error: 'Account ID required' });
+        }
         const { id } = request.params;
-        const label = await labelService.getLabel(id);
+        const label = await labelService.getLabel(accountId, id);
 
         if (!label) {
             return reply.status(404).send({ error: 'Label not found' });
@@ -75,11 +85,15 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * PUT /labels/:id - Update a label
      */
     fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.status(400).send({ error: 'Account ID required' });
+        }
         const { id } = request.params;
         const body = updateLabelSchema.parse(request.body);
 
         try {
-            const label = await labelService.updateLabel(id, body);
+            const label = await labelService.updateLabel(accountId, id, body);
             return { label };
         } catch (error: any) {
             if (error.code === 'P2025') {
@@ -96,10 +110,14 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * DELETE /labels/:id - Delete a label
      */
     fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.status(400).send({ error: 'Account ID required' });
+        }
         const { id } = request.params;
 
         try {
-            await labelService.deleteLabel(id);
+            await labelService.deleteLabel(accountId, id);
             return reply.status(204).send();
         } catch (error: any) {
             if (error.code === 'P2025') {
