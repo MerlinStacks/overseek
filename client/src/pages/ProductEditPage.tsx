@@ -28,6 +28,7 @@ import { HistoryTimeline } from '../components/shared/HistoryTimeline';
 import { ProductSalesHistory } from '../components/products/ProductSalesHistory';
 import { PresenceAvatars } from '../components/common/PresenceAvatars';
 import { useProductEdit } from '../hooks/useProductEdit';
+import type { ProductData, ProductVariantData } from '../hooks/useProductEdit';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import type { MerchantIssue } from '../components/Seo/MerchantCenterPanel';
 import type { MerchantCenterIssue } from '../components/Seo/MerchantCenterScoreBadge';
@@ -45,55 +46,22 @@ export function ProductEditPage() {
 
     const { user } = useAuth();
 
-    const {
-        isLoading,
-        isSaving,
-        isSyncing,
-        loadError,
-        hasUnsavedChanges,
-        saveState,
-        saveMessage,
-        lastSavedAt,
-        lastSyncedAt,
-        product,
-        formData,
-        variants,
-        suppliers,
-        productViews,
-        mainImageFailed,
-        seoResult,
-        activeUsers,
-        currentAccount,
-        bomPanelRef,
-        variationsPanelRef,
-        stockPanelRef,
-        updateFormData,
-        setVariants,
-        setMainImageFailed,
-        handleSave,
-        handleSync,
-        fetchProduct,
-        fetchViews,
-        discardDraft,
-        hasDraft
-    } = useProductEdit(id);
+    const hookData = useProductEdit(id);
 
-    const activeTabParam = searchParams.get('tab');
-
-    if (isLoading) {
+    if (hookData.isLoading) {
         return <ProductEditSkeleton />;
     }
 
-    if (!product) {
+    if (!hookData.product) {
         return (
             <div className="p-8 text-center">
-                <h2 className="text-xl font-bold text-gray-900">{loadError ? 'Unable to Load Product' : 'Product Not Found'}</h2>
+                <h2 className="text-xl font-bold text-gray-900">{hookData.loadError ? 'Unable to Load Product' : 'Product Not Found'}</h2>
                 <p className="mt-2 text-sm text-gray-500">
-                    {loadError || 'This product could not be found for the selected account.'}
+                    {hookData.loadError || 'This product could not be found for the selected account.'}
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-4">
-                    {loadError && (
-                        <button onClick={() => fetchProduct()} className="text-blue-600 hover:underline">
+                    {hookData.loadError && (
+                        <button onClick={() => hookData.fetchProduct()} className="text-blue-600 hover:underline">
                             Try Again
                         </button>
                     )}
@@ -104,6 +72,63 @@ export function ProductEditPage() {
             </div>
         );
     }
+
+    const { product: hookProduct, ...restHookData } = hookData;
+
+    return (
+        <ProductEditPageContent
+            user={user}
+            searchParams={searchParams}
+            setSearchParams={setSearchParams}
+            {...restHookData}
+            product={hookProduct}
+        />
+    );
+}
+
+type ProductEditPageContentProps = {
+    user: { id?: string } | null;
+    searchParams: URLSearchParams;
+    setSearchParams: (nextInit?: URLSearchParams | ((prev: URLSearchParams) => URLSearchParams), navigateOpts?: { replace?: boolean }) => void;
+} & Omit<ReturnType<typeof useProductEdit>, 'product' | 'loadError'> & {
+    product: ProductData;
+};
+
+function ProductEditPageContent({
+    user,
+    searchParams,
+    setSearchParams,
+    isLoading,
+    isSaving,
+    isSyncing,
+    hasUnsavedChanges,
+    saveState,
+    saveMessage,
+    lastSavedAt,
+    lastSyncedAt,
+    product,
+    formData,
+    variants,
+    suppliers,
+    productViews,
+    mainImageFailed,
+    seoResult,
+    activeUsers,
+    currentAccount,
+    bomPanelRef,
+    variationsPanelRef,
+    stockPanelRef,
+    updateFormData,
+    setVariants,
+    setMainImageFailed,
+    handleSave,
+    handleSync,
+    fetchProduct,
+    fetchViews,
+    discardDraft,
+    hasDraft
+}: ProductEditPageContentProps) {
+    const activeTabParam = searchParams.get('tab');
 
     const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
     const statusTone = saveState === 'error'
@@ -240,7 +265,7 @@ export function ProductEditPage() {
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <VariationsPanel
                         ref={variationsPanelRef}
-                        product={{ ...product, variations: ((product.variations || []).map((variant) => typeof variant === 'number' ? variant : variant.id)) }}
+                        product={{ ...product, variations: ((product.variations || []).map((variant: number | ProductVariantData) => typeof variant === 'number' ? variant : variant.id)) }}
                         variants={variants as unknown as VariantType[]}
                         onUpdate={(updatedVariants) => setVariants(updatedVariants as unknown[])}
                     />

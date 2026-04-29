@@ -1,0 +1,1 @@
+node scripts/file-size-guard.js $(git diff --cached --name-only --diff-filter=ACM)

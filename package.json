@@ -35,10 +35,12 @@
     "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
     "db:migrate": "cd server && npx prisma migrate deploy --config ./prisma/prisma.config.ts",
     "db:generate": "cd server && npx prisma generate --config ./prisma/prisma.config.ts",
-    "build:packages": "npm run build -w packages/overseek-core && npm run build -w packages/overseek-mcp && npm run build -w packages/overseek-cli"
+    "build:packages": "npm run build -w packages/overseek-core && npm run build -w packages/overseek-mcp && npm run build -w packages/overseek-cli",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "lint-staged": "^15.5.2"
   },
   "overrides": {
     "react": "^19.2.0",

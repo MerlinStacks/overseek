@@ -47,7 +47,7 @@ interface SeoData {
     focusKeyword?: string;
 }
 
-interface ProductVariantData {
+export interface ProductVariantData {
     id: number;
     sku?: string;
     price?: string | number;

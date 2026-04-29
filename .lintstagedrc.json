@@ -1,0 +1,11 @@
+{
+  "*.{ts,tsx}": [
+    "node scripts/file-size-guard.js"
+  ],
+  "client/src/**/*.{ts,tsx}": [
+    "cd client && npm run lint -- --max-warnings=0"
+  ],
+  "server/src/**/*.ts": [
+    "cd server && npm run lint"
+  ]
+}

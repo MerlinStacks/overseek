@@ -30,7 +30,7 @@ export class ProductSync extends BaseSync {
         const syncStartedAt = new Date();
 
         while (hasMore) {
-            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 100 });
+            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 50 });
             if (!rawProducts.length) {
                 hasMore = false;
                 break;

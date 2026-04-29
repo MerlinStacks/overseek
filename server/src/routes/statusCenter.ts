@@ -237,11 +237,22 @@ async function getStoreHealth(accountId: string): Promise<StatusSection> {
         const cached = await redisClient.get(cacheKey);
 
         if (cached) {
-            const parsed = JSON.parse(cached);
-            return {
-                ...parsed,
-                lastChecked: parsed.lastChecked, // Return cached check time
-            };
+            // Guard: reject cache entries larger than 1MB to prevent OOM on
+            // corrupted or oversized Redis values.
+            if (cached.length > 1 * 1024 * 1024) {
+                Logger.warn('[StatusCenter] Cached store health exceeds safe size, skipping cache', {
+                    accountId,
+                    sizeMB: (cached.length / 1024 / 1024).toFixed(2)
+                });
+                await redisClient.del(cacheKey);
+            } else {
+                const parsed = JSON.parse(cached);
+                return {
+                    ...parsed,
+                    lastChecked: parsed.lastChecked, // Return cached check time
+                };
+            }
+        }
         }
 
         // Perform actual health check

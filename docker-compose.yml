@@ -94,17 +94,16 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
-      # V8 heap at 3GB + ~1-1.5GB for Prisma Rust engine / native buffers /
-      # HTTP(S) socket pools puts steady-state around 4-4.5GB. A 5GB container
-      # limit left almost no headroom for transient spikes (large WooCommerce
-      # pages, GC compaction, ES bulk indexing), which OOM-killed the container
-      # even though Node's own heap never hit its ceiling. Bumped to 6GB.
-      NODE_OPTIONS: "--max-old-space-size=3072"
+      # V8 heap at 6GB + ~1-1.5GB for Prisma Rust engine / native buffers /
+      # HTTP(S) socket pools puts steady-state around 5.5-6.5GB. The container
+      # has 8GB to leave headroom for transient spikes (large WooCommerce
+      # pages, GC compaction, ES bulk indexing).
+      NODE_OPTIONS: "--max-old-space-size=6144"
     volumes:
       - uploads_data:/app/server/uploads
       - geoip_data:/app/server/data
-    mem_limit: 6g
-    memswap_limit: 6g
+    mem_limit: 8g
+    memswap_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy

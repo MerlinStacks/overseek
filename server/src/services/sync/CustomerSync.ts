@@ -20,8 +20,9 @@ export class CustomerSync extends BaseSync {
         const syncStartedAt = new Date();
 
         while (hasMore) {
-            // Optimized: Increased page size from 25 to 100 for fewer API round-trips
-            const { data: rawCustomers, totalPages } = await woo.getCustomers({ page, after, per_page: 100 });
+            // Use 50/page to balance throughput with memory safety (large
+            // customer objects with heavy metadata can OOM at 100/page).
+            const { data: rawCustomers, totalPages } = await woo.getCustomers({ page, after, per_page: 50 });
             if (!rawCustomers.length) {
                 hasMore = false;
                 break;

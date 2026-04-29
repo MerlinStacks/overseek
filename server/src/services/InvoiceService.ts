@@ -48,7 +48,15 @@ export class InvoiceService {
 
         if (typeof parsed === 'string') {
             try {
-                parsed = JSON.parse(parsed);
+                // Guard: pathologically large template strings can OOM during parse
+                if (parsed.length > 10 * 1024 * 1024) {
+                    Logger.warn('[InvoiceService] Template layout string exceeds safe size, skipping parse', {
+                        sizeMB: (parsed.length / 1024 / 1024).toFixed(2)
+                    });
+                    parsed = {};
+                } else {
+                    parsed = JSON.parse(parsed);
+                }
             } catch (error) {
                 Logger.warn('[InvoiceService] Failed to parse template layout string', { error });
                 parsed = {};
@@ -411,8 +419,15 @@ export class InvoiceService {
 
             if (typeof layoutData === 'string') {
                 try {
-                    layoutData = JSON.parse(layoutData);
-                    Logger.info('Parsed layout from string');
+                    // Guard: pathologically large template strings can OOM during parse
+                    if (layoutData.length > 10 * 1024 * 1024) {
+                        Logger.warn('[InvoiceService] Layout data string exceeds safe size, skipping parse', {
+                            sizeMB: (layoutData.length / 1024 / 1024).toFixed(2)
+                        });
+                    } else {
+                        layoutData = JSON.parse(layoutData);
+                        Logger.info('Parsed layout from string');
+                    }
                 } catch (e) {
                     Logger.error('Failed to parse template layout', { error: e });
                 }

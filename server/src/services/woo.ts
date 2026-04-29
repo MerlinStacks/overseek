@@ -121,6 +121,11 @@ export class WooService {
 
         this.axiosConfig = {
             httpsAgent: WooService.getAgent(urlObj.hostname),
+            // Prevent OOM when a WooCommerce store returns pathologically large
+            // JSON payloads (e.g. products with huge meta_data). Axios buffers
+            // the entire response body into memory before JSON.parse().
+            maxContentLength: 50 * 1024 * 1024, // 50MB
+            maxBodyLength: 50 * 1024 * 1024,    // 50MB
         };
 
         this.api = new WooCommerceRestApi({

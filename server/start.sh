@@ -81,8 +81,8 @@ fi
 echo "[Startup] Database ready."
 
 # Start the application with capped heap.
-# Respect preconfigured NODE_OPTIONS from Compose/env; default to 3GB.
+# Respect preconfigured NODE_OPTIONS from Compose/env; default to 6GB.
 echo "[Startup] Starting Node.js application..."
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=3072}"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
 exec npm start
 

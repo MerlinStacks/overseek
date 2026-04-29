@@ -55,7 +55,7 @@ export class OrderSync extends BaseSync {
         let expectedTotal = 0;
 
         while (hasMore) {
-            const { data: rawOrders, totalPages, total } = await woo.getOrders({ page, after, per_page: 100 });
+            const { data: rawOrders, totalPages, total } = await woo.getOrders({ page, after, per_page: 50 });
             if (page === 1) expectedTotal = total;
             if (!rawOrders.length) {
                 hasMore = false;
