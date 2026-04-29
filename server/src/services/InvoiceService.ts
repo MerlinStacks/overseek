@@ -12,6 +12,10 @@ import {
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
 } from '../../../packages/overseek-core/dist/invoiceRenderModel';
+import {
+    decodeInvoiceEntities,
+    getInvoiceItemMeta,
+} from '../../../packages/overseek-core/dist/invoiceItemUtils';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 
@@ -435,17 +439,6 @@ export class InvoiceService {
             };
             const formatDate = (d: Date) => formatInvoiceDate(d, settings);
 
-            /** Decode HTML entities (&#NNN; and common named entities) to actual characters. */
-            const decodeEntities = (text: string): string => {
-                return text
-                    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-                    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&apos;/g, "'");
-            };
             const rawData = order.rawData as any || {};
 
             // Page dimensions (A4 with 50pt margins)
@@ -608,13 +601,6 @@ export class InvoiceService {
                         let tableY = startY + 18;
                         doc.font('Helvetica').fontSize(9);
 
-                        // Keys to exclude from metadata display (internal plugin/system keys)
-                        const excludedKeyPatterns = [
-                            /^_/, /^pa_/, /wcpa/i, /meta_data/i,
-                            /^reduced_stock/i, /label_map/i, /droppable/i, /^id$/i, /^key$/i
-                        ];
-                        const isExcludedKey = (key: string) => excludedKeyPatterns.some(p => p.test(key));
-
                         lineItems.forEach((item: any) => {
                             // Check for page break
                             if (tableY > 720) {
@@ -640,20 +626,17 @@ export class InvoiceService {
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
 
-                            // Display user-facing metadata with proper filtering
-                            const itemMeta = (item.meta_data || []).filter((m: any) => {
-                                const key = m.key || '';
-                                if (isExcludedKey(key)) return false;
-                                if (!m.display_key && !m.display_value) return false;
-                                return true;
-                            });
+                            const itemMeta = getInvoiceItemMeta(item);
                             if (itemMeta.length > 0) {
                                 tableY += 12;
                                 doc.fontSize(8).fillColor('#64748b');
-                                itemMeta.slice(0, 6).forEach((m: any) => {
-                                    const label = m.display_key || m.key.replace(/_/g, ' ');
-                                    const val = typeof m.value === 'object' ? JSON.stringify(m.value) : (m.display_value || m.value);
-                                    doc.text(decodeEntities(`${label}: ${val}`), tableX + 10, tableY, { width: descWidth - 20 });
+                                itemMeta.slice(0, 6).forEach((meta) => {
+                                    doc.text(
+                                        decodeInvoiceEntities(`${meta.label}: ${meta.value}`),
+                                        tableX + 10,
+                                        tableY,
+                                        { width: descWidth - 20 }
+                                    );
                                     tableY += 10;
                                 });
                                 doc.fillColor('black').fontSize(9);

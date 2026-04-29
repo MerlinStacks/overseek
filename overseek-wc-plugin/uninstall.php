@@ -25,6 +25,8 @@ $options = array(
     'overseek_connection_config',
     'overseek_enable_tracking',
     'overseek_enable_chat',
+    'overseek_enable_vitals',
+    'overseek_vitals_sample_rate',
     'overseek_require_consent',
     'overseek_cookie_retention_days',
     'overseek_relay_api_key',
@@ -46,7 +48,9 @@ $wpdb->query(
      WHERE option_name LIKE '_transient_overseek_pixels_%'
         OR option_name LIKE '_transient_timeout_overseek_pixels_%'
         OR option_name LIKE '_transient_overseek_chat_config_%'
-        OR option_name LIKE '_transient_timeout_overseek_chat_config_%'"
+        OR option_name LIKE '_transient_timeout_overseek_chat_config_%'
+        OR option_name LIKE '_transient__os_fp_nonce_%'
+        OR option_name LIKE '_transient_timeout__os_fp_nonce_%'"
 );
 
 // ─── Order Meta ─────────────────────────────────────────────────────────────

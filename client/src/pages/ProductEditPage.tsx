@@ -5,8 +5,10 @@
  * State management delegated to useProductEdit hook.
  */
 
-import { useParams, useNavigate } from 'react-router-dom';
-import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2 } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { SeoAnalysisPanel } from '../components/Seo/SeoAnalysisPanel';
@@ -39,6 +41,7 @@ type GoldPriceType = '18ct' | '9ct' | '18ctWhite' | '9ctWhite' | 'legacy' | null
 export function ProductEditPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const { user } = useAuth();
 
@@ -46,6 +49,12 @@ export function ProductEditPage() {
         isLoading,
         isSaving,
         isSyncing,
+        loadError,
+        hasUnsavedChanges,
+        saveState,
+        saveMessage,
+        lastSavedAt,
+        lastSyncedAt,
         product,
         formData,
         variants,
@@ -64,28 +73,64 @@ export function ProductEditPage() {
         handleSave,
         handleSync,
         fetchProduct,
+        fetchViews,
         discardDraft,
         hasDraft
     } = useProductEdit(id);
 
+    const activeTabParam = searchParams.get('tab');
+
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-gray-50/50">
-                <Loader2 className="animate-spin text-blue-600" size={32} />
-            </div>
-        );
+        return <ProductEditSkeleton />;
     }
 
     if (!product) {
         return (
             <div className="p-8 text-center">
-                <h2 className="text-xl font-bold text-gray-900">Product Not Found</h2>
-                <button onClick={() => navigate('/inventory')} className="mt-4 text-blue-600 hover:underline">
-                    Back to Inventory
-                </button>
+                <h2 className="text-xl font-bold text-gray-900">{loadError ? 'Unable to Load Product' : 'Product Not Found'}</h2>
+                <p className="mt-2 text-sm text-gray-500">
+                    {loadError || 'This product could not be found for the selected account.'}
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-4">
+                    {loadError && (
+                        <button onClick={() => fetchProduct()} className="text-blue-600 hover:underline">
+                            Try Again
+                        </button>
+                    )}
+                    <button onClick={() => navigate('/inventory')} className="text-blue-600 hover:underline">
+                        Back to Inventory
+                    </button>
+                </div>
             </div>
         );
     }
+
+    const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
+    const statusTone = saveState === 'error'
+        ? 'text-red-700 bg-red-50 border-red-200'
+        : saveState === 'partial'
+            ? 'text-amber-700 bg-amber-50 border-amber-200'
+            : saveState === 'saved'
+                ? 'text-green-700 bg-green-50 border-green-200'
+                : saveState === 'saving'
+                    ? 'text-blue-700 bg-blue-50 border-blue-200'
+                    : 'text-slate-700 bg-slate-50 border-slate-200';
+    const statusIcon = saveState === 'error'
+        ? <AlertTriangle size={14} />
+        : saveState === 'partial'
+            ? <AlertTriangle size={14} />
+            : saveState === 'saved'
+                ? <CheckCircle2 size={14} />
+                : saveState === 'saving'
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <CircleDot size={14} />;
+    const savedLabel = lastSavedAt
+        ? `Saved ${formatDistanceToNow(lastSavedAt, { addSuffix: true })}`
+        : null;
+    const lastSyncLabel = lastSyncedAt
+        ? `Synced ${formatDistanceToNow(lastSyncedAt, { addSuffix: true })}`
+        : null;
+    const saveDisabled = isSaving || isSyncing;
 
     const tabs = [
         {
@@ -109,9 +154,9 @@ export function ProductEditPage() {
                                     <ImageOff size={48} />
                                     <span className="text-sm mt-2">Image unavailable</span>
                                 </div>
-                            ) : (product.mainImage || (formData.images as unknown as Array<{ src?: string }>)?.[0]?.src) ? (
+                            ) : previewImage ? (
                                 <img
-                                    src={product.mainImage || (formData.images as unknown as Array<{ src?: string }>)?.[0]?.src}
+                                    src={previewImage}
                                     alt=""
                                     className="w-full h-auto rounded-lg border border-gray-100 shadow-xs"
                                     referrerPolicy="no-referrer"
@@ -263,6 +308,36 @@ export function ProductEditPage() {
         }
     ];
 
+    const tabIds = useMemo(() => tabs.map(tab => tab.id), [tabs]);
+    const activeTab = tabIds.includes(activeTabParam || '') ? (activeTabParam as string) : tabIds[0];
+
+    useEffect(() => {
+        if (activeTabParam !== activeTab) {
+            const next = new URLSearchParams(searchParams);
+            next.set('tab', activeTab);
+            setSearchParams(next, { replace: true });
+        }
+    }, [activeTab, activeTabParam, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
+            event.preventDefault();
+            if (!saveDisabled) {
+                handleSave();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleSave, saveDisabled]);
+
+    const handleTabChange = (tabId: string) => {
+        const next = new URLSearchParams(searchParams);
+        next.set('tab', tabId);
+        setSearchParams(next, { replace: true });
+    };
+
     return (
         <div className="min-h-screen bg-gray-50/50 pb-20">
             {/* Header Sticky Bar */}
@@ -284,10 +359,14 @@ export function ProductEditPage() {
                                 <div className="flex items-center gap-3 mt-1">
                                     <SeoScoreBadge score={seoResult.score || 0} size="sm" tests={seoResult.tests} />
                                     <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues as MerchantCenterIssue[] | undefined} />
+                                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${statusTone}`}>
+                                        {statusIcon}
+                                        {hasUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
+                                    </span>
                                 </div>
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
                                     <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded-sm text-xs text-gray-600">ID: {product.wooId}</span>
-                                    {product.sku && <span className="flex items-center gap-1"><Tag size={12} /> {product.sku}</span>}
+                                    {formData.sku && <span className="flex items-center gap-1"><Tag size={12} /> {formData.sku}</span>}
                                     {productViews && (
                                         <span className="flex items-center gap-1 text-purple-600" title={`${productViews.views30d} views in 30 days`}>
                                             <Eye size={12} />
@@ -302,6 +381,12 @@ export function ProductEditPage() {
                                     <a href={product.permalink} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors">
                                         View on Store <ExternalLink size={12} />
                                     </a>
+                                    {lastSyncLabel && (
+                                        <>
+                                            <span>â€¢</span>
+                                            <span>{lastSyncLabel}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -327,22 +412,115 @@ export function ProductEditPage() {
                                 </button>
                             )}
                             <button
+                                onClick={fetchViews}
+                                disabled={saveDisabled}
+                                className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white/50 border border-gray-300/80 text-gray-700 font-medium rounded-lg hover:bg-white transition-colors backdrop-blur-xs disabled:opacity-50"
+                                title="Refresh product views"
+                            >
+                                <Eye size={16} />
+                                Views
+                            </button>
+                            <button
                                 onClick={handleSave}
-                                disabled={isSaving}
+                                disabled={saveDisabled}
                                 className="flex items-center gap-2 px-6 py-2 bg-blue-600/90 text-white font-medium rounded-lg hover:bg-blue-600 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all backdrop-blur-xs"
                             >
                                 {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                                Save Changes
+                                {isSaving ? 'Saving...' : 'Save Changes'}
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <Tabs tabs={tabs} />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+                <div className={`rounded-xl border px-4 py-3 text-sm ${statusTone}`}>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 font-medium">
+                            {statusIcon}
+                            <span>{saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.')}</span>
+                        </div>
+                        <div className="text-xs opacity-80">
+                            <span>Shortcut: Ctrl/Cmd+S</span>
+                            {savedLabel && <span className="ml-3">{savedLabel}</span>}
+                        </div>
+                    </div>
+                </div>
+
+                <Tabs
+                    tabs={tabs}
+                    mountInactiveTabs={false}
+                    activeTab={activeTab}
+                    onTabChange={handleTabChange}
+                />
             </div>
 
+            <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur-xl">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-gray-900">
+                            {hasUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
+                        </div>
+                        <div className="truncate text-xs text-gray-500">
+                            {lastSyncLabel || 'Sync when you want the latest WooCommerce data'}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleSync}
+                            disabled={isSyncing || isLoading}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50"
+                        >
+                            {isSyncing ? 'Syncing...' : 'Sync'}
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={saveDisabled}
+                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        >
+                            {isSaving ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    );
+}
+
+function ProductEditSkeleton() {
+    return (
+        <div className="min-h-screen bg-gray-50/50 pb-20">
+            <div className="sticky top-0 z-30 border-b border-gray-200/50 bg-white/80 backdrop-blur-xl shadow-xs">
+                <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+                    <div className="h-4 w-48 animate-pulse rounded bg-gray-200" />
+                    <div className="mt-4 flex items-center justify-between gap-4">
+                        <div className="space-y-3">
+                            <div className="h-8 w-72 animate-pulse rounded bg-gray-200" />
+                            <div className="h-4 w-64 animate-pulse rounded bg-gray-100" />
+                        </div>
+                        <div className="flex gap-3">
+                            {[1, 2, 3].map(item => (
+                                <div key={item} className="h-10 w-24 animate-pulse rounded-lg bg-gray-200" />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+                <div className="h-12 animate-pulse rounded-2xl bg-gray-200" />
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <div className="lg:col-span-2 space-y-6">
+                        {[1, 2, 3].map(item => (
+                            <div key={item} className="h-40 animate-pulse rounded-xl bg-white" />
+                        ))}
+                    </div>
+                    <div className="space-y-6">
+                        <div className="h-72 animate-pulse rounded-xl bg-white" />
+                        <div className="h-48 animate-pulse rounded-xl bg-white" />
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

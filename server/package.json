@@ -4,8 +4,8 @@
     "private": true,
     "scripts": {
         "dev": "nodemon -r ts-node/register src/index.ts | pino-pretty --translateTime \"SYS:standard\" --ignore time,pid,hostname",
-        "build": "npx tsc",
-        "build:typecheck": "npx tsc --noEmit",
+        "build": "npm --prefix .. run build -w @overseek/core && npx tsc",
+        "build:typecheck": "npm --prefix .. run build -w @overseek/core && npx tsc --noEmit",
         "start": "node --disable-warning=DEP0040 dist/index.js",
         "test": "vitest run",
         "test:watch": "vitest",

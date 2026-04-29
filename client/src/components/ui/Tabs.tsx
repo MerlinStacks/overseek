@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface Tab {
     id: string;
@@ -11,10 +11,38 @@ interface TabsProps {
     tabs: Tab[];
     defaultTab?: string;
     className?: string;
+    mountInactiveTabs?: boolean;
+    activeTab?: string;
+    onTabChange?: (tabId: string) => void;
 }
 
-export function Tabs({ tabs, defaultTab, className = '' }: TabsProps) {
-    const [activeTab, setActiveTab] = useState(defaultTab || tabs[0].id);
+export function Tabs({
+    tabs,
+    defaultTab,
+    className = '',
+    mountInactiveTabs = true,
+    activeTab: controlledActiveTab,
+    onTabChange
+}: TabsProps) {
+    const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState(defaultTab || tabs[0].id);
+    const activeTab = controlledActiveTab ?? uncontrolledActiveTab;
+
+    useEffect(() => {
+        if (!tabs.some(tab => tab.id === activeTab)) {
+            const fallbackTab = defaultTab || tabs[0].id;
+            if (controlledActiveTab === undefined) {
+                setUncontrolledActiveTab(fallbackTab);
+            }
+            onTabChange?.(fallbackTab);
+        }
+    }, [activeTab, controlledActiveTab, defaultTab, onTabChange, tabs]);
+
+    const handleTabChange = (tabId: string) => {
+        if (controlledActiveTab === undefined) {
+            setUncontrolledActiveTab(tabId);
+        }
+        onTabChange?.(tabId);
+    };
 
     return (
         <div className={`space-y-6 ${className}`}>
@@ -23,7 +51,7 @@ export function Tabs({ tabs, defaultTab, className = '' }: TabsProps) {
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => handleTabChange(tab.id)}
                         className={`
                             flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 whitespace-nowrap relative
                             ${activeTab === tab.id
@@ -44,7 +72,7 @@ export function Tabs({ tabs, defaultTab, className = '' }: TabsProps) {
                         key={tab.id}
                         className={`transition-all duration-300 ease-out transform ${activeTab === tab.id ? 'opacity-100 translate-y-0 relative z-10' : 'opacity-0 translate-y-2 absolute inset-0 -z-10 pointer-events-none'}`}
                     >
-                        {tab.content}
+                        {(mountInactiveTabs || activeTab === tab.id) ? tab.content : null}
                     </div>
                 ))}
             </div>

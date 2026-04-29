@@ -4,9 +4,10 @@ import {
     buildInvoiceNumber,
     formatInvoiceCurrency,
     formatInvoiceDate,
-    mergeInvoiceSettings
+    mergeInvoiceSettings,
+    resolveInvoiceTemplateString
 } from '../../../../packages/overseek-core/src/invoiceRenderModel';
-import { getItemMeta, resolveHandlebars } from '../../utils/invoiceItemUtils';
+import { getInvoiceItemMeta } from '../../../../packages/overseek-core/src/invoiceItemUtils';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -212,7 +213,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
                 // Handlebars-style replacement with data
                 if (data) {
-                    text = resolveHandlebars(text, data);
+                    text = resolveInvoiceTemplateString(text, data);
                 }
 
                 return (
@@ -312,7 +313,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                 </thead>
                                 <tbody>
                                     {lineItems.map((item, i: number) => {
-                                        const itemMeta = getItemMeta(item);
+                                        const itemMeta = getInvoiceItemMeta(item);
                                         const quantity = toNumber(item.quantity);
                                         const lineTotal = toNumber(item.total);
                                         const unitPrice = quantity > 0

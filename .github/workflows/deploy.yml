@@ -57,6 +57,7 @@ jobs:
           filters: |
             api:
               - 'server/**'
+              - 'packages/overseek-core/**'
               - 'package.json'
               - 'package-lock.json'
               - 'docker-compose.yml'

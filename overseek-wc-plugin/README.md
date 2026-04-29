@@ -48,6 +48,13 @@ Embeds a chat bubble on your storefront that connects customers to your unified 
 ### Email Relay
 Enables OverSeek to send marketing emails and notifications through your WordPress server's configured SMTP provider (useful if your OverSeek server doesn't have outbound email).
 
+### Email Preference Center
+Adds a customer-facing preference center that can be embedded on a normal WordPress page with either:
+- shortcode: `[overseek_preference_center]`
+- Gutenberg block: `OverSeek Preference Center`
+
+Customers arriving with an `overseek_email_preferences` token in the page URL can unsubscribe from marketing only or all email without leaving the store domain.
+
 ### WooCommerce REST API Integration
 The plugin works alongside WooCommerce's built-in REST API for:
 - Order sync (bidirectional)
@@ -103,6 +110,16 @@ API URL: http://localhost:3000
 ```
 
 ## Changelog
+
+### 2.15.0 - 2026-04-29
+- **Added:** `[overseek_preference_center]` shortcode for embedding the customer email preference center on any WordPress page.
+- **Added:** `OverSeek Preference Center` Gutenberg block for the same storefront preference experience in the block editor.
+- **Improved:** The preference-center renderer is now shared across standalone token links, shortcode embeds, and block embeds.
+
+### 2.14.0 - 2026-04-29
+- **Added:** Customer-facing email preference center on the WooCommerce store domain, powered by the plugin and linked from OverSeek unsubscribe tokens.
+- **Added:** Token-based preference lookup and update support so the plugin can manage `marketing only` vs `all email` opt-outs without sending customers back to the app domain.
+- **Improved:** Existing unsubscribe links now redirect into the WooCommerce-hosted preference center when the connected store URL is available.
 
 ### 2.13.0 - 2026-04-29
 - **Added:** End-to-end abandoned-cart recovery support with signed recovery links that rebuild WooCommerce carts before checkout.

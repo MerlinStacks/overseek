@@ -1,0 +1,16 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/preference-center",
+  "title": "OverSeek Preference Center",
+  "category": "widgets",
+  "icon": "email-alt",
+  "description": "Render the OverSeek customer email preference center on a WordPress page.",
+  "textdomain": "overseek-wc",
+  "editorScript": "file:../../assets/preference-center-block.js",
+  "attributes": {
+    "title": {
+      "type": "string",
+      "default": "Email Preferences"
+    }
+  }
+}

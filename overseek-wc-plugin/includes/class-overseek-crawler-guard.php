@@ -22,6 +22,9 @@ if (!defined('ABSPATH')) {
 
 class OverSeek_Crawler_Guard
 {
+    /** @var int Length used for hashed key fragments. */
+    private const HASH_LENGTH = 16;
+
     /** @var string OverSeek API base URL. */
     private string $api_url;
 
@@ -50,7 +53,7 @@ class OverSeek_Crawler_Guard
             return;
         }
 
-        $this->transient_key = 'overseek_blocked_agents_' . substr(md5($this->account_id), 0, 8);
+        $this->transient_key = 'overseek_blocked_agents_' . OverSeek_Crypto_Utils::hash_key_fragment($this->account_id, 8);
 
         // Schedule hourly sync via WP-Cron
         if (!wp_next_scheduled(self::CRON_HOOK)) {
@@ -220,7 +223,7 @@ class OverSeek_Crawler_Guard
         }
 
         // Dedup: only report this UA once per 5 minutes per account
-        $dedup_key = 'os_bh_' . substr(md5($this->account_id . $user_agent), 0, 16);
+        $dedup_key = 'os_bh_' . OverSeek_Crypto_Utils::hash_key_fragment($this->account_id . $user_agent, self::HASH_LENGTH);
         if (false !== get_transient($dedup_key)) {
             return;
         }
@@ -359,8 +362,7 @@ HTML;
             return;
         }
 
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
+        $data = OverSeek_HTTP_Utils::decode_json_response($response);
 
         if (!is_array($data)) {
             return;
@@ -390,4 +392,5 @@ HTML;
                 OR option_name LIKE '_transient_timeout_overseek_blocked_agents_%'"
         );
     }
+
 }
