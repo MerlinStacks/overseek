@@ -57,7 +57,7 @@ class OverSeek_Pixels
     {
         if (empty($account_id)) $account_id = $this->account_id;
         if (empty($account_id) || empty($this->api_url)) return;
-        OverSeek_Pixel_Config_Provider::refresh_config($this->api_url, $account_id);
+        $this->fetch_pixel_config_from_api();
     }
 
     /**
@@ -78,10 +78,10 @@ class OverSeek_Pixels
         // ─── Meta Pixel ─────────────────────────────────────────────────
         if (!empty($config['meta']['pixelId'])) {
             $pixel_id = esc_js($config['meta']['pixelId']);
-            $init_params = OverSeek_Pixel_Matching_Utils::get_advanced_matching_params($config['meta']);
+            $init_params = $this->get_advanced_matching_params($config['meta']);
 
             // Add external_id for improved Event Match Quality
-            $external_id = OverSeek_Pixel_Matching_Utils::get_external_id();
+            $external_id = $this->get_external_id();
             if ($external_id && !empty($config['meta']['advancedMatching'])) {
                 $init_params['external_id'] = hash('sha256', strtolower(trim($external_id)));
             }
@@ -103,7 +103,7 @@ class OverSeek_Pixels
 
             // TikTok Advanced Matching — send hashed PII for better match rates
             if (!empty($config['tiktok']['advancedMatching'])) {
-                $tt_identify = OverSeek_Pixel_Matching_Utils::get_tiktok_identify_params();
+                $tt_identify = $this->get_tiktok_identify_params();
                 if (!empty($tt_identify)) {
                     echo "ttq.identify(" . wp_json_encode($tt_identify) . ");";
                 }
@@ -203,12 +203,12 @@ class OverSeek_Pixels
 
         // ViewContent — product pages
         if (is_product() && $this->is_event_enabled($config, 'viewContent')) {
-            $events[] = OverSeek_Pixel_Ecommerce_Events::build_view_content_events($config);
+            $events[] = $this->build_view_content_events($config);
         }
 
         // view_item_list — category/collection pages
         if ((is_product_category() || is_product_tag() || is_shop()) && $this->is_event_enabled($config, 'viewContent')) {
-            $events[] = OverSeek_Pixel_Ecommerce_Events::build_view_item_list_events($config);
+            $events[] = $this->build_view_item_list_events($config);
         }
 
         // AddToCart — fires via JS intercept on add-to-cart buttons
@@ -218,7 +218,7 @@ class OverSeek_Pixels
 
         // view_cart — cart page
         if (is_cart() && $this->is_event_enabled($config, 'addToCart')) {
-            $events[] = OverSeek_Pixel_Ecommerce_Events::build_view_cart_events($config);
+            $events[] = $this->build_view_cart_events($config);
         }
 
         // remove_from_cart — AJAX listener
@@ -228,7 +228,7 @@ class OverSeek_Pixels
 
         // InitiateCheckout — checkout page
         if (is_checkout() && !is_order_received_page() && $this->is_event_enabled($config, 'initiateCheckout')) {
-            $events[] = OverSeek_Pixel_Ecommerce_Events::build_initiate_checkout_events($config);
+            $events[] = $this->build_initiate_checkout_events($config);
             $events[] = $this->build_checkout_step_listeners($config);
         }
 
@@ -239,7 +239,7 @@ class OverSeek_Pixels
 
         // Purchase — thank-you page (with deduplication)
         if (is_order_received_page() && $this->is_event_enabled($config, 'purchase')) {
-            $events[] = OverSeek_Pixel_Ecommerce_Events::build_purchase_events($config);
+            $events[] = $this->build_purchase_events($config);
         }
 
         $js = implode("\n", array_filter($events));
@@ -258,6 +258,79 @@ class OverSeek_Pixels
         return $js;
     }
 
+    private function build_view_content_events(array $config): string
+    {
+        global $product;
+        if (!$product instanceof WC_Product) return '';
+
+        $content_id = $this->get_content_id($product, $config);
+        $value = (float) $product->get_price();
+        $currency = get_woocommerce_currency();
+        $name = $product->get_name();
+        // Shared with server-side product_view event for cross-channel deduplication.
+        $event_id = $this->get_shared_product_view_event_id((int) $product->get_id());
+
+        $js = '';
+        if (!empty($config['meta']['pixelId'])) {
+            $js .= "fbq('track','ViewContent'," . wp_json_encode(['content_ids' => [$content_id], 'content_type' => 'product', 'content_name' => $name, 'value' => $value, 'currency' => $currency]) . ",{eventID:'{$event_id}'});";
+        }
+        if (!empty($config['tiktok']['pixelCode'])) {
+            $js .= "ttq.track('ViewContent'," . wp_json_encode(['content_id' => $content_id, 'content_type' => 'product', 'content_name' => $name, 'value' => $value, 'currency' => $currency]) . ");";
+        }
+        if (!empty($config['pinterest']['tagId'])) {
+            $js .= "pintrk('track','pagevisit'," . wp_json_encode(['product_id' => $content_id, 'product_name' => $name, 'value' => $value, 'currency' => $currency]) . ");";
+        }
+        if (!empty($config['snapchat']['pixelId'])) {
+            $js .= "snaptr('track','VIEW_CONTENT'," . wp_json_encode(['item_ids' => [$content_id], 'price' => $value, 'currency' => $currency]) . ");";
+        }
+        if (!empty($config['ga4']['measurementId'])) {
+            $js .= "gtag('event','view_item'," . wp_json_encode(['items' => [['item_id' => $content_id, 'item_name' => $name, 'price' => $value]], 'value' => $value, 'currency' => $currency]) . ");";
+        }
+        if (!empty($config['google']['conversionId']) && !empty($config['google']['conversionLabelViewItem'])) {
+            $js .= "gtag('event','conversion',{send_to:'" . esc_js($config['google']['conversionId'] . '/' . $config['google']['conversionLabelViewItem']) . "',value:" . $value . ",currency:'" . esc_js($currency) . "'});";
+        }
+        if (!empty($config['microsoft']['tagId'])) {
+            $js .= "window.uetq=window.uetq||[];window.uetq.push('event','page_view',{ecomm_prodid:'" . esc_js($content_id) . "',ecomm_pagetype:'product',revenue_value:" . $value . ",currency:'" . esc_js($currency) . "'});";
+        }
+        return $js;
+    }
+
+    /**
+     * view_item_list — category/collection/shop pages.
+     * GA4 recommended event for full ecommerce funnel.
+     */
+    private function build_view_item_list_events(array $config): string
+    {
+        if (empty($config['ga4']['measurementId'])) return '';
+
+        $items = array();
+        global $wp_query;
+        $term = get_queried_object();
+        $list_name = ($term instanceof WP_Term) ? $term->name : 'Shop';
+
+        if (!empty($wp_query->posts)) {
+            $count = 0;
+            foreach ($wp_query->posts as $post) {
+                if ($count >= 10) break;
+                $product = wc_get_product($post->ID);
+                if (!$product || !$product instanceof WC_Product) continue;
+                $items[] = [
+                    'item_id' => $this->get_content_id($product, $config),
+                    'item_name' => $product->get_name(),
+                    'price' => (float) $product->get_price(),
+                    'index' => $count,
+                ];
+                $count++;
+            }
+        }
+
+        if (empty($items)) return '';
+
+        return "gtag('event','view_item_list'," . wp_json_encode([
+            'item_list_name' => $list_name,
+            'items' => $items,
+        ]) . ");";
+    }
 
     /**
      * AJAX add-to-cart listener — intercepts WC single and archive ATC buttons.
@@ -318,7 +391,7 @@ class OverSeek_Pixels
         var name=btn&&btn.data('product_name')||'';
         var id=btn&&btn.data('product_id')||'';
         var price=btn&&btn.data('product_price')||0;
-        fireATC(name,String(id),parseFloat(price)||0,'{$this->get_currency_code()}',eid);
+        fireATC(name,String(id),parseFloat(price)||0,'{$this->get_currency()}',eid);
     });
     jQuery('form.cart').on('submit',function(){
         var form=jQuery(this);
@@ -329,7 +402,7 @@ class OverSeek_Pixels
         var name=form.closest('.product').find('.product_title').text()||'';
         var id=form.find('input[name=product_id],button[name=add-to-cart]').val()||'';
         var price=form.closest('.product').find('.price ins .amount, .price > .amount').first().text().replace(/[^0-9.]/g,'')||0;
-        fireATC(name.trim(),String(id),parseFloat(price)||0,'{$this->get_currency_code()}',String(eid));
+        fireATC(name.trim(),String(id),parseFloat(price)||0,'{$this->get_currency()}',String(eid));
     });
 })();
 JS;
@@ -338,6 +411,31 @@ JS;
     /**
      * view_cart — GA4 recommended event.
      */
+    private function build_view_cart_events(array $config): string
+    {
+        if (empty($config['ga4']['measurementId'])) return '';
+
+        $cart = WC()->cart;
+        if (!$cart) return '';
+
+        $items = array();
+        foreach ($cart->get_cart() as $item) {
+            $product = $item['data'] ?? null;
+            if (!$product instanceof WC_Product) continue;
+            $items[] = [
+                'item_id' => $this->get_content_id($product, $config),
+                'item_name' => $product->get_name(),
+                'price' => (float) $product->get_price(),
+                'quantity' => (int) $item['quantity'],
+            ];
+        }
+
+        return "gtag('event','view_cart'," . wp_json_encode([
+            'value' => (float) $cart->get_total('edit'),
+            'currency' => get_woocommerce_currency(),
+            'items' => $items,
+        ]) . ");";
+    }
 
     /**
      * remove_from_cart — GA4 recommended event via AJAX listener.
@@ -355,6 +453,48 @@ jQuery(document.body).on('removed_from_cart',function(e,fragments,hash,btn){
 JS;
     }
 
+    private function build_initiate_checkout_events(array $config): string
+    {
+        $cart = WC()->cart;
+        if (!$cart) return '';
+
+        $value = (float) $cart->get_total('edit');
+        $currency = get_woocommerce_currency();
+        $num_items = $cart->get_cart_contents_count();
+        // Persisted into checkout form so server-side checkout_start can reuse it.
+        $event_id = wp_generate_uuid4();
+
+        $js = '';
+        if (!empty($config['meta']['pixelId'])) {
+            $js .= "fbq('track','InitiateCheckout'," . wp_json_encode(['value' => $value, 'currency' => $currency, 'num_items' => $num_items]) . ",{eventID:'{$event_id}'});";
+        }
+        if (!empty($config['tiktok']['pixelCode'])) {
+            $tt_content_ids = [];
+            foreach ($cart->get_cart() as $item) {
+                $product = $item['data'] ?? null;
+                if ($product) $tt_content_ids[] = (string) $this->get_content_id($product, $config);
+            }
+            $js .= "ttq.track('InitiateCheckout'," . wp_json_encode(['content_id' => implode(',', $tt_content_ids), 'content_type' => 'product', 'value' => $value, 'currency' => $currency]) . ");";
+        }
+        if (!empty($config['pinterest']['tagId'])) {
+            $js .= "pintrk('track','checkout'," . wp_json_encode(['value' => $value, 'currency' => $currency, 'order_quantity' => $num_items]) . ");";
+        }
+        if (!empty($config['snapchat']['pixelId'])) {
+            $js .= "snaptr('track','START_CHECKOUT'," . wp_json_encode(['price' => $value, 'currency' => $currency, 'number_items' => $num_items]) . ");";
+        }
+        if (!empty($config['ga4']['measurementId'])) {
+            $js .= "gtag('event','begin_checkout'," . wp_json_encode(['value' => $value, 'currency' => $currency]) . ");";
+        }
+        // Note: begin_checkout conversion is handled server-side via CAPI to avoid
+        // blocking Stripe.js on the checkout page. Do NOT add a client-side gtag
+        // conversion call here.
+        if (!empty($config['microsoft']['tagId'])) {
+            $js .= "window.uetq=window.uetq||[];window.uetq.push('event','begin_checkout',{revenue_value:" . $value . ",currency:'" . esc_js($currency) . "'});";
+        }
+        // Ensure form submission carries the same event ID for server-side dedup.
+        $js .= "(function(){function setOverseekEventId(){var f=jQuery('form.checkout').first();if(!f.length)return;var i=f.find('input[name=\"overseek_event_id\"]');if(!i.length){i=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});f.append(i);}i.val('{$event_id}');}setOverseekEventId();jQuery(document.body).on('updated_checkout',setOverseekEventId);})();";
+        return $js;
+    }
 
     /**
      * add_shipping_info + add_payment_info — GA4 checkout step events.
@@ -409,6 +549,87 @@ JS;
     /**
      * Purchase event with deduplication via order meta.
      */
+    private function build_purchase_events(array $config): string
+    {
+        global $wp;
+        $order_id = isset($wp->query_vars['order-received']) ? absint($wp->query_vars['order-received']) : 0;
+        if (!$order_id) return '';
+
+        $order = wc_get_order($order_id);
+        if (!$order) return '';
+
+        // Deduplication: only fire once per order
+        if ($order->get_meta('_overseek_pixel_tracked')) return '';
+        $order->update_meta_data('_overseek_pixel_tracked', '1');
+        $order->save();
+
+        $total = (float) $order->get_total();
+        $currency = $order->get_currency();
+        $event_id = $order->get_meta('_overseek_event_id');
+        if (empty($event_id)) {
+            $event_id = wp_generate_uuid4();
+            $order->update_meta_data('_overseek_event_id', $event_id);
+            $order->save();
+        }
+
+        if (!empty($config['meta']['excludeShipping'])) $total -= (float) $order->get_shipping_total();
+        if (!empty($config['meta']['excludeTax'])) $total -= (float) $order->get_total_tax();
+        $total = max(0, round($total, 2));
+
+        $items = array();
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if (!$product) continue;
+            $items[] = array(
+                'id' => $this->get_content_id($product, $config),
+                'name' => $item->get_name(),
+                'quantity' => $item->get_quantity(),
+                'price' => (float) $order->get_item_total($item),
+            );
+        }
+
+        $js = '';
+        // Meta
+        if (!empty($config['meta']['pixelId'])) {
+            $content_ids = array_column($items, 'id');
+            $js .= "fbq('track','Purchase'," . wp_json_encode(['value' => $total, 'currency' => $currency, 'content_ids' => $content_ids, 'content_type' => 'product', 'num_items' => count($items)]) . ",{eventID:'{$event_id}'});";
+        }
+        // TikTok
+        if (!empty($config['tiktok']['pixelCode'])) {
+            $tt_content_ids = array_column($items, 'id');
+            $js .= "ttq.track('CompletePayment'," . wp_json_encode(['content_id' => implode(',', $tt_content_ids), 'content_type' => 'product', 'value' => $total, 'currency' => $currency]) . ");";
+        }
+        // Pinterest
+        if (!empty($config['pinterest']['tagId'])) {
+            $product_ids = array_column($items, 'id');
+            $js .= "pintrk('track','checkout'," . wp_json_encode(['value' => $total, 'currency' => $currency, 'order_quantity' => count($items), 'product_ids' => $product_ids]) . ");";
+        }
+        // Snapchat
+        if (!empty($config['snapchat']['pixelId'])) {
+            $js .= "snaptr('track','PURCHASE'," . wp_json_encode(['price' => $total, 'currency' => $currency, 'transaction_id' => (string) $order_id, 'number_items' => count($items)]) . ");";
+        }
+        // GA4
+        if (!empty($config['ga4']['measurementId'])) {
+            $ga4_items = array_map(function ($item) {
+                return ['item_id' => $item['id'], 'item_name' => $item['name'], 'price' => $item['price'], 'quantity' => $item['quantity']];
+            }, $items);
+            $js .= "gtag('event','purchase'," . wp_json_encode(['transaction_id' => (string) $order_id, 'value' => $total, 'currency' => $currency, 'tax' => (float) $order->get_total_tax(), 'shipping' => (float) $order->get_shipping_total(), 'items' => $ga4_items]) . ");";
+        }
+        // Google Ads
+        if (!empty($config['google']['conversionId']) && !empty($config['google']['conversionLabel'])) {
+            $js .= "gtag('event','conversion',{send_to:'" . esc_js($config['google']['conversionId'] . '/' . $config['google']['conversionLabel']) . "',value:" . $total . ",currency:'" . esc_js($currency) . "',transaction_id:'" . esc_js((string) $order_id) . "'});";
+        }
+        // Microsoft/Bing
+        if (!empty($config['microsoft']['tagId'])) {
+            $js .= "window.uetq=window.uetq||[];window.uetq.push('event','purchase',{revenue_value:" . $total . ",currency:'" . esc_js($currency) . "',ecomm_prodid:" . wp_json_encode(array_column($items, 'id')) . "});";
+        }
+        // Twitter/X
+        if (!empty($config['twitter']['pixelId'])) {
+            $js .= "twq('event','tw-purchase-event',{value:" . $total . ",currency:'" . esc_js($currency) . "',num_items:" . count($items) . ",order_id:'" . esc_js((string) $order_id) . "'});";
+        }
+
+        return $js;
+    }
 
     // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -423,6 +644,93 @@ JS;
         return true;
     }
 
+    private function get_content_id(WC_Product $product, array $config): string
+    {
+        $format = $config['meta']['contentIdFormat'] ?? 'sku';
+        $prefix = $config['meta']['contentIdPrefix'] ?? '';
+        $suffix = $config['meta']['contentIdSuffix'] ?? '';
+        $id = ($format === 'id') ? (string) $product->get_id() : ($product->get_sku() ?: (string) $product->get_id());
+        return $prefix . $id . $suffix;
+    }
+
+    /**
+     * Build advanced matching parameters for Meta Pixel init.
+     */
+    private function get_advanced_matching_params(array $meta_config): array
+    {
+        if (empty($meta_config['advancedMatching'])) return array();
+
+        $params = array();
+        $user = wp_get_current_user();
+        if ($user->ID > 0) {
+            if ($user->user_email) $params['em'] = strtolower(trim($user->user_email));
+            if ($user->first_name) $params['fn'] = strtolower(trim($user->first_name));
+            if ($user->last_name) $params['ln'] = strtolower(trim($user->last_name));
+        }
+
+        $wc = function_exists('WC') ? WC() : null;
+        $customer = $wc ? ($wc->customer ?? null) : null;
+        if ($customer) {
+            $phone = $customer->get_billing_phone();
+            if ($phone) $params['ph'] = preg_replace('/[^0-9]/', '', $phone);
+            $zip = $customer->get_billing_postcode();
+            if ($zip) $params['zp'] = strtolower(trim($zip));
+            $city = $customer->get_billing_city();
+            if ($city) $params['ct'] = strtolower(trim($city));
+            $state = $customer->get_billing_state();
+            if ($state) $params['st'] = strtolower(trim($state));
+            $country = $customer->get_billing_country();
+            if ($country) $params['country'] = strtolower(trim($country));
+        }
+
+        return $params;
+    }
+
+    /**
+     * Build TikTok identify() parameters for Advanced Matching.
+     */
+    private function get_tiktok_identify_params(): array
+    {
+        $params = array();
+        $user = wp_get_current_user();
+        if ($user->ID > 0 && $user->user_email) {
+            $params['email'] = hash('sha256', strtolower(trim($user->user_email)));
+        }
+
+        $wc = function_exists('WC') ? WC() : null;
+        $customer = $wc ? ($wc->customer ?? null) : null;
+        if ($customer) {
+            $phone = $customer->get_billing_phone();
+            if ($phone) {
+                $params['phone_number'] = hash('sha256', preg_replace('/[^0-9+]/', '', $phone));
+            }
+        }
+
+        return $params;
+    }
+
+    /**
+     * Get external ID for Meta advanced matching.
+     * Uses WC customer ID or visitor cookie.
+     */
+    private function get_external_id(): string
+    {
+        $user = wp_get_current_user();
+        if ($user->ID > 0) return 'wc_' . $user->ID;
+
+        // Fall back to OverSeek visitor ID cookie
+        return isset($_COOKIE['_os_vid']) ? sanitize_text_field($_COOKIE['_os_vid']) : '';
+    }
+
+    /**
+     * Deterministic event ID for product_view so browser + server can deduplicate.
+     */
+    private function get_shared_product_view_event_id(int $product_id): string
+    {
+        $visitor = isset($_COOKIE['_os_vid']) ? sanitize_text_field($_COOKIE['_os_vid']) : '';
+        $material = implode('|', ['overseek', 'product_view', (string) $product_id, $visitor]);
+        return 'os_pv_' . substr(hash('sha256', $material), 0, 32);
+    }
 
     /**
      * Fetch pixel config from OverSeek API with stale-while-revalidate caching.
@@ -437,14 +745,75 @@ JS;
     {
         if ($this->config !== null) return $this->config;
 
-        $this->config = OverSeek_Pixel_Config_Provider::get_config($this->api_url, $this->account_id);
+        $hash          = md5($this->account_id);
+        $transient_key = 'overseek_pixels_' . $hash;
+        $stale_key     = 'overseek_pixels_stale_' . $hash;
 
+        // 1. Fresh cache hit — fast path
+        $cached = get_transient($transient_key);
+        if ($cached !== false && is_array($cached)) {
+            $this->config = $cached;
+            return $this->config;
+        }
+
+        // 2. Stale cache hit — serve immediately, schedule background refresh
+        $stale = get_transient($stale_key);
+        if ($stale !== false && is_array($stale)) {
+            $this->config = $stale;
+            $this->schedule_background_refresh();
+            return $this->config;
+        }
+
+        // 3. Cold start (no cache at all) — must fetch, but with generous timeout
+        $data = $this->fetch_pixel_config_from_api();
+        $this->config = $data;
         return $this->config;
     }
 
-
-    private function get_currency_code(): string
+    /**
+     * Perform the actual API call and update both cache layers.
+     */
+    private function fetch_pixel_config_from_api(): array
     {
-        return OverSeek_Tracking_Event_Builder::get_currency();
+        $response = wp_remote_get(
+            $this->api_url . '/api/capi/pixels/' . $this->account_id,
+            array(
+                'timeout' => 5,
+                'headers' => array('Accept' => 'application/json'),
+            )
+        );
+
+        if (is_wp_error($response)) {
+            return array();
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (!is_array($data)) {
+            return array();
+        }
+
+        $hash = md5($this->account_id);
+        set_transient('overseek_pixels_' . $hash, $data, 30 * MINUTE_IN_SECONDS);
+        set_transient('overseek_pixels_stale_' . $hash, $data, DAY_IN_SECONDS);
+        return $data;
+    }
+
+    /**
+     * Schedule a non-blocking background refresh via WP Cron.
+     * Ensures at most one refresh per 5 minutes.
+     */
+    private function schedule_background_refresh(): void
+    {
+        $hook = 'overseek_refresh_pixel_config';
+        if (!wp_next_scheduled($hook, array($this->account_id))) {
+            wp_schedule_single_event(time(), $hook, array($this->account_id));
+        }
+    }
+
+    private function get_currency(): string
+    {
+        return function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD';
     }
 }

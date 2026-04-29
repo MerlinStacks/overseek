@@ -80,24 +80,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         setIsLoading(true);
 
         try {
-            let response = await fetch('/api/accounts', {
+            const response = await fetch('/api/accounts', {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            // A refresh may have completed in another tab after this request started.
-            // Retry once with the latest token before concluding the session is invalid.
+            // Handle expired token - force logout to redirect to login (not wizard)
             if (response.status === 401) {
-                const latestToken = localStorage.getItem('token');
-                if (latestToken && latestToken !== token) {
-                    response = await fetch('/api/accounts', {
-                        headers: { Authorization: `Bearer ${latestToken}` }
-                    });
-                }
-
-                if (response.status === 401) {
-                    logout();
-                    return;
-                }
+                logout();
+                return;
             }
 
             if (response.ok) {

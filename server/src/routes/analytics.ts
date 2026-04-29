@@ -310,7 +310,6 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId!;
             const userId = request.user!.id;
             const { productId } = request.params;
-            const productWooId = Number(productId);
 
             // RBAC: Require view_products permission
             const canView = await PermissionService.hasPermission(userId, accountId, 'view_products');
@@ -323,17 +322,9 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const viewData = await cacheAside<{ views7d: number; views30d: number }>(
                 cacheKey,
                 async () => {
-                    // The product edit page route uses WooCommerce product IDs, not the
-                    // local Prisma UUID. Support the Woo ID lookup first, with a UUID
-                    // fallback so older/internal callers still work.
+                    // Get the product to find its permalink
                     const product = await prisma.wooProduct.findFirst({
-                        where: {
-                            accountId,
-                            OR: [
-                                ...(Number.isInteger(productWooId) && productWooId > 0 ? [{ wooId: productWooId }] : []),
-                                { id: productId }
-                            ]
-                        },
+                        where: { id: productId, accountId },
                         select: { permalink: true }
                     });
 

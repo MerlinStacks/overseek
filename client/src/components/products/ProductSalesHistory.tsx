@@ -70,30 +70,19 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
 
     if (loading) {
         return (
-            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
-                <div className="flex items-center gap-2 text-sm font-bold text-gray-900 uppercase tracking-wide">
-                    <ShoppingCart size={16} className="text-blue-600" />
-                    Sales History
-                </div>
-                <div className="mt-4 grid gap-3">
-                    {[1, 2, 3, 4].map(item => (
-                        <div key={item} className="h-14 animate-pulse rounded-lg bg-gray-100" />
-                    ))}
-                </div>
-                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="animate-spin text-blue-600" size={16} />
-                    Loading order history...
-                </div>
+            <div className="flex items-center justify-center p-12">
+                <Loader2 className="animate-spin text-blue-600" size={24} />
+                <span className="ml-2 text-gray-500">Loading sales history...</span>
             </div>
         );
     }
 
     if (!data || data.sales.length === 0) {
         return (
-            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-8 text-center text-gray-400">
+            <div className="p-8 text-center text-gray-400">
                 <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p className="text-lg font-medium text-gray-700">No sales yet</p>
-                <p className="text-sm mt-1">This product has not appeared in synced orders yet. Once orders land, they will show up here automatically.</p>
+                <p className="text-lg font-medium">No sales found</p>
+                <p className="text-sm mt-1">This product hasn't been sold yet, or orders haven't synced.</p>
             </div>
         );
     }

@@ -20,19 +20,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @since 1.0.0
  */
 class OverSeek_API {
-	/**
-	 * Maximum attachment count accepted by the relay endpoint.
-	 *
-	 * @var int
-	 */
-	private const MAX_ATTACHMENTS = 10;
-
-	/**
-	 * Maximum decoded attachment size in bytes.
-	 *
-	 * @var int
-	 */
-	private const MAX_ATTACHMENT_BYTES = 5242880;
 
 	/**
 	 * Register REST API routes.
@@ -44,22 +31,6 @@ class OverSeek_API {
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'update_settings_callback' ],
 			'permission_callback' => [ $this, 'check_admin_permission' ],
-			'args'                => [
-				'account_id'      => [
-					'type'              => 'string',
-					'sanitize_callback' => 'sanitize_text_field',
-				],
-				'api_url'         => [
-					'type'              => 'string',
-					'sanitize_callback' => 'esc_url_raw',
-				],
-				'enable_tracking' => [
-					'type' => 'boolean',
-				],
-				'enable_chat'     => [
-					'type' => 'boolean',
-				],
-			],
 		] );
 
 		register_rest_route( 'overseek/v1', '/health', [
@@ -82,22 +53,22 @@ class OverSeek_API {
 	 * @return bool|WP_Error
 	 */
 	public function check_relay_permission( WP_REST_Request $request ) {
-		$stored_key = (string) get_option( 'overseek_relay_api_key', '' );
+		$stored_key = get_option( 'overseek_relay_api_key' );
 		
 		if ( empty( $stored_key ) ) {
 			return new WP_Error( 'relay_not_configured', 'Email relay is not configured', [ 'status' => 503 ] );
 		}
 
-		$provided_key = (string) $request->get_header( 'X-Relay-Key' );
+		$provided_key = $request->get_header( 'X-Relay-Key' );
 		
 		if ( empty( $provided_key ) || ! hash_equals( $stored_key, $provided_key ) ) {
 			return new WP_Error( 'invalid_relay_key', 'Invalid or missing relay API key', [ 'status' => 401 ] );
 		}
 
 		// Validate account ID matches the linked OverSeek account
-		$stored_account_id = (string) get_option( 'overseek_account_id', '' );
+		$stored_account_id = get_option( 'overseek_account_id' );
 		if ( ! empty( $stored_account_id ) ) {
-			$params = $this->get_request_body( $request );
+			$params = $request->get_json_params();
 			$provided_account_id = isset( $params['account_id'] ) ? sanitize_text_field( $params['account_id'] ) : '';
 			
 			if ( empty( $provided_account_id ) || $provided_account_id !== $stored_account_id ) {
@@ -115,7 +86,7 @@ class OverSeek_API {
 	 * @return WP_REST_Response
 	 */
 	public function email_relay_callback( WP_REST_Request $request ): WP_REST_Response {
-		$params = $this->get_request_body( $request );
+		$params = $request->get_json_params();
 
 		// Validate required fields.
 		$to = isset( $params['to'] ) ? sanitize_email( $params['to'] ) : '';
@@ -140,7 +111,7 @@ class OverSeek_API {
 		$from_name = isset( $params['from_name'] ) ? sanitize_text_field( $params['from_name'] ) : '';
 		$from_email = isset( $params['from_email'] ) ? sanitize_email( $params['from_email'] ) : '';
 
-		if ( ! empty( $from_name ) && ! empty( $from_email ) && is_email( $from_email ) ) {
+		if ( ! empty( $from_name ) && ! empty( $from_email ) ) {
 			$headers[] = sprintf( 'From: %s <%s>', $from_name, $from_email );
 		}
 
@@ -169,7 +140,34 @@ class OverSeek_API {
 		// Handle base64-encoded attachments.
 		$attachment_paths = [];
 		if ( ! empty( $params['attachments'] ) && is_array( $params['attachments'] ) ) {
-			$attachment_paths = $this->prepare_attachments( $params['attachments'] );
+			$upload_dir = wp_upload_dir();
+			$temp_dir = trailingslashit( $upload_dir['basedir'] ) . 'overseek-temp/';
+			
+			// Ensure temp directory exists.
+			if ( ! file_exists( $temp_dir ) ) {
+				wp_mkdir_p( $temp_dir );
+			}
+			
+			foreach ( $params['attachments'] as $attachment ) {
+				if ( empty( $attachment['content'] ) || empty( $attachment['filename'] ) ) {
+					continue;
+				}
+				
+				// Decode base64 content.
+				$decoded = base64_decode( $attachment['content'] );
+				if ( false === $decoded ) {
+					continue;
+				}
+				
+				// Sanitize filename and create unique path.
+				$safe_filename = sanitize_file_name( $attachment['filename'] );
+				$temp_path = $temp_dir . uniqid() . '_' . $safe_filename;
+				
+				// Write to temp file.
+				if ( file_put_contents( $temp_path, $decoded ) !== false ) {
+					$attachment_paths[] = $temp_path;
+				}
+			}
 		}
 
 		// Send via wp_mail (with attachments if any).
@@ -177,16 +175,14 @@ class OverSeek_API {
 
 		// Cleanup temp attachment files.
 		foreach ( $attachment_paths as $path ) {
-			if ( is_string( $path ) && file_exists( $path ) ) {
-				wp_delete_file( $path );
+			if ( file_exists( $path ) ) {
+				unlink( $path );
 			}
 		}
 
 		if ( $sent ) {
 			// Generate a pseudo message ID for tracking.
-			$random_bytes = bin2hex( random_bytes( 8 ) );
-			$host = wp_parse_url( home_url(), PHP_URL_HOST );
-			$message_id = sprintf( '<%s.%s@%s>', $random_bytes, time(), $host ?: 'localhost' );
+			$message_id = sprintf( '<%s.%s@%s>', uniqid(), time(), wp_parse_url( home_url(), PHP_URL_HOST ) );
 			
 			return new WP_REST_Response( [
 				'success'    => true,
@@ -216,7 +212,7 @@ class OverSeek_API {
 	 * @return WP_REST_Response
 	 */
 	public function update_settings_callback( WP_REST_Request $request ): WP_REST_Response {
-		$params = $this->get_request_body( $request );
+		$params = $request->get_json_params();
 
 		if ( isset( $params['account_id'] ) ) {
 			update_option( 'overseek_account_id', sanitize_text_field( $params['account_id'] ) );
@@ -266,66 +262,9 @@ class OverSeek_API {
 			'woocommerceActive'  => class_exists( 'WooCommerce' ),
 			'woocommerceVersion' => $account_match && defined( 'WC_VERSION' ) ? WC_VERSION : null,
 			'phpVersion'         => $account_match ? PHP_VERSION : null,
-			'siteUrl'            => $account_match ? home_url() : null,
+			'siteUrl'            => home_url(),
 			'timestamp'          => gmdate( 'c' ),
 		], 200 );
-	}
-
-	/**
-	 * Normalize JSON body access for REST requests.
-	 *
-	 * @param WP_REST_Request $request The request object.
-	 * @return array<string, mixed>
-	 */
-	private function get_request_body( WP_REST_Request $request ): array {
-		$params = $request->get_json_params();
-
-		return is_array( $params ) ? $params : [];
-	}
-
-	/**
-	 * Decode base64 attachments into temporary files suitable for wp_mail().
-	 *
-	 * @param mixed $attachments Incoming attachment payload.
-	 * @return array<int, string>
-	 */
-	private function prepare_attachments( $attachments ): array {
-		if ( ! is_array( $attachments ) ) {
-			return [];
-		}
-
-		$attachment_paths = [];
-
-		foreach ( array_slice( $attachments, 0, self::MAX_ATTACHMENTS ) as $attachment ) {
-			if ( ! is_array( $attachment ) || empty( $attachment['content'] ) || empty( $attachment['filename'] ) ) {
-				continue;
-			}
-
-			$decoded = base64_decode( (string) $attachment['content'], true );
-			if ( false === $decoded || strlen( $decoded ) > self::MAX_ATTACHMENT_BYTES ) {
-				continue;
-			}
-
-			$safe_filename = sanitize_file_name( (string) $attachment['filename'] );
-			if ( '' === $safe_filename ) {
-				continue;
-			}
-
-			$temp_path = wp_tempnam( $safe_filename );
-			if ( ! $temp_path ) {
-				continue;
-			}
-
-			$bytes_written = file_put_contents( $temp_path, $decoded, LOCK_EX );
-			if ( false === $bytes_written ) {
-				wp_delete_file( $temp_path );
-				continue;
-			}
-
-			$attachment_paths[] = $temp_path;
-		}
-
-		return $attachment_paths;
 	}
 }
 

@@ -81,11 +81,6 @@ export function useApiQuery<TData>({
     const [isLoading, setIsLoading] = useState<boolean>(() => enabled && !queryCache.has(keyString));
     const [error, setError] = useState<Error | null>(null);
     const fetchSeqRef = useRef(0);
-    const queryFnRef = useRef(queryFn);
-    const queryKeyRef = useRef(queryKey);
-
-    queryFnRef.current = queryFn;
-    queryKeyRef.current = queryKey;
 
     const executeFetch = useCallback(async (force = false): Promise<TData | undefined> => {
         if (!enabled) {
@@ -107,13 +102,13 @@ export function useApiQuery<TData>({
         setIsLoading(true);
 
         try {
-            const result = await queryFnRef.current();
+            const result = await queryFn();
             if (fetchSeqRef.current !== seq) return undefined;
 
             queryCache.set(keyString, {
                 data: result,
                 updatedAt: Date.now(),
-                keyParts: queryKeyRef.current,
+                keyParts: queryKey,
             });
             setData(result);
             setError(null);
@@ -126,14 +121,7 @@ export function useApiQuery<TData>({
             setIsLoading(false);
             throw err;
         }
-    }, [enabled, keyString, staleTime]);
-
-    useEffect(() => {
-        const cached = queryCache.get(keyString) as QueryCacheEntry<TData> | undefined;
-        setData(cached?.data);
-        setError(null);
-        setIsLoading(enabled && !cached);
-    }, [enabled, keyString]);
+    }, [enabled, keyString, queryFn, queryKey, staleTime]);
 
     useEffect(() => {
         let cancelled = false;

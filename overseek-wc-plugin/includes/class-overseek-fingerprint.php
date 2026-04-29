@@ -56,12 +56,6 @@ class OverSeek_Fingerprint
     /** @var int Velocity window in seconds for medium burst detection. */
     private const VELOCITY_WINDOW_MEDIUM = 3600; // 1 hour
 
-    /** @var int Length used for hashed transient suffixes. */
-    private const HASH_LENGTH_SHORT = 16;
-
-    /** @var int Length used for hashed velocity counter suffixes. */
-    private const HASH_LENGTH_MEDIUM = 24;
-
     public function __construct()
     {
         self::$instance = $this;
@@ -94,7 +88,7 @@ class OverSeek_Fingerprint
      */
     public function inject_collector(): void
     {
-        $nonce = OverSeek_Fingerprint_Utils::generate_and_store_nonce($this->account_id, self::NONCE_TTL, self::HASH_LENGTH_SHORT);
+        $nonce = $this->generate_and_store_nonce();
         if (!$nonce) {
             return;
         }
@@ -124,7 +118,7 @@ class OverSeek_Fingerprint
             return;
         }
 
-        $nonce = OverSeek_Fingerprint_Utils::generate_and_store_nonce($this->account_id, self::NONCE_TTL, self::HASH_LENGTH_SHORT);
+        $nonce = $this->generate_and_store_nonce();
         if (!$nonce) {
             return;
         }
@@ -231,7 +225,7 @@ class OverSeek_Fingerprint
             $score += 10;
             $factors[] = 'Token missing';
 
-            if ($velocity['score'] >= 20 || OverSeek_Fingerprint_Utils::is_suspicious_user_agent()) {
+            if ($velocity['score'] >= 20 || $this->is_suspicious_user_agent()) {
                 $score += 50;
                 $factors[] = 'Token missing in risky context (challenge required)';
             } else {
@@ -265,7 +259,7 @@ class OverSeek_Fingerprint
 
         // Validate nonce
         $nonce = isset($data['n']) ? $data['n'] : '';
-        if (!OverSeek_Fingerprint_Utils::validate_nonce($this->account_id, (string) $nonce, self::HASH_LENGTH_SHORT)) {
+        if (!$this->validate_nonce($nonce)) {
             $score += 15;
             $factors[] = 'Invalid or expired nonce';
         }
@@ -316,7 +310,7 @@ class OverSeek_Fingerprint
 
         // Score: screen dimensions
         $screen_dims = isset($data['s']) ? $data['s'] : '';
-        if (OverSeek_Fingerprint_Utils::screen_dims_suspicious((string) $screen_dims)) {
+        if ($this->screen_dims_suspicious($screen_dims)) {
             $score += 10;
             $factors[] = 'Suspicious screen dimensions';
         }
@@ -345,11 +339,11 @@ class OverSeek_Fingerprint
         $score = 0;
         $factors = array();
 
-        $visitor_id = OverSeek_Fingerprint_Utils::get_visitor_id() ?? 'none';
-        $ip = OverSeek_Fingerprint_Utils::get_client_ip();
-        $email_hash = !empty($email) ? OverSeek_Crypto_Utils::hash_key_fragment(strtolower($email), self::HASH_LENGTH_SHORT) : 'none';
+        $visitor_id = $this->get_visitor_id() ?? 'none';
+        $ip = $this->get_client_ip();
+        $email_hash = !empty($email) ? substr(md5(strtolower($email)), 0, 16) : 'none';
 
-        $ip_short = $this->increment_velocity_counter('ip_short_' . OverSeek_Crypto_Utils::hash_key_fragment($ip, self::HASH_LENGTH_SHORT), self::VELOCITY_WINDOW_SHORT);
+        $ip_short = $this->increment_velocity_counter('ip_short_' . md5($ip), self::VELOCITY_WINDOW_SHORT);
         if ($ip_short >= 10) {
             $score += 35;
             $factors[] = 'High checkout burst from IP (5m)';
@@ -358,7 +352,7 @@ class OverSeek_Fingerprint
             $factors[] = 'Elevated checkout burst from IP (5m)';
         }
 
-            $visitor_short = $this->increment_velocity_counter('visitor_short_' . OverSeek_Crypto_Utils::hash_key_fragment($visitor_id, self::HASH_LENGTH_SHORT), self::VELOCITY_WINDOW_SHORT);
+        $visitor_short = $this->increment_velocity_counter('visitor_short_' . md5($visitor_id), self::VELOCITY_WINDOW_SHORT);
         if ($visitor_short >= 7) {
             $score += 25;
             $factors[] = 'High checkout burst from visitor (5m)';
@@ -390,7 +384,7 @@ class OverSeek_Fingerprint
      */
     private function increment_velocity_counter(string $suffix, int $ttl): int
     {
-        $key = '_os_fp_vel_' . OverSeek_Crypto_Utils::hash_key_fragment($this->account_id . '_' . $suffix, self::HASH_LENGTH_MEDIUM);
+        $key = '_os_fp_vel_' . substr(md5($this->account_id . '_' . $suffix), 0, 24);
         $data = get_transient($key);
         $now = time();
 
@@ -411,6 +405,157 @@ class OverSeek_Fingerprint
      *
      * @return bool True if UA appears suspicious.
      */
+    private function is_suspicious_user_agent(): bool
+    {
+        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower((string) $_SERVER['HTTP_USER_AGENT']) : '';
+        if (empty($ua)) {
+            return true;
+        }
+
+        $signals = array('headless', 'bot', 'crawler', 'spider', 'curl', 'wget', 'python', 'java/');
+        foreach ($signals as $signal) {
+            if (strpos($ua, $signal) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolve the client IP behind reverse proxies when present.
+     *
+     * @return string IP address string or "unknown".
+     */
+    private function get_client_ip(): string
+    {
+        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            return sanitize_text_field((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
+        }
+
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $xff = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
+            return sanitize_text_field(trim($xff[0]));
+        }
+
+        if (!empty($_SERVER['REMOTE_ADDR'])) {
+            return sanitize_text_field((string) $_SERVER['REMOTE_ADDR']);
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Check if screen dimensions look suspicious.
+     * Format: "screenWxscreenH:innerWxinnerH"
+     *
+     * @param string $dims Dimension string from collector.
+     * @return bool True if suspicious.
+     */
+    private function screen_dims_suspicious(string $dims): bool
+    {
+        if (empty($dims)) {
+            return true;
+        }
+
+        $parts = explode(':', $dims);
+        if (count($parts) !== 2) {
+            return true;
+        }
+
+        $screen = explode('x', $parts[0]);
+        $inner  = explode('x', $parts[1]);
+
+        if (count($screen) !== 2 || count($inner) !== 2) {
+            return true;
+        }
+
+        $sw = intval($screen[0]);
+        $sh = intval($screen[1]);
+        $iw = intval($inner[0]);
+        $ih = intval($inner[1]);
+
+        // 0x0 screen = headless default
+        if ($sw === 0 || $sh === 0) {
+            return true;
+        }
+
+        // Screen exactly equals inner viewport = no browser chrome = likely headless
+        if ($sw === $iw && $sh === $ih) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Generate a nonce and store it in a WordPress transient.
+     *
+     * @return string|null The nonce, or null on failure.
+     */
+    private function generate_and_store_nonce(): ?string
+    {
+        $visitor_id = $this->get_visitor_id();
+        if (!$visitor_id) {
+            return null;
+        }
+
+        $nonce = wp_generate_password(32, false);
+        $key   = $this->nonce_transient_key($visitor_id);
+
+        set_transient($key, $nonce, self::NONCE_TTL);
+        return $nonce;
+    }
+
+    /**
+     * Validate a nonce against the stored transient. Single-use — deletes after validation.
+     *
+     * @param string $nonce The nonce to validate.
+     * @return bool True if valid.
+     */
+    private function validate_nonce(string $nonce): bool
+    {
+        if (empty($nonce)) {
+            return false;
+        }
+
+        $visitor_id = $this->get_visitor_id();
+        if (!$visitor_id) {
+            return false;
+        }
+
+        $key    = $this->nonce_transient_key($visitor_id);
+        $stored = get_transient($key);
+
+        if ($stored === false || !hash_equals((string) $stored, $nonce)) {
+            return false;
+        }
+
+        // Single-use: delete after successful validation
+        delete_transient($key);
+        return true;
+    }
+
+    /**
+     * Get the visitor ID from the OverSeek cookie.
+     *
+     * @return string|null Visitor UUID or null.
+     */
+    private function get_visitor_id(): ?string
+    {
+        return isset($_COOKIE['_os_vid']) ? sanitize_text_field($_COOKIE['_os_vid']) : null;
+    }
+
+    /**
+     * Build the transient key for a visitor's nonce.
+     *
+     * @param string $visitor_id Visitor UUID.
+     * @return string Transient key.
+     */
+    private function nonce_transient_key(string $visitor_id): string
+    {
+        return '_os_fp_nonce_' . substr(md5($this->account_id . $visitor_id), 0, 16);
+    }
 
     /**
      * Get the score computed during this request (for use by tracking).

@@ -47,29 +47,12 @@ const changePasswordSchema = z.object({
     path: ['confirmPassword']
 });
 
-// Simple in-memory rate limiter as fallback if Redis is unavailable.
+// Simple in-memory rate limiter (per IP) as fallback if Redis is unavailable.
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const MAX_FAILED_ATTEMPTS_PER_IDENTITY = 10;
-const MAX_FAILED_ATTEMPTS_PER_IP = 50;
+const MAX_FAILED_ATTEMPTS = 10; // Increased limit - only counts FAILED attempts now
 const MAX_MAP_SIZE = 10_000; // Cap to prevent unbounded memory growth
 const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // Cleanup every 10 minutes
-
-function normalizeLoginEmail(email: string): string {
-    return email.trim().toLowerCase();
-}
-
-function hashLoginIdentity(email: string): string {
-    return crypto.createHash('sha256').update(normalizeLoginEmail(email)).digest('hex');
-}
-
-function getLoginThrottleKeys(ip: string, email: string): { ipKey: string; identityKey: string } {
-    const emailHash = hashLoginIdentity(email);
-    return {
-        ipKey: `login:failed:ip:${ip}`,
-        identityKey: `login:failed:identity:${ip}:${emailHash}`,
-    };
-}
 
 /**
  * Periodically clean up expired entries from the in-memory rate limit map.
@@ -100,32 +83,32 @@ if (typeof process !== 'undefined') {
 }
 
 /**
- * Check if a throttle key is currently rate limited (without incrementing).
+ * Check if IP is currently rate limited (without incrementing).
  * Returns true if allowed to attempt login, false if blocked.
  */
-function isThrottleKeyAllowedFallback(key: string, maxAttempts: number): boolean {
+function isLoginAllowedFallback(ip: string): boolean {
     const now = Date.now();
-    const record = loginAttempts.get(key);
+    const record = loginAttempts.get(ip);
 
     if (!record) return true; // No record = allowed
 
     // Window expired, reset
     if (now - record.firstAttempt > WINDOW_MS) {
-        loginAttempts.delete(key);
+        loginAttempts.delete(ip);
         return true;
     }
 
     // Check if at limit
-    return record.count < maxAttempts;
+    return record.count < MAX_FAILED_ATTEMPTS;
 }
 
 /**
- * Increment failed login counter for a throttle key.
+ * Increment failed login counter for IP.
  * Enforces MAX_MAP_SIZE cap to prevent unbounded memory growth.
  */
-function incrementFailedLoginFallback(key: string): void {
+function incrementFailedLoginFallback(ip: string): void {
     const now = Date.now();
-    const record = loginAttempts.get(key);
+    const record = loginAttempts.get(ip);
 
     if (!record) {
         // Enforce size cap before adding new entry
@@ -143,13 +126,13 @@ function incrementFailedLoginFallback(key: string): void {
                 remaining: loginAttempts.size
             });
         }
-        loginAttempts.set(key, { count: 1, firstAttempt: now });
+        loginAttempts.set(ip, { count: 1, firstAttempt: now });
         return;
     }
 
     // Window expired, reset
     if (now - record.firstAttempt > WINDOW_MS) {
-        loginAttempts.set(key, { count: 1, firstAttempt: now });
+        loginAttempts.set(ip, { count: 1, firstAttempt: now });
         return;
     }
 
@@ -157,56 +140,37 @@ function incrementFailedLoginFallback(key: string): void {
 }
 
 /**
- * Check if the login attempt is allowed for both the coarse IP bucket and the
- * finer-grained IP+email identity bucket.
+ * Check if IP is allowed to attempt login.
  * Returns true if allowed, false if blocked by rate limit.
  */
-async function isLoginAllowed(ip: string, email: string): Promise<boolean> {
-    const { ipKey, identityKey } = getLoginThrottleKeys(ip, email);
+async function isLoginAllowed(ip: string): Promise<boolean> {
+    const key = `login:failed:${ip}`;
 
     try {
-        const [ipCount, identityCount] = await Promise.all([
-            redisClient.get(ipKey),
-            redisClient.get(identityKey),
-        ]);
-
-        const isIpAllowed = !ipCount || parseInt(ipCount, 10) < MAX_FAILED_ATTEMPTS_PER_IP;
-        const isIdentityAllowed = !identityCount || parseInt(identityCount, 10) < MAX_FAILED_ATTEMPTS_PER_IDENTITY;
-        return isIpAllowed && isIdentityAllowed;
+        const count = await redisClient.get(key);
+        if (!count) return true; // No record = allowed
+        return parseInt(count, 10) < MAX_FAILED_ATTEMPTS;
     } catch (error) {
         Logger.warn('Rate limit check fallback to memory', { error });
-        return isThrottleKeyAllowedFallback(ipKey, MAX_FAILED_ATTEMPTS_PER_IP)
-            && isThrottleKeyAllowedFallback(identityKey, MAX_FAILED_ATTEMPTS_PER_IDENTITY);
+        return isLoginAllowedFallback(ip);
     }
 }
 
 /**
- * Increment failed login counters in Redis.
+ * Increment failed login counter for IP in Redis.
  */
-async function incrementFailedLogin(ip: string, email: string): Promise<void> {
+async function incrementFailedLogin(ip: string): Promise<void> {
     const windowSeconds = 60 * 60; // 1 hour
-    const { ipKey, identityKey } = getLoginThrottleKeys(ip, email);
+    const key = `login:failed:${ip}`;
 
     try {
-        const [ipCount, identityCount] = await Promise.all([
-            redisClient.incr(ipKey),
-            redisClient.incr(identityKey),
-        ]);
-
-        const expirations: Promise<number>[] = [];
-        if (ipCount === 1) {
-            expirations.push(redisClient.expire(ipKey, windowSeconds));
-        }
-        if (identityCount === 1) {
-            expirations.push(redisClient.expire(identityKey, windowSeconds));
-        }
-        if (expirations.length > 0) {
-            await Promise.all(expirations);
+        const count = await redisClient.incr(key);
+        if (count === 1) {
+            await redisClient.expire(key, windowSeconds);
         }
     } catch (error) {
         Logger.warn('Failed login increment fallback to memory', { error });
-        incrementFailedLoginFallback(ipKey);
-        incrementFailedLoginFallback(identityKey);
+        incrementFailedLoginFallback(ip);
     }
 }
 
@@ -317,28 +281,28 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const ip = request.ip;
 
+            // Check if IP is currently rate limited
+            if (!(await isLoginAllowed(ip))) {
+                return reply.code(429).send({ error: 'Too many login attempts, please try again later.' });
+            }
+
             const parsed = loginSchema.safeParse(request.body);
             if (!parsed.success) {
                 return reply.code(400).send({ error: parsed.error.issues[0].message });
             }
             const { email, password, token: twoFactorToken } = parsed.data;
 
-            // Check if this login identity or the source IP is currently rate limited.
-            if (!(await isLoginAllowed(ip, email))) {
-                return reply.code(429).send({ error: 'Too many login attempts, please try again later.' });
-            }
-
             const user = await prisma.user.findUnique({ where: { email } });
             if (!user) {
                 // Increment failed attempt counter - only on actual failed login
-                await incrementFailedLogin(ip, email);
+                await incrementFailedLogin(ip);
                 return reply.code(401).send({ error: 'Invalid credentials' });
             }
 
             const isValid = await comparePassword(password, user.passwordHash);
             if (!isValid) {
                 // Increment failed attempt counter - only on actual failed login
-                await incrementFailedLogin(ip, email);
+                await incrementFailedLogin(ip);
                 return reply.code(401).send({ error: 'Invalid credentials' });
             }
 
@@ -352,7 +316,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 const isTokenValid = SecurityService.verifyTwoFactorToken(twoFactorToken, user.twoFactorSecret!);
                 if (!isTokenValid) {
                     // Increment failed attempt counter for bad 2FA
-                    await incrementFailedLogin(ip, email);
+                    await incrementFailedLogin(ip);
                     return reply.code(401).send({ error: 'Invalid 2FA code' });
                 }
             }

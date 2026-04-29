@@ -72,25 +72,13 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
         fetchLogs();
     }, [resource, resourceId, currentAccount, token]);
 
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity History</h3>
-                <div className="space-y-4 rounded-xl border border-white/50 bg-white/70 p-6 backdrop-blur-md">
-                    {[1, 2, 3].map(item => (
-                        <div key={item} className="h-20 animate-pulse rounded-lg bg-gray-100" />
-                    ))}
-                </div>
-            </div>
-        );
-    }
+    if (loading) return <div className="p-4 text-center text-gray-500">Loading history...</div>;
 
     if (logs.length === 0) {
         return (
-            <div className="rounded-xl border border-white/50 bg-white/70 p-8 text-center text-gray-400 backdrop-blur-md">
+            <div className="p-8 text-center text-gray-400">
                 <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="font-medium text-gray-700">No activity yet</p>
-                <p className="mt-1 text-sm">Edits, sync actions, and automated stock changes will appear here once they happen.</p>
+                <p>No history available for this item yet.</p>
             </div>
         );
     }

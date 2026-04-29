@@ -88,11 +88,8 @@ export interface ProductData {
     rawData?: unknown;
     categories?: { id: number; name: string; slug: string }[];
     tags?: { id: number; name: string; slug: string }[];
-    updatedAt?: string;
     [key: string]: unknown;
 }
-
-type SaveState = 'idle' | 'unsaved' | 'saving' | 'saved' | 'partial' | 'error';
 
 const initialFormData: ProductFormData = {
     name: '',
@@ -138,12 +135,6 @@ export function useProductEdit(productId: string | undefined) {
     const [isSaving, setIsSaving] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [product, setProduct] = useState<ProductData | null>(null);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-    const [saveState, setSaveState] = useState<SaveState>('idle');
-    const [saveMessage, setSaveMessage] = useState<string | null>(null);
-    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
-    const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
     const [formData, setFormData] = useState<ProductFormData>(initialFormData);
     const [variants, setVariants] = useState<unknown[]>([]);
     const [suppliers, setSuppliers] = useState<unknown[]>([]);
@@ -197,18 +188,6 @@ export function useProductEdit(productId: string | undefined) {
         draftRestoredRef.current = false;
         isDirtyRef.current = false;
         pendingDraftRef.current = null;
-        setProduct(null);
-        setFormData(initialFormData);
-        setVariants([]);
-        setProductViews(null);
-        setMainImageFailed(false);
-        setHasDraft(false);
-        setHasUnsavedChanges(false);
-        setSaveState('idle');
-        setSaveMessage(null);
-        setLastSavedAt(null);
-        setLastSyncedAt(null);
-        setLoadError(null);
     }, [productId]);
 
     // SEO scoring (derived state)
@@ -227,9 +206,6 @@ export function useProductEdit(productId: string | undefined) {
 
     const updateFormData = useCallback((updates: Partial<ProductFormData>) => {
         isDirtyRef.current = true;
-        setHasUnsavedChanges(true);
-        setSaveState('unsaved');
-        setSaveMessage('Unsaved changes');
         setFormData(prev => ({ ...prev, ...updates }));
     }, []);
 
@@ -255,17 +231,12 @@ export function useProductEdit(productId: string | undefined) {
         const tkn = tokenRef.current;
         if (!acct || !tkn || !productId) return;
         if (!background) setIsLoading(true);
-        if (!background) setLoadError(null);
 
         try {
             const data = await ProductService.getProduct(productId, tkn, acct.id) as ProductData;
             Logger.debug('Product data loaded', { productId, wooId: data.wooId });
             setProduct(data);
             setMainImageFailed(false);
-            const loadedUpdatedAt = data.updatedAt;
-            if (loadedUpdatedAt) {
-                setLastSyncedAt(prev => prev ?? new Date(loadedUpdatedAt));
-            }
 
             if (skipFormReset) return;
 
@@ -302,14 +273,9 @@ export function useProductEdit(productId: string | undefined) {
                         id: Number(id), sku: '', price: '', attributes: []
                     })));
                 }
-            } else {
-                setVariants([]);
             }
         } catch (error) {
             Logger.error('Failed to load product', { error });
-            if (!background) {
-                setLoadError(error instanceof Error ? error.message : 'Failed to load product');
-            }
         } finally {
             if (!background) setIsLoading(false);
             serverLoadedRef.current = true;
@@ -340,8 +306,6 @@ export function useProductEdit(productId: string | undefined) {
         const tkn = tokenRef.current;
         if (!acct || !productId || !tkn) return;
         setIsSaving(true);
-        setSaveState('saving');
-        setSaveMessage('Saving changes...');
 
         try {
             await ProductService.updateProduct(productId, {
@@ -372,20 +336,11 @@ export function useProductEdit(productId: string | undefined) {
             const bomSaveResult = await bomPanelRef.current?.save();
             const variantBomsSaveResult = await variationsPanelRef.current?.saveAllBOMs();
             const stockSaveResult = await stockPanelRef.current?.save();
-            const failedPanels = [
-                bomSaveResult === false ? 'BOM' : null,
-                variantBomsSaveResult === false ? 'variation BOMs' : null,
-                stockSaveResult === false ? 'stock' : null,
-            ].filter(Boolean) as string[];
 
-            if (failedPanels.length > 0) {
+            if (bomSaveResult === false || variantBomsSaveResult === false || stockSaveResult === false) {
                 showToast('Product saved, but some sub-panel saves failed (BOM or stock).', 'error');
-                setSaveState('partial');
-                setSaveMessage(`Saved product fields, but ${failedPanels.join(', ')} still need attention.`);
             } else {
                 showToast('Product saved successfully');
-                setSaveState('saved');
-                setSaveMessage('Saved successfully');
             }
 
             // Why: clear the draft after a successful save to avoid stale restoration
@@ -395,8 +350,6 @@ export function useProductEdit(productId: string | undefined) {
             }
             isDirtyRef.current = false;
             setHasDraft(false);
-            setHasUnsavedChanges(false);
-            setLastSavedAt(new Date());
             pendingDraftRef.current = null;
             emitProductChange({
                 type: 'updated',
@@ -404,19 +357,14 @@ export function useProductEdit(productId: string | undefined) {
                 accountId: acct.id,
             });
 
-            await Promise.all([
-                fetchProduct(true, true),
-                fetchViews()
-            ]);
+            fetchProduct(true, true);
         } catch (error) {
             Logger.error('An error occurred', { error });
-            setSaveState('error');
-            setSaveMessage(error instanceof Error ? error.message : 'Failed to save changes');
             showToast('Failed to save changes', 'error');
         } finally {
             setIsSaving(false);
         }
-    }, [productId, formData, variants, showToast, fetchProduct, fetchViews]);
+    }, [productId, formData, variants, showToast, fetchProduct]);
 
     // Sync handler
     const handleSync = useCallback(async () => {
@@ -424,7 +372,6 @@ export function useProductEdit(productId: string | undefined) {
         const tkn = tokenRef.current;
         if (!acct || !productId || !tkn) return;
         setIsSyncing(true);
-        setSaveMessage('Syncing from WooCommerce...');
 
         try {
             const updated = await ProductService.syncProduct(productId, tkn, acct.id) as { wooId?: number };
@@ -434,15 +381,8 @@ export function useProductEdit(productId: string | undefined) {
             localStorage.removeItem(key);
             isDirtyRef.current = false;
             setHasDraft(false);
-            setHasUnsavedChanges(false);
             pendingDraftRef.current = null;
-            await Promise.all([
-                fetchProduct(true),
-                fetchViews()
-            ]);
-            setLastSyncedAt(new Date());
-            setSaveState('idle');
-            setSaveMessage('Synced from WooCommerce');
+            await fetchProduct(true);
             emitProductChange({
                 type: 'synced',
                 productId,
@@ -452,13 +392,11 @@ export function useProductEdit(productId: string | undefined) {
         } catch (error: unknown) {
             Logger.error('Sync failed:', { error });
             const message = error instanceof Error ? error.message : 'Unknown error';
-            setSaveState('error');
-            setSaveMessage(`Sync failed: ${message}`);
             showToast(`Sync failed: ${message}`, 'error');
         } finally {
             setIsSyncing(false);
         }
-    }, [productId, fetchProduct, fetchViews, showToast]);
+    }, [productId, fetchProduct, showToast]);
 
     // Effects - depend on stable primitives (currentAccount?.id) not object references
     useEffect(() => {
@@ -537,9 +475,6 @@ export function useProductEdit(productId: string | undefined) {
                 setFormData(draft.formData);
                 isDirtyRef.current = true;
                 setHasDraft(true);
-                setHasUnsavedChanges(true);
-                setSaveState('unsaved');
-                setSaveMessage('Unsaved changes restored');
                 showToast('Unsaved changes restored from your last session', 'success');
             }
         } catch {
@@ -573,9 +508,6 @@ export function useProductEdit(productId: string | undefined) {
         localStorage.removeItem(key);
         isDirtyRef.current = false;
         setHasDraft(false);
-        setHasUnsavedChanges(false);
-        setSaveState('idle');
-        setSaveMessage(null);
         pendingDraftRef.current = null;
         // Re-fetch server data to reset form
         fetchProduct(false);
@@ -586,12 +518,6 @@ export function useProductEdit(productId: string | undefined) {
         isLoading,
         isSaving,
         isSyncing,
-        loadError,
-        hasUnsavedChanges,
-        saveState,
-        saveMessage,
-        lastSavedAt,
-        lastSyncedAt,
         product,
         formData,
         variants,
@@ -615,7 +541,6 @@ export function useProductEdit(productId: string | undefined) {
         handleSave,
         handleSync,
         fetchProduct,
-        fetchViews,
         discardDraft,
     };
 }

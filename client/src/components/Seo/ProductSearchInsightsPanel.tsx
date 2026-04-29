@@ -10,7 +10,7 @@
  * the static SEO score logic, keeping both maintainable independently.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
     Search, TrendingUp, MousePointerClick, Eye, ArrowUpDown,
     Loader2, Link2, BarChart3, ChevronDown, ChevronUp
@@ -36,25 +36,17 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
     const { queries, summary, isLoading, isConnected, isStatusLoading } = useProductSearchInsights(permalink);
     const [sortField, setSortField] = useState<SortField>('clicks');
     const [sortDir, setSortDir] = useState<SortDir>('desc');
-    const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
 
-    useEffect(() => {
-        setHasResolvedOnce(false);
-    }, [permalink]);
-
-    useEffect(() => {
-        if (!permalink) return;
-        if (!isStatusLoading && !isLoading) {
-            setHasResolvedOnce(true);
-        }
-    }, [isLoading, isStatusLoading, permalink]);
-
-    if (!hasResolvedOnce && (isStatusLoading || isLoading)) {
+    if (isStatusLoading) {
         return <LoadingSkeleton />;
     }
 
     if (!isConnected) {
         return <ConnectPrompt />;
+    }
+
+    if (isLoading) {
+        return <LoadingSkeleton />;
     }
 
     if (queries.length === 0) {

@@ -81,7 +81,7 @@ class OverSeek_Cart_Recovery
 		}
 
 		$status_code = wp_remote_retrieve_response_code($response);
-        $body = OverSeek_HTTP_Utils::decode_json_response($response);
+		$body = json_decode((string) wp_remote_retrieve_body($response), true);
 
 		if ($status_code >= 400 || !is_array($body)) {
 			return new WP_Error('overseek_recovery_invalid', 'This recovery link is invalid or has expired.');
@@ -152,8 +152,8 @@ class OverSeek_Cart_Recovery
 		return $result;
 	}
 
-    private function store_restore_result(array $restore_result): void
-    {
+	private function store_restore_result(array $restore_result): void
+	{
 		if (!function_exists('WC') || !WC() || !WC()->session) {
 			return;
 		}

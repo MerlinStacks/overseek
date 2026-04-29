@@ -11,36 +11,6 @@ if (!defined('ABSPATH')) {
  */
 class OverSeek_Admin
 {
-	/**
-	 * Normalize checkbox-style values into a stored string flag.
-	 *
-	 * @param mixed $value Raw submitted value.
-	 * @return string
-	 */
-	public function sanitize_checkbox($value)
-	{
-		return empty($value) ? '' : '1';
-	}
-
-	/**
-	 * Enqueue admin-only assets for the OverSeek settings screen.
-	 *
-	 * @param string $hook_suffix Current admin page hook.
-	 * @return void
-	 */
-	public function enqueue_assets($hook_suffix)
-	{
-		if ($hook_suffix !== 'woocommerce_page_overseek') {
-			return;
-		}
-
-		wp_enqueue_style(
-			'overseek-admin',
-			OVERSEEK_WC_PLUGIN_URL . 'assets/admin.css',
-			array(),
-			OVERSEEK_WC_VERSION
-		);
-	}
 
 	/**
 	 * Register the OverSeek submenu under WooCommerce.
@@ -68,20 +38,11 @@ class OverSeek_Admin
 			'sanitize_callback' => array($this, 'sanitize_connection_config'),
 		));
 
-		register_setting('overseek_options_group', 'overseek_enable_tracking', array(
-			'type' => 'string',
-			'sanitize_callback' => array($this, 'sanitize_checkbox'),
-		));
-		register_setting('overseek_options_group', 'overseek_enable_chat', array(
-			'type' => 'string',
-			'sanitize_callback' => array($this, 'sanitize_checkbox'),
-		));
+		register_setting('overseek_options_group', 'overseek_enable_tracking');
+		register_setting('overseek_options_group', 'overseek_enable_chat');
 		
 		// Privacy settings
-		register_setting('overseek_options_group', 'overseek_require_consent', array(
-			'type' => 'string',
-			'sanitize_callback' => array($this, 'sanitize_checkbox'),
-		));
+		register_setting('overseek_options_group', 'overseek_require_consent');
 		register_setting('overseek_options_group', 'overseek_cookie_retention_days', array(
 			'type' => 'integer',
 			'default' => 365,
@@ -95,10 +56,7 @@ class OverSeek_Admin
 		));
 
 		// Web Vitals settings
-		register_setting('overseek_options_group', 'overseek_enable_vitals', array(
-			'type' => 'string',
-			'sanitize_callback' => array($this, 'sanitize_checkbox'),
-		));
+		register_setting('overseek_options_group', 'overseek_enable_vitals');
 		register_setting('overseek_options_group', 'overseek_vitals_sample_rate', array(
 			'type'              => 'integer',
 			'default'           => 100,
@@ -122,7 +80,7 @@ class OverSeek_Admin
 		}
 
 		// Try to decode JSON
-		$data = json_decode(wp_unslash((string) $input), true);
+		$data = json_decode(stripslashes($input), true);
 
 		if (json_last_error() === JSON_ERROR_NONE && isset($data['apiUrl']) && isset($data['accountId'])) {
 			// Update the real options
@@ -143,210 +101,121 @@ class OverSeek_Admin
 	 */
 	public function render_settings_page()
 	{
-		if (!current_user_can('manage_options')) {
-			wp_die(esc_html__('You do not have permission to access this page.', 'overseek-wc'));
-		}
-
-		$api_url            = (string) get_option('overseek_api_url', '');
-		$account_id         = (string) get_option('overseek_account_id', '');
-		$connection_config  = (string) get_option('overseek_connection_config', '');
-		$relay_api_key      = (string) get_option('overseek_relay_api_key', '');
-		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
-		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 100);
-		$relay_endpoint     = home_url('/wp-json/overseek/v1/email-relay');
-		$is_configured      = !empty($api_url) && !empty($account_id);
-		$enabled_features   = array_filter(array(
-			get_option('overseek_enable_tracking'),
-			get_option('overseek_enable_chat'),
-			get_option('overseek_enable_vitals', '1'),
-		));
-		$status_label       = $is_configured ? 'Connected' : 'Needs setup';
-		$status_description = $is_configured
-			? 'Your store is linked. Save updates here and verify activity from the OverSeek dashboard.'
-			: 'Paste the connection JSON from your OverSeek dashboard to finish linking this store.';
 		?>
-		<div class="wrap overseek-admin">
-			<div class="overseek-admin__hero">
-				<div>
-					<span class="overseek-admin__eyebrow">WooCommerce Command Center</span>
-					<h1>OverSeek Plugin Settings</h1>
-					<p class="overseek-admin__intro">A cleaner place to manage connection, storefront collection, privacy controls, and relay settings for your store.</p>
-				</div>
-				<div class="overseek-admin__hero-meta">
-					<span class="overseek-admin__status <?php echo $is_configured ? 'is-connected' : 'is-warning'; ?>">
-						<?php echo esc_html($status_label); ?>
-					</span>
-					<p><?php echo esc_html($status_description); ?></p>
-				</div>
-			</div>
-
-			<div class="overseek-admin__stats">
-				<div class="overseek-admin__stat-card">
-					<span class="overseek-admin__stat-label">Connection</span>
-					<strong><?php echo esc_html($is_configured ? 'Ready' : 'Pending'); ?></strong>
-					<p><?php echo esc_html($is_configured ? $account_id : 'Awaiting dashboard config'); ?></p>
-				</div>
-				<div class="overseek-admin__stat-card">
-					<span class="overseek-admin__stat-label">Enabled features</span>
-					<strong><?php echo esc_html((string) count($enabled_features)); ?>/3</strong>
-					<p>Tracking, chat, and vitals can be toggled independently.</p>
-				</div>
-				<div class="overseek-admin__stat-card">
-					<span class="overseek-admin__stat-label">Privacy retention</span>
-					<strong><?php echo esc_html((string) $retention); ?> days</strong>
-					<p><?php echo esc_html(get_option('overseek_require_consent') ? 'Consent gate enabled' : 'Consent gate disabled'); ?></p>
-				</div>
-			</div>
-
-			<?php settings_errors('overseek_connection_config'); ?>
-
-			<form method="post" action="options.php" class="overseek-admin__form">
+		<div class="wrap">
+			<h1>OverSeek Integration Settings</h1>
+			<form method="post" action="options.php">
 				<?php settings_fields('overseek_options_group'); ?>
 				<?php do_settings_sections('overseek_options_group'); ?>
+				<table class="form-table">
+					<tr valign="top">
+						<th scope="row">Configuration Status</th>
+						<td>
+							<?php
+							$api_url = get_option('overseek_api_url');
+							$account_id = get_option('overseek_account_id');
 
-				<div class="overseek-admin__grid">
-					<section class="overseek-admin__card">
-						<div class="overseek-admin__card-header">
-							<div>
-								<h2>Connection</h2>
-								<p>Link this store with your OverSeek workspace using the dashboard-issued configuration JSON.</p>
-							</div>
-							<span class="overseek-admin__status <?php echo $is_configured ? 'is-connected' : 'is-warning'; ?>">
-								<?php echo esc_html($status_label); ?>
-							</span>
-						</div>
+							if ($api_url && $account_id) {
+								echo '<div style="color: green; font-weight: bold; margin-bottom: 5px;">&#10003; Settings Saved</div>';
+								echo '<div style="font-size: 12px; color: #666;">Account ID: ' . esc_html($account_id) . '</div>';
+								echo '<div style="font-size: 12px; color: #666;">Use the Overseek Dashboard to verify live connectivity.</div>';
+							} else {
+								echo '<span style="color: red; font-weight: bold;">&#10007; Not Configured</span>';
+							}
+							?>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Connection Config (JSON)</th>
+						<td>
+							<textarea name="overseek_connection_config" rows="5" cols="50"
+								style="font-family: monospace; width: 100%;"><?php echo esc_textarea(get_option('overseek_connection_config')); ?></textarea>
+							<p class="description">Paste the "Connection Configuration" JSON blob from your Overseek Dashboard
+								here.</p>
+						</td>
+					</tr>
 
-						<div class="overseek-admin__callout">
-							<strong><?php echo esc_html($is_configured ? 'Store linked successfully.' : 'Configuration still required.'); ?></strong>
-							<p><?php echo esc_html($status_description); ?></p>
-						</div>
+					<!-- Hidden fields removed as they overwrite the parsed JSON values -->
 
-						<label class="overseek-admin__field" for="overseek_connection_config">
-							<span class="overseek-admin__label">Connection config JSON</span>
-							<textarea id="overseek_connection_config" name="overseek_connection_config" rows="8" spellcheck="false"><?php echo esc_textarea($connection_config); ?></textarea>
-							<span class="overseek-admin__hint">Paste the exact <strong>Connection Configuration</strong> blob from your OverSeek dashboard.</span>
-						</label>
-
-						<div class="overseek-admin__keyvals">
-							<div>
-								<span class="overseek-admin__key">Account ID</span>
-								<code><?php echo esc_html($account_id ?: 'Not set yet'); ?></code>
-							</div>
-							<div>
-								<span class="overseek-admin__key">API URL</span>
-								<code><?php echo esc_html($api_url ?: 'Not set yet'); ?></code>
-							</div>
-						</div>
-					</section>
-
-					<section class="overseek-admin__card">
-						<div class="overseek-admin__card-header">
-							<div>
-								<h2>Storefront Features</h2>
-								<p>Turn visitor-facing capabilities on or off without touching code.</p>
-							</div>
-						</div>
-
-						<?php $this->render_toggle_field('overseek_enable_tracking', 'Enable global tracking', 'Send storefront analytics and behavioral events to OverSeek.'); ?>
-						<?php $this->render_toggle_field('overseek_enable_chat', 'Enable live chat widget', 'Show the OverSeek chat widget to visitors across your storefront.'); ?>
-						<?php $this->render_toggle_field('overseek_enable_vitals', 'Enable Web Vitals collection', 'Collect LCP, CLS, INP, FCP, and TTFB with near-zero impact using beacon delivery.', '1', 'overseek_enable_vitals'); ?>
-
-						<label class="overseek-admin__field" for="overseek_vitals_sample_rate">
-							<span class="overseek-admin__label">Web Vitals sampling rate</span>
+					<tr valign="top">
+						<th scope="row">Enable Global Tracking</th>
+						<td>
+							<input type="checkbox" name="overseek_enable_tracking" value="1" <?php checked(1, get_option('overseek_enable_tracking'), true); ?> />
+							<p class="description">Enable OverSeek analytics tracking on the storefront.</p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Enable Live Chat Widget</th>
+						<td>
+							<input type="checkbox" name="overseek_enable_chat" value="1" <?php checked(1, get_option('overseek_enable_chat'), true); ?> />
+							<p class="description">Show the OverSeek live chat widget to visitors.</p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Enable Web Vitals Collection</th>
+						<td>
+							<input type="checkbox" id="overseek_enable_vitals" name="overseek_enable_vitals" value="1" <?php checked(1, get_option('overseek_enable_vitals', '1'), true); ?> />
+							<p class="description">Collect Core Web Vitals (LCP, CLS, INP, FCP, TTFB) from real visitors and display them in your OverSeek performance dashboard. Zero impact on page load speed.</p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Web Vitals Sampling Rate</th>
+						<td>
+							<?php $sample_rate = get_option('overseek_vitals_sample_rate', 100); ?>
 							<select id="overseek_vitals_sample_rate" name="overseek_vitals_sample_rate">
-								<option value="100" <?php selected($sample_rate, 100); ?>>100% - All page loads</option>
-								<option value="50" <?php selected($sample_rate, 50); ?>>50% - Every other page load</option>
-								<option value="25" <?php selected($sample_rate, 25); ?>>25% - 1 in 4 page loads</option>
-								<option value="10" <?php selected($sample_rate, 10); ?>>10% - High-traffic stores</option>
+								<option value="100" <?php selected($sample_rate, 100); ?>>100% &mdash; All page loads (recommended for low-traffic stores)</option>
+								<option value="50"  <?php selected($sample_rate, 50);  ?>>50% &mdash; Every other page load</option>
+								<option value="25"  <?php selected($sample_rate, 25);  ?>>25% &mdash; 1 in 4 page loads</option>
+								<option value="10"  <?php selected($sample_rate, 10);  ?>>10% &mdash; High-traffic stores only</option>
 							</select>
-							<span class="overseek-admin__hint">Use 100% for lower-traffic stores. Reduce the rate if you want to limit data volume on very busy storefronts.</span>
-						</label>
-					</section>
+							<p class="description">Lower sampling reduces data volume for high-traffic stores. At 100%, ~5 data points are sent per page load via sendBeacon (no extra page load delay).</p>
+						</td>
+					</tr>
+				</table>
 
-					<section class="overseek-admin__card">
-						<div class="overseek-admin__card-header">
-							<div>
-								<h2>Email Relay</h2>
-								<p>Let OverSeek send campaign and automation email through this WordPress installation.</p>
-							</div>
-						</div>
+				<h2>Email Relay Settings</h2>
+				<p class="description">Configure email relay to allow OverSeek to send emails through this WordPress server.</p>
+				<table class="form-table">
+						<tr valign="top">
+						<th scope="row">Relay API Key</th>
+						<td>
+							<input type="text" name="overseek_relay_api_key" value="<?php echo esc_attr(get_option('overseek_relay_api_key')); ?>" style="width: 100%; max-width: 400px; font-family: monospace;" />
+							<p class="description">Enter a secure API key. This must match the key configured in OverSeek's email settings.</p>
+							<p style="margin-top: 10px;"><strong>Relay Endpoint:</strong> <code style="user-select: all;"><?php echo esc_url(home_url('/wp-json/overseek/v1/email-relay')); ?></code></p>
+							<p class="description">Copy this URL into OverSeek's email account settings.</p>
+						</td>
+					</tr>
+				</table>
 
-						<label class="overseek-admin__field" for="overseek_relay_api_key">
-							<span class="overseek-admin__label">Relay API key</span>
-							<input id="overseek_relay_api_key" type="text" name="overseek_relay_api_key" value="<?php echo esc_attr($relay_api_key); ?>" spellcheck="false" />
-							<span class="overseek-admin__hint">Use the same secure key configured in OverSeek email settings.</span>
-						</label>
-
-						<div class="overseek-admin__code-block">
-							<span class="overseek-admin__key">Relay endpoint</span>
-							<code><?php echo esc_html($relay_endpoint); ?></code>
-							<p>Copy this URL into OverSeek so outbound mail can be posted to this store.</p>
-						</div>
-					</section>
-
-					<section class="overseek-admin__card">
-						<div class="overseek-admin__card-header">
-							<div>
-								<h2>Privacy Controls</h2>
-								<p>Choose how long identifiers live and whether consent is required before tracking runs.</p>
-							</div>
-						</div>
-
-						<label class="overseek-admin__field" for="overseek_cookie_retention_days">
-							<span class="overseek-admin__label">Cookie retention</span>
-							<select id="overseek_cookie_retention_days" name="overseek_cookie_retention_days">
+				<h2>Privacy Settings</h2>
+				<table class="form-table">
+					<tr valign="top">
+						<th scope="row">Cookie Retention</th>
+						<td>
+							<?php $retention = get_option('overseek_cookie_retention_days', 365); ?>
+							<select name="overseek_cookie_retention_days">
 								<option value="30" <?php selected($retention, 30); ?>>30 days</option>
 								<option value="90" <?php selected($retention, 90); ?>>90 days</option>
 								<option value="180" <?php selected($retention, 180); ?>>180 days</option>
 								<option value="365" <?php selected($retention, 365); ?>>1 year</option>
 								<option value="730" <?php selected($retention, 730); ?>>2 years</option>
 							</select>
-							<span class="overseek-admin__hint">Shorter retention improves privacy posture and may better fit regional compliance needs.</span>
-						</label>
+							<p class="description">How long to keep visitor tracking cookies. Shorter periods improve privacy compliance.</p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row">Require Cookie Consent</th>
+						<td>
+							<input type="checkbox" name="overseek_require_consent" value="1" <?php checked(1, get_option('overseek_require_consent'), true); ?> />
+							<p class="description">Only track visitors who have given consent via WP Consent API (GDPR compliance). Requires a compatible consent plugin.</p>
+						</td>
+					</tr>
 
-						<?php $this->render_toggle_field('overseek_require_consent', 'Require cookie consent', 'Only track visitors after consent is granted through a WP Consent API-compatible plugin.'); ?>
-					</section>
-				</div>
+					</table>
 
-				<div class="overseek-admin__footer">
-					<?php submit_button('Save OverSeek Settings', 'primary', 'submit', false); ?>
-					<p>Changes apply to this WooCommerce store only.</p>
-				</div>
+				<?php submit_button(); ?>
 			</form>
 		</div>
-		<?php
-	}
-
-	/**
-	 * Render a toggle row with consistent styling.
-	 *
-	 * @param string $option_name Option storage key.
-	 * @param string $label Toggle label.
-	 * @param string $description Supporting copy.
-	 * @param string $default Default option value.
-	 * @param string $id Optional input id.
-	 * @return void
-	 */
-	private function render_toggle_field($option_name, $label, $description, $default = '0', $id = '')
-	{
-		$field_id = $id ?: $option_name;
-		?>
-		<label class="overseek-admin__toggle" for="<?php echo esc_attr($field_id); ?>">
-			<span class="overseek-admin__toggle-input">
-				<input type="hidden" name="<?php echo esc_attr($option_name); ?>" value="" />
-				<input
-					id="<?php echo esc_attr($field_id); ?>"
-					type="checkbox"
-					name="<?php echo esc_attr($option_name); ?>"
-					value="1"
-					<?php checked(1, get_option($option_name, $default), true); ?>
-				/>
-			</span>
-			<span class="overseek-admin__toggle-copy">
-				<span class="overseek-admin__label"><?php echo esc_html($label); ?></span>
-				<span class="overseek-admin__hint"><?php echo esc_html($description); ?></span>
-			</span>
-		</label>
 		<?php
 	}
 }

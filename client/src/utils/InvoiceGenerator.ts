@@ -46,7 +46,7 @@ export const generateInvoicePDF = async (
     order: OrderData,
     grid: InvoiceRendererProps['layout'],
     items: InvoiceRendererProps['items'],
-    templateName: string = 'Invoice',
+    _templateName: string = 'Invoice',
     settings?: InvoiceRendererProps['settings']
 ): Promise<void> => {
     // 1. Create hidden container — must stay within viewport for html2canvas
@@ -115,10 +115,25 @@ export const generateInvoicePDF = async (
 
         let canvas: HTMLCanvasElement;
         try {
-            // 5. Capture the rendered DOM with html2canvas.
-            // Prefer foreignObjectRendering so the browser renders modern CSS
-            // colors itself instead of html2canvas parsing Tailwind v4 tokens.
-            canvas = await captureInvoiceCanvas(container, captureId);
+            // 5. Capture the rendered DOM with html2canvas
+            canvas = await html2canvas(container, {
+                scale: CAPTURE_SCALE,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                width: CONTAINER_WIDTH_PX,
+                windowWidth: CONTAINER_WIDTH_PX,
+                logging: false,
+                onclone: (clonedDocument) => {
+                    patchStylesheets(clonedDocument);
+                    const clonedContainer = clonedDocument.querySelector(
+                        `[${PDF_CAPTURE_ATTR}="${captureId}"]`
+                    );
+                    if (clonedContainer instanceof HTMLElement) {
+                        inlineResolvedColors(clonedContainer);
+                    }
+                },
+            });
         } finally {
             // Always restore stylesheets — even if capture throws
             restoreStylesheets(stylesheetPatches);
@@ -127,11 +142,7 @@ export const generateInvoicePDF = async (
         // 6. Create paginated PDF from the canvas with smart break points
         const pdf = createPaginatedPdf(canvas, breakPoints);
         const orderNumber = order.number || order.order_number || order.id || 'draft';
-        const safeTemplateName = String(templateName || 'Invoice')
-            .trim()
-            .replace(/[^a-zA-Z0-9_-]+/g, '_')
-            .replace(/^_+|_+$/g, '') || 'Invoice';
-        pdf.save(`${safeTemplateName}_${orderNumber}.pdf`);
+        pdf.save(`Invoice_${orderNumber}.pdf`);
     } catch (err: unknown) {
         const typedError = err instanceof Error ? err : new Error(String(err));
         const msg = typedError.message || String(err);
@@ -175,46 +186,6 @@ function nextFrame(): Promise<void> {
 /** Promise-based setTimeout wrapper. */
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function captureInvoiceCanvas(container: HTMLElement, captureId: string): Promise<HTMLCanvasElement> {
-    const baseOptions = {
-        scale: CAPTURE_SCALE,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: CONTAINER_WIDTH_PX,
-        windowWidth: CONTAINER_WIDTH_PX,
-        logging: false,
-        onclone: (clonedDocument: Document) => {
-            patchStylesheets(clonedDocument);
-            const clonedContainer = clonedDocument.querySelector(
-                `[${PDF_CAPTURE_ATTR}="${captureId}"]`
-            );
-            if (clonedContainer instanceof HTMLElement) {
-                inlineResolvedColors(clonedContainer);
-            }
-        },
-    } as const;
-
-    try {
-        return await html2canvas(container, {
-            ...baseOptions,
-            foreignObjectRendering: true,
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes('unsupported color function')) {
-            throw error;
-        }
-
-        Logger.warn('Invoice PDF foreignObject capture failed, retrying with standard renderer', { error: message });
-
-        return await html2canvas(container, {
-            ...baseOptions,
-            foreignObjectRendering: false,
-        });
-    }
 }
 
 /**
