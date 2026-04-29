@@ -23,6 +23,13 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const REFRESH_RETRY_DELAY_MS = 30_000;
+const REFRESH_LOCK_KEY = 'auth:refresh-lock';
+const REFRESH_LOCK_TTL_MS = 15_000;
+const REFRESH_WAIT_TIMEOUT_MS = 20_000;
+const REFRESH_WAIT_POLL_MS = 250;
+
+type SilentRefreshResult = 'success' | 'retryable_failure' | 'expired';
 
 // EDGE CASE FIX: Parse JWT to get expiry time
 function getTokenExpiry(token: string): number | null {
@@ -39,13 +46,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
     const [isLoading, setIsLoading] = useState(true);
     const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const tabIdRef = useRef(
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+
+    const syncSessionFromStorage = useCallback((): boolean => {
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
+        setToken(storedToken);
+        setUser(storedUser ? JSON.parse(storedUser) : null);
+        return Boolean(storedToken && storedUser);
+    }, []);
+
+    const clearSession = useCallback(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+        setToken(null);
+        setUser(null);
+    }, []);
+
+    const acquireRefreshLock = useCallback((): boolean => {
+        try {
+            const now = Date.now();
+            const rawLock = localStorage.getItem(REFRESH_LOCK_KEY);
+            if (rawLock) {
+                const parsedLock = JSON.parse(rawLock) as { owner: string; expiresAt: number };
+                if (parsedLock.expiresAt > now && parsedLock.owner !== tabIdRef.current) {
+                    return false;
+                }
+            }
+
+            const nextLock = JSON.stringify({
+                owner: tabIdRef.current,
+                expiresAt: now + REFRESH_LOCK_TTL_MS,
+            });
+            localStorage.setItem(REFRESH_LOCK_KEY, nextLock);
+
+            const confirmedLock = localStorage.getItem(REFRESH_LOCK_KEY);
+            if (!confirmedLock) {
+                return false;
+            }
+
+            const parsedConfirmedLock = JSON.parse(confirmedLock) as { owner: string; expiresAt: number };
+            return parsedConfirmedLock.owner === tabIdRef.current;
+        } catch (error) {
+            Logger.warn('[Auth] Failed to acquire refresh lock, proceeding without coordination', { error });
+            return true;
+        }
+    }, []);
+
+    const releaseRefreshLock = useCallback(() => {
+        try {
+            const rawLock = localStorage.getItem(REFRESH_LOCK_KEY);
+            if (!rawLock) {
+                return;
+            }
+
+            const parsedLock = JSON.parse(rawLock) as { owner: string; expiresAt: number };
+            if (parsedLock.owner === tabIdRef.current) {
+                localStorage.removeItem(REFRESH_LOCK_KEY);
+            }
+        } catch (error) {
+            Logger.warn('[Auth] Failed to release refresh lock', { error });
+        }
+    }, []);
+
+    const waitForRefreshFromAnotherTab = useCallback(async (staleRefreshToken: string): Promise<SilentRefreshResult> => {
+        const startedAt = Date.now();
+
+        while (Date.now() - startedAt < REFRESH_WAIT_TIMEOUT_MS) {
+            await new Promise(resolve => setTimeout(resolve, REFRESH_WAIT_POLL_MS));
+
+            const latestRefreshToken = localStorage.getItem('refreshToken');
+            if (latestRefreshToken && latestRefreshToken !== staleRefreshToken) {
+                Logger.info('[Auth] Adopted refreshed session from another tab');
+                return syncSessionFromStorage() ? 'success' : 'retryable_failure';
+            }
+        }
+
+        Logger.warn('[Auth] Timed out waiting for another tab to refresh the session');
+        return 'retryable_failure';
+    }, [syncSessionFromStorage]);
 
     // EDGE CASE FIX: Silent refresh function
-    const silentRefresh = useCallback(async () => {
+    const silentRefresh = useCallback(async (): Promise<SilentRefreshResult> => {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
             Logger.warn('[Auth] No refresh token available for silent refresh');
-            return false;
+            return 'expired';
+        }
+
+        if (!acquireRefreshLock()) {
+            Logger.info('[Auth] Another tab is already refreshing the session');
+            return waitForRefreshFromAnotherTab(refreshToken);
         }
 
         try {
@@ -56,14 +152,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
 
             if (!response.ok) {
-                Logger.warn('[Auth] Silent refresh failed, logging out');
-                // Token is invalid/expired - force logout
-                localStorage.removeItem('token');
-                localStorage.removeItem('refreshToken');
-                localStorage.removeItem('user');
-                setToken(null);
-                setUser(null);
-                return false;
+                if (response.status === 401) {
+                    const latestRefreshToken = localStorage.getItem('refreshToken');
+                    if (latestRefreshToken && latestRefreshToken !== refreshToken) {
+                        Logger.info('[Auth] Refresh token rotated by another tab during refresh');
+                        return syncSessionFromStorage() ? 'success' : 'retryable_failure';
+                    }
+
+                    Logger.warn('[Auth] Silent refresh rejected, clearing session');
+                    // Token is invalid/expired - force logout
+                    clearSession();
+                    return 'expired';
+                }
+
+                Logger.warn('[Auth] Silent refresh hit a transient failure', {
+                    status: response.status,
+                });
+                return 'retryable_failure';
             }
 
             const data = await response.json();
@@ -71,15 +176,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem('refreshToken', data.refreshToken);
             setToken(data.accessToken);
             Logger.info('[Auth] Silent refresh successful');
-            return true;
+            return 'success';
         } catch (error) {
             Logger.error('[Auth] Silent refresh error', { error });
-            return false;
+            return 'retryable_failure';
+        } finally {
+            releaseRefreshLock();
         }
-    }, []);
+    }, [acquireRefreshLock, clearSession, releaseRefreshLock, syncSessionFromStorage, waitForRefreshFromAnotherTab]);
 
     // EDGE CASE FIX: Schedule next refresh before token expires
-    const scheduleRefresh = useCallback((accessToken: string) => {
+    const scheduleRefresh = useCallback((accessToken: string, overrideDelayMs?: number) => {
         // Clear any existing timeout
         if (refreshTimeoutRef.current) {
             clearTimeout(refreshTimeoutRef.current);
@@ -89,13 +196,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!expiry) return;
 
         // Refresh 1 minute before expiry (or immediately if less than 1 min left)
-        const refreshIn = Math.max(expiry - Date.now() - 60000, 0);
+        const refreshIn = overrideDelayMs ?? Math.max(expiry - Date.now() - 60000, 0);
 
         Logger.info(`[Auth] Token expires in ${Math.round((expiry - Date.now()) / 1000)}s, scheduling refresh in ${Math.round(refreshIn / 1000)}s`);
 
         refreshTimeoutRef.current = setTimeout(async () => {
-            const success = await silentRefresh();
-            if (success) {
+            const result = await silentRefresh();
+            if (result === 'retryable_failure') {
+                const latestToken = localStorage.getItem('token');
+                const latestExpiry = latestToken ? getTokenExpiry(latestToken) : null;
+                if (latestToken && latestExpiry && latestExpiry > Date.now()) {
+                    Logger.info('[Auth] Retrying silent refresh after transient failure');
+                    scheduleRefresh(latestToken, Math.min(
+                        REFRESH_RETRY_DELAY_MS,
+                        Math.max(latestExpiry - Date.now(), 0)
+                    ));
+                }
+            }
+            if (result === 'success') {
                 // Next schedule is handled by token state update.
             }
         }, refreshIn);
@@ -119,11 +237,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // Try to refresh immediately
                     if (storedRefreshToken) {
                         const refreshed = await silentRefresh();
-                        if (refreshed) {
+                        if (refreshed === 'success') {
                             const newToken = localStorage.getItem('token');
                             setToken(newToken);
                             setUser(JSON.parse(storedUser));
                             if (newToken) scheduleRefresh(newToken);
+                        } else if (refreshed === 'retryable_failure') {
+                            setToken(storedToken);
+                            setUser(JSON.parse(storedUser));
+                            scheduleRefresh(storedToken, REFRESH_RETRY_DELAY_MS);
                         }
                     }
                 } else {
@@ -184,11 +306,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (refreshTimeoutRef.current) {
             clearTimeout(refreshTimeoutRef.current);
         }
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        setToken(null);
-        setUser(null);
+        releaseRefreshLock();
+        clearSession();
     };
 
     const updateUser = (updatedUser: User) => {

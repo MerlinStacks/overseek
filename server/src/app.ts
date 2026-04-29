@@ -68,6 +68,9 @@ async function build() {
         timeWindow: RATE_LIMITS.WINDOW_MS,
         allowList: (req) => {
             const url = req.url || '';
+            if (url.startsWith('/api/auth/login')) return true;
+            if (url.startsWith('/api/auth/refresh')) return true;
+            if (url.startsWith('/api/auth/me')) return true;
             if (url.startsWith('/api/sync')) return true;
             if (url.startsWith('/api/webhooks')) return true;
             if (url.startsWith('/api/webhook/')) return true;

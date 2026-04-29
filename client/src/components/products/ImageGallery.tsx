@@ -33,6 +33,15 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
         onChange(newImages);
     };
 
+    const handleMakePrimary = (index: number) => {
+        if (index === 0) return;
+        const newImages = [...(images || [])];
+        const [selected] = newImages.splice(index, 1);
+        if (!selected) return;
+        newImages.unshift(selected);
+        onChange(newImages);
+    };
+
     /**
      * Handles image load errors by tracking the failed image ID
      */
@@ -45,9 +54,12 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
 
     return (
         <div className="space-y-4">
-            <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                <ImageIcon size={16} /> Product Images
-            </h3>
+            <div className="space-y-1">
+                <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <ImageIcon size={16} /> Product Images
+                </h3>
+                <p className="text-xs text-gray-500">The first image is used as the primary product preview.</p>
+            </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {validImages.map((img, idx) => (
@@ -66,6 +78,18 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
                                 loading="lazy"
                                 onError={() => handleImageError(img.id)}
                             />
+                        )}
+                        {idx === 0 ? (
+                            <span className="absolute left-2 top-2 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white shadow-xs">
+                                Primary
+                            </span>
+                        ) : (
+                            <button
+                                onClick={() => handleMakePrimary(idx)}
+                                className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700 opacity-0 shadow-xs transition-all group-hover:opacity-100"
+                            >
+                                Set Primary
+                            </button>
                         )}
                         <button
                             onClick={() => handleRemove(idx)}

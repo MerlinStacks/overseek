@@ -12,6 +12,141 @@ const TRANSPARENT_GIF = Buffer.from(
     'base64'
 );
 
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getWooPreferenceCenterUrl(wooUrl: string | null | undefined, token: string): string | null {
+    if (!wooUrl) return null;
+
+    try {
+        const url = new URL(wooUrl);
+        url.searchParams.set('overseek_email_preferences', token);
+        return url.toString();
+    } catch {
+        return null;
+    }
+}
+
+async function getPreferenceContext(token: string) {
+    const emailLog = await prisma.emailLog.findUnique({
+        where: { trackingId: token },
+        include: {
+            account: {
+                select: {
+                    name: true,
+                    wooUrl: true
+                }
+            }
+        }
+    });
+
+    if (!emailLog) {
+        return null;
+    }
+
+    const unsubscribe = await prisma.emailUnsubscribe.findFirst({
+        where: {
+            accountId: emailLog.accountId,
+            email: { equals: emailLog.to, mode: 'insensitive' }
+        },
+        select: {
+            scope: true,
+            reason: true,
+            createdAt: true
+        }
+    });
+
+    return {
+        emailLog,
+        email: emailLog.to,
+        accountName: emailLog.account?.name || 'this sender',
+        wooPreferenceCenterUrl: getWooPreferenceCenterUrl(emailLog.account?.wooUrl, token),
+        currentScope: unsubscribe?.scope || 'NONE',
+        reason: unsubscribe?.reason || null,
+        updatedAt: unsubscribe?.createdAt || null
+    };
+}
+
+async function upsertPreference(token: string, scope?: string, reason?: string) {
+    const context = await getPreferenceContext(token);
+    if (!context) {
+        return null;
+    }
+
+    const unsubscribeScope = scope === 'ALL' ? 'ALL' : 'MARKETING';
+
+    await prisma.emailUnsubscribe.upsert({
+        where: {
+            accountId_email: {
+                accountId: context.emailLog.accountId,
+                email: context.emailLog.to
+            }
+        },
+        create: {
+            accountId: context.emailLog.accountId,
+            email: context.emailLog.to,
+            scope: unsubscribeScope,
+            reason: reason || null
+        },
+        update: {
+            scope: unsubscribeScope,
+            reason: reason || null
+        }
+    });
+
+    if (context.emailLog.sourceId) {
+        await campaignTrackingService.trackEvent({
+            accountId: context.emailLog.accountId,
+            campaignId: context.emailLog.sourceId,
+            eventType: 'unsubscribe',
+            recipientEmail: context.emailLog.to
+        });
+    }
+
+    Logger.info('Email preferences updated', {
+        email: context.emailLog.to,
+        accountId: context.emailLog.accountId,
+        scope: unsubscribeScope
+    });
+
+    return {
+        ...context,
+        currentScope: unsubscribeScope,
+        reason: reason || null,
+        updatedAt: new Date()
+    };
+}
+
+function renderHostedPreferenceHtml(context: NonNullable<Awaited<ReturnType<typeof getPreferenceContext>>>) {
+    const escapedEmail = escapeHtml(context.email);
+    const escapedAccountName = escapeHtml(context.accountName);
+
+    return `
+        <!DOCTYPE html>
+        <html><head><title>Email Preferences</title></head>
+        <body style="font-family: system-ui; padding: 40px; text-align: center; max-width: 500px; margin: 0 auto;">
+            <h1>Email Preferences</h1>
+            <p><strong>${escapedEmail}</strong> is receiving emails from <strong>${escapedAccountName}</strong>.</p>
+            <p style="color: #555;">Choose whether to stop marketing emails only, or stop all email from this sender.</p>
+            <form method="POST" action="/api/email/unsubscribe/${context.emailLog.trackingId}" style="display: grid; gap: 12px; margin-top: 24px;">
+                <button type="submit" name="scope" value="MARKETING" style="background: #dc2626; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
+                    Unsubscribe From Marketing Emails
+                </button>
+                <button type="submit" name="scope" value="ALL" style="background: #111827; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
+                    Unsubscribe From All Emails
+                </button>
+            </form>
+            <p style="margin-top: 20px; color: #666; font-size: 14px;">Order receipts and other important updates can continue if you only opt out of marketing.</p>
+        </body></html>
+    `;
+}
+
 const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * Track email opens via invisible pixel.
@@ -151,12 +286,9 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             const { token } = request.params;
 
             try {
-                const emailLog = await prisma.emailLog.findUnique({
-                    where: { trackingId: token },
-                    include: { account: { select: { name: true } } }
-                });
+                const context = await getPreferenceContext(token);
 
-                if (!emailLog) {
+                if (!context) {
                     return reply.code(404).type('text/html').send(`
                         <!DOCTYPE html>
                         <html><head><title>Invalid Link</title></head>
@@ -167,29 +299,41 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                     `);
                 }
 
-                const accountName = emailLog.account?.name || 'this sender';
+                if (context.wooPreferenceCenterUrl) {
+                    return reply.redirect(context.wooPreferenceCenterUrl);
+                }
 
-                return reply.type('text/html').send(`
-                    <!DOCTYPE html>
-                    <html><head><title>Unsubscribe</title></head>
-                    <body style="font-family: system-ui; padding: 40px; text-align: center; max-width: 500px; margin: 0 auto;">
-                        <h1>Email Preferences</h1>
-                        <p><strong>${emailLog.to}</strong> is receiving emails from <strong>${accountName}</strong>.</p>
-                        <p style="color: #555;">Choose whether to stop marketing emails only, or stop all email from this sender.</p>
-                        <form method="POST" action="/api/email/unsubscribe/${token}" style="display: grid; gap: 12px; margin-top: 24px;">
-                            <button type="submit" name="scope" value="MARKETING" style="background: #dc2626; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
-                                Unsubscribe From Marketing Emails
-                            </button>
-                            <button type="submit" name="scope" value="ALL" style="background: #111827; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
-                                Unsubscribe From All Emails
-                            </button>
-                        </form>
-                        <p style="margin-top: 20px; color: #666; font-size: 14px;">Order receipts and other important updates can continue if you only opt out of marketing.</p>
-                    </body></html>
-                `);
+                return reply.type('text/html').send(renderHostedPreferenceHtml(context));
             } catch (error) {
                 Logger.error('Unsubscribe page error', { token, error });
                 return reply.code(500).send('An error occurred');
+            }
+        }
+    );
+
+    fastify.get<{ Params: { token: string } }>(
+        '/preferences/:token',
+        async (request, reply) => {
+            const { token } = request.params;
+
+            try {
+                const context = await getPreferenceContext(token);
+
+                if (!context) {
+                    return reply.code(404).send({ error: 'Invalid token' });
+                }
+
+                return reply.send({
+                    email: context.email,
+                    accountName: context.accountName,
+                    currentScope: context.currentScope,
+                    reason: context.reason,
+                    updatedAt: context.updatedAt,
+                    preferenceCenterUrl: context.wooPreferenceCenterUrl
+                });
+            } catch (error) {
+                Logger.error('Preference lookup error', { token, error });
+                return reply.code(500).send({ error: 'Failed to load preferences' });
             }
         }
     );
@@ -205,64 +349,52 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             const { reason, scope } = request.body || {};
 
             try {
-                const emailLog = await prisma.emailLog.findUnique({
-                    where: { trackingId: token }
-                });
+                const updated = await upsertPreference(token, scope, reason);
 
-                if (!emailLog) {
+                if (!updated) {
                     return reply.code(404).send({ error: 'Invalid token' });
                 }
-
-                const unsubscribeScope = scope === 'ALL' ? 'ALL' : 'MARKETING';
-
-                // Create unsubscribe record
-                await prisma.emailUnsubscribe.upsert({
-                    where: {
-                        accountId_email: {
-                            accountId: emailLog.accountId,
-                            email: emailLog.to
-                        }
-                    },
-                    create: {
-                        accountId: emailLog.accountId,
-                        email: emailLog.to,
-                        scope: unsubscribeScope,
-                        reason: reason || null
-                    },
-                    update: {
-                        scope: unsubscribeScope,
-                        reason: reason || null
-                    }
-                });
-
-                // Track unsubscribe event
-                if (emailLog.sourceId) {
-                    await campaignTrackingService.trackEvent({
-                        accountId: emailLog.accountId,
-                        campaignId: emailLog.sourceId,
-                        eventType: 'unsubscribe',
-                        recipientEmail: emailLog.to
-                    });
-                }
-
-                Logger.info('Email unsubscribed', {
-                    email: emailLog.to,
-                    accountId: emailLog.accountId,
-                    scope: unsubscribeScope
-                });
 
                 return reply.type('text/html').send(`
                     <!DOCTYPE html>
                     <html><head><title>Unsubscribed</title></head>
                     <body style="font-family: system-ui; padding: 40px; text-align: center;">
                         <h1>✓ Preferences Updated</h1>
-                        <p>You have been unsubscribed from future ${unsubscribeScope === 'ALL' ? 'emails' : 'marketing emails'}.</p>
+                        <p>You have been unsubscribed from future ${updated.currentScope === 'ALL' ? 'emails' : 'marketing emails'}.</p>
                         <p style="color: #666; font-size: 14px;">You may close this window.</p>
                     </body></html>
                 `);
             } catch (error) {
                 Logger.error('Unsubscribe error', { token, error });
                 return reply.code(500).send({ error: 'Failed to unsubscribe' });
+            }
+        }
+    );
+
+    fastify.post<{ Params: { token: string }; Body: { reason?: string; scope?: string } }>(
+        '/preferences/:token',
+        async (request, reply) => {
+            const { token } = request.params;
+            const { reason, scope } = request.body || {};
+
+            try {
+                const updated = await upsertPreference(token, scope, reason);
+
+                if (!updated) {
+                    return reply.code(404).send({ error: 'Invalid token' });
+                }
+
+                return reply.send({
+                    success: true,
+                    email: updated.email,
+                    accountName: updated.accountName,
+                    currentScope: updated.currentScope,
+                    reason: updated.reason,
+                    updatedAt: updated.updatedAt
+                });
+            } catch (error) {
+                Logger.error('Preference update error', { token, error });
+                return reply.code(500).send({ error: 'Failed to update preferences' });
             }
         }
     );

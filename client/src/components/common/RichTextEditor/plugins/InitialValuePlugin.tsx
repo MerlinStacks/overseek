@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $generateNodesFromDOM } from '@lexical/html';
+import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
 import { $getRoot, $insertNodes, $createParagraphNode } from 'lexical';
 
 interface InitialValuePluginProps {
@@ -27,12 +27,28 @@ function normalizeHtml(html: string): string {
 export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
     const [editor] = useLexicalComposerContext();
     const lastExternalValueRef = useRef<string>('');
+    const currentEditorValueRef = useRef<string>('');
+
+    useEffect(() => {
+        return editor.registerUpdateListener(({ editorState }) => {
+            editorState.read(() => {
+                currentEditorValueRef.current = normalizeHtml($generateHtmlFromNodes(editor, null));
+            });
+        });
+    }, [editor]);
 
     useEffect(() => {
         // Normalize for comparison
         const normalizedExternal = normalizeHtml(initialValue || '');
         const normalizedLastExternal = normalizeHtml(lastExternalValueRef.current || '');
         if (normalizedExternal === normalizedLastExternal) {
+            return;
+        }
+
+        // If the editor already contains this content, the update came from
+        // the editor itself and we should preserve the current selection.
+        if (normalizedExternal === currentEditorValueRef.current) {
+            lastExternalValueRef.current = initialValue || '';
             return;
         }
 
@@ -58,6 +74,8 @@ export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
             root.clear();
             $insertNodes(nodes);
         });
+
+        currentEditorValueRef.current = normalizedExternal;
     }, [editor, initialValue]);
 
     return null;

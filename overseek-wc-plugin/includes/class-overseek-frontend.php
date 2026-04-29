@@ -141,8 +141,7 @@ class OverSeek_Frontend
 			return [];
 		}
 
-		$body = wp_remote_retrieve_body($response);
-		$data = json_decode($body, true);
+		$data = OverSeek_HTTP_Utils::decode_json_response($response);
 
 		if (!is_array($data)) {
 			return [];
@@ -154,6 +153,7 @@ class OverSeek_Frontend
 
 		return $data;
 	}
+
 }
 
 

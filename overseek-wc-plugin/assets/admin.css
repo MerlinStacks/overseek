@@ -1,0 +1,295 @@
+.overseek-admin {
+	--overseek-bg: linear-gradient(135deg, #f7f5ef 0%, #eef6ff 55%, #f7fbf8 100%);
+	--overseek-card: rgba(255, 255, 255, 0.86);
+	--overseek-border: rgba(29, 53, 87, 0.12);
+	--overseek-text: #17324d;
+	--overseek-muted: #5e7287;
+	--overseek-accent: #0f766e;
+	--overseek-accent-strong: #0b5f58;
+	--overseek-warning: #b45309;
+	--overseek-shadow: 0 18px 50px rgba(23, 50, 77, 0.09);
+	max-width: 1180px;
+	margin-top: 18px;
+	color: var(--overseek-text);
+}
+
+.overseek-admin__hero {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 20px;
+	padding: 28px 32px;
+	border: 1px solid var(--overseek-border);
+	border-radius: 24px;
+	background: var(--overseek-bg);
+	box-shadow: var(--overseek-shadow);
+}
+
+.overseek-admin__eyebrow {
+	display: inline-block;
+	margin-bottom: 12px;
+	padding: 6px 10px;
+	border-radius: 999px;
+	background: rgba(15, 118, 110, 0.1);
+	color: var(--overseek-accent-strong);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.overseek-admin h1 {
+	margin: 0;
+	font-size: 34px;
+	line-height: 1.1;
+	color: #102a43;
+}
+
+.overseek-admin__intro,
+.overseek-admin__hero-meta p,
+.overseek-admin__card-header p,
+.overseek-admin__hint,
+.overseek-admin__stat-card p,
+.overseek-admin__footer p,
+.overseek-admin__code-block p {
+	margin: 0;
+	color: var(--overseek-muted);
+}
+
+.overseek-admin__hero-meta {
+	max-width: 360px;
+	display: grid;
+	gap: 10px;
+	align-content: start;
+}
+
+.overseek-admin__status {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	padding: 7px 12px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.overseek-admin__status.is-connected {
+	background: rgba(15, 118, 110, 0.12);
+	color: var(--overseek-accent-strong);
+}
+
+.overseek-admin__status.is-warning {
+	background: rgba(180, 83, 9, 0.12);
+	color: var(--overseek-warning);
+}
+
+.overseek-admin__stats {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 16px;
+	margin: 20px 0;
+}
+
+.overseek-admin__stat-card,
+.overseek-admin__card {
+	border: 1px solid var(--overseek-border);
+	border-radius: 22px;
+	background: var(--overseek-card);
+	box-shadow: var(--overseek-shadow);
+	backdrop-filter: blur(14px);
+}
+
+.overseek-admin__stat-card {
+	padding: 22px;
+}
+
+.overseek-admin__stat-label,
+.overseek-admin__key {
+	display: block;
+	margin-bottom: 8px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #6b7c93;
+}
+
+.overseek-admin__stat-card strong {
+	display: block;
+	margin-bottom: 8px;
+	font-size: 28px;
+	line-height: 1;
+	color: #102a43;
+}
+
+.overseek-admin__form .notice {
+	margin: 0 0 18px;
+}
+
+.overseek-admin__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 20px;
+}
+
+.overseek-admin__card {
+	padding: 24px;
+}
+
+.overseek-admin__card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+.overseek-admin__card h2 {
+	margin: 0 0 6px;
+	font-size: 22px;
+	line-height: 1.2;
+	color: #102a43;
+}
+
+.overseek-admin__callout,
+.overseek-admin__code-block,
+.overseek-admin__keyvals > div,
+.overseek-admin__toggle,
+.overseek-admin__field textarea,
+.overseek-admin__field input[type="text"],
+.overseek-admin__field select {
+	border-radius: 16px;
+}
+
+.overseek-admin__callout,
+.overseek-admin__code-block,
+.overseek-admin__keyvals > div {
+	padding: 16px 18px;
+	background: rgba(245, 248, 251, 0.95);
+	border: 1px solid rgba(29, 53, 87, 0.08);
+}
+
+.overseek-admin__callout {
+	margin-bottom: 18px;
+}
+
+.overseek-admin__callout strong {
+	display: block;
+	margin-bottom: 6px;
+}
+
+.overseek-admin__field {
+	display: grid;
+	gap: 8px;
+	margin-bottom: 18px;
+}
+
+.overseek-admin__label {
+	font-size: 14px;
+	font-weight: 700;
+	color: #17324d;
+}
+
+.overseek-admin__field textarea,
+.overseek-admin__field input[type="text"],
+.overseek-admin__field select {
+	width: 100%;
+	padding: 12px 14px;
+	border: 1px solid rgba(29, 53, 87, 0.14);
+	background: #fff;
+	color: #102a43;
+	font-size: 14px;
+	line-height: 1.5;
+	box-shadow: inset 0 1px 2px rgba(16, 42, 67, 0.03);
+}
+
+.overseek-admin__field textarea {
+	min-height: 180px;
+	font-family: Consolas, Monaco, monospace;
+	resize: vertical;
+}
+
+.overseek-admin__field textarea:focus,
+.overseek-admin__field input[type="text"]:focus,
+.overseek-admin__field select:focus {
+	border-color: rgba(15, 118, 110, 0.45);
+	box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+	outline: none;
+}
+
+.overseek-admin__toggle {
+	display: flex;
+	gap: 14px;
+	align-items: flex-start;
+	padding: 16px 18px;
+	margin-bottom: 14px;
+	background: rgba(247, 250, 252, 0.9);
+	border: 1px solid rgba(29, 53, 87, 0.08);
+}
+
+.overseek-admin__toggle input[type="checkbox"] {
+	margin: 2px 0 0;
+	transform: scale(1.15);
+	accent-color: var(--overseek-accent);
+}
+
+.overseek-admin__toggle-copy {
+	display: grid;
+	gap: 4px;
+}
+
+.overseek-admin__keyvals {
+	display: grid;
+	gap: 12px;
+}
+
+.overseek-admin__keyvals code,
+.overseek-admin__code-block code {
+	display: block;
+	font-size: 13px;
+	line-height: 1.5;
+	word-break: break-word;
+	user-select: all;
+}
+
+.overseek-admin__footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-top: 22px;
+	padding: 20px 24px;
+	border: 1px solid var(--overseek-border);
+	border-radius: 22px;
+	background: rgba(255, 255, 255, 0.84);
+	box-shadow: var(--overseek-shadow);
+}
+
+.overseek-admin__footer .button-primary {
+	background: var(--overseek-accent);
+	border-color: var(--overseek-accent);
+	min-height: 42px;
+	padding: 0 18px;
+	font-weight: 600;
+}
+
+.overseek-admin__footer .button-primary:hover,
+.overseek-admin__footer .button-primary:focus {
+	background: var(--overseek-accent-strong);
+	border-color: var(--overseek-accent-strong);
+}
+
+@media (max-width: 960px) {
+	.overseek-admin__stats,
+	.overseek-admin__grid {
+		grid-template-columns: 1fr;
+	}
+
+	.overseek-admin__footer,
+	.overseek-admin__card-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}

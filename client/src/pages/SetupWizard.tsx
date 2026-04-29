@@ -188,7 +188,7 @@ export function SetupWizard() {
 
             // Fallback: Create account if it wasn't created in StoreStep
             // This handles edge cases where early creation failed
-            const res = await fetch('/api/accounts', {
+            let res = await fetch('/api/accounts', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -208,8 +208,31 @@ export function SetupWizard() {
             });
 
             if (res.status === 401) {
-                logout();
-                return;
+                const latestToken = localStorage.getItem('token');
+                if (latestToken && latestToken !== token) {
+                    res = await fetch('/api/accounts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${latestToken}`
+                        },
+                        body: JSON.stringify({
+                            name: draft.store.name,
+                            domain: draft.store.domain || draft.store.wooUrl,
+                            wooUrl: draft.store.wooUrl,
+                            wooConsumerKey: draft.store.wooConsumerKey,
+                            wooConsumerSecret: draft.store.wooConsumerSecret,
+                            pluginVerified: draft.plugin.verified,
+                            emailConfigured: draft.email.enabled && draft.email.verified,
+                            adsConfigured: draft.ads.googleConnected || draft.ads.metaConnected
+                        })
+                    });
+                }
+
+                if (res.status === 401) {
+                    logout();
+                    return;
+                }
             }
 
             if (!res.ok) {
