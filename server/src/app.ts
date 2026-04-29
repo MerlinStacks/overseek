@@ -8,90 +8,62 @@ import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import fastifyMultipart from '@fastify/multipart';
 import path from 'path';
+import http from 'http';
 import { prisma } from './utils/prisma';
 import { esClient } from './utils/elastic';
-
-import http from 'http';
-import { Server } from 'socket.io';
-import { ChatService } from './services/ChatService';
 import { QueueFactory } from './services/queue/QueueFactory';
-import { EventBus, EVENTS } from './services/events';
 import { AutomationEngine } from './services/AutomationEngine';
-import { setIO } from './socket';
 import { RATE_LIMITS, UPLOAD_LIMITS } from './config/limits';
-import { verifyToken } from './utils/auth';
 import { registerRoutes } from './config/routes';
-import { setupSocketHandlers } from './config/socketHandlers';
 import { Logger, fastifyLoggerConfig } from './utils/logger';
+import { registerCAPIPlatforms } from './config/capi';
+import { initializeSocketIO } from './config/socket';
+import { subscribeEventBus } from './config/events';
+import { setupSocketHandlers } from './config/socketHandlers';
 
-// Init Queues for Bull Board
 QueueFactory.init();
 
 const automationEngine = new AutomationEngine();
-import { NotificationEngine } from './services/NotificationEngine';
 
-// Create Fastify instance
 const fastify = Fastify({
     logger: fastifyLoggerConfig,
     disableRequestLogging: true,
     trustProxy: true,
 });
 
-// Build function to initialize all plugins and routes
 async function build() {
-    // Register CORS
+    // CORS
     await fastify.register(cors, {
         origin: (origin, cb) => {
             const envOrigins = process.env.CORS_ORIGINS
-                ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
+                ? process.env.CORS_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
                 : [];
-            const allowedOrigins = envOrigins.length > 0
+            const allowed = envOrigins.length > 0
                 ? envOrigins
-                : (process.env.CLIENT_URL
-                    ? [process.env.CLIENT_URL, 'http://localhost:5173']
-                    : ['http://localhost:5173']);
-            const enforceAllowlist = envOrigins.length > 0;
-
-            if (!origin || allowedOrigins.includes(origin) || origin === '*') {
-                cb(null, true);
-            } else {
-                cb(null, !enforceAllowlist);
-            }
+                : (process.env.CLIENT_URL ? [process.env.CLIENT_URL, 'http://localhost:5173'] : ['http://localhost:5173']);
+            const enforce = envOrigins.length > 0;
+            if (!origin || allowed.includes(origin) || origin === '*') cb(null, true);
+            else cb(null, !enforce);
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic'],
     });
 
-    // Rate Limiting
+    // Rate limiting
     await fastify.register(rateLimit, {
         max: RATE_LIMITS.MAX_REQUESTS,
         timeWindow: RATE_LIMITS.WINDOW_MS,
-        allowList: (req) => {
-            const url = req.url || '';
-            if (url.startsWith('/api/auth/login')) return true;
-            if (url.startsWith('/api/auth/refresh')) return true;
-            if (url.startsWith('/api/auth/me')) return true;
-            if (url.startsWith('/api/sync')) return true;
-            if (url.startsWith('/api/webhooks')) return true;
-            if (url.startsWith('/api/webhook/')) return true;
-            if (url.startsWith('/health')) return true;
-            if (url.startsWith('/api/t/')) return true;
-            if (url.startsWith('/api/tracking')) return true;
-            if (url.startsWith('/api/capi')) return true;
-            if (url.startsWith('/api/analytics')) return true;
-            if (url.startsWith('/api/notifications')) return true;
-            if (url.startsWith('/api/chat')) return true;
-            if (url.startsWith('/api/fp/')) return true;
-            if (url.startsWith('/api/dashboard')) return true;
-            if (url.startsWith('/api/status-center')) return true;
-            return false;
-        },
-        errorResponseBuilder: () => ({
-            error: 'Too many requests, please try again later.'
-        })
+        allowList: (req) => [
+            '/api/auth/login', '/api/auth/refresh', '/api/auth/me',
+            '/api/sync', '/api/webhooks', '/api/webhook/',
+            '/health', '/api/t/', '/api/tracking', '/api/analytics',
+            '/api/notifications', '/api/chat', '/api/fp/', '/api/dashboard',
+            '/api/status-center'
+        ].some(p => req.url.startsWith(p)),
+        errorResponseBuilder: () => ({ error: 'Too many requests, please try again later.' })
     });
 
-    // Helmet security headers
+    // Security headers
     await fastify.register(helmet, {
         contentSecurityPolicy: {
             directives: {
@@ -106,29 +78,16 @@ async function build() {
         hsts: { maxAge: 31536000, includeSubDomains: true },
     });
 
-    // Static file serving for uploads
+    // Static uploads
     const uploadDir = path.join(__dirname, '../uploads');
     if (!require('fs').existsSync(uploadDir)) {
         require('fs').mkdirSync(uploadDir, { recursive: true });
     }
-    await fastify.register(fastifyStatic, {
-        root: path.join(__dirname, '../uploads'),
-        prefix: '/uploads/',
-        maxAge: '1h',
-    });
+    await fastify.register(fastifyStatic, { root: path.join(__dirname, '../uploads'), prefix: '/uploads/', maxAge: '1h' });
+    await fastify.register(fastifyCompress, { encodings: ['br', 'gzip', 'deflate'], threshold: 1024 });
+    await fastify.register(fastifyMultipart, { limits: { fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE } });
 
-    // Response compression
-    await fastify.register(fastifyCompress, {
-        encodings: ['br', 'gzip', 'deflate'],
-        threshold: 1024,
-    });
-
-    // Multipart file uploads
-    await fastify.register(fastifyMultipart, {
-        limits: { fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE },
-    });
-
-    // Request ID hook
+    // Request ID
     fastify.addHook('onRequest', async (request, reply) => {
         const existingId = request.headers['x-request-id'] as string;
         const requestId = existingId || `req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -136,23 +95,16 @@ async function build() {
         reply.header('x-request-id', requestId);
     });
 
-    // Request logging hooks
-    fastify.addHook('onRequest', async (request, _reply) => {
-        (request as any).startTime = Date.now();
-    });
-
+    // Logging
+    fastify.addHook('onRequest', async (request) => { (request as any).startTime = Date.now(); });
     fastify.addHook('onResponse', async (request, reply) => {
         const duration = Date.now() - ((request as any).startTime || Date.now());
         if (!request.url.includes('/health')) {
-            Logger.http(`${request.method} ${request.url}`, {
-                status: reply.statusCode,
-                duration: `${duration}ms`,
-                requestId: (request as any).requestId,
-            });
+            Logger.http(`${request.method} ${request.url}`, { status: reply.statusCode, duration: `${duration}ms`, requestId: (request as any).requestId });
         }
     });
 
-    // Disable caching for API responses
+    // Cache headers
     fastify.addHook('onSend', async (_request, reply, payload) => {
         reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         reply.header('Pragma', 'no-cache');
@@ -160,37 +112,16 @@ async function build() {
         return payload;
     });
 
-    // Register all routes (extracted to config/routes.ts)
+    // Routes
     await registerRoutes(fastify);
+    await registerCAPIPlatforms();
 
-    // Register CAPI platform services for server-side conversion forwarding
-    const { ConversionForwarder } = await import('./services/tracking/ConversionForwarder');
-    const { MetaCAPIService } = await import('./services/tracking/MetaCAPIService');
-    const { TikTokEventsService } = await import('./services/tracking/TikTokEventsService');
-    const { GoogleEnhancedConversionsService } = await import('./services/tracking/GoogleEnhancedConversionsService');
-    const { PinterestCAPIService } = await import('./services/tracking/PinterestCAPIService');
-    const { GA4MeasurementService } = await import('./services/tracking/GA4MeasurementService');
-    const { SnapchatCAPIService } = await import('./services/tracking/SnapchatCAPIService');
-    const { MicrosoftCAPIService } = await import('./services/tracking/MicrosoftCAPIService');
-    const { TwitterCAPIService } = await import('./services/tracking/TwitterCAPIService');
-    ConversionForwarder.register(new MetaCAPIService());
-    ConversionForwarder.register(new TikTokEventsService());
-    ConversionForwarder.register(new GoogleEnhancedConversionsService());
-    ConversionForwarder.register(new PinterestCAPIService());
-    ConversionForwarder.register(new GA4MeasurementService());
-    ConversionForwarder.register(new SnapchatCAPIService());
-    ConversionForwarder.register(new MicrosoftCAPIService());
-    ConversionForwarder.register(new TwitterCAPIService());
-    Logger.info('[CAPI] All conversion platform services registered');
-
-    // Mount Bull Board
+    // Bull Board
     const bullBoardAdapter = QueueFactory.createBoard();
-    await fastify.register(bullBoardAdapter.registerPlugin(), {
-        prefix: '/admin/queues',
-    });
+    await fastify.register(bullBoardAdapter.registerPlugin(), { prefix: '/admin/queues' });
 
-    // Native Fastify health check
-    fastify.get('/health-fastify', async (_request, _reply) => {
+    // Health check
+    fastify.get('/health-fastify', async () => {
         let esStatus = 'disconnected';
         try {
             const health = await esClient.cluster.health();
@@ -199,62 +130,30 @@ async function build() {
                 const { IndexingService } = await import('./services/search/IndexingService');
                 await IndexingService.initializeIndices();
             }
-        } catch (error) {
-            esStatus = 'unreachable';
-        }
-
-        return {
-            status: 'ok',
-            framework: 'fastify',
-            timestamp: new Date().toISOString(),
-            services: { elasticsearch: esStatus, socket: 'active' }
-        };
+        } catch { esStatus = 'unreachable'; }
+        return { status: 'ok', framework: 'fastify', timestamp: new Date().toISOString(), services: { elasticsearch: esStatus, socket: 'active' } };
     });
 
-    // Global Error Handler
+    // Error handler
     fastify.setErrorHandler((error: FastifyError, request, reply) => {
-        const isUploadAssetRequest = request.url.startsWith('/uploads/');
-        const isMissingUploadAsset =
-            isUploadAssetRequest &&
-            ((error as NodeJS.ErrnoException).code === 'ENOENT' ||
-                /no such file/i.test(error.message));
-
-        if (isMissingUploadAsset) {
-            Logger.warn('Missing upload asset', {
-                path: request.url,
-                method: request.method,
-                requestId: (request as any).requestId,
-            });
-
-            return reply.status(404).send({
-                error: 'File not found',
-                statusCode: 404,
-                requestId: (request as any).requestId,
-            });
+        const isMissingUpload = request.url.startsWith('/uploads/') &&
+            (((error as NodeJS.ErrnoException).code === 'ENOENT') || /no such file/i.test(error.message));
+        if (isMissingUpload) {
+            Logger.warn('Missing upload asset', { path: request.url, method: request.method, requestId: (request as any).requestId });
+            return reply.status(404).send({ error: 'File not found', statusCode: 404, requestId: (request as any).requestId });
         }
-
         const statusCode = error.statusCode || 500;
         const isClientError = statusCode >= 400 && statusCode < 500;
-
         if (isClientError) {
-            Logger.warn('Client Error', {
-                error: error.message, path: request.url, method: request.method, statusCode,
-            });
+            Logger.warn('Client Error', { error: error.message, path: request.url, method: request.method, statusCode });
         } else {
-            Logger.error('Server Error', {
-                error: error.message, stack: error.stack, path: request.url,
-                method: request.method, requestId: (request as any).requestId,
-            });
+            Logger.error('Server Error', { error: error.message, stack: error.stack, path: request.url, method: request.method, requestId: (request as any).requestId });
         }
-
-        reply.status(statusCode).send({
-            error: isClientError ? error.message : 'Internal Server Error',
-            statusCode, requestId: (request as any).requestId,
-        });
+        reply.status(statusCode).send({ error: isClientError ? error.message : 'Internal Server Error', statusCode, requestId: (request as any).requestId });
     });
 
-    // Graceful Shutdown Hook
-    fastify.addHook('onClose', async (_instance) => {
+    // Graceful shutdown
+    fastify.addHook('onClose', async () => {
         Logger.info('Graceful shutdown initiated...');
         const { WooService } = await import('./services/woo');
         WooService.destroyAgents();
@@ -266,175 +165,18 @@ async function build() {
     return fastify;
 }
 
-// Create HTTP server from Fastify for Socket.IO compatibility
 let server: http.Server;
-let io: Server;
-let chatService: ChatService;
+let io: ReturnType<typeof import('socket.io').Server>;
 
-// Async initialization
 async function initializeApp() {
     await build();
-
     server = fastify.server;
-
-    // Setup Socket.IO
-    const socketOrigins = process.env.CORS_ORIGINS
-        ? process.env.CORS_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)
-        : (process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []);
-    const socketOriginSetting = socketOrigins.length > 0 ? socketOrigins : "*";
-
-    io = new Server(server, {
-        cors: { origin: socketOriginSetting, methods: ["GET", "POST"] }
-    });
-
-    // Socket.IO auth middleware
-    io.use(async (socket, next) => {
-        try {
-            const authHeader = socket.handshake.headers?.authorization as string | undefined;
-            const token =
-                socket.handshake.auth?.token ||
-                (authHeader ? authHeader.split(' ')[1] : undefined) ||
-                (socket.handshake.query?.token as string | undefined);
-
-            if (!token) return next(new Error('Unauthorized'));
-
-            const decoded = verifyToken(token) as { userId: string };
-            const user = await prisma.user.findUnique({
-                where: { id: decoded.userId },
-                select: { isSuperAdmin: true }
-            });
-            const memberships = await prisma.accountUser.findMany({
-                where: { userId: decoded.userId },
-                select: { accountId: true }
-            });
-
-            socket.data.userId = decoded.userId;
-            socket.data.isSuperAdmin = user?.isSuperAdmin === true;
-            socket.data.accountIds = memberships.map(m => m.accountId);
-
-            return next();
-        } catch (error) {
-            // Expired tokens are routine on WebSocket reconnects — no action needed
-            const isExpired = error instanceof Error && error.name === 'TokenExpiredError';
-            if (isExpired) {
-                Logger.debug('[Socket.IO] Token expired on socket auth', { socketId: socket.id });
-            } else {
-                Logger.warn('[Socket.IO] Auth failed', { error });
-            }
-            return next(new Error('Unauthorized'));
-        }
-    });
-
-    // Apply Redis adapter for horizontal scaling
-    try {
-        const { createSocketAdapter } = await import('./utils/socketAdapter');
-        io.adapter(createSocketAdapter());
-        Logger.info('[Socket.IO] Redis adapter enabled for horizontal scaling');
-    } catch (error) {
-        Logger.warn('[Socket.IO] Redis adapter not available, running in single-instance mode', { error });
-    }
-
-    // Register Socket.IO globally
-    setIO(io);
-
-    // Initialize Chat Service
-    chatService = new ChatService(io);
-
-    // Mount Chat Routes (require ChatService)
-    const { createChatRoutes } = await import('./routes/chat');
-    const { createPublicChatRoutes } = await import('./routes/chat-public');
-    const { createSmsRoutes } = await import('./routes/sms');
-    await fastify.register(createChatRoutes(chatService), { prefix: '/api/chat' });
-    await fastify.register(createPublicChatRoutes(chatService), { prefix: '/api/chat/public' });
-    await fastify.register(createSmsRoutes(chatService), { prefix: '/api/sms' });
-
-    // Listen for Automation Events
-    EventBus.on(EVENTS.ORDER.CREATED, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'ORDER_CREATED', data.order);
-    });
-
-    EventBus.on(EVENTS.ORDER.PAID, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'ORDER_PAID', data.order);
-    });
-
-    EventBus.on(EVENTS.ORDER.COMPLETED, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'ORDER_COMPLETED', data.order);
-    });
-
-    EventBus.on(EVENTS.ORDER.FIRST, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'FIRST_ORDER', data.order);
-    });
-
-    EventBus.on(EVENTS.ORDER.STATUS_CHANGED, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'ORDER_STATUS_CHANGED', {
-            ...data.order,
-            previousStatus: data.previousStatus,
-            newStatus: data.newStatus
-        });
-    });
-
-    EventBus.on(EVENTS.CUSTOMER.CREATED, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'CUSTOMER_CREATED', data.customer);
-    });
-
-    EventBus.on(EVENTS.REVIEW.LEFT, async (data) => {
-        await automationEngine.processTrigger(data.accountId, 'REVIEW_LEFT', data.review);
-    });
-
-    // Handle incoming emails from IMAP polling
-    // EmailService.checkEmails() emits EMAIL.RECEIVED with raw email data
-    // We route it to EmailIngestion to create/update conversations and add messages
-    EventBus.on(EVENTS.EMAIL.RECEIVED, async (data: any) => {
-        // Only process if this came from EmailService.checkEmails (has emailAccountId but no conversationId)
-        // EmailIngestion also emits this event AFTER processing (has conversationId) for push notifications
-        if (data.emailAccountId && !data.conversationId) {
-            // Validate required fields before processing
-            if (!data.fromEmail || !data.messageId) {
-                Logger.warn('[App] Skipping malformed email event - missing required fields', {
-                    hasFromEmail: !!data.fromEmail,
-                    hasMessageId: !!data.messageId,
-                    emailAccountId: data.emailAccountId
-                });
-                return;
-            }
-            try {
-                Logger.info('[App] Processing incoming email', {
-                    fromEmail: data.fromEmail,
-                    subject: data.subject,
-                    emailAccountId: data.emailAccountId
-                });
-                await chatService.handleIncomingEmail({
-                    emailAccountId: data.emailAccountId,
-                    fromEmail: data.fromEmail,
-                    fromName: data.fromName,
-                    subject: data.subject,
-                    body: data.body,
-                    html: data.html,
-                    messageId: data.messageId,
-                    inReplyTo: data.inReplyTo,
-                    references: data.references,
-                    attachments: data.attachments
-                });
-                Logger.info('[App] Successfully ingested email', {
-                    fromEmail: data.fromEmail,
-                    subject: data.subject
-                });
-            } catch (error) {
-                Logger.error('[App] Failed to handle incoming email', { error, fromEmail: data.fromEmail });
-            }
-        }
-        // NotificationEngine also listens to this event for push notifications (see NotificationEngine.ts)
-    });
-
-    // Initialize Notification Engine
-    NotificationEngine.init();
-
-    // Setup Socket.IO handlers (extracted to config/socketHandlers.ts)
+    const { io: socketIo, chatService } = await initializeSocketIO(server, fastify);
+    io = socketIo;
+    subscribeEventBus(chatService, automationEngine);
     setupSocketHandlers(io);
-
 }
 
-// Initialize on import
 const appPromise = initializeApp();
 
 export { fastify as app, server, io, automationEngine, appPromise };
