@@ -253,7 +253,6 @@ async function getStoreHealth(accountId: string): Promise<StatusSection> {
                 };
             }
         }
-        }
 
         // Perform actual health check
         const woo = new WooCommerceRestApi({
