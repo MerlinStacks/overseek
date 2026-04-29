@@ -12,14 +12,13 @@ import { QueueFactory } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
-import { AutomationEngine } from '../AutomationEngine';
-
-const automationEngine = new AutomationEngine();
+import { automationEngine } from '../AutomationEngine';
 
 export class MarketingScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
     private static automationInterval: NodeJS.Timeout | null = null;
     private static abandonedCartInterval: NodeJS.Timeout | null = null;
+    private static lifecycleInterval: NodeJS.Timeout | null = null;
     private static reportInterval: NodeJS.Timeout | null = null;
 
     /**
@@ -102,6 +101,12 @@ export class MarketingScheduler {
             15 * 60 * 1000
         );
 
+        // Lifecycle automation scan (every 6 hours)
+        this.lifecycleInterval = setInterval(
+            () => this.checkLifecycleAutomations().catch(e => Logger.error('Lifecycle Automation Check Error', { error: e })),
+            6 * 60 * 60 * 1000
+        );
+
         // Report Scheduler (every 15 mins)
         this.reportInterval = setInterval(
             () => this.checkReportSchedules().catch(e => Logger.error('Report Scheduler Error', { error: e })),
@@ -121,6 +126,11 @@ export class MarketingScheduler {
         if (this.abandonedCartInterval) {
             clearInterval(this.abandonedCartInterval);
             this.abandonedCartInterval = null;
+        }
+
+        if (this.lifecycleInterval) {
+            clearInterval(this.lifecycleInterval);
+            this.lifecycleInterval = null;
         }
 
         if (this.reportInterval) {
@@ -217,6 +227,111 @@ export class MarketingScheduler {
                 });
             })
         );
+    }
+
+    static async checkLifecycleAutomations() {
+        const automations = await prisma.marketingAutomation.findMany({
+            where: {
+                isActive: true,
+                status: 'ACTIVE',
+                triggerType: 'NO_PURCHASE_IN_X_DAYS'
+            },
+            select: {
+                id: true,
+                accountId: true,
+                triggerConfig: true
+            }
+        });
+
+        if (automations.length === 0) return;
+
+        const automationsByAccount = new Map<string, typeof automations>();
+        for (const automation of automations) {
+            const existing = automationsByAccount.get(automation.accountId) || [];
+            existing.push(automation);
+            automationsByAccount.set(automation.accountId, existing);
+        }
+
+        for (const [accountId, accountAutomations] of automationsByAccount) {
+            const purchaseOrders = await prisma.wooOrder.findMany({
+                where: {
+                    accountId,
+                    status: { in: ['processing', 'on-hold', 'completed'] }
+                },
+                select: {
+                    wooCustomerId: true,
+                    billingEmail: true,
+                    dateCreated: true
+                }
+            });
+
+            const latestByWooId = new Map<number, Date>();
+            const latestByEmail = new Map<string, Date>();
+
+            for (const order of purchaseOrders) {
+                if (order.wooCustomerId) {
+                    const existing = latestByWooId.get(order.wooCustomerId);
+                    if (!existing || order.dateCreated > existing) {
+                        latestByWooId.set(order.wooCustomerId, order.dateCreated);
+                    }
+                }
+
+                if (order.billingEmail) {
+                    const email = order.billingEmail.toLowerCase();
+                    const existing = latestByEmail.get(email);
+                    if (!existing || order.dateCreated > existing) {
+                        latestByEmail.set(email, order.dateCreated);
+                    }
+                }
+            }
+
+            const customers = await prisma.wooCustomer.findMany({
+                where: {
+                    accountId,
+                    email: { not: '' },
+                    ordersCount: { gt: 0 }
+                },
+                select: {
+                    wooId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    ordersCount: true,
+                    totalSpent: true
+                }
+            });
+
+            for (const automation of accountAutomations) {
+                const config = (automation.triggerConfig as Record<string, unknown> | null) || {};
+                const daysWithoutPurchase = Number(config.daysWithoutPurchase || 90);
+                const cutoff = new Date(Date.now() - daysWithoutPurchase * 24 * 60 * 60 * 1000);
+
+                for (const customer of customers) {
+                    const latestPurchase =
+                        latestByWooId.get(customer.wooId)
+                        || latestByEmail.get(customer.email.toLowerCase())
+                        || null;
+
+                    if (!latestPurchase || latestPurchase >= cutoff) {
+                        continue;
+                    }
+
+                    await automationEngine.processTrigger(accountId, 'NO_PURCHASE_IN_X_DAYS', {
+                        email: customer.email,
+                        wooCustomerId: customer.wooId,
+                        customer: {
+                            email: customer.email,
+                            firstName: customer.firstName,
+                            lastName: customer.lastName,
+                            ordersCount: customer.ordersCount,
+                            totalSpent: Number(customer.totalSpent)
+                        },
+                        lastPurchaseAt: latestPurchase.toISOString(),
+                        daysSinceLastPurchase: Math.floor((Date.now() - latestPurchase.getTime()) / (24 * 60 * 60 * 1000))
+                    });
+                }
+            }
+        }
     }
 
     /**

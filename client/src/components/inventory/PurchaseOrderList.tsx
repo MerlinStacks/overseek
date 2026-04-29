@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Loader2, FileText, Package, Clock, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 interface PurchaseOrder {
     id: string;
@@ -67,6 +68,29 @@ export function PurchaseOrderList() {
             void fetchOrders();
         }
     }, [currentAccount, fetchOrders]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'purchase-order' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            void fetchOrders();
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchOrders]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchOrders();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchOrders]);
 
     // Compute stats
     const stats = useMemo(() => {

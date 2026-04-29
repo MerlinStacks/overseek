@@ -11,12 +11,13 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useSocket } from '../../context/SocketContext';
 import { useCannedResponses } from '../../hooks/useCannedResponses';
 
 interface MessageApiResponse {
     id: string;
     content?: string;
-    senderType?: 'AGENT' | 'CUSTOMER';
+    senderType?: 'AGENT' | 'CUSTOMER' | 'SYSTEM';
     createdAt?: string;
     sender?: { fullName?: string };
 }
@@ -55,6 +56,7 @@ function haptic() {
 export function useMobileChat(conversationId: string | undefined) {
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
+    const { socket } = useSocket();
 
     const [conversation, setConversation] = useState<MobileChatConversation | null>(null);
     const [messages, setMessages] = useState<MobileChatMessage[]>([]);
@@ -97,6 +99,8 @@ export function useMobileChat(conversationId: string | undefined) {
 
     const fetchConversation = useCallback(async () => {
         if (!currentAccount || !token || !conversationId) {
+            setConversation(null);
+            setMessages([]);
             setLoading(false);
             return;
         }
@@ -106,31 +110,53 @@ export function useMobileChat(conversationId: string | undefined) {
             const headers = buildHeaders(token, currentAccount.id);
 
             const convRes = await fetch(`/api/chat/${conversationId}`, { headers });
-            if (convRes.ok) {
-                const conv = await convRes.json();
-                const customerName = conv.wooCustomer
-                    ? `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim() || conv.wooCustomer.email
-                    : conv.guestName || conv.guestEmail || 'Unknown';
-
-                setConversation({
-                    id: conv.id,
-                    customerName,
-                    customerEmail: conv.wooCustomer?.email || conv.guestEmail,
-                    channel: conv.channel || 'CHAT',
-                    status: conv.status,
+            if (!convRes.ok) {
+                setConversation(null);
+                setMessages([]);
+                Logger.warn('[MobileChat] Failed to fetch conversation', {
+                    conversationId,
+                    status: convRes.status,
                 });
+                return;
+            }
 
-                if (conv.messages && Array.isArray(conv.messages)) {
-                    setMessages(conv.messages.map((m: MessageApiResponse) => ({
-                        id: m.id,
-                        body: m.content || '',
-                        direction: m.senderType === 'AGENT' ? 'outbound' as const : 'inbound' as const,
-                        createdAt: m.createdAt || '',
-                        senderName: m.sender?.fullName || (m.senderType === 'AGENT' ? 'Agent' : 'Customer'),
-                    })));
-                }
+            const conv = await convRes.json();
+            const customerName = conv.wooCustomer
+                ? `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim() || conv.wooCustomer.email
+                : conv.guestName || conv.guestEmail || 'Unknown';
+
+            setConversation({
+                id: conv.id,
+                customerName,
+                customerEmail: conv.wooCustomer?.email || conv.guestEmail,
+                channel: (conv.channel || 'CHAT').toLowerCase(),
+                status: conv.status,
+            });
+
+            void fetch(`/api/chat/${conversationId}/read`, {
+                method: 'POST',
+                headers,
+            }).catch((error) => {
+                Logger.error('[MobileChat] Failed to mark conversation as read', {
+                    error,
+                    conversationId,
+                });
+            });
+
+            if (conv.messages && Array.isArray(conv.messages)) {
+                setMessages(conv.messages.map((m: MessageApiResponse) => ({
+                    id: m.id,
+                    body: m.content || '',
+                    direction: m.senderType === 'AGENT' ? 'outbound' as const : 'inbound' as const,
+                    createdAt: m.createdAt || '',
+                    senderName: m.sender?.fullName || (m.senderType === 'AGENT' ? 'Agent' : 'Customer'),
+                })));
+            } else {
+                setMessages([]);
             }
         } catch (error) {
+            setConversation(null);
+            setMessages([]);
             Logger.error('[MobileChat] Error:', { error });
         } finally {
             setLoading(false);
@@ -176,11 +202,14 @@ export function useMobileChat(conversationId: string | undefined) {
         setShowMenu(false);
         if (!currentAccount || !token) return;
         try {
-            await fetch(`/api/chat/${conversationId}`, {
+            const res = await fetch(`/api/chat/${conversationId}`, {
                 method: 'PUT',
                 headers: buildHeaders(token, currentAccount.id, true),
                 body: JSON.stringify({ status: 'CLOSED' }),
             });
+            if (!res.ok) {
+                throw new Error(`Resolve failed with status ${res.status}`);
+            }
             return true; // Signal navigation to caller
         } catch (error) {
             Logger.error('[MobileChat] Resolve error:', { error });
@@ -192,11 +221,14 @@ export function useMobileChat(conversationId: string | undefined) {
         setShowMenu(false);
         if (!currentAccount || !token || !conversationId) return;
         try {
-            await fetch(`/api/chat/${conversationId}/block`, {
+            const res = await fetch(`/api/chat/${conversationId}/block`, {
                 method: 'POST',
                 headers: buildHeaders(token, currentAccount.id, true),
                 body: JSON.stringify({ reason: 'Blocked from mobile' }),
             });
+            if (!res.ok) {
+                throw new Error(`Block failed with status ${res.status}`);
+            }
             return true; // Signal navigation to caller
         } catch (error) {
             Logger.error('[MobileChat] Block error:', { error });
@@ -300,6 +332,64 @@ export function useMobileChat(conversationId: string | undefined) {
         window.addEventListener('mobile-refresh', handleRefresh);
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchConversation]);
+
+    useEffect(() => {
+        setConversation(null);
+        setMessages([]);
+        setShowMenu(false);
+    }, [conversationId, currentAccount?.id]);
+
+    useEffect(() => {
+        if (!socket || !conversationId || !user || !currentAccount?.id) {
+            return;
+        }
+
+        socket.emit('join:conversation', {
+            conversationId,
+            user: {
+                id: user.id,
+                name: user.fullName || user.email || 'Agent',
+                avatarUrl: user.avatarUrl
+            }
+        });
+
+        const handleMessageNew = (payload: MessageApiResponse & { conversationId?: string; accountId?: string }) => {
+            if (payload.accountId && payload.accountId !== currentAccount.id) return;
+            if (payload.conversationId !== conversationId) return;
+
+            setMessages(prev => {
+                if (prev.some(msg => msg.id === payload.id)) return prev;
+                return [...prev, {
+                    id: payload.id,
+                    body: payload.content || '',
+                    direction: payload.senderType === 'AGENT' ? 'outbound' : 'inbound',
+                    createdAt: payload.createdAt || new Date().toISOString(),
+                    senderName: payload.sender?.fullName || (payload.senderType === 'AGENT' ? 'Agent' : 'Customer'),
+                }];
+            });
+        };
+
+        const handleConversationUpdated = (payload: { id: string }) => {
+            if (payload.id !== conversationId) return;
+            void fetchConversation();
+        };
+
+        const handleConversationRead = (payload: { id: string }) => {
+            if (payload.id !== conversationId) return;
+            void fetchConversation();
+        };
+
+        socket.on('message:new', handleMessageNew);
+        socket.on('conversation:updated', handleConversationUpdated);
+        socket.on('conversation:read', handleConversationRead);
+
+        return () => {
+            socket.emit('leave:conversation', { conversationId });
+            socket.off('message:new', handleMessageNew);
+            socket.off('conversation:updated', handleConversationUpdated);
+            socket.off('conversation:read', handleConversationRead);
+        };
+    }, [socket, conversationId, user, currentAccount?.id, fetchConversation]);
 
     useEffect(() => {
         scrollToBottom();

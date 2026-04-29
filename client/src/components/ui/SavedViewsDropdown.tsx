@@ -73,7 +73,7 @@ export function SavedViewsDropdown({
     const handleSaveView = () => {
         if (!newViewName.trim()) { showToast('View name is required'); return; }
 
-        const savedView = saveCurrentView(newViewName.trim(), currentFilters);
+        saveCurrentView(newViewName.trim(), currentFilters);
         setNewViewName('');
         setIsCreating(false);
         showToast('View saved', 'success');

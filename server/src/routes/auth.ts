@@ -4,7 +4,7 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
-import { hashPassword, comparePassword, generateToken } from '../utils/auth';
+import { hashPassword, comparePassword } from '../utils/auth';
 import { requireAuthFastify } from '../middleware/auth';
 import { SecurityService } from '../services/SecurityService';
 import { prisma } from '../utils/prisma';
@@ -344,7 +344,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 include: { accounts: true }
             });
             if (!user) return reply.code(404).send({ error: 'User not found' });
-            const { passwordHash, ...safeUser } = user;
+            const { passwordHash: _passwordHash, ...safeUser } = user;
 
             // If valid account context, resolve permissions
             const accountId = request.accountId;
@@ -377,7 +377,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: userId },
                 data
             });
-            const { passwordHash, ...safeUser } = updatedUser;
+            const { passwordHash: _passwordHash, ...safeUser } = updatedUser;
             return safeUser;
         } catch (error) {
             Logger.error('Update profile error', { error });

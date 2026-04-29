@@ -5,7 +5,6 @@
  * Shows completed, active, skipped, and pending steps.
  */
 
-import React from 'react';
 import { Check, SkipForward } from 'lucide-react';
 import { STEP_CONFIG } from './types';
 

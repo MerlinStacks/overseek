@@ -3,7 +3,7 @@
  * 
  * Edit and Pending Setup modals for ad account settings.
  */
-import { Loader2, Pencil, X, Check, AlertCircle } from 'lucide-react';
+import { Loader2, Pencil, Check, AlertCircle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 
 interface AdAccount {

@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, AlertTriangle, TrendingUp, ArrowRight, Lightbulb } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, TrendingUp, Lightbulb } from 'lucide-react';
 
 export interface SeoTest {
     test: string;
@@ -13,7 +13,7 @@ interface SeoAnalysisPanelProps {
     onUpdateKeyword?: (keyword: string) => void;
 }
 
-export function SeoAnalysisPanel({ score, tests, focusKeyword }: SeoAnalysisPanelProps) {
+export function SeoAnalysisPanel({ score, tests, focusKeyword: _focusKeyword }: SeoAnalysisPanelProps) {
     const passedTests = tests.filter(t => t.passed);
     const failedTests = tests.filter(t => !t.passed);
 

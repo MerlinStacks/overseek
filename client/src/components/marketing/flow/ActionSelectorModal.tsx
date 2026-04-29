@@ -3,7 +3,7 @@
  * Similar to EventSelectorModal but for selecting actions (Send Email, SMS, etc.)
  */
 import React, { useState, useMemo } from 'react';
-import { X, Search, MessageSquare, Zap, ShoppingCart, Users, Send, Database } from 'lucide-react';
+import { X, Search, MessageSquare, Zap, ShoppingCart, Users, Send } from 'lucide-react';
 
 // Action category definitions
 const ACTION_CATEGORIES = [

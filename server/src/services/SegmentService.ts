@@ -1,5 +1,5 @@
 
-import { CustomerSegment, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import crypto from 'crypto';
 
@@ -118,6 +118,34 @@ export class SegmentService {
         const whereClause = this.buildWhereClause(accountId, criteria);
 
         return prisma.wooCustomer.count({ where: whereClause });
+    }
+
+    async getMatchingSegmentIdsForCustomer(accountId: string, customerId: string): Promise<string[]> {
+        const segments = await prisma.customerSegment.findMany({
+            where: { accountId },
+            select: { id: true, criteria: true }
+        });
+
+        const matchingSegmentIds: string[] = [];
+
+        for (const segment of segments) {
+            const criteria = segment.criteria as unknown as SegmentCriteria;
+            const whereClause = this.buildWhereClause(accountId, criteria);
+            const matchCount = await prisma.wooCustomer.count({
+                where: {
+                    AND: [
+                        whereClause,
+                        { id: customerId }
+                    ]
+                }
+            });
+
+            if (matchCount > 0) {
+                matchingSegmentIds.push(segment.id);
+            }
+        }
+
+        return matchingSegmentIds;
     }
 
     /**

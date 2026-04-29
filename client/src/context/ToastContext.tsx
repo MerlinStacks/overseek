@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { type ToastType } from '../components/ui/Toast';
 import { Check, X, AlertCircle } from 'lucide-react';
+/* eslint-disable react-refresh/only-export-components */
 
 interface ToastItem {
     id: number;

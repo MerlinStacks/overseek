@@ -2,7 +2,6 @@
  * BOMSearchDropdown - Product search dropdown for adding BOM components.
  * Extracted from BOMPanel.tsx for modularity.
  */
-import React from 'react';
 import { Plus, Package, GitBranch } from 'lucide-react';
 
 export interface BOMSearchResultVariant {

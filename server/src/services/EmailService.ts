@@ -73,7 +73,13 @@ export class EmailService {
         subject: string,
         html: string,
         attachments?: any[],
-        options?: { source?: string; sourceId?: string; inReplyTo?: string; references?: string }
+        options?: {
+            source?: string;
+            sourceId?: string;
+            inReplyTo?: string;
+            references?: string;
+            category?: 'MARKETING' | 'TRANSACTIONAL';
+        }
     ) {
         const emailAccount = await prisma.emailAccount.findFirst({
             where: { id: emailAccountId, accountId }
@@ -95,13 +101,18 @@ export class EmailService {
             throw new Error("Email account not found");
         }
 
+        const emailCategory = options?.category || 'MARKETING';
+
         // Suppress sends to unsubscribed recipients for this tenant.
         const unsubscribe = await prisma.emailUnsubscribe.findFirst({
             where: {
                 accountId,
-                email: { equals: to, mode: 'insensitive' }
+                email: { equals: to, mode: 'insensitive' },
+                ...(emailCategory === 'TRANSACTIONAL'
+                    ? { scope: 'ALL' }
+                    : { scope: { in: ['MARKETING', 'ALL'] } })
             },
-            select: { id: true }
+            select: { id: true, scope: true }
         });
         if (unsubscribe) {
             await prisma.emailLog.create({
@@ -111,14 +122,20 @@ export class EmailService {
                     to,
                     subject,
                     status: 'SKIPPED',
-                    errorMessage: 'Recipient is unsubscribed',
+                    errorMessage: `Recipient is unsubscribed (${unsubscribe.scope.toLowerCase()})`,
                     source: options?.source,
                     sourceId: options?.sourceId,
                     canRetry: false
                 }
             });
-            Logger.info('Skipping email to unsubscribed recipient', { accountId, to, source: options?.source });
-            return { skipped: true, reason: 'unsubscribed' };
+            Logger.info('Skipping email to unsubscribed recipient', {
+                accountId,
+                to,
+                source: options?.source,
+                category: emailCategory,
+                unsubscribeScope: unsubscribe.scope
+            });
+            return { skipped: true, reason: `unsubscribed_${unsubscribe.scope.toLowerCase()}` };
         }
 
         // Generate tracking ID for read receipts

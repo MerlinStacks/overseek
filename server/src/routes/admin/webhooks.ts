@@ -119,7 +119,7 @@ export const webhookAdminRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Get failed webhook count (for dashboard alerts)
-    fastify.get('/webhooks/stats/failed', async (request, reply) => {
+    fastify.get('/webhooks/stats/failed', async (_request, reply) => {
         try {
             const { WebhookDeliveryService } = await import('../../services/WebhookDeliveryService');
             const count = await WebhookDeliveryService.getFailedCount();

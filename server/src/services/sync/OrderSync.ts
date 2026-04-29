@@ -14,8 +14,33 @@ const VALID_ORDER_STATUSES = new Set([
     'cancelled', 'refunded', 'failed'
 ]);
 
+const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
+
 export class OrderSync extends BaseSync {
     protected entityType = 'orders';
+
+    private async isFirstOrderForCustomer(accountId: string, order: WooOrder): Promise<boolean> {
+        const rawEmail = (order as any).billing?.email;
+        const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
+        const externalCustomerId = (order as any).customer_id > 0 ? Number((order as any).customer_id) : null;
+
+        if (!billingEmail && !externalCustomerId) {
+            return false;
+        }
+
+        const count = await prisma.wooOrder.count({
+            where: {
+                accountId,
+                status: { in: PURCHASE_TRACKING_STATUSES },
+                OR: [
+                    ...(externalCustomerId ? [{ wooCustomerId: externalCustomerId }] : []),
+                    ...(billingEmail ? [{ billingEmail }] : [])
+                ]
+            }
+        });
+
+        return count === 1;
+    }
 
     protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
         const after = incremental ? await this.getLastSync(accountId) : undefined;
@@ -176,8 +201,25 @@ export class OrderSync extends BaseSync {
                     EventBus.emit(EVENTS.ORDER.CREATED, { accountId, order });
                 }
 
+                if (isStatusChanged) {
+                    EventBus.emit(EVENTS.ORDER.STATUS_CHANGED, {
+                        accountId,
+                        order,
+                        previousStatus: existingStatus,
+                        newStatus: order.status.toLowerCase()
+                    });
+                }
+
+                if ((order.status.toLowerCase() === 'processing' || order.status.toLowerCase() === 'on-hold') && (isNew || isStatusChanged)) {
+                    EventBus.emit(EVENTS.ORDER.PAID, { accountId, order });
+                }
+
                 if (order.status.toLowerCase() === 'completed' && (isNew || isStatusChanged)) {
-                    EventBus.emit('order:completed', { accountId, order });
+                    EventBus.emit(EVENTS.ORDER.COMPLETED, { accountId, order });
+                }
+
+                if ((isNew || !existingStatus) && await this.isFirstOrderForCustomer(accountId, order)) {
+                    EventBus.emit(EVENTS.ORDER.FIRST, { accountId, order });
                 }
 
                 // Why gated: emitting for every order on every sync cycle causes

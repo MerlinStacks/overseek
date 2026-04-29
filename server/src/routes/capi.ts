@@ -9,7 +9,6 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { ConversionForwarder } from '../services/tracking/ConversionForwarder';
-import { getSupportedPlatforms } from '../services/tracking/conversionUtils';
 import { requireAuthFastify } from '../middleware/auth';
 
 /** Maps URL platform param → AccountFeature.featureKey */

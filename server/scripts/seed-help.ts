@@ -6,7 +6,7 @@ async function main() {
     console.log('Seeding Help Center...');
 
     // 1. Getting Started
-    const gettingStarted = await prisma.helpCollection.upsert({
+    await prisma.helpCollection.upsert({
         where: { slug: 'getting-started' },
         update: {},
         create: {

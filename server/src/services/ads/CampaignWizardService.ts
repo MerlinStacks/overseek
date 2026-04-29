@@ -9,7 +9,6 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { CampaignBuilderService, NewCampaignParams, AdCopy, KeywordConfig } from './CampaignBuilderService';
-import { AdCopyGenerator } from '../tools/AdCopyGenerator';
 
 /** Input for the campaign wizard */
 export interface WizardInput {
@@ -144,7 +143,6 @@ export class CampaignWizardService {
         campaignType: 'SEARCH' | 'SHOPPING' | 'PMAX',
         input: WizardInput
     ): Promise<CampaignProposal> {
-        const productNames = products.map(p => p.name).join(', ');
         const campaignName = this.generateCampaignName(products, campaignType, input);
 
         // Build ad groups based on campaign type
@@ -152,7 +150,7 @@ export class CampaignWizardService {
 
         if (campaignType === 'SEARCH') {
             // Group products by category or create single ad group
-            const adGroup = await this.buildSearchAdGroup(products, input);
+            const adGroup = await this.buildSearchAdGroup(products);
             adGroups.push(adGroup);
         } else if (campaignType === 'SHOPPING') {
             // One product group for all products
@@ -189,8 +187,7 @@ export class CampaignWizardService {
      * Build a Search campaign ad group with keywords and ad copy.
      */
     private static async buildSearchAdGroup(
-        products: any[],
-        input: WizardInput
+        products: any[]
     ): Promise<AdGroupProposal> {
         // Generate keywords from product names
         const keywords: KeywordConfig[] = [];

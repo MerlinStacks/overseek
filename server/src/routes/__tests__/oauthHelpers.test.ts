@@ -6,7 +6,7 @@
  * correct behaviour for every edge case.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { getApiBase, buildCallbackUrl, getAppUrl, buildFrontendUrl } from '../oauthHelpers';
 import { FastifyRequest } from 'fastify';
 

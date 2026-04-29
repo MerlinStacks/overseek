@@ -5,6 +5,7 @@ import { useAccount } from '../../context/AccountContext';
 import { EmailAccountForm, type EmailAccount } from './EmailAccountForm';
 import { EmailAccountList } from './EmailAccountList';
 import { EmailLogPanel } from './EmailLogPanel';
+import { EmailSuppressionPanel } from './EmailSuppressionPanel';
 import { RefreshCw } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
@@ -222,6 +223,10 @@ export function EmailSettings() {
             {/* Email Logs - shown when not editing */}
             {!editingAccount && (
                 <EmailLogPanel />
+            )}
+
+            {!editingAccount && (
+                <EmailSuppressionPanel />
             )}
 
             {editingAccount && (

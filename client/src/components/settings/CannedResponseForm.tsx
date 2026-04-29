@@ -3,7 +3,6 @@
  * 
  * Form for creating/editing canned responses with rich text support.
  */
-import React from 'react';
 import { Plus, Save, X, Zap } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { CannedResponseLabel } from './CannedResponseLabelManager';

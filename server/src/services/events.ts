@@ -6,7 +6,14 @@ export const EVENTS = {
     ORDER: {
         SYNCED: 'order:synced',
         CREATED: 'order:created',
+        PAID: 'order:paid',
         COMPLETED: 'order:completed',
+        FIRST: 'order:first',
+        STATUS_CHANGED: 'order:status_changed',
+    },
+    CUSTOMER: {
+        CREATED: 'customer:created',
+        UPDATED: 'customer:updated',
     },
     PRODUCT: {
         SYNCED: 'product:synced',

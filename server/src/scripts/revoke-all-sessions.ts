@@ -10,7 +10,6 @@
  */
 
 import { prisma } from '../utils/prisma';
-import { Logger } from '../utils/logger';
 
 async function main() {
     console.log('=== Session Migration: Revoke All Refresh Tokens ===');

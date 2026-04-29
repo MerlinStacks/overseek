@@ -11,6 +11,7 @@ import { parseTrafficSource, isBot, maskIpAddress } from './TrafficAnalyzer';
 import { isExcludedIp } from './IpExclusionService';
 import { ConversionForwarder } from './ConversionForwarder';
 import * as CrawlerService from './CrawlerService';
+import { automationEnrollmentService } from '../AutomationEnrollmentService';
 
 const UAParser = require('ua-parser-js');
 
@@ -118,14 +119,12 @@ export async function processEvent(data: TrackingEventPayload) {
     // 1. Resolve GeoIP if IP is provided
     let country: string | null = null;
     let city: string | null = null;
-    let region: string | null = null;
 
     if (data.ipAddress) {
         const geo = geoipLookupSync(data.ipAddress);
         if (geo) {
             country = geo.country;
             city = geo.city;
-            region = geo.region;
         }
     }
 
@@ -208,6 +207,15 @@ export async function processEvent(data: TrackingEventPayload) {
         if (data.payload?.email) {
             sessionPayload.email = data.payload.email;
         }
+        if (typeof data.payload?.total !== 'undefined') {
+            sessionPayload.cartValue = data.payload.total;
+        }
+        if (data.payload?.currency) {
+            sessionPayload.currency = data.payload.currency;
+        }
+        if (Array.isArray(data.payload?.items)) {
+            sessionPayload.cartItems = data.payload.items;
+        }
         if (typeof data.payload?.fpScore === 'number') {
             sessionPayload.fpScore = data.payload.fpScore;
             sessionPayload.fpScoredAt = new Date();
@@ -283,12 +291,10 @@ export async function processEvent(data: TrackingEventPayload) {
     // Attribution tracking
     // Priority: 1) Click ID (paid ads), 2) UTM source, 3) Landing referrer, 4) Current referrer, 5) Direct
     let currentSource = 'direct';
-    let campaignInfo = '';
 
     // Priority 1: Click ID from ad platforms (gclid, fbclid, msclkid, etc.)
     if (data.clickId && data.clickPlatform) {
         currentSource = 'paid';
-        campaignInfo = data.clickPlatform;
         // Store click platform in session for attribution
         sessionPayload.utmSource = data.clickPlatform;
         sessionPayload.utmMedium = 'cpc';
@@ -479,6 +485,10 @@ export async function processEvent(data: TrackingEventPayload) {
         throw eventError;
     }
 
+    if (data.type === 'purchase') {
+        await recordRecoveredAutomationPurchase(data);
+    }
+
     // 5. Fire-and-forget: forward conversion events to ad platforms (CAPI)
     // Wrapped in try/catch to ensure CAPI failures never affect tracking
     try {
@@ -486,4 +496,71 @@ export async function processEvent(data: TrackingEventPayload) {
     } catch (_) { /* intentionally swallowed */ }
 
     return session;
+}
+
+async function recordRecoveredAutomationPurchase(data: TrackingEventPayload) {
+    const recoveryEnrollmentId = data.payload?.recoveryEnrollmentId;
+    if (!recoveryEnrollmentId || typeof recoveryEnrollmentId !== 'string') {
+        return;
+    }
+
+    const enrollment = await prisma.automationEnrollment.findFirst({
+        where: {
+            id: recoveryEnrollmentId,
+            accountId: data.accountId
+        },
+        select: {
+            id: true,
+            automationId: true
+        }
+    });
+
+    if (!enrollment) {
+        return;
+    }
+
+    const orderId = data.payload?.orderId ? String(data.payload.orderId) : null;
+    if (orderId) {
+        const existingGoal = await prisma.automationGoalEvent.findFirst({
+            where: {
+                accountId: data.accountId,
+                enrollmentId: enrollment.id,
+                orderId
+            },
+            select: { id: true }
+        });
+
+        if (existingGoal) {
+            return;
+        }
+    }
+
+    const revenue = typeof data.payload?.total === 'number'
+        ? data.payload.total
+        : Number(data.payload?.total || 0);
+
+    await automationEnrollmentService.recordGoal({
+        accountId: data.accountId,
+        automationId: enrollment.automationId,
+        enrollmentId: enrollment.id,
+        goalType: 'RECOVERY_ORDER',
+        orderId,
+        revenue: Number.isFinite(revenue) ? revenue : 0,
+        metadata: {
+            recoverySessionId: data.payload?.recoverySessionId || null,
+            source: 'purchase_event'
+        }
+    });
+
+    await automationEnrollmentService.recordRunEvent({
+        accountId: data.accountId,
+        automationId: enrollment.automationId,
+        enrollmentId: enrollment.id,
+        eventType: 'RECOVERED_ORDER',
+        outcome: 'PURCHASE_ATTRIBUTED',
+        metadata: {
+            orderId,
+            revenue: Number.isFinite(revenue) ? revenue : 0
+        }
+    });
 }

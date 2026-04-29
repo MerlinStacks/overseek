@@ -8,7 +8,6 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, getCredentials, formatDateISO } from './types';
-import { EventBus, EVENTS } from '../events';
 
 /** Current Meta Graph API version */
 const API_VERSION = 'v24.0';

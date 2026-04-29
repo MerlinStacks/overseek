@@ -1,5 +1,5 @@
 /**
- * ComposerToolbar - Toolbar row for the message composer.
+ * ComposerToolbar - Inline action controls for the inbox rich text toolbar.
  * Provides AI draft, canned response trigger, attachment, signature, send, and schedule controls.
  */
 import { Send, Loader2, Zap, Paperclip, FileSignature, Sparkles, ChevronDown } from 'lucide-react';
@@ -58,11 +58,12 @@ export function ComposerToolbar({
     onOpenSchedule
 }: ComposerToolbarProps) {
     const { user } = useAuth();
+    const hasTextContent = input.replace(/<[^>]*>/g, '').trim().length > 0;
+    const isSendDisabled = !hasTextContent || isSending || showCanned || !!pendingSend || isSmsTooLong;
 
     return (
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center gap-1">
-                {/* AI Draft Button */}
+        <>
+            <div className="flex items-center gap-1 pr-1 border-r border-gray-200">
                 <button
                     type="button"
                     onClick={onGenerateAIDraft}
@@ -130,58 +131,48 @@ export function ComposerToolbar({
                 )}
             </div>
 
-            <div className="flex items-center gap-1">
-                {/* Send Button with Schedule Option */}
-                <div className="flex flex-col items-end gap-1">
-                    {selectedChannel === 'SMS' && (
-                        <div className={cn("text-xs", isSmsTooLong ? "text-red-600 font-medium" : "text-gray-400")}>
-                            {plainTextLength}/{maxSmsLength}
-                        </div>
-                    )}
-                    <div className="relative flex">
-                        <button
-                            onClick={() => onSend(undefined, selectedChannel)}
-                            disabled={!input.trim() || isSending || showCanned || !!pendingSend || isSmsTooLong}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2 rounded-l-lg font-medium text-sm transition-colors",
-                                isInternal
-                                    ? "bg-yellow-500 text-white hover:bg-yellow-600"
-                                    : "bg-blue-600 text-white hover:bg-blue-700",
-                                "disabled:opacity-50 disabled:cursor-not-allowed"
-                            )}
-                        >
-                            {isSending ? (
-                                <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                                <>
-                                    Send
-                                    <Send size={14} />
-                                </>
-                            )}
-                        </button>
-                        {/* Schedule dropdown button */}
-                        {!isInternal && (
-                            <button
-                                onClick={() => {
-                                    const plainText = input.replace(/<[^>]*>/g, '').trim();
-                                    if (plainText) {
-                                        onOpenSchedule();
-                                    }
-                                }}
-                                disabled={!input.trim() || isSending || showCanned || !!pendingSend || isSmsTooLong}
-                                className={cn(
-                                    "px-2 py-2 rounded-r-lg font-medium text-sm transition-colors border-l border-blue-700",
-                                    "bg-blue-600 text-white hover:bg-blue-700",
-                                    "disabled:opacity-50 disabled:cursor-not-allowed"
-                                )}
-                                title="Schedule for later"
-                            >
-                                <ChevronDown size={14} />
-                            </button>
-                        )}
-                    </div>
+            {selectedChannel === 'SMS' && (
+                <div className={cn("text-xs px-1", isSmsTooLong ? "text-red-600 font-medium" : "text-gray-400")}>
+                    {plainTextLength}/{maxSmsLength}
                 </div>
+            )}
+
+            <div className="relative flex">
+                <button
+                    onClick={() => onSend(undefined, selectedChannel)}
+                    disabled={isSendDisabled}
+                    className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-l-lg font-medium text-sm transition-colors",
+                        isInternal
+                            ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                            : "bg-blue-600 text-white hover:bg-blue-700",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                >
+                    {isSending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                        <>
+                            Send
+                            <Send size={14} />
+                        </>
+                    )}
+                </button>
+                {!isInternal && (
+                    <button
+                        onClick={onOpenSchedule}
+                        disabled={isSendDisabled}
+                        className={cn(
+                            "px-2 py-2 rounded-r-lg font-medium text-sm transition-colors border-l border-blue-700",
+                            "bg-blue-600 text-white hover:bg-blue-700",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                        )}
+                        title="Schedule for later"
+                    >
+                        <ChevronDown size={14} />
+                    </button>
+                )}
             </div>
-        </div>
+        </>
     );
 }

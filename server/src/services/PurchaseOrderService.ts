@@ -1,4 +1,3 @@
-import { PrismaClient, PurchaseOrder, PurchaseOrderItem } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
 import { Logger } from '../utils/logger';

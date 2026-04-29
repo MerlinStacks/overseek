@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Modal } from '../ui/Modal';
 import { formatCurrency } from '../../utils/format';
+import { emitCrossTabEvent } from '../../utils/productCrossTabEvents';
 
 interface Customer {
     id: string;
@@ -76,6 +77,13 @@ export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplet
             });
 
             if (res.ok) {
+                if (currentAccount?.id && target?.id) {
+                    emitCrossTabEvent({
+                        resource: 'customer',
+                        type: 'merged',
+                        accountId: currentAccount.id,
+                    });
+                }
                 onMergeComplete();
                 onClose();
             } else {

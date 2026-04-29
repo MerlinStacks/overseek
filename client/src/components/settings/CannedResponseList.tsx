@@ -3,7 +3,6 @@
  * 
  * Display component for grouped canned responses with actions.
  */
-import React from 'react';
 import { Trash2, Edit2, Tag } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import DOMPurify from 'dompurify';

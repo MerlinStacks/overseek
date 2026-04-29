@@ -32,7 +32,7 @@ import {
 } from './analyzers';
 
 // Import knowledge base (AI Marketing Co-Pilot Phase 4)
-import { RecommendationEngine, MarketingKnowledgeBase } from './knowledge';
+import { RecommendationEngine } from './knowledge';
 
 export interface AdOptimizerOptions {
     userContext?: string;

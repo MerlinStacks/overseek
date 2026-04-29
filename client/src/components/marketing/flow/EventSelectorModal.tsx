@@ -2,10 +2,9 @@
  * EventSelectorModal - Categorized trigger/event selector modal.
  * Left sidebar with categories, right content with event buttons.
  */
-import React, { useState, useMemo } from 'react';
-import { X, Search, ShoppingCart, Users, CreditCard, Mail, Webhook, Tag, Eye, Star, UserPlus } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { CreditCard, Mail, Search, ShoppingCart, Users, Webhook, X } from 'lucide-react';
 
-// Event category definitions
 const EVENT_CATEGORIES = [
     { id: 'woocommerce', label: 'WooCommerce', icon: ShoppingCart },
     { id: 'customer', label: 'Customer', icon: Users },
@@ -14,82 +13,82 @@ const EVENT_CATEGORIES = [
     { id: 'automation', label: 'Automation', icon: Webhook },
 ] as const;
 
-// Events organized by category and subcategory
+interface EventItem {
+    id: string;
+    label: string;
+    icon: string;
+}
+
 const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventItem[] }[]> = {
     woocommerce: [
         {
             subcategory: 'Orders',
             events: [
-                { id: 'ORDER_CREATED', label: 'Order Created', icon: '🛒' },
-                { id: 'ORDER_COMPLETED', label: 'Order Completed', icon: '✅' },
-                { id: 'ORDER_STATUS_CHANGED', label: 'Order Status Changed', icon: '🔄' },
+                { id: 'ORDER_CREATED', label: 'Order Created', icon: 'Cart' },
+                { id: 'ORDER_PAID', label: 'Order Paid', icon: 'Card' },
+                { id: 'ORDER_COMPLETED', label: 'Order Completed', icon: 'Check' },
+                { id: 'FIRST_ORDER', label: 'First Order', icon: 'Sparkles' },
+                { id: 'ORDER_STATUS_CHANGED', label: 'Order Status Changed', icon: 'Refresh' },
             ]
         },
         {
             subcategory: 'Cart',
             events: [
-                { id: 'ABANDONED_CART', label: 'Cart Abandoned', icon: '🛒' },
-                { id: 'CART_VIEWED', label: 'Cart Viewed', icon: '👁️' },
+                { id: 'ABANDONED_CART', label: 'Cart Abandoned', icon: 'Cart' },
+                { id: 'CART_VIEWED', label: 'Cart Viewed', icon: 'Eye' },
             ]
         },
         {
             subcategory: 'Reviews',
             events: [
-                { id: 'REVIEW_LEFT', label: 'Review Left', icon: '⭐' },
+                { id: 'REVIEW_LEFT', label: 'Review Left', icon: 'Star' },
             ]
         },
     ],
     customer: [
         {
-            subcategory: 'Lists',
+            subcategory: 'Lifecycle',
             events: [
-                { id: 'ADDED_TO_LIST', label: 'Added to List', icon: '📋' },
-                { id: 'REMOVED_FROM_LIST', label: 'Removed from List', icon: '📋' },
+                { id: 'CUSTOMER_CREATED', label: 'Customer Created', icon: 'User' },
+                { id: 'NO_PURCHASE_IN_X_DAYS', label: 'No Purchase In X Days', icon: 'Clock' },
+                { id: 'MANUAL', label: 'Manual Entry', icon: 'Hand' },
             ]
         },
         {
             subcategory: 'Contact',
             events: [
-                { id: 'CUSTOMER_SIGNUP', label: 'Customer Signup', icon: '👤' },
-                { id: 'TAG_ADDED', label: 'Tag is Added', icon: '🏷️' },
-                { id: 'TAG_REMOVED', label: 'Tag is Removed', icon: '🏷️' },
-                { id: 'CONTACT_BOUNCED', label: 'Contact Bounced', icon: '⚠️' },
-                { id: 'BIRTHDAY_REMINDER', label: 'Birthday Reminder', icon: '🎂' },
-                { id: 'MANUAL', label: 'Manual Entry', icon: '✋' },
+                { id: 'TAG_ADDED', label: 'Tag Added', icon: 'Tag' },
+                { id: 'TAG_REMOVED', label: 'Tag Removed', icon: 'TagOff' },
+                { id: 'CONTACT_BOUNCED', label: 'Contact Bounced', icon: 'Alert' },
+                { id: 'BIRTHDAY_REMINDER', label: 'Birthday Reminder', icon: 'Cake' },
             ]
         },
     ],
     subscription: [
         {
             events: [
-                { id: 'SUBSCRIPTION_CREATED', label: 'Subscription Created', icon: '💳' },
-                { id: 'SUBSCRIPTION_CANCELLED', label: 'Subscription Cancelled', icon: '❌' },
+                { id: 'SUBSCRIPTION_CREATED', label: 'Subscription Created', icon: 'Repeat' },
+                { id: 'SUBSCRIPTION_CANCELLED', label: 'Subscription Cancelled', icon: 'Ban' },
             ]
         },
     ],
     email: [
         {
             events: [
-                { id: 'EMAIL_OPENED', label: 'Email Opened', icon: '📧' },
-                { id: 'LINK_CLICKED', label: 'Link Clicked', icon: '🔗' },
-                { id: 'CONTACT_UNSUBSCRIBED', label: 'Contact Unsubscribed', icon: '🚫' },
+                { id: 'EMAIL_OPENED', label: 'Email Opened', icon: 'MailOpen' },
+                { id: 'LINK_CLICKED', label: 'Link Clicked', icon: 'Link' },
+                { id: 'CONTACT_UNSUBSCRIBED', label: 'Contact Unsubscribed', icon: 'Mute' },
             ]
         },
     ],
     automation: [
         {
             events: [
-                { id: 'WEBHOOK_RECEIVED', label: 'Webhook Received', icon: '🔗' },
+                { id: 'WEBHOOK_RECEIVED', label: 'Webhook Received', icon: 'Webhook' },
             ]
         },
     ],
 };
-
-interface EventItem {
-    id: string;
-    label: string;
-    icon: string;
-}
 
 interface EventSelectorModalProps {
     isOpen: boolean;
@@ -106,23 +105,23 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
 
-    // Filter events by search query
     const filteredEvents = useMemo(() => {
         const categoryEvents = EVENTS_BY_CATEGORY[activeCategory] || [];
         if (!searchQuery.trim()) return categoryEvents;
 
         const query = searchQuery.toLowerCase();
-        return categoryEvents.map(group => ({
-            ...group,
-            events: group.events.filter(e => e.label.toLowerCase().includes(query))
-        })).filter(g => g.events.length > 0);
+        return categoryEvents
+            .map((group) => ({
+                ...group,
+                events: group.events.filter((event) => event.label.toLowerCase().includes(query))
+            }))
+            .filter((group) => group.events.length > 0);
     }, [activeCategory, searchQuery]);
 
     const handleDone = () => {
-        if (selectedEvent) {
-            onSelect({ triggerType: selectedEvent.id, label: selectedEvent.label });
-            onClose();
-        }
+        if (!selectedEvent) return;
+        onSelect({ triggerType: selectedEvent.id, label: selectedEvent.label });
+        onClose();
     };
 
     if (!isOpen) return null;
@@ -130,7 +129,6 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b">
                     <h2 className="text-lg font-semibold text-gray-900">Select an Event</h2>
                     <div className="flex items-center gap-3">
@@ -153,32 +151,29 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                     </div>
                 </div>
 
-                {/* Content */}
                 <div className="flex flex-1 overflow-hidden">
-                    {/* Category Sidebar */}
                     <div className="w-44 bg-gray-50 border-r py-2 overflow-y-auto">
-                        {EVENT_CATEGORIES.map((cat) => {
-                            const Icon = cat.icon;
+                        {EVENT_CATEGORIES.map((category) => {
+                            const Icon = category.icon;
                             return (
                                 <button
-                                    key={cat.id}
+                                    key={category.id}
                                     onClick={() => {
-                                        setActiveCategory(cat.id);
+                                        setActiveCategory(category.id);
                                         setSelectedEvent(null);
                                     }}
-                                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${activeCategory === cat.id
+                                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${activeCategory === category.id
                                         ? 'bg-white text-blue-600 font-medium border-r-2 border-blue-600'
                                         : 'text-gray-600 hover:bg-gray-100'
                                         }`}
                                 >
                                     <Icon size={16} />
-                                    {cat.label}
+                                    {category.label}
                                 </button>
                             );
                         })}
                     </div>
 
-                    {/* Events List */}
                     <div className="flex-1 p-5 overflow-y-auto">
                         {filteredEvents.map((group, idx) => (
                             <div key={idx} className="mb-5 last:mb-0">
@@ -212,7 +207,6 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                     </div>
                 </div>
 
-                {/* Footer */}
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
                     <button
                         onClick={onClose}

@@ -48,7 +48,7 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /health
      * Basic health check - returns 200 if server is running.
      */
-    fastify.get('/', async (request, reply) => {
+    fastify.get('/', async (_request, _reply) => {
         return {
             status: 'healthy',
             timestamp: new Date().toISOString(),
@@ -60,7 +60,7 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /health/ready
      * Readiness check - verifies all dependencies are connected.
      */
-    fastify.get('/ready', async (request, reply) => {
+    fastify.get('/ready', async (_request, reply) => {
         const checks = {
             database: false,
             redis: false,
@@ -139,7 +139,7 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /health/live
      * Liveness check - simple ping for container orchestrators.
      */
-    fastify.get('/live', async (request, reply) => {
+    fastify.get('/live', async (_request, reply) => {
         return reply.code(200).send('OK');
     });
 

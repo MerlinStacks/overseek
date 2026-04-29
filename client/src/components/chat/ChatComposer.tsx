@@ -3,7 +3,7 @@
  * Handles the reply/private note toggle, channel selector, and send controls.
  */
 import { useState, memo } from 'react';
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { Paperclip, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
 import { ChannelSelector, ConversationChannel } from './ChannelSelector';
@@ -94,8 +94,8 @@ export const ChatComposer = memo(function ChatComposer({
     isSending,
     onSend,
     pendingSend,
-    onCancelSend,
-    UNDO_DELAY_MS,
+    onCancelSend: _onCancelSend,
+    UNDO_DELAY_MS: _UNDO_DELAY_MS,
     signatureEnabled,
     onSignatureChange,
     quotedMessage,
@@ -132,16 +132,6 @@ export const ChatComposer = memo(function ChatComposer({
     const MAX_SMS_LENGTH = 1600;
     const plainTextLength = input.replace(/<[^>]*>/g, '').length;
     const isSmsTooLong = selectedChannel === 'SMS' && plainTextLength > MAX_SMS_LENGTH;
-    const quickSnippets = [
-        'Thanks for reaching out. We are reviewing this now and will update you shortly.',
-        'I understand the concern and I am on it. I will share the next steps in this thread.',
-        'Could you confirm your order number so I can check this immediately?'
-    ];
-
-    const insertSnippet = (snippet: string) => {
-        const trimmed = input.trim();
-        onInputChange(trimmed ? `${trimmed}<br/><br/>${snippet}` : snippet);
-    };
 
     return (
         <div className="border-t border-gray-200 bg-white">
@@ -277,21 +267,6 @@ export const ChatComposer = memo(function ChatComposer({
 
             {/* Compose Area */}
             <div className={cn("p-4", isInternal && "bg-yellow-50")}>
-                {!isInternal && (
-                    <div className="mb-2 flex flex-wrap gap-1.5">
-                        {quickSnippets.map((snippet, idx) => (
-                            <button
-                                key={idx}
-                                type="button"
-                                onClick={() => insertSnippet(snippet)}
-                                className="px-2 py-1 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                title={snippet}
-                            >
-                                Quick {idx + 1}
-                            </button>
-                        ))}
-                    </div>
-                )}
                 {activeDraftingAgents.length > 0 && !isInternal && (
                     <div className="mb-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs">
                         {activeDraftingAgents.length === 1
@@ -342,6 +317,31 @@ export const ChatComposer = memo(function ChatComposer({
                         : "Type your reply... (/ for canned responses)"}
                     isInternal={isInternal}
                     cannedPickerOpen={showCanned}
+                    toolbarRightSlot={(
+                        <ComposerToolbar
+                            input={input}
+                            isInternal={isInternal}
+                            isSending={isSending}
+                            showCanned={showCanned}
+                            pendingSend={pendingSend}
+                            recipientEmail={recipientEmail}
+                            signatureEnabled={signatureEnabled}
+                            onSignatureChange={onSignatureChange}
+                            isGeneratingDraft={isGeneratingDraft}
+                            onGenerateAIDraft={onGenerateAIDraft}
+                            isUploading={isUploading}
+                            onInputChange={onInputChange}
+                            fileInputRef={fileInputRef}
+                            onFileUpload={onFileUpload}
+                            stagedAttachments={stagedAttachments}
+                            selectedChannel={selectedChannel}
+                            isSmsTooLong={isSmsTooLong}
+                            plainTextLength={plainTextLength}
+                            maxSmsLength={MAX_SMS_LENGTH}
+                            onSend={onSend}
+                            onOpenSchedule={onOpenSchedule}
+                        />
+                    )}
                 />
 
                 {/* Staged Attachments Pills */}
@@ -396,30 +396,6 @@ export const ChatComposer = memo(function ChatComposer({
                     </div>
                 )}
 
-                {/* Toolbar */}
-                <ComposerToolbar
-                    input={input}
-                    isInternal={isInternal}
-                    isSending={isSending}
-                    showCanned={showCanned}
-                    pendingSend={pendingSend}
-                    recipientEmail={recipientEmail}
-                    signatureEnabled={signatureEnabled}
-                    onSignatureChange={onSignatureChange}
-                    isGeneratingDraft={isGeneratingDraft}
-                    onGenerateAIDraft={onGenerateAIDraft}
-                    isUploading={isUploading}
-                    onInputChange={onInputChange}
-                    fileInputRef={fileInputRef}
-                    onFileUpload={onFileUpload}
-                    stagedAttachments={stagedAttachments}
-                    selectedChannel={selectedChannel}
-                    isSmsTooLong={isSmsTooLong}
-                    plainTextLength={plainTextLength}
-                    maxSmsLength={MAX_SMS_LENGTH}
-                    onSend={onSend}
-                    onOpenSchedule={onOpenSchedule}
-                />
                 <div className="mt-2 text-[11px] text-gray-400">
                     Ctrl/Cmd + Enter to send • Type / for canned responses
                 </div>

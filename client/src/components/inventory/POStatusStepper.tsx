@@ -4,7 +4,7 @@
  * Shows the current status and progression through the PO lifecycle.
  */
 
-import { FileText, ShoppingCart, Truck, CheckCircle2 } from 'lucide-react';
+import { FileText, ShoppingCart, CheckCircle2 } from 'lucide-react';
 
 type POStatus = 'DRAFT' | 'ORDERED' | 'RECEIVED' | 'CANCELLED';
 

@@ -18,6 +18,7 @@ interface PreviousConversation {
 
 interface PreviousConversationsSectionProps {
     conversations: PreviousConversation[];
+    isLoading?: boolean;
     onSelectConversation?: (conversationId: string) => void;
 }
 
@@ -26,8 +27,17 @@ interface PreviousConversationsSectionProps {
  */
 export function PreviousConversationsSection({
     conversations,
+    isLoading = false,
     onSelectConversation
 }: PreviousConversationsSectionProps) {
+    if (isLoading) {
+        return (
+            <div className="text-sm text-gray-500 italic">
+                Loading conversation history...
+            </div>
+        );
+    }
+
     if (conversations.length === 0) {
         return (
             <div className="text-sm text-gray-500 italic">
@@ -44,16 +54,21 @@ export function PreviousConversationsSection({
                     <button
                         key={conv.id}
                         onClick={() => onSelectConversation?.(conv.id)}
-                        className="w-full text-left p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors group"
+                        className="w-full text-left p-2.5 bg-gray-50 border border-gray-100 rounded-xl hover:bg-white hover:border-gray-200 hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)] transition-all group"
                     >
-                        <div className="flex items-center justify-between">
-                            <span className={cn(
-                                "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase",
-                                conv.status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                            )}>
-                                {conv.status}
-                            </span>
-                            <span className="text-[10px] text-gray-400">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <span className={cn(
+                                    "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase",
+                                    conv.status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                                )}>
+                                    {conv.status}
+                                </span>
+                                <span className="text-[10px] text-gray-400 uppercase">
+                                    {conv.channel}
+                                </span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 shrink-0">
                                 {format(new Date(conv.updatedAt), 'MMM d')}
                             </span>
                         </div>

@@ -3,7 +3,7 @@
  * 
  * Individual ad account display card with insights and actions.
  */
-import { Facebook, Loader2, Trash2, RefreshCw, Pencil, AlertCircle } from 'lucide-react';
+import { Facebook, Trash2, RefreshCw, Pencil, AlertCircle } from 'lucide-react';
 import { formatCurrency, formatCompact, formatNumber } from '../../utils/format';
 
 interface AdAccount {

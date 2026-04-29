@@ -132,9 +132,14 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     // Trigger type display labels
     const triggers: Record<string, string> = {
         'ORDER_CREATED': 'Order Created',
+        'ORDER_PAID': 'Order Paid',
         'ORDER_COMPLETED': 'Order Completed',
+        'ORDER_STATUS_CHANGED': 'Order Status Changed',
+        'FIRST_ORDER': 'First Order',
         'REVIEW_LEFT': 'Review Left',
         'ABANDONED_CART': 'Abandoned Cart',
+        'CUSTOMER_CREATED': 'Customer Created',
+        'NO_PURCHASE_IN_X_DAYS': 'No Purchase In X Days',
         'NONE': 'No Trigger'
     };
 

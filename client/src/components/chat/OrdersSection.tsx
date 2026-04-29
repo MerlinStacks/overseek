@@ -8,6 +8,7 @@
 import { Package, ExternalLink } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { format } from 'date-fns';
+import { formatCurrency } from '../../utils/format';
 
 interface Order {
     id: string;
@@ -24,6 +25,7 @@ interface OrdersSectionProps {
     isLoading: boolean;
     customerId?: string;
     ordersCount?: number;
+    accountCurrency?: string;
 }
 
 /**
@@ -43,7 +45,7 @@ function getOrderStatusColor(status: string) {
 /**
  * Displays recent orders for a customer with status and totals.
  */
-export function OrdersSection({ orders, isLoading, customerId, ordersCount }: OrdersSectionProps) {
+export function OrdersSection({ orders, isLoading, customerId, ordersCount, accountCurrency = 'USD' }: OrdersSectionProps) {
     if (isLoading) {
         return <div className="text-sm text-gray-500 italic">Loading orders...</div>;
     }
@@ -58,7 +60,7 @@ export function OrdersSection({ orders, isLoading, customerId, ordersCount }: Or
                 <a
                     key={order.id}
                     href={`/orders/${order.id}`}
-                    className="block p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="block p-2.5 bg-gray-50 border border-gray-100 rounded-xl hover:bg-white hover:border-gray-200 hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)] transition-all"
                 >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -77,7 +79,7 @@ export function OrdersSection({ orders, isLoading, customerId, ordersCount }: Or
                             {format(new Date(order.dateCreated), 'MMM d, yyyy')}
                         </span>
                         <span className="text-xs font-medium text-gray-700">
-                            {order.currency} {Number(order.total).toFixed(2)}
+                            {formatCurrency(Number(order.total), order.currency || accountCurrency)}
                         </span>
                     </div>
                 </a>
@@ -85,7 +87,7 @@ export function OrdersSection({ orders, isLoading, customerId, ordersCount }: Or
             {customerId && ordersCount && ordersCount > 5 && (
                 <a
                     href={`/customers/${customerId}`}
-                    className="flex items-center justify-center gap-1 text-xs text-blue-600 hover:underline mt-2"
+                    className="flex items-center justify-center gap-1 text-xs text-blue-600 hover:underline mt-2 font-medium"
                 >
                     View all {ordersCount} orders
                     <ExternalLink size={10} />

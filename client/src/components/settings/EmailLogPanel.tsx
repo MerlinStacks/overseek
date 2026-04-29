@@ -2,19 +2,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
 
 interface EmailLog {
     id: string;
     to: string;
     subject: string;
-    status: 'SUCCESS' | 'FAILED';
+    status: 'SUCCESS' | 'FAILED' | 'BOUNCED' | 'COMPLAINED' | 'SKIPPED' | 'RETRIED' | 'PENDING_RETRY';
     errorMessage?: string;
     errorCode?: string;
     source?: string;
     sourceId?: string;
     messageId?: string;
     createdAt: string;
+    trackingEvents?: Array<{
+        id: string;
+        eventType: 'BOUNCE' | 'COMPLAINT';
+        createdAt: string;
+    }>;
     emailAccount?: {
         name: string;
         email: string;
@@ -31,11 +37,13 @@ interface EmailLogsResponse {
 export function EmailLogPanel() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const [logs, setLogs] = useState<EmailLog[]>([]);
     const [total, setTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [offset, setOffset] = useState(0);
+    const [busyLogId, setBusyLogId] = useState<string | null>(null);
     const limit = 20;
 
     const fetchLogs = useCallback(async () => {
@@ -80,6 +88,47 @@ export function EmailLogPanel() {
             'MANUAL': 'Manual'
         };
         return labels[source] || source;
+    };
+
+    const getStatusIcon = (status: EmailLog['status']) => {
+        if (status === 'SUCCESS' || status === 'RETRIED') {
+            return <CheckCircle size={18} className="text-green-500 flex-shrink-0" />;
+        }
+        if (status === 'BOUNCED') {
+            return <AlertTriangle size={18} className="text-amber-500 flex-shrink-0" />;
+        }
+        if (status === 'COMPLAINED') {
+            return <ShieldAlert size={18} className="text-orange-600 flex-shrink-0" />;
+        }
+        return <XCircle size={18} className="text-red-500 flex-shrink-0" />;
+    };
+
+    const markDeliveryEvent = async (logId: string, eventType: 'BOUNCE' | 'COMPLAINT') => {
+        if (!currentAccount || !token) return;
+        setBusyLogId(logId);
+
+        try {
+            const res = await fetch(`/api/email/logs/${logId}/delivery-event`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({ eventType })
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to record delivery event');
+            }
+
+            await fetchLogs();
+        } catch (error) {
+            Logger.error('Failed to record delivery event', { error, logId, eventType });
+            toast.error(`Failed to mark email as ${eventType.toLowerCase()}.`);
+        } finally {
+            setBusyLogId(null);
+        }
     };
 
     const totalPages = Math.ceil(total / limit);
@@ -132,11 +181,7 @@ export function EmailLogPanel() {
                                 onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
                             >
                                 {/* Status Icon */}
-                                {log.status === 'SUCCESS' ? (
-                                    <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
-                                ) : (
-                                    <XCircle size={18} className="text-red-500 flex-shrink-0" />
-                                )}
+                                {getStatusIcon(log.status)}
 
                                 {/* Content */}
                                 <div className="flex-1 min-w-0">
@@ -178,10 +223,29 @@ export function EmailLogPanel() {
                                         </div>
                                         <div>
                                             <span className="text-gray-500">Status:</span>
-                                            <p className={`font-medium ${log.status === 'SUCCESS' ? 'text-green-600' : 'text-red-600'}`}>
+                                            <p className={`font-medium ${log.status === 'SUCCESS' || log.status === 'RETRIED' ? 'text-green-600' : log.status === 'BOUNCED' ? 'text-amber-600' : log.status === 'COMPLAINED' ? 'text-orange-600' : 'text-red-600'}`}>
                                                 {log.status}
                                             </p>
                                         </div>
+                                        {log.trackingEvents && log.trackingEvents.length > 0 && (
+                                            <div className="col-span-2">
+                                                <span className="text-gray-500">Deliverability Events:</span>
+                                                <div className="mt-1 flex flex-wrap gap-2">
+                                                    {log.trackingEvents.map((event) => (
+                                                        <span
+                                                            key={event.id}
+                                                            className={`rounded-full px-2 py-1 text-xs ${
+                                                                event.eventType === 'COMPLAINT'
+                                                                    ? 'bg-orange-100 text-orange-700'
+                                                                    : 'bg-amber-100 text-amber-700'
+                                                            }`}
+                                                        >
+                                                            {event.eventType} · {formatDate(event.createdAt)}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                         {log.messageId && (
                                             <div className="col-span-2">
                                                 <span className="text-gray-500">Message ID:</span>
@@ -197,6 +261,24 @@ export function EmailLogPanel() {
                                                     )}
                                                     {log.errorMessage}
                                                 </div>
+                                            </div>
+                                        )}
+                                        {log.status === 'SUCCESS' && (
+                                            <div className="col-span-2 flex flex-wrap gap-2 pt-2">
+                                                <button
+                                                    onClick={() => markDeliveryEvent(log.id, 'BOUNCE')}
+                                                    disabled={busyLogId === log.id}
+                                                    className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                                                >
+                                                    Mark Bounce
+                                                </button>
+                                                <button
+                                                    onClick={() => markDeliveryEvent(log.id, 'COMPLAINT')}
+                                                    disabled={busyLogId === log.id}
+                                                    className="rounded-lg border border-orange-300 px-3 py-1.5 text-sm text-orange-700 transition-colors hover:bg-orange-50 disabled:opacity-50"
+                                                >
+                                                    Mark Complaint
+                                                </button>
                                             </div>
                                         )}
                                     </div>

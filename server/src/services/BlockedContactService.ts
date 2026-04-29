@@ -60,7 +60,7 @@ export class BlockedContactService {
             await redis.expire(cacheKey, BLOCKED_CACHE_TTL);
 
             return blocked.some(b => b.email === normalizedEmail);
-        } catch (redisError) {
+        } catch (_redisError) {
             // Redis unavailable - fall back to database
             Logger.debug('[BlockedContact] Redis unavailable, falling back to DB', { accountId });
             const blocked = await prisma.blockedContact.findUnique({

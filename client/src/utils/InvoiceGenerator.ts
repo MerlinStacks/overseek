@@ -36,6 +36,7 @@ interface OrderData {
 }
 
 type InvoiceRendererProps = ComponentProps<typeof InvoiceRenderer>;
+const PDF_CAPTURE_ATTR = 'data-invoice-pdf-root';
 
 /**
  * Generates a PDF invoice that matches the designer HTML preview exactly.
@@ -52,6 +53,8 @@ export const generateInvoicePDF = async (
     //    to capture correctly. We use opacity:0 + overflow:hidden instead of
     //    left:-9999px which html2canvas cannot capture.
     const container = document.createElement('div');
+    const captureId = `invoice-pdf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    container.setAttribute(PDF_CAPTURE_ATTR, captureId);
     container.style.cssText = [
         'position: fixed',
         'left: 0',
@@ -121,6 +124,15 @@ export const generateInvoicePDF = async (
                 width: CONTAINER_WIDTH_PX,
                 windowWidth: CONTAINER_WIDTH_PX,
                 logging: false,
+                onclone: (clonedDocument) => {
+                    patchStylesheets(clonedDocument);
+                    const clonedContainer = clonedDocument.querySelector(
+                        `[${PDF_CAPTURE_ATTR}="${captureId}"]`
+                    );
+                    if (clonedContainer instanceof HTMLElement) {
+                        inlineResolvedColors(clonedContainer);
+                    }
+                },
             });
         } finally {
             // Always restore stylesheets — even if capture throws
@@ -183,27 +195,30 @@ function delay(ms: number): Promise<void> {
  * Returns the original value if no conversion needed or conversion fails.
  */
 /** Lazy-initialized canvas context — avoids crash on SSR where document is undefined. */
-let _colorCtx: CanvasRenderingContext2D | null = null;
-function getColorConversionCtx(): CanvasRenderingContext2D | null {
-    if (!_colorCtx && typeof document !== 'undefined') {
-        _colorCtx = document.createElement('canvas').getContext('2d');
-    }
-    return _colorCtx;
+const MODERN_COLOR_PATTERN = /\boklch\(|\boklab\(|\blab\(|\blch\(|\bcolor\(|\bcolor-mix\(/i;
+
+function containsModernColorSyntax(value: string): boolean {
+    return MODERN_COLOR_PATTERN.test(value);
 }
 
-function resolveColorToHex(color: string): string {
+function getColorConversionCtx(targetDocument: Document = document): CanvasRenderingContext2D | null {
+    if (typeof targetDocument === 'undefined') {
+        return null;
+    }
+    return targetDocument.createElement('canvas').getContext('2d');
+}
+
+function resolveColorToHex(color: string, targetDocument: Document = document): string {
     if (!color || color === 'transparent' || color === 'none' || color === 'inherit'
         || color === 'currentcolor' || color === 'initial' || color === 'unset') {
         return color;
     }
     // Only convert if it contains an unsupported color function
-    if (!color.includes('oklch') && !color.includes('oklab')
-        && !color.includes('lab(') && !color.includes('lch(')
-        && !color.includes('color(')) {
+    if (!containsModernColorSyntax(color)) {
         return color;
     }
     try {
-        const ctx = getColorConversionCtx();
+        const ctx = getColorConversionCtx(targetDocument);
         if (!ctx) return color;
         ctx.fillStyle = '#000000'; // Reset
         ctx.fillStyle = color;
@@ -233,7 +248,7 @@ interface PatchedValue {
  * and replaces any property value containing oklch/oklab with its hex equivalent.
  * Returns an array of patches for rollback.
  */
-function patchStylesheets(): PatchedValue[] {
+function patchStylesheets(targetDocument: Document = document): PatchedValue[] {
     const patches: PatchedValue[] = [];
 
     const walkRules = (rules: CSSRuleList) => {
@@ -248,9 +263,9 @@ function patchStylesheets(): PatchedValue[] {
             for (let i = 0; i < rule.style.length; i++) {
                 const prop = rule.style[i];
                 const value = rule.style.getPropertyValue(prop);
-                if (value.includes('oklch') || value.includes('oklab')) {
+                if (containsModernColorSyntax(value)) {
                     const priority = rule.style.getPropertyPriority(prop);
-                    const resolved = resolveColorToHex(value.trim());
+                    const resolved = resolveColorToHex(value.trim(), targetDocument);
                     if (resolved !== value.trim()) {
                         patches.push({ rule, prop, original: value, priority });
                         rule.style.setProperty(prop, resolved, priority);
@@ -260,7 +275,7 @@ function patchStylesheets(): PatchedValue[] {
         }
     };
 
-    for (const sheet of Array.from(document.styleSheets)) {
+    for (const sheet of Array.from(targetDocument.styleSheets)) {
         try {
             walkRules(sheet.cssRules);
         } catch {
@@ -293,12 +308,13 @@ const COLOR_PROPERTIES = [
  */
 function inlineResolvedColors(container: HTMLElement): void {
     const allElements = [container, ...Array.from(container.querySelectorAll('*'))] as HTMLElement[];
+    const targetDocument = container.ownerDocument;
     for (const el of allElements) {
         const computed = getComputedStyle(el);
         for (const prop of COLOR_PROPERTIES) {
             const value = computed[prop];
             if (value) {
-                const resolved = resolveColorToHex(value);
+                const resolved = resolveColorToHex(value, targetDocument);
                 if (resolved !== value) {
                     el.style.setProperty(prop, resolved);
                 }
@@ -306,7 +322,7 @@ function inlineResolvedColors(container: HTMLElement): void {
         }
         const shadow = computed.boxShadow;
         if (shadow && shadow !== 'none' &&
-            (shadow.includes('oklch') || shadow.includes('oklab'))) {
+            containsModernColorSyntax(shadow)) {
             el.style.boxShadow = 'none';
         }
     }

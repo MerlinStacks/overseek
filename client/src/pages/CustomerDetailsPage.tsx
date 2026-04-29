@@ -8,6 +8,7 @@ import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { MergeCustomerModal } from '../components/customers/MergeCustomerModal';
+import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 interface CustomerDetails {
     customer: {
@@ -93,6 +94,31 @@ export function CustomerDetailsPage() {
             fetchCustomerDetails();
         }
     }, [id, currentAccount, token, fetchCustomerDetails]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'customer' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            if (!event.resourceId || event.resourceId === id) {
+                void fetchCustomerDetails();
+            }
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchCustomerDetails, id]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchCustomerDetails();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchCustomerDetails]);
 
     if (isLoading) return <div className="p-8 text-center text-gray-500">Loading customer profile...</div>;
     if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;

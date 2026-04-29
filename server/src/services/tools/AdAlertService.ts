@@ -167,7 +167,7 @@ export class AdAlertService {
      * Check for ROAS crash by comparing current vs previous period.
      */
     private static async checkRoasCrash(
-        accountId: string,
+        _accountId: string,
         adAccountId: string,
         campaign: any,
         thresholdPercent: number

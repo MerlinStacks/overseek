@@ -237,7 +237,7 @@ export class AdActionExecutor {
      * Validate that a budget increase won't exceed the daily spend cap.
      */
     private static async validateSpendCap(
-        adAccountId: string,
+        _adAccountId: string,
         proposedBudget: number,
         maxDailySpend: number
     ): Promise<{ allowed: boolean; reason?: string }> {

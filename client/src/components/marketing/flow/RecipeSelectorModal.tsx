@@ -3,7 +3,7 @@
  * Allows users to quickly start with common automation patterns.
  */
 import React, { useState } from 'react';
-import { X, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import {
     AutomationRecipe,

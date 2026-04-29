@@ -2,7 +2,6 @@
  * BOMItemsTable - Renders the BOM items list with quantity and waste inputs.
  * Extracted from BOMPanel.tsx for modularity.
  */
-import React from 'react';
 import { Trash2 } from 'lucide-react';
 
 export interface BOMItem {

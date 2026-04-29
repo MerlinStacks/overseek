@@ -90,7 +90,7 @@ export class MarketingStrategyAdvisor {
             }
 
             // 4. New Customer Acquisition Strategy
-            const acquisitionRecs = this.getAcquisitionRecommendations(revenueData, channelMetrics);
+            const acquisitionRecs = this.getAcquisitionRecommendations(revenueData);
             result.recommendations.push(...acquisitionRecs);
 
             // Determine portfolio health
@@ -440,8 +440,7 @@ export class MarketingStrategyAdvisor {
      * Generate customer acquisition strategy recommendations.
      */
     private static getAcquisitionRecommendations(
-        revenueData: { totalRevenue: number; repeatRate: number; avgOrderValue: number },
-        channels: ChannelMetrics[]
+        revenueData: { totalRevenue: number; repeatRate: number; avgOrderValue: number }
     ): ActionableRecommendation[] {
         const recs: ActionableRecommendation[] = [];
 

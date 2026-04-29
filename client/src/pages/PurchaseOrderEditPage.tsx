@@ -10,6 +10,7 @@ import { SupplierSearchInput } from '../components/inventory/SupplierSearchInput
 import { POStatusStepper } from '../components/inventory/POStatusStepper';
 import { Toast, ToastType } from '../components/ui/Toast';
 import { usePODraftPersistence } from '../hooks/usePODraftPersistence';
+import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 interface POItem {
     id?: string;
@@ -197,6 +198,42 @@ export function PurchaseOrderEditPage() {
         }
     }, [currentAccount, isNew, id, fetchSuppliers, fetchPO, loadDraft, showToast]);
 
+    useEffect(() => {
+        if (isNew || !id) {
+            return;
+        }
+
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (
+                event.resource !== 'purchase-order' ||
+                event.accountId !== currentAccount?.id ||
+                event.resourceId !== id ||
+                isDirtyRef.current
+            ) {
+                return;
+            }
+
+            void fetchPO(id);
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchPO, id, isNew]);
+
+    useEffect(() => {
+        if (isNew) {
+            return;
+        }
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && id && !isDirtyRef.current) {
+                void fetchPO(id);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchPO, id, isNew]);
+
     const addItem = () => {
         setItems([...items, { name: '', quantity: 1, unitCost: 0, totalCost: 0 }]);
     };
@@ -255,8 +292,18 @@ export function PurchaseOrderEditPage() {
             });
 
             if (res.ok) {
+                const saved = await res.json().catch(() => null);
+                const savedId = String(saved?.id || id || '');
                 clearDraft();
                 isDirtyRef.current = false;
+                if (currentAccount?.id && savedId) {
+                    emitCrossTabEvent({
+                        resource: 'purchase-order',
+                        type: 'updated',
+                        accountId: currentAccount.id,
+                        resourceId: savedId,
+                    });
+                }
                 navigate('/inventory?tab=purchasing');
             } else {
                 let errorMessage = 'Failed to save';
@@ -294,6 +341,14 @@ export function PurchaseOrderEditPage() {
             if (res.ok) {
                 clearDraft();
                 isDirtyRef.current = false;
+                if (currentAccount?.id && id) {
+                    emitCrossTabEvent({
+                        resource: 'purchase-order',
+                        type: 'deleted',
+                        accountId: currentAccount.id,
+                        resourceId: id,
+                    });
+                }
                 navigate('/inventory?tab=purchasing');
             } else {
                 let errorMessage = 'Failed to delete';

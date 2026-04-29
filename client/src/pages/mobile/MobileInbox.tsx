@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
@@ -10,6 +10,7 @@ import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatTimeAgo } from '../../utils/format';
 import { getInitials } from '../../utils/string';
 import { InboxSkeleton } from '../../components/mobile/MobileSkeleton';
+import { NewEmailModal } from '../../components/chat/NewEmailModal';
 
 interface ConversationApiResponse {
     id: string;
@@ -35,10 +36,17 @@ interface Conversation {
     updatedAt: string;
 }
 
+interface SharedComposeDraft {
+    subject?: string;
+    body?: string;
+    timestamp?: number;
+}
+
 /**
  * Dark-mode channel config with colors matching glassmorphism theme.
  */
 const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: string }> = {
+    chat: { icon: MessageSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/20' },
     email: { icon: Mail, color: 'text-blue-400', bg: 'bg-blue-500/20' },
     facebook: { icon: Facebook, color: 'text-blue-400', bg: 'bg-blue-500/20' },
     instagram: { icon: Instagram, color: 'text-pink-400', bg: 'bg-pink-500/20' },
@@ -47,6 +55,7 @@ const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: str
 };
 
 const FILTER_OPTIONS = ['All', 'Unread', 'Email', 'Social'];
+const SOCIAL_CHANNELS = new Set(['facebook', 'instagram', 'tiktok']);
 
 /**
  * MobileInbox - Premium dark-mode inbox for PWA.
@@ -54,6 +63,7 @@ const FILTER_OPTIONS = ['All', 'Unread', 'Email', 'Social'];
  */
 export function MobileInbox() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { triggerHaptic } = useHaptic();
@@ -62,6 +72,7 @@ export function MobileInbox() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
+    const [composeDraft, setComposeDraft] = useState<SharedComposeDraft | null>(null);
 
     const fetchConversations = useCallback(async () => {
         if (!currentAccount || !token) {
@@ -93,7 +104,7 @@ export function MobileInbox() {
                     id: c.id,
                     customerName: customerName || 'Unknown',
                     lastMessage,
-                    channel: c.channel || 'CHAT',
+                    channel: (c.channel || 'CHAT').toLowerCase(),
                     unread: !c.isRead,
                     updatedAt: c.updatedAt || ''
                 };
@@ -113,6 +124,27 @@ export function MobileInbox() {
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchConversations]);
 
+    useEffect(() => {
+        const shouldCompose = searchParams.get('compose') === 'true';
+        if (!shouldCompose) {
+            setComposeDraft(null);
+            return;
+        }
+
+        try {
+            const rawDraft = sessionStorage.getItem('sharedContent');
+            if (rawDraft) {
+                const parsedDraft = JSON.parse(rawDraft) as SharedComposeDraft;
+                setComposeDraft(parsedDraft);
+                return;
+            }
+        } catch (error) {
+            Logger.error('[MobileInbox] Failed to parse shared compose draft', { error });
+        }
+
+        setComposeDraft({});
+    }, [searchParams]);
+
     // Socket listener for real-time updates
     const { socket } = useSocket();
     useEffect(() => {
@@ -128,10 +160,18 @@ export function MobileInbox() {
             fetchConversations();
         };
 
+        const handleConversationRead = ({ id }: { id: string }) => {
+            setConversations(prev => prev.map(c =>
+                c.id === id ? { ...c, unread: false } : c
+            ));
+        };
+
         socket.on('conversation:updated', handleConversationUpdated);
+        socket.on('conversation:read', handleConversationRead);
 
         return () => {
             socket.off('conversation:updated', handleConversationUpdated);
+            socket.off('conversation:read', handleConversationRead);
         };
     }, [socket, currentAccount, fetchConversations, triggerHaptic]);
 
@@ -140,15 +180,19 @@ export function MobileInbox() {
         setConversations(prev => prev.filter(c => c.id !== id));
 
         try {
-            await fetch(`/api/chat/${id}`, {
-                method: 'PATCH',
+            const res = await fetch(`/api/chat/${id}`, {
+                method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount!.id,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ status: 'closed' })
+                body: JSON.stringify({ status: 'CLOSED' })
             });
+
+            if (!res.ok) {
+                throw new Error(`Archive failed with status ${res.status}`);
+            }
         } catch (error) {
             Logger.error('[MobileInbox] Archive failed:', { error: error });
             fetchConversations();
@@ -162,15 +206,20 @@ export function MobileInbox() {
         ));
 
         try {
-            await fetch(`/api/chat/${id}/read`, {
+            const res = await fetch(`/api/chat/${id}/read`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount!.id
                 }
             });
+
+            if (!res.ok) {
+                throw new Error(`Mark read failed with status ${res.status}`);
+            }
         } catch (error) {
             Logger.error('[MobileInbox] Mark read failed:', { error: error });
+            fetchConversations();
         }
     };
 
@@ -180,12 +229,20 @@ export function MobileInbox() {
     const filteredConversations = conversations.filter(c => {
         if (activeFilter === 'Unread' && !c.unread) return false;
         if (activeFilter === 'Email' && c.channel !== 'email') return false;
-        if (activeFilter === 'Social' && c.channel === 'email') return false;
+        if (activeFilter === 'Social' && !SOCIAL_CHANNELS.has(c.channel)) return false;
         if (searchQuery && !c.customerName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
         return true;
     });
 
     const unreadCount = conversations.filter(c => c.unread).length;
+
+    const closeCompose = () => {
+        setComposeDraft(null);
+        sessionStorage.removeItem('sharedContent');
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('compose');
+        setSearchParams(nextParams, { replace: true });
+    };
 
     if (loading) {
         return <InboxSkeleton />;
@@ -351,6 +408,19 @@ export function MobileInbox() {
                     })
                 )}
             </div>
+
+            {composeDraft && (
+                <NewEmailModal
+                    onClose={closeCompose}
+                    onSent={async (conversationId) => {
+                        closeCompose();
+                        await fetchConversations();
+                        navigate(`/m/inbox/${conversationId}`);
+                    }}
+                    initialSubject={composeDraft.subject || ''}
+                    initialBody={composeDraft.body || ''}
+                />
+            )}
         </div>
     );
 }

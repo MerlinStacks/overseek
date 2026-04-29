@@ -53,10 +53,6 @@ const updateProductBodySchema = z.object({
     variations: z.array(z.any()).optional()
 });
 
-const createProductBodySchema = z.object({
-    name: z.string().min(1)
-});
-
 const rewriteDescriptionBodySchema = z.object({
     currentDescription: z.string().optional(),
     productName: z.string().optional(),

@@ -35,7 +35,7 @@ vi.mock('../../utils/prismaReplica', () => ({
 
 // Mock cache
 vi.mock('../../utils/cache', () => ({
-    cacheAside: vi.fn((key, fn) => fn()),
+    cacheAside: vi.fn((_key, fn) => fn()),
     CacheTTL: { MEDIUM: 300 },
     CacheNamespace: { ANALYTICS: 'analytics' }
 }));

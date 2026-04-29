@@ -35,12 +35,10 @@ export const AnalyticsOverviewPage: React.FC = () => {
     const [abandonment, setAbandonment] = useState<AbandonmentData | null>(null);
     const [searches, setSearches] = useState<SearchData | null>(null);
     const [exits, setExits] = useState<ExitData | null>(null);
-    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchData = async () => {
             if (!currentAccount || !token) return;
-            setLoading(true);
             try {
                 const [abandonmentRes, searchesRes, exitsRes] = await Promise.all([
                     api.get<AbandonmentData>(`/api/tracking/abandonment?days=${days}`, token, currentAccount.id),
@@ -52,8 +50,6 @@ export const AnalyticsOverviewPage: React.FC = () => {
                 setExits(exitsRes);
             } catch (error) {
                 Logger.error('Failed to fetch overview:', { error: error });
-            } finally {
-                setLoading(false);
             }
         };
         fetchData();
@@ -151,7 +147,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                                 <p className="text-sm text-gray-500 italic">No search data yet</p>
                             ) : (
                                 <div className="space-y-2">
-                                    {searches.topQueries.slice(0, 8).map((item, i) => (
+                                    {searches.topQueries.slice(0, 8).map((item) => (
                                         <div key={item.query} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
                                             <span className="text-gray-700">{item.query}</span>
                                             <span className="text-gray-400">{item.count}</span>
@@ -176,7 +172,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
                                 <p className="text-sm text-gray-500 italic">No exit data yet</p>
                             ) : (
                                 <div className="space-y-2">
-                                    {exits.topExitPages.slice(0, 8).map((item, i) => (
+                                    {exits.topExitPages.slice(0, 8).map((item) => (
                                         <div key={item.page} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
                                             <span className="text-gray-700 truncate max-w-[250px]">{item.page}</span>
                                             <span className="text-gray-400">{item.count}</span>

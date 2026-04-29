@@ -5,8 +5,6 @@
  * Eliminates scattered `as any` casts and provides consistent access patterns.
  */
 
-import { WooOrder } from '@prisma/client';
-
 /**
  * Structured billing info from order rawData
  */

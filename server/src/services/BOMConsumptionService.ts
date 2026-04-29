@@ -12,10 +12,9 @@
  * - Fallback: PostgreSQL advisory lock (when Redis unavailable)
  */
 
-import { prisma, Prisma } from '../utils/prisma';
+import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { WooService } from './woo';
-import { EventBus, EVENTS } from './events';
 import { BOMInventorySyncService } from './BOMInventorySyncService';
 import { redisClient } from '../utils/redis';
 
@@ -84,14 +83,10 @@ export class BOMConsumptionService {
      * pending_deductions:{accountId}:{orderId} -> JSON of DeductionPlan
      */
     private static readonly PENDING_KEY_PREFIX = 'bom_pending:';
-    private static readonly LOCK_KEY = 'bom:processing_queue';
     private static readonly ORDER_LOCK_PREFIX = 'bom:lock:order:';
-    private static readonly LOCK_TTL_SECONDS = 60;
-    private static readonly BATCH_SIZE = 10;
     private static readonly ORDER_LOCK_TTL_SECONDS = 300; // 5 minutes
     private static readonly CONSUMED_KEY_PREFIX = 'bom:consumed:';
     private static readonly CONSUMED_TTL_SECONDS = 86400; // 24 hours
-    private static readonly MAX_RETRIES = 3;
 
 
     /**
@@ -646,7 +641,7 @@ export class BOMConsumptionService {
     }
 
     private static async executeDeduction(
-        accountId: string,
+        _accountId: string,
         deduction: ComponentDeduction,
         wooService: any
     ) {
@@ -819,7 +814,7 @@ export class BOMConsumptionService {
     static async cascadeSyncAffectedProducts(
         accountId: string,
         componentProductId: string,
-        componentVariationId?: number,
+        _componentVariationId?: number,
         componentType: 'wooProduct' | 'internalProduct' = 'wooProduct'
     ): Promise<void> {
         // Why no variation filter: we must cascade to ALL parent BOMs that reference

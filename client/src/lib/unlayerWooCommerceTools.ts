@@ -293,7 +293,7 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
                     const addressType = values.addressType || 'billing';
                     const showLabel = values.showLabel !== false;
 
-                    const renderAddress = (type: string, label: string, placeholder: string) => `
+                    const renderAddress = (label: string, placeholder: string) => `
             <div style="flex: 1; min-width: 200px;">
               ${showLabel ? `<p style="margin: 0 0 8px 0; color: #6b7280; font-size: 12px; text-transform: uppercase; font-weight: 600;">${label}</p>` : ''}
               <div style="background: #f9fafb; border-radius: 8px; padding: 16px; border: 1px solid #e5e7eb;">
@@ -306,10 +306,10 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
             <div style="padding: 20px; font-family: Arial, sans-serif;">
               <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 ${addressType === 'billing' || addressType === 'both'
-                            ? renderAddress('billing', 'Billing Address', 'John Doe<br>123 Main Street<br>Sydney, NSW 2000<br>Australia')
+                            ? renderAddress('Billing Address', 'John Doe<br>123 Main Street<br>Sydney, NSW 2000<br>Australia')
                             : ''}
                 ${addressType === 'shipping' || addressType === 'both'
-                            ? renderAddress('shipping', 'Shipping Address', 'John Doe<br>456 Delivery Lane<br>Melbourne, VIC 3000<br>Australia')
+                            ? renderAddress('Shipping Address', 'John Doe<br>456 Delivery Lane<br>Melbourne, VIC 3000<br>Australia')
                             : ''}
               </div>
             </div>

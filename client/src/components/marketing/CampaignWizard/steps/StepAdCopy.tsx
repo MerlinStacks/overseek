@@ -5,7 +5,7 @@
  * Validates headline and description lengths per Google Ads specs.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { RefreshCw, Wand2 } from 'lucide-react';
 import { Logger } from '../../../../utils/logger';
 import {

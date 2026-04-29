@@ -16,6 +16,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { InternalProductsList } from '../components/inventory/InternalProductsList';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Modal } from '../components/ui/Modal';
+import { subscribeToProductChanges } from '../utils/productCrossTabEvents';
 import type { SeoTest } from '../components/Seo/SeoScoreBadge';
 
 interface Product {
@@ -158,6 +159,29 @@ export function InventoryPage() {
         if (activeTab === 'catalog') {
             fetchProducts();
         }
+    }, [activeTab, fetchProducts]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToProductChanges((event) => {
+            if (event.accountId !== currentAccount?.id || activeTab !== 'catalog') {
+                return;
+            }
+
+            void fetchProducts();
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, activeTab, fetchProducts]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && activeTab === 'catalog') {
+                void fetchProducts();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [activeTab, fetchProducts]);
 
     async function handleCreateProduct() {

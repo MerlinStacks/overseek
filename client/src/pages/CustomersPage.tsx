@@ -9,6 +9,7 @@ import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { RelativeTime } from '../components/ui/RelativeTime';
 import { formatDate, formatCurrency } from '../utils/format';
+import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 interface Customer {
     id: string;
@@ -74,6 +75,29 @@ export function CustomersPage() {
 
     useEffect(() => {
         fetchCustomers();
+    }, [fetchCustomers]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'customer' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            void fetchCustomers();
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchCustomers]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchCustomers();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [fetchCustomers]);
 
     return (

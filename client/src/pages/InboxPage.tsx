@@ -69,6 +69,12 @@ export function InboxPage() {
             channel: activeConversation?.channel || 'CHAT',
         }));
 
+    const parseNumber = (value: unknown): number | undefined => {
+        if (value == null) return undefined;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
     const normalizedActiveConversation = activeConversation
         ? {
             ...activeConversation,
@@ -76,12 +82,12 @@ export function InboxPage() {
             createdAt: typeof activeConversation.createdAt === 'string' ? activeConversation.createdAt : activeConversation.updatedAt,
             wooCustomer: activeConversation.wooCustomer ? {
                 id: String((activeConversation.wooCustomer as { id?: unknown }).id ?? ''),
-                wooId: Number(activeConversation.wooCustomer.wooId || 0),
+                wooId: parseNumber(activeConversation.wooCustomer.wooId) ?? 0,
                 firstName: activeConversation.wooCustomer.firstName,
                 lastName: activeConversation.wooCustomer.lastName,
                 email: activeConversation.wooCustomer.email,
-                totalSpent: typeof activeConversation.wooCustomer.totalSpent === 'number' ? activeConversation.wooCustomer.totalSpent : undefined,
-                ordersCount: typeof activeConversation.wooCustomer.ordersCount === 'number' ? activeConversation.wooCustomer.ordersCount : undefined,
+                totalSpent: parseNumber(activeConversation.wooCustomer.totalSpent),
+                ordersCount: parseNumber(activeConversation.wooCustomer.ordersCount),
             } : undefined,
         }
         : undefined;
@@ -157,6 +163,7 @@ export function InboxPage() {
                 <Suspense fallback={<ContactPanelSkeleton />}>
                     <ContactPanel
                         conversation={normalizedActiveConversation}
+                        messageCount={messages.length}
                         onSelectConversation={(id) => setSelectedId(id)}
                     />
                 </Suspense>

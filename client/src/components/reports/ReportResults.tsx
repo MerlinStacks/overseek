@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { BarChart3, Download, FileText, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';

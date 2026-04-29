@@ -358,7 +358,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         });
 
         // --- Settings ---
-        fastify.get('/settings', async (request, reply) => {
+        fastify.get('/settings', async (request, _reply) => {
             const accountId = request.accountId;
             if (!accountId) return {};
             const feature = await prisma.accountFeature.findUnique({
@@ -367,7 +367,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             return feature?.config || {};
         });
 
-        fastify.post('/settings', async (request, reply) => {
+        fastify.post('/settings', async (request, _reply) => {
             const accountId = request.accountId;
             if (!accountId) return {};
             const { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;

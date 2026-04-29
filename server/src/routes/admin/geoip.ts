@@ -17,7 +17,7 @@ export const geoipRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireSuperAdminFastify);
 
     // GeoIP Status
-    fastify.get('/geoip-status', async (request, reply) => {
+    fastify.get('/geoip-status', async (_request, reply) => {
         try {
             const { getDatabaseStatus } = await import('../../services/tracking/GeoIPService');
             const databases = getDatabaseStatus();
@@ -38,7 +38,7 @@ export const geoipRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Force GeoIP Update
-    fastify.post('/geoip-force-update', async (request, reply) => {
+    fastify.post('/geoip-force-update', async (_request, reply) => {
         try {
             const { updateGeoLiteDB } = await import('../../services/tracking/GeoIPService');
             const success = await updateGeoLiteDB();

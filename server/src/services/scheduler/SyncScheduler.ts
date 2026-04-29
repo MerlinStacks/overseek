@@ -13,6 +13,7 @@ import { SCHEDULER_LIMITS } from '../../config/limits';
 
 export class SyncScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
+    private static readonly MAINTENANCE_LOG_WINDOW_MS = 12 * 60 * 60 * 1000;
 
     /**
      * Check if an account has ≥3 consecutive failures in the last 30 minutes.
@@ -36,6 +37,15 @@ export class SyncScheduler {
         const WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
         try {
+            const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: { wooNeedsReconnect: true }
+            });
+            if (account?.wooNeedsReconnect) return true;
+
+            const maintenanceDeferral = await this.getMaintenanceDeferral(accountId, entityType);
+            if (maintenanceDeferral.isDeferred) return true;
+
             const since = new Date(Date.now() - WINDOW_MS);
             const recentLogs = await prisma.syncLog.findMany({
                 where: {
@@ -61,6 +71,42 @@ export class SyncScheduler {
             Logger.warn('[SyncScheduler] Circuit breaker check failed — allowing dispatch', { accountId, error: err.message });
             return false;
         }
+    }
+
+    private static async getMaintenanceDeferral(accountId: string, entityType?: string): Promise<{ isDeferred: boolean; retryAt?: Date }> {
+        const since = new Date(Date.now() - this.MAINTENANCE_LOG_WINDOW_MS);
+        const latestFailure = await prisma.syncLog.findFirst({
+            where: {
+                accountId,
+                status: 'FAILED',
+                startedAt: { gte: since },
+                ...(entityType ? { entityType } : {})
+            },
+            orderBy: { startedAt: 'desc' },
+            select: {
+                errorMessage: true,
+                completedAt: true,
+                startedAt: true
+            }
+        });
+
+        const message = latestFailure?.errorMessage || '';
+        const match = message.match(/maintenance mode(?:\.|.*)retry after (\d+)s/i);
+        if (!match) return { isDeferred: false };
+
+        const retryAfterSeconds = Number.parseInt(match[1], 10);
+        if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) {
+            return { isDeferred: false };
+        }
+
+        const baseTime = latestFailure?.completedAt || latestFailure?.startedAt;
+        if (!baseTime) return { isDeferred: false };
+
+        const retryAt = new Date(baseTime.getTime() + retryAfterSeconds * 1000);
+        return {
+            isDeferred: retryAt.getTime() > Date.now(),
+            retryAt
+        };
     }
 
     /**

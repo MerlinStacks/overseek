@@ -3,6 +3,7 @@
  * Supports multiple variants and configurable features.
  */
 import { useCallback, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { Logger } from '../../../utils/logger';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -44,6 +45,8 @@ export interface RichTextEditorProps {
     disableEnterSubmit?: boolean;
     /** Additional CSS class */
     className?: string;
+    /** Optional right-side controls rendered in the toolbar row */
+    toolbarRightSlot?: ReactNode;
 }
 
 // Default features per variant
@@ -71,6 +74,7 @@ export function RichTextEditor({
     isInternal = false,
     disableEnterSubmit = false,
     className = '',
+    toolbarRightSlot,
 }: RichTextEditorProps) {
     // Memoize features to prevent re-renders
     const enabledFeatures = useMemo(
@@ -111,7 +115,7 @@ export function RichTextEditor({
             <LexicalComposer initialConfig={initialConfig}>
                 {/* Toolbar - position depends on variant */}
                 {variant !== 'compact' && (
-                    <ToolbarPlugin features={enabledFeatures} />
+                    <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} />
                 )}
 
                 <div className="rte-editor-container">
@@ -124,7 +128,7 @@ export function RichTextEditor({
 
                 {/* Toolbar at bottom for compact variant */}
                 {variant === 'compact' && (
-                    <ToolbarPlugin features={enabledFeatures} />
+                    <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} />
                 )}
 
                 {/* Plugins */}

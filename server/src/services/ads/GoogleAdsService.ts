@@ -473,8 +473,6 @@ export class GoogleAdsService {
             // Format resource name correctly if needed, or just let library handle if it takes ID.
             // Usually library takes object with resource_name or id.
             // Let's use standard update pattern.
-            const resource_name = `customers/${customer.credentials.customer_id}/campaigns/${campaignId}`;
-
             // We can't easily access customer_id from customer object wrapper sometimes.
             // But we can just pass 'id' and let library helper construct resource name if it supports it.
             // Or safer: query campaign to get resource_name first.

@@ -167,7 +167,7 @@ export async function isExcludedIp(accountId: string, ip: string): Promise<boole
  *
  * @param accountId - The account ID
  */
-export function invalidateExcludedIpsCache(accountId: string): void {
+export function invalidateExcludedIpsCache(_accountId: string): void {
     // Cache invalidation is handled by cache utility's TTL
     // For immediate invalidation, we'd need to add a delete method to cache
     // For now, changes take effect after TTL expires (5 min default)

@@ -4,6 +4,7 @@ import { useAccount } from './AccountContext';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+/* eslint-disable react-refresh/only-export-components */
 
 
 export interface SyncJob {

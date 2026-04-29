@@ -7,6 +7,7 @@ import { useAccount } from '../../context/AccountContext';
 import { fixMojibake, formatCurrency, formatDateTime } from '../../utils/format';
 import { usePermissions } from '../../hooks/usePermissions';
 import { OrderCOGSPanel } from '../../components/orders/OrderCOGSPanel';
+import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 interface OrderApiLineItem {
     id: string;
@@ -93,7 +94,10 @@ export function MobileOrderDetail() {
     const canViewCogs = hasPermission('view_cogs');
 
     const fetchAttribution = useCallback(async () => {
-        if (!currentAccount || !token || !id) return;
+        if (!currentAccount || !token || !id) {
+            setAttribution(null);
+            return;
+        }
         try {
             const res = await fetch(`/api/orders/${id}/attribution`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
@@ -101,17 +105,29 @@ export function MobileOrderDetail() {
             if (res.ok) {
                 const data = await res.json();
                 setAttribution(data.attribution);
+            } else {
+                setAttribution(null);
             }
         } catch {
+            setAttribution(null);
             Logger.warn('[MobileOrderDetail] Could not load attribution');
         }
     }, [currentAccount, id, token]);
 
     const fetchOrder = useCallback(async () => {
-        if (!currentAccount || !token || !id) return;
+        if (!currentAccount || !token || !id) {
+            setOrder(null);
+            setAttribution(null);
+            setOrderTags([]);
+            setLoading(false);
+            return;
+        }
 
         try {
             setLoading(true);
+            setOrder(null);
+            setAttribution(null);
+            setOrderTags([]);
             const response = await fetch(`/api/orders/${id}`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
@@ -154,6 +170,9 @@ export function MobileOrderDetail() {
             // Fetch attribution data
             fetchAttribution();
         } catch (error) {
+            setOrder(null);
+            setAttribution(null);
+            setOrderTags([]);
             Logger.error('[MobileOrderDetail] Error:', { error: error });
         } finally {
             setLoading(false);
@@ -170,6 +189,20 @@ export function MobileOrderDetail() {
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchOrder]);
 
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'order' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            if (!event.resourceId || event.resourceId === id) {
+                void fetchOrder();
+            }
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchOrder, id]);
+
     const formatDate = (date: string) => formatDateTime(date);
     const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); if ('vibrate' in navigator) navigator.vibrate(10); };
 
@@ -183,6 +216,12 @@ export function MobileOrderDetail() {
             if (res.ok) {
                 const data = await res.json();
                 setOrderTags(data.tags);
+                emitCrossTabEvent({
+                    resource: 'order',
+                    type: 'tags-updated',
+                    accountId: currentAccount.id,
+                    resourceId: id,
+                });
             }
         } catch (err) {
             Logger.error('Failed to remove tag', { error: err });

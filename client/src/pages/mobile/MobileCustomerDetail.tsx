@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { getStatusColor } from '../../utils/orderStatus';
+import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 interface OrderApiResponse {
     id: string;
@@ -67,12 +68,14 @@ export function MobileCustomerDetail() {
 
     const fetchCustomer = useCallback(async () => {
         if (!currentAccount || !token || !id) {
+            setData(null);
             setLoading(false);
             return;
         }
 
         try {
             setLoading(true);
+            setData(null);
             const res = await fetch(`/api/customers/${id}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -105,8 +108,11 @@ export function MobileCustomerDetail() {
                     activity: json.activity || []
                 };
                 setData(mappedData);
+            } else {
+                setData(null);
             }
         } catch (error) {
+            setData(null);
             Logger.error('[MobileCustomerDetail] Error:', { error: error });
         } finally {
             setLoading(false);
@@ -121,6 +127,20 @@ export function MobileCustomerDetail() {
         window.addEventListener('mobile-refresh', handleRefresh);
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchCustomer]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'customer' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            if (!event.resourceId || event.resourceId === id) {
+                void fetchCustomer();
+            }
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchCustomer, id]);
 
     // Currency formatting helper using centralized utility
     const formatAccountCurrency = (amount: number) =>

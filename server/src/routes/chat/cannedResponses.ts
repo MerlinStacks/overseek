@@ -12,8 +12,21 @@ import { requireAuthFastify } from '../../middleware/auth';
 export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
+    async function ensureOwnedCannedLabel(accountId: string, labelId?: string | null) {
+        if (!labelId) {
+            return null;
+        }
+
+        const label = await prisma.cannedResponseLabel.findFirst({
+            where: { id: labelId, accountId },
+            select: { id: true }
+        });
+
+        return label;
+    }
+
     // --- Canned Response Labels ---
-    fastify.get('/canned-labels', async (request, reply) => {
+    fastify.get('/canned-labels', async (request, _reply) => {
         const accountId = request.accountId;
         if (!accountId) return [];
         const labels = await prisma.cannedResponseLabel.findMany({
@@ -85,7 +98,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // --- Canned Responses ---
-    fastify.get('/canned-responses', async (request, reply) => {
+    fastify.get('/canned-responses', async (request, _reply) => {
         const accountId = request.accountId;
         if (!accountId) return [];
         const responses = await prisma.cannedResponse.findMany({
@@ -100,6 +113,14 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
         const { shortcut, content, labelId } = request.body as any;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        if (labelId) {
+            const label = await ensureOwnedCannedLabel(accountId, labelId);
+            if (!label) {
+                return reply.code(404).send({ error: 'Label not found' });
+            }
+        }
+
         const resp = await prisma.cannedResponse.create({
             data: { shortcut, content, labelId: labelId || null, accountId },
             include: { label: true }
@@ -117,6 +138,13 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id: request.params.id, accountId }
         });
         if (!existing) return reply.code(404).send({ error: 'Canned response not found' });
+
+        if (labelId) {
+            const label = await ensureOwnedCannedLabel(accountId, labelId);
+            if (!label) {
+                return reply.code(404).send({ error: 'Label not found' });
+            }
+        }
 
         const resp = await prisma.cannedResponse.update({
             where: { id: request.params.id },

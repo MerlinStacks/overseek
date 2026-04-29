@@ -318,7 +318,6 @@ export class SearchCampaignAdvisor {
 
             const storeUrl = account?.wooUrl || 'https://yourstore.com';
             const storeName = account?.name || 'Your Store';
-            const storeDomain = account?.domain || new URL(storeUrl).hostname.replace('www.', '');
 
             const avgOrderValue = totalRevenue / orderCount;
             const suggestedBudget = Math.round(avgOrderValue * 0.2 * (orderCount / 30));
@@ -397,7 +396,6 @@ export class SearchCampaignAdvisor {
             // Formula: CPC = AOV * conversion_rate / target_ROAS
             const suggestedCpc = (avgOrderValue * estimatedConversionRate) / targetRoas;
             const maxCpc = suggestedCpc * 2;
-            const cpcSource = 'estimated' as const;
 
             const projectedRevenue = dailyBudget * 30 * targetRoas;
 

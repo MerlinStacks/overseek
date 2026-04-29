@@ -4,6 +4,7 @@
  * Provides global access to the CommandPalette open state.
  * Allows Header and other components to trigger the search modal.
  */
+/* eslint-disable react-refresh/only-export-components */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 

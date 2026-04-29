@@ -4,9 +4,6 @@
  * Shared types and constants for the backup service modules.
  */
 
-import * as path from 'path';
-
-
 export interface BackupOptions {
     includeAuditLogs?: boolean;  // Default: false (can be large)
     includeAnalytics?: boolean;  // Default: false (session data)

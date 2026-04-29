@@ -144,7 +144,6 @@ export function RecipientList({
     }
 
     // Multiple recipients - show expandable list
-    const visibleRecipients = isExpanded ? allRecipients : allRecipients.slice(0, 1);
     const hiddenCount = allRecipients.length - 1;
 
     return (

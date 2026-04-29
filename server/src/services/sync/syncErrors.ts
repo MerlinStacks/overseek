@@ -35,6 +35,13 @@ export function mapSyncError(errorMessage?: string | null): SyncErrorInfo {
         };
     }
 
+    if (message.includes('maintenance mode')) {
+        return {
+            code: 'REMOTE_ERROR',
+            friendlyMessage: 'WooCommerce is temporarily in maintenance mode. Sync will resume after the retry window.'
+        };
+    }
+
     if (message.includes('429') || message.includes('too many requests') || message.includes('rate limit')) {
         return {
             code: 'RATE_LIMIT',

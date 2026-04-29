@@ -17,6 +17,7 @@ import { OrderCOGSPanel } from '../components/orders/OrderCOGSPanel';
 import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useToast } from '../context/ToastContext';
+import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 interface Attribution {
     firstTouchSource: string;
@@ -143,6 +144,31 @@ export function OrderDetailPage() {
             fetchOrder();
         }
     }, [id, currentAccount, token, fetchOrder]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'order' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            if (!event.resourceId || event.resourceId === id) {
+                void fetchOrder();
+            }
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchOrder, id]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchOrder();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchOrder]);
 
 
 

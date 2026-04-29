@@ -5,7 +5,7 @@
  * Merge tag resolution delegated to MergeTagResolver.
  */
 
-import { MarketingCampaign, MarketingAutomation, EmailTemplate } from '@prisma/client';
+import { MarketingCampaign } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { SegmentService } from './SegmentService';
@@ -13,6 +13,7 @@ import { resolveMergeTags } from './MergeTagResolver';
 import { EmailService } from './EmailService';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { campaignTrackingService } from './CampaignTrackingService';
+import { automationAnalyticsService } from './AutomationAnalyticsService';
 
 export class MarketingService {
     private segmentService: SegmentService;
@@ -216,43 +217,106 @@ export class MarketingService {
     async upsertAutomation(accountId: string, data: any) {
         const { id, name, triggerType, triggerConfig, isActive } = data;
 
+        const flowDefinition = data.flowDefinition;
+        const triggerNode = flowDefinition?.nodes?.find((node: any) => {
+            const nodeType = String(node?.type || '').toUpperCase();
+            return nodeType === 'TRIGGER';
+        });
+        const triggerNodeConfig = triggerNode?.data?.config || triggerNode?.data || {};
+        const resolvedTriggerType =
+            triggerType
+            && String(triggerType).trim() !== ''
+            && String(triggerType).toUpperCase() !== 'NONE'
+                ? triggerType
+                : (triggerNodeConfig.triggerType || triggerType || 'NONE');
+        const resolvedTriggerConfig =
+            triggerConfig
+            || triggerNodeConfig
+            || {};
+
         if (id) {
             const existing = await prisma.marketingAutomation.findFirst({
                 where: { id, accountId },
-                select: { id: true }
+                select: {
+                    id: true,
+                    name: true,
+                    triggerType: true,
+                    triggerConfig: true,
+                    flowDefinition: true,
+                    isActive: true
+                }
             });
             if (!existing) {
                 throw new Error('Automation not found');
             }
 
+            const nextIsActive =
+                typeof isActive === 'boolean'
+                    ? isActive
+                    : existing.isActive;
+
             return prisma.marketingAutomation.update({
                 where: { id },
                 data: {
-                    name,
-                    triggerType,
-                    triggerConfig,
-                    isActive,
-                    flowDefinition: data.flowDefinition,
-                    status: isActive ? 'ACTIVE' : 'PAUSED'
+                    name: name || existing.name,
+                    triggerType: resolvedTriggerType || existing.triggerType,
+                    triggerConfig: resolvedTriggerConfig || existing.triggerConfig,
+                    isActive: nextIsActive,
+                    flowDefinition: flowDefinition || existing.flowDefinition,
+                    status: nextIsActive ? 'ACTIVE' : 'PAUSED'
                 }
             });
         }
 
+        const nextIsActive = Boolean(isActive);
         return prisma.marketingAutomation.create({
             data: {
                 accountId,
-                name,
-                triggerType,
-                triggerConfig,
-                isActive: isActive || false,
-                flowDefinition: data.flowDefinition,
-                status: isActive ? 'ACTIVE' : 'PAUSED'
+                name: name || 'Untitled Flow',
+                triggerType: resolvedTriggerType || 'NONE',
+                triggerConfig: resolvedTriggerConfig,
+                isActive: nextIsActive,
+                flowDefinition: flowDefinition || { nodes: [], edges: [] },
+                status: nextIsActive ? 'ACTIVE' : 'PAUSED'
             }
         });
     }
 
     async deleteAutomation(id: string, accountId: string) {
         return prisma.marketingAutomation.deleteMany({ where: { id, accountId } });
+    }
+
+    async getAutomationAnalytics(id: string, accountId: string) {
+        const automation = await prisma.marketingAutomation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!automation) {
+            throw new Error('Automation not found');
+        }
+        return automationAnalyticsService.getAutomationAnalytics(accountId, id);
+    }
+
+    async listAutomationEnrollments(id: string, accountId: string, limit = 50) {
+        const automation = await prisma.marketingAutomation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!automation) {
+            throw new Error('Automation not found');
+        }
+        return automationAnalyticsService.listEnrollments(accountId, id, limit);
+    }
+
+    async listAutomationRunEvents(id: string, accountId: string, limit = 50) {
+        const automation = await prisma.marketingAutomation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!automation) {
+            throw new Error('Automation not found');
+        }
+        return automationAnalyticsService.listRunEvents(accountId, id, limit);
     }
 
     // -------------------

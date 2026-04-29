@@ -440,7 +440,7 @@ OUTPUT FORMAT (JSON only):
      * Render HTML email content
      */
     private static renderDigestEmail(
-        accountId: string,
+        _accountId: string,
         metrics: DigestMetrics,
         narrative: DigestNarrative
     ): string {

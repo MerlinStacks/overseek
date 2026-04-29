@@ -5,8 +5,8 @@
  * Includes plugin download, configuration copy, and verification.
  */
 
-import React, { useState } from 'react';
-import { Plug, ArrowRight, ArrowLeft, SkipForward, Download, Copy, Check, Store, ExternalLink, AlertCircle, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Plug, ArrowRight, ArrowLeft, SkipForward, Download, Copy, Check, Store, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';

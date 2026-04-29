@@ -15,7 +15,6 @@ import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import {
     INSERT_ORDERED_LIST_COMMAND,
     INSERT_UNORDERED_LIST_COMMAND,
-    $isListNode,
     ListNode,
 } from '@lexical/list';
 import { $getNearestNodeOfType } from '@lexical/utils';
@@ -28,6 +27,7 @@ import {
     ListOrdered,
     Smile,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 export type ToolbarFeature =
     | 'bold'
@@ -41,6 +41,7 @@ export type ToolbarFeature =
 
 interface ToolbarPluginProps {
     features: ToolbarFeature[];
+    rightSlot?: ReactNode;
 }
 
 // Common emojis for quick access
@@ -50,7 +51,7 @@ const EMOJI_LIST = [
     '📦', '🚚', '💳', '📧', '📞', '🛒', '💰', '🎁',
 ];
 
-export function ToolbarPlugin({ features }: ToolbarPluginProps) {
+export function ToolbarPlugin({ features, rightSlot }: ToolbarPluginProps) {
     const [editor] = useLexicalComposerContext();
     const [isBold, setIsBold] = useState(false);
     const [isItalic, setIsItalic] = useState(false);
@@ -156,113 +157,116 @@ export function ToolbarPlugin({ features }: ToolbarPluginProps) {
     return (
         <>
             <div className="rte-toolbar">
-                {/* Text Formatting Group */}
-                {(has('bold') || has('italic') || has('underline')) && (
-                    <div className="rte-toolbar-group">
-                        {has('bold') && (
+                <div className="rte-toolbar-main">
+                    {/* Text Formatting Group */}
+                    {(has('bold') || has('italic') || has('underline')) && (
+                        <div className="rte-toolbar-group">
+                            {has('bold') && (
+                                <button
+                                    type="button"
+                                    onClick={formatBold}
+                                    className={`rte-toolbar-btn ${isBold ? 'active' : ''}`}
+                                    title="Bold (Ctrl+B)"
+                                    aria-label="Format Bold"
+                                >
+                                    <Bold size={16} />
+                                </button>
+                            )}
+                            {has('italic') && (
+                                <button
+                                    type="button"
+                                    onClick={formatItalic}
+                                    className={`rte-toolbar-btn ${isItalic ? 'active' : ''}`}
+                                    title="Italic (Ctrl+I)"
+                                    aria-label="Format Italic"
+                                >
+                                    <Italic size={16} />
+                                </button>
+                            )}
+                            {has('underline') && (
+                                <button
+                                    type="button"
+                                    onClick={formatUnderline}
+                                    className={`rte-toolbar-btn ${isUnderline ? 'active' : ''}`}
+                                    title="Underline (Ctrl+U)"
+                                    aria-label="Format Underline"
+                                >
+                                    <Underline size={16} />
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Link */}
+                    {has('link') && (
+                        <div className="rte-toolbar-group">
                             <button
                                 type="button"
-                                onClick={formatBold}
-                                className={`rte-toolbar-btn ${isBold ? 'active' : ''}`}
-                                title="Bold (Ctrl+B)"
-                                aria-label="Format Bold"
+                                onClick={insertLink}
+                                className={`rte-toolbar-btn ${isLink ? 'active' : ''}`}
+                                title="Insert Link"
+                                aria-label="Insert Link"
                             >
-                                <Bold size={16} />
+                                <Link size={16} />
                             </button>
-                        )}
-                        {has('italic') && (
+                        </div>
+                    )}
+
+                    {/* Lists */}
+                    {has('list') && (
+                        <div className="rte-toolbar-group">
                             <button
                                 type="button"
-                                onClick={formatItalic}
-                                className={`rte-toolbar-btn ${isItalic ? 'active' : ''}`}
-                                title="Italic (Ctrl+I)"
-                                aria-label="Format Italic"
+                                onClick={insertBulletList}
+                                className={`rte-toolbar-btn ${listType === 'bullet' ? 'active' : ''}`}
+                                title="Bullet List"
+                                aria-label="Insert Bullet List"
                             >
-                                <Italic size={16} />
+                                <List size={16} />
                             </button>
-                        )}
-                        {has('underline') && (
                             <button
                                 type="button"
-                                onClick={formatUnderline}
-                                className={`rte-toolbar-btn ${isUnderline ? 'active' : ''}`}
-                                title="Underline (Ctrl+U)"
-                                aria-label="Format Underline"
+                                onClick={insertNumberedList}
+                                className={`rte-toolbar-btn ${listType === 'number' ? 'active' : ''}`}
+                                title="Numbered List"
+                                aria-label="Insert Numbered List"
                             >
-                                <Underline size={16} />
+                                <ListOrdered size={16} />
                             </button>
-                        )}
-                    </div>
-                )}
+                        </div>
+                    )}
 
-                {/* Link */}
-                {has('link') && (
-                    <div className="rte-toolbar-group">
-                        <button
-                            type="button"
-                            onClick={insertLink}
-                            className={`rte-toolbar-btn ${isLink ? 'active' : ''}`}
-                            title="Insert Link"
-                            aria-label="Insert Link"
-                        >
-                            <Link size={16} />
-                        </button>
-                    </div>
-                )}
-
-                {/* Lists */}
-                {has('list') && (
-                    <div className="rte-toolbar-group">
-                        <button
-                            type="button"
-                            onClick={insertBulletList}
-                            className={`rte-toolbar-btn ${listType === 'bullet' ? 'active' : ''}`}
-                            title="Bullet List"
-                            aria-label="Insert Bullet List"
-                        >
-                            <List size={16} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={insertNumberedList}
-                            className={`rte-toolbar-btn ${listType === 'number' ? 'active' : ''}`}
-                            title="Numbered List"
-                            aria-label="Insert Numbered List"
-                        >
-                            <ListOrdered size={16} />
-                        </button>
-                    </div>
-                )}
-
-                {/* Emoji Picker */}
-                {has('emoji') && (
-                    <div className="rte-toolbar-group" style={{ position: 'relative' }} ref={emojiPickerRef}>
-                        <button
-                            type="button"
-                            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                            className={`rte-toolbar-btn ${showEmojiPicker ? 'active' : ''}`}
-                            title="Insert Emoji"
-                            aria-label="Insert Emoji"
-                        >
-                            <Smile size={16} />
-                        </button>
-                        {showEmojiPicker && (
-                            <div className="rte-emoji-picker">
-                                {EMOJI_LIST.map((emoji) => (
-                                    <button
-                                        key={emoji}
-                                        type="button"
-                                        className="rte-emoji-btn"
-                                        onClick={() => insertEmoji(emoji)}
-                                        title={emoji}
-                                    >
-                                        {emoji}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                    {/* Emoji Picker */}
+                    {has('emoji') && (
+                        <div className="rte-toolbar-group" style={{ position: 'relative' }} ref={emojiPickerRef}>
+                            <button
+                                type="button"
+                                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                className={`rte-toolbar-btn ${showEmojiPicker ? 'active' : ''}`}
+                                title="Insert Emoji"
+                                aria-label="Insert Emoji"
+                            >
+                                <Smile size={16} />
+                            </button>
+                            {showEmojiPicker && (
+                                <div className="rte-emoji-picker">
+                                    {EMOJI_LIST.map((emoji) => (
+                                        <button
+                                            key={emoji}
+                                            type="button"
+                                            className="rte-emoji-btn"
+                                            onClick={() => insertEmoji(emoji)}
+                                            title={emoji}
+                                        >
+                                            {emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {rightSlot && <div className="rte-toolbar-right">{rightSlot}</div>}
             </div>
 
             {/* Link Modal */}

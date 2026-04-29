@@ -9,12 +9,10 @@ import { ReactNode } from 'react';
 import {
     Target,
     Sparkles,
-    TrendingUp,
     Users,
     DollarSign,
     Layers,
-    BarChart3,
-    Zap
+    BarChart3
 } from 'lucide-react';
 
 export interface StrategicTheme {

@@ -6,6 +6,7 @@ import { CustomerSync } from '../services/sync/CustomerSync';
 import { ReviewSync } from '../services/sync/ReviewSync';
 import { EventBus, EVENTS } from '../services/events';
 import { Worker } from 'bullmq';
+import { automationEngine } from '../services/AutomationEngine';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
@@ -62,6 +63,18 @@ export async function startWorkers() {
             await ReportWorker.process(job);
         }));
     });
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.AUTOMATIONS, async (job) => {
+        const { enrollmentId } = job.data as { enrollmentId?: string };
+        if (!enrollmentId) {
+            Logger.warn('[Automation Worker] Missing enrollmentId in job payload', {
+                jobId: job.id
+            });
+            return;
+        }
+
+        await automationEngine.processEnrollment(enrollmentId);
+    }));
 
 
     try {

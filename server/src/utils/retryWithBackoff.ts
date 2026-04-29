@@ -14,6 +14,15 @@ export interface RetryOptions {
     context?: string;
 }
 
+function getHeaderValue(headers: any, key: string): string | undefined {
+    if (!headers) return undefined;
+
+    const direct = headers[key] ?? headers[key.toLowerCase()] ?? headers[key.toUpperCase()];
+    if (Array.isArray(direct)) return direct[0];
+    if (typeof direct === 'string') return direct;
+    return undefined;
+}
+
 /** retryable by default: 429, 5xx, network errors, timeouts */
 export function isRetryableError(error: any): boolean {
 
@@ -64,8 +73,17 @@ export function isCredentialError(error: any): boolean {
 /** Detects 503 responses with Retry-After header indicating scheduled maintenance */
 export function isMaintenanceMode(error: any): boolean {
     const status = error?.response?.status || error?.status;
-    const retryAfter = error?.response?.headers?.['retry-after'];
+    const retryAfter = getHeaderValue(error?.response?.headers, 'retry-after');
     return status === 503 && !!retryAfter;
+}
+
+/** Extract Retry-After seconds from a maintenance-mode response when present */
+export function getRetryAfterSeconds(error: any): number | null {
+    const retryAfter = getHeaderValue(error?.response?.headers, 'retry-after');
+    if (!retryAfter) return null;
+
+    const parsed = Number.parseInt(retryAfter, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 /** backoff with jitter: min(base * 2^attempt, max) ± 10% */
@@ -117,7 +135,7 @@ export async function retryWithBackoff<T>(
 
             // Maintenance mode: don't waste retries, fail immediately with descriptive error
             if (isMaintenanceMode(error)) {
-                const retryAfter = error?.response?.headers?.['retry-after'] || 'unknown';
+                const retryAfter = getRetryAfterSeconds(error) ?? 'unknown';
                 Logger.error(`[RetryWithBackoff] ${context} - site is in maintenance mode (Retry-After: ${retryAfter}s). Skipping retries.`, {
                     error: error.message
                 });

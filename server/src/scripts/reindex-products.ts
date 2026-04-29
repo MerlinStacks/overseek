@@ -2,7 +2,6 @@
 import { PrismaClient } from '@prisma/client';
 import { IndexingService } from '../services/search/IndexingService';
 import { ProductsService } from '../services/products';
-import { Logger } from '../utils/logger';
 import * as dotenv from 'dotenv';
 dotenv.config();
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Plus, Image as ImageIcon, ImageOff } from 'lucide-react';
 
 interface Image {

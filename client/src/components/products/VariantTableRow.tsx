@@ -3,7 +3,7 @@
  * 
  * Single variant row with inline editing for SKU, price, stock, and dimensions.
  */
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { ChevronDown, ChevronRight, Package, Loader2 } from 'lucide-react';
 import { ProductVariant, getVariantImage } from './variantTypes';
 

@@ -12,8 +12,7 @@ import { Logger } from '../../../utils/logger';
 import { SearchToAdsIntelligenceService, OverlapQuery } from '../../ads/SearchToAdsIntelligenceService';
 import {
     ActionableRecommendation,
-    KeywordAction,
-    createKeywordHeadline
+    KeywordAction
 } from '../types/ActionableTypes';
 
 interface CannibalizationResult {

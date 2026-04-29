@@ -7,9 +7,17 @@ import { FastifyPluginAsync } from 'fastify';
 import { AdsService } from '../services/ads';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
-import { buildCallbackUrl, buildFrontendUrl, getAppUrl } from './oauthHelpers';
+import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
 
 const CALLBACK_SUFFIX = 'google/callback';
+const DEFAULT_REDIRECT = '/settings/integrations';
+const DEFAULT_MARKETING_REDIRECT = '/marketing?tab=ads';
+
+function sanitizeFrontendRedirect(redirect?: string): string {
+    if (!redirect) return DEFAULT_REDIRECT;
+    if (!redirect.startsWith('/') || redirect.startsWith('//')) return DEFAULT_REDIRECT;
+    return redirect;
+}
 
 const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -28,7 +36,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId;
             const query = request.query as { redirect?: string; reconnectId?: string };
-            const frontendRedirect = query.redirect || '/settings/integrations';
+            const frontendRedirect = sanitizeFrontendRedirect(query.redirect);
             const reconnectId = query.reconnectId;
 
             if (!accountId) return reply.code(400).send({ error: 'No account selected' });
@@ -47,34 +55,29 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /google/callback - Handle Google OAuth callback
      */
     fastify.get('/google/callback', async (request, reply) => {
-        let frontendRedirect = buildFrontendUrl('/marketing?tab=ads');
-
         try {
             const query = request.query as { code?: string; state?: string; error?: string };
             const { code, state, error } = query;
 
             if (error) {
                 Logger.warn('Google OAuth denied', { error });
-                return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'oauth_denied' }));
+                return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'oauth_denied' }));
             }
 
             if (!code || !state) {
-                return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'missing_params' }));
+                return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'missing_params' }));
             }
 
             let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
             try {
                 stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-                /* State contains a relative path — use it as the redirect base */
-                if (stateData.frontendRedirect) {
-                    frontendRedirect = buildFrontendUrl(stateData.frontendRedirect);
-                }
             } catch {
-                return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'invalid_state' }));
+                return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'invalid_state' }));
             }
 
             const redirectUri = buildCallbackUrl(request, CALLBACK_SUFFIX);
             const tokens = await AdsService.exchangeGoogleCode(code, redirectUri);
+            const safeRedirect = sanitizeFrontendRedirect(stateData.frontendRedirect);
 
             // If reconnecting an existing account, update its tokens
             if (stateData.reconnectId) {
@@ -82,7 +85,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                     accessToken: tokens.accessToken,
                     refreshToken: tokens.refreshToken || ''
                 });
-                return reply.redirect(buildFrontendUrl(stateData.frontendRedirect || '/marketing?tab=ads', { success: 'google_reconnected' }));
+                return reply.redirect(buildFrontendUrl(safeRedirect, { success: 'google_reconnected' }));
             }
 
             // Otherwise create new pending account
@@ -95,13 +98,13 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             return reply.redirect(buildFrontendUrl(
-                stateData.frontendRedirect || '/marketing?tab=ads',
+                safeRedirect,
                 { success: 'google_pending', pendingId: pendingAccount.id }
             ));
 
         } catch (error: any) {
             Logger.error('Google OAuth callback failed', { error: error.message });
-            return reply.redirect(buildFrontendUrl('/marketing?tab=ads', { error: 'oauth_failed', message: error.message }));
+            return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'oauth_failed', message: error.message }));
         }
     });
 };

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { siteConfig } from '../config/site';

@@ -9,7 +9,6 @@
 
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
-import { REVENUE_STATUSES } from '../../../constants/orderStatus';
 import {
     ActionableRecommendation,
     KeywordAction,

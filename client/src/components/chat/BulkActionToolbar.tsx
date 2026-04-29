@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
-import { X, CheckCircle, UserPlus, Tag, Loader2, XCircle, FolderOpen, Merge } from 'lucide-react';
+import { X, UserPlus, Tag, Loader2, XCircle, FolderOpen, Merge } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';

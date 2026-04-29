@@ -249,7 +249,7 @@ export class CampaignBuilderService {
      */
     static async createPerformanceMaxCampaign(
         adAccountId: string,
-        campaignParams: NewCampaignParams,
+        _campaignParams: NewCampaignParams,
         productIds: string[]
     ): Promise<never> {
         Logger.warn('[CampaignBuilder] PMax creation attempted but not implemented', {

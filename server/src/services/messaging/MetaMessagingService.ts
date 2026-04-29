@@ -179,7 +179,7 @@ export class MetaMessagingService {
         socialAccount: any,
         senderId: string,
         message: NonNullable<MetaWebhookMessage['message']>,
-        timestamp: number
+        _timestamp: number
     ): Promise<void> {
         const accountId = socialAccount.accountId;
         const platform = socialAccount.platform as 'FACEBOOK' | 'INSTAGRAM';

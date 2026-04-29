@@ -7,7 +7,6 @@
  */
 
 import { prisma } from '../utils/prisma';
-import { Logger } from '../utils/logger';
 
 
 export interface ROISummary {
@@ -186,7 +185,7 @@ export class CoPilotROIService {
      * Calculate savings from paused campaigns
      */
     private static async calculatePausedSavings(
-        accountId: string,
+        _accountId: string,
         pauseActions: any[],
         periodDays: number
     ): Promise<number> {
@@ -216,7 +215,7 @@ export class CoPilotROIService {
      * Calculate value from budget reallocation
      */
     private static async calculateReallocationValue(
-        accountId: string,
+        _accountId: string,
         budgetActions: any[]
     ): Promise<number> {
         let totalValue = 0;
@@ -263,7 +262,7 @@ export class CoPilotROIService {
      */
     private static async calculateRevenueAttribution(
         accountId: string,
-        executedActions: any[],
+        _executedActions: any[],
         periodStart: Date,
         periodEnd: Date
     ): Promise<{
@@ -288,8 +287,6 @@ export class CoPilotROIService {
         });
 
         let totalLift = 0;
-        let baselineRevenue = 0;
-
         for (const outcome of outcomes) {
             if (outcome.roasBefore && outcome.roasAfter) {
                 const improvement = outcome.roasAfter - outcome.roasBefore;
@@ -364,7 +361,7 @@ export class CoPilotROIService {
      * Get top impactful actions
      */
     private static async getTopActions(
-        accountId: string,
+        _accountId: string,
         recentActions: any[]
     ): Promise<Array<{
         id: string;

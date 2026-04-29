@@ -9,7 +9,6 @@ import { FastifyInstance } from 'fastify';
 import { CreativeVariantService, CreateExperimentParams, VariantContent } from '../../services/ads/CreativeVariantService';
 import { AdCopyGenerator } from '../../services/tools/AdCopyGenerator';
 import { requireAuthFastify } from '../../middleware/auth';
-import { prisma } from '../../utils/prisma';
 
 interface CreateExperimentBody {
     name: string;

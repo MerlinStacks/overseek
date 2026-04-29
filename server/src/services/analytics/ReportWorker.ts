@@ -122,7 +122,6 @@ export class ReportWorker {
 
     private static generateHtml(title: string, data: any[], config: any): string {
         const metrics = (config.metrics || ['sales']) as string[];
-        const dimension = config.dimension || 'day';
 
         const headers = ['Dimension', ...metrics];
 

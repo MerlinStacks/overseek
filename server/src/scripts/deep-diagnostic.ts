@@ -46,7 +46,7 @@ async function main() {
                 const usersLower: any[] = await prisma.$queryRaw`SELECT * FROM "public"."user" LIMIT 5`;
                 console.log(`user (lowercase) Table Sample (${usersLower.length}):`);
                 console.dir(usersLower, { depth: null });
-            } catch (e2) {
+            } catch (_e2) {
                 console.log('Could not select from "user" table either.');
             }
         }

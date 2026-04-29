@@ -1,5 +1,6 @@
 import { useState, useRef, ReactNode } from 'react';
 import { Trash2, Archive, MoreHorizontal } from 'lucide-react';
+/* eslint-disable react-refresh/only-export-components */
 
 /**
  * SwipeableListItem - Touch-friendly swipeable list item for mobile.

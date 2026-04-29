@@ -1,9 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, Mail, Instagram, Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, Mail, MessageSquare, Instagram, Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { useMobileChat, type MobileChatMessage } from './useMobileChat';
 
 const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: string; label: string }> = {
+    chat: { icon: MessageSquare, color: 'text-emerald-400', bg: 'bg-emerald-100', label: 'Live Chat' },
     email: { icon: Mail, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Email' },
     facebook: { icon: Facebook, color: 'text-blue-700', bg: 'bg-blue-100', label: 'Facebook' },
     instagram: { icon: Instagram, color: 'text-pink-600', bg: 'bg-pink-100', label: 'Instagram' },

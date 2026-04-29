@@ -42,10 +42,15 @@ export function getTriggerIcon(config: unknown) {
     const triggerType = asNodeConfig(config).triggerType;
     switch (triggerType) {
         case 'ORDER_CREATED': return <ShoppingCart size={16} className="text-white" />;
+        case 'ORDER_PAID': return <CreditCard size={16} className="text-white" />;
         case 'ORDER_COMPLETED': return <CheckCircle size={16} className="text-white" />;
+        case 'ORDER_STATUS_CHANGED': return <ArrowUpDown size={16} className="text-white" />;
+        case 'FIRST_ORDER': return <Star size={16} className="text-white" />;
         case 'REVIEW_LEFT': return <Star size={16} className="text-white" />;
         case 'ABANDONED_CART': return <ShoppingCart size={16} className="text-white" />;
         case 'CART_VIEWED': return <Eye size={16} className="text-white" />;
+        case 'CUSTOMER_CREATED': return <UserPlus size={16} className="text-white" />;
+        case 'NO_PURCHASE_IN_X_DAYS': return <User size={16} className="text-white" />;
         case 'CUSTOMER_SIGNUP': return <UserPlus size={16} className="text-white" />;
         case 'SUBSCRIPTION_CREATED': return <CreditCard size={16} className="text-white" />;
         case 'SUBSCRIPTION_CANCELLED': return <XCircle size={16} className="text-white" />;
@@ -65,10 +70,15 @@ export function getTriggerLabel(config: unknown): string {
     const triggerType = asNodeConfig(config).triggerType;
     const labels: Record<string, string> = {
         'ORDER_CREATED': 'Order Created',
+        'ORDER_PAID': 'Order Paid',
         'ORDER_COMPLETED': 'Order Completed',
+        'ORDER_STATUS_CHANGED': 'Order Status Changed',
+        'FIRST_ORDER': 'First Order',
         'REVIEW_LEFT': 'Review Left',
         'ABANDONED_CART': 'Cart Abandoned',
         'CART_VIEWED': 'Cart Viewed',
+        'CUSTOMER_CREATED': 'Customer Created',
+        'NO_PURCHASE_IN_X_DAYS': 'No Purchase In X Days',
         'CUSTOMER_SIGNUP': 'Customer Signup',
         'SUBSCRIPTION_CREATED': 'Subscription Created',
         'SUBSCRIPTION_CANCELLED': 'Subscription Cancelled',
@@ -91,6 +101,9 @@ export function getActionIcon(config: unknown) {
         case 'SEND_SMS': return <MessageSquare size={16} className="text-white" />;
         case 'ADD_TAG':
         case 'REMOVE_TAG': return <Tag size={16} className="text-white" />;
+        case 'GENERATE_COUPON': return <ShoppingCart size={16} className="text-white" />;
+        case 'ADD_ORDER_NOTE': return <CheckCircle size={16} className="text-white" />;
+        case 'UPDATE_ORDER_STATUS': return <ArrowUpDown size={16} className="text-white" />;
         case 'WEBHOOK': return <Link size={16} className="text-white" />;
         case 'GOAL': return <Target size={16} className="text-white" />;
         case 'JUMP': return <ArrowUpDown size={16} className="text-white" />;
@@ -109,6 +122,9 @@ export function getActionLabel(config: unknown): string {
         'SEND_SMS': 'Send SMS',
         'ADD_TAG': 'Add Tag',
         'REMOVE_TAG': 'Remove Tag',
+        'GENERATE_COUPON': 'Generate Coupon',
+        'ADD_ORDER_NOTE': 'Add Order Note',
+        'UPDATE_ORDER_STATUS': 'Update Order Status',
         'WEBHOOK': 'Webhook',
         'GOAL': 'Goal',
         'JUMP': 'Jump',
@@ -126,6 +142,9 @@ export function getActionGradient(config: unknown): string {
         case 'GOAL': return 'bg-linear-to-br from-emerald-500 to-emerald-600';
         case 'JUMP': return 'bg-linear-to-br from-red-500 to-red-600';
         case 'EXIT': return 'bg-linear-to-br from-gray-500 to-gray-600';
+        case 'GENERATE_COUPON': return 'bg-linear-to-br from-amber-500 to-orange-600';
+        case 'ADD_ORDER_NOTE': return 'bg-linear-to-br from-sky-500 to-blue-600';
+        case 'UPDATE_ORDER_STATUS': return 'bg-linear-to-br from-cyan-500 to-teal-600';
         default: return 'bg-linear-to-br from-green-500 to-green-600';
     }
 }

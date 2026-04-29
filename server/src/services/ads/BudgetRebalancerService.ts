@@ -367,7 +367,7 @@ export class BudgetRebalancerService {
     /**
      * Get the current rebalancer settings for an account.
      */
-    static async getSettings(accountId: string): Promise<RebalancerConfig> {
+    static async getSettings(_accountId: string): Promise<RebalancerConfig> {
         // In future, could store per-account settings in database
         // For now, return defaults
         return DEFAULT_CONFIG;

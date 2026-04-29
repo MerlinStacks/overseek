@@ -8,8 +8,7 @@ import { SalesAnalytics } from './sales';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import {
-    calculatePercentChange,
-    ANALYTICS_CONFIG
+    calculatePercentChange
 } from './utils';
 
 export interface DigestData {

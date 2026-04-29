@@ -32,7 +32,7 @@ export const platformCredentialsRoutes: FastifyPluginAsync = async (fastify) => 
     fastify.addHook('preHandler', requireSuperAdminFastify);
 
     // Platform Credentials - List
-    fastify.get('/platform-credentials', async (request, reply) => {
+    fastify.get('/platform-credentials', async (_request, reply) => {
         try {
             const credentials = await prisma.platformCredentials.findMany({ orderBy: { platform: 'asc' } });
             return credentials;
@@ -104,7 +104,7 @@ export const platformCredentialsRoutes: FastifyPluginAsync = async (fastify) => 
     });
 
     // Generate VAPID Keys and save to database
-    fastify.post('/generate-vapid-keys', async (request, reply) => {
+    fastify.post('/generate-vapid-keys', async (_request, reply) => {
         try {
             const existing = await prisma.platformCredentials.findUnique({
                 where: { platform: 'WEB_PUSH_VAPID' }
@@ -145,7 +145,7 @@ export const platformCredentialsRoutes: FastifyPluginAsync = async (fastify) => 
     });
 
     // AI Prompts - List
-    fastify.get('/ai-prompts', async (request, reply) => {
+    fastify.get('/ai-prompts', async (_request, reply) => {
         try {
             const prompts = await prisma.aIPrompt.findMany({ orderBy: { promptId: 'asc' } });
             return prompts.map(p => ({ id: p.promptId, name: p.name, content: p.content, updatedAt: p.updatedAt }));

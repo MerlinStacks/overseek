@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
-import { useOutletContext } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';

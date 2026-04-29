@@ -4,7 +4,7 @@
  * Final step for setting daily budget and reviewing campaign configuration.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { DollarSign, MapPin, Target } from 'lucide-react';
 import { WizardStepProps, DEFAULT_BUDGET } from '../types';
 

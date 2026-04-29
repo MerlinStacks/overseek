@@ -102,7 +102,7 @@ export function ChatHeader({
                 <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full">
                     <Eye size={14} className="text-amber-600" />
                     <div className="flex -space-x-2">
-                        {otherViewers.slice(0, 3).map((viewer, i) => (
+                        {otherViewers.slice(0, 3).map((viewer) => (
                             <div
                                 key={viewer.userId}
                                 className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-white text-[10px] font-medium border-2 border-white"

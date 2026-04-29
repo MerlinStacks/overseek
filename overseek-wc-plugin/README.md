@@ -104,6 +104,12 @@ API URL: http://localhost:3000
 
 ## Changelog
 
+### 2.13.0 - 2026-04-29
+- **Added:** End-to-end abandoned-cart recovery support with signed recovery links that rebuild WooCommerce carts before checkout.
+- **Added:** Recovery attribution context is now attached to restored carts and orders so recovered purchases can be credited back to the originating automation.
+- **Improved:** Earlier checkout email capture for both classic and Blocks checkout, including Woo Store API request capture for better abandoned-cart enrollment quality.
+- **Improved:** Cart restore flow now handles partial or failed restores more gracefully and shows clear checkout notices when items are unavailable.
+
 ### 2.12.1 - 2026-04-27
 - **Improved:** Fingerprint bot defense moved from fail-open to fail-soft, adding contextual risk scoring for missing tokens and suspicious user agents.
 - **Added:** Checkout velocity scoring (IP, visitor, and billing email windows) to detect short-burst automated checkout attempts.

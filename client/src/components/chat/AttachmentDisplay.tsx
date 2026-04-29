@@ -2,7 +2,7 @@
  * AttachmentDisplay - Renders file attachments with appropriate icons and thumbnails.
  * Extracted from MessageBubble.tsx for reusability.
  */
-import React from 'react';
+/* eslint-disable react-refresh/only-export-components */
 import { FileText, Download, Image as ImageIcon, File, Eye, Paperclip } from 'lucide-react';
 import { cn } from '../../utils/cn';
 

@@ -89,7 +89,7 @@ export class GoogleAdsTools {
                 .sort((a, b) => b.conversionsValue - a.conversionsValue)
                 .slice(0, 3);
 
-            const shoppingAnalysis = this.analyzeShoppingProducts(allProducts, totals);
+            const shoppingAnalysis = this.analyzeShoppingProducts(allProducts);
             const searchAnalysis = this.analyzeSearchKeywords(allKeywords);
 
             return {
@@ -162,7 +162,7 @@ export class GoogleAdsTools {
         }), { spend: 0, clicks: 0, impressions: 0, conversions: 0, conversionsValue: 0 });
     }
 
-    private static analyzeShoppingProducts(allProducts: any[], totals: any) {
+    private static analyzeShoppingProducts(allProducts: any[]) {
         if (allProducts.length === 0) return null;
 
         const productTotals = allProducts.reduce((acc, p) => ({
@@ -225,11 +225,6 @@ export class GoogleAdsTools {
 
     private static analyzeSearchKeywords(allKeywords: any[]) {
         if (allKeywords.length === 0) return null;
-
-        const keywordTotals = allKeywords.reduce((acc, k) => ({
-            spend: acc.spend + k.spend,
-            conversionsValue: acc.conversionsValue + k.conversionsValue
-        }), { spend: 0, conversionsValue: 0 });
 
         const topKeywords = [...allKeywords]
             .filter(k => k.spend > 0)

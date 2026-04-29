@@ -26,7 +26,6 @@ interface StoreVerificationResult {
 export function TrackingScriptHelper() {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
-    const [copied, setCopied] = useState(false);
 
     // Status Check State
     const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'connected' | 'inactive' | 'error'>('idle');

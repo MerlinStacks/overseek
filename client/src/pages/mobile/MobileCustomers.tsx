@@ -16,6 +16,7 @@ import {
 import { formatCurrency } from '../../utils/format';
 import { getInitials } from '../../utils/string';
 import { ListSkeleton } from '../../components/mobile/MobileSkeleton';
+import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 /**
  * MobileCustomers - Premium dark-mode customer list for PWA.
@@ -113,6 +114,18 @@ export function MobileCustomers() {
         window.addEventListener('mobile-refresh', handleRefresh);
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchCustomers]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'customer' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            void fetchCustomers(1, true);
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchCustomers]);
 
     useEffect(() => {
         if (page > 1) {

@@ -440,7 +440,7 @@ export function ConversationList({
                                 </div>
                             ) : null
                         }}
-                        itemContent={(index: number, conv: Conversation) => {
+                        itemContent={(_index: number, conv: Conversation) => {
                             const name = getDisplayName(conv);
                             const { subject, preview, showPaperclip } = getPreview(conv);
                             const initials = getInitials(name);

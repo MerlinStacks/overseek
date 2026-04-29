@@ -1,5 +1,5 @@
 import { AnalyticsService } from '../AnalyticsService';
-import { prisma, Prisma } from '../../utils/prisma';
+import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 
 export class AnalyticsTools {

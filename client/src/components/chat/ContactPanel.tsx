@@ -10,6 +10,7 @@ import { cn } from '../../utils/cn';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { formatCurrency } from '../../utils/format';
 import { NotesSection } from './NotesSection';
 import { OrdersSection } from './OrdersSection';
 import { PreviousConversationsSection } from './PreviousConversationsSection';
@@ -50,10 +51,8 @@ interface ContactPanelProps {
             fullName?: string;
             avatarUrl?: string;
         };
-        _count?: {
-            messages: number;
-        };
     };
+    messageCount?: number;
     onSelectConversation?: (conversationId: string) => void;
 }
 
@@ -67,12 +66,12 @@ function Section({ title, defaultOpen = true, children }: SectionProps) {
     const [isOpen, setIsOpen] = useState(defaultOpen);
 
     return (
-        <div className="border-b border-gray-100">
+        <div className="border-b border-gray-100/90">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50/80 transition-colors"
             >
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{title}</span>
+                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-[0.06em]">{title}</span>
                 {isOpen ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
             </button>
             {isOpen && (
@@ -93,12 +92,14 @@ interface PreviousConversation {
     messages?: { content: string }[];
 }
 
-export function ContactPanel({ conversation, onSelectConversation }: ContactPanelProps) {
+export function ContactPanel({ conversation, messageCount, onSelectConversation }: ContactPanelProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountCurrency = currentAccount?.currency || 'USD';
     const [recentOrders, setRecentOrders] = useState<Order[]>([]);
     const [previousConversations, setPreviousConversations] = useState<PreviousConversation[]>([]);
     const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+    const [hasMorePreviousConversations, setHasMorePreviousConversations] = useState(false);
 
     const customer = conversation?.wooCustomer;
 
@@ -114,7 +115,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
             // Fetch orders and conversations in parallel
             const [ordersRes, convsRes] = await Promise.all([
                 fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers, signal }),
-                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}&limit=20&sort=priority`, { headers, signal })
+                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}&limit=100&sort=updated`, { headers, signal })
             ]);
 
             if (ordersRes.ok) {
@@ -127,8 +128,12 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 const source = Array.isArray(convsData)
                     ? convsData
                     : ((convsData as { conversations?: PreviousConversation[] }).conversations || []);
-                const otherConvs = source.filter((c: PreviousConversation) => c.id !== conversation?.id);
+                const hasMore = !Array.isArray(convsData) && Boolean((convsData as { hasMore?: unknown }).hasMore);
+                const otherConvs = source
+                    .filter((c: PreviousConversation) => c.id !== conversation?.id)
+                    .sort((a: PreviousConversation, b: PreviousConversation) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
                 setPreviousConversations(otherConvs);
+                setHasMorePreviousConversations(hasMore);
             }
         } catch (error: unknown) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -154,7 +159,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
             }
 
             // Also hydrate previous conversations for guest email contacts.
-            const convsRes = await fetch(`/api/chat/conversations?guestEmail=${encodeURIComponent(email)}&limit=20&sort=priority`, {
+            const convsRes = await fetch(`/api/chat/conversations?guestEmail=${encodeURIComponent(email)}&limit=100&sort=updated`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount?.id || '',
@@ -166,8 +171,12 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 const source = Array.isArray(convsData)
                     ? convsData
                     : ((convsData as { conversations?: PreviousConversation[] }).conversations || []);
-                const otherConvs = source.filter((c: PreviousConversation) => c.id !== conversation?.id);
+                const hasMore = !Array.isArray(convsData) && Boolean((convsData as { hasMore?: unknown }).hasMore);
+                const otherConvs = source
+                    .filter((c: PreviousConversation) => c.id !== conversation?.id)
+                    .sort((a: PreviousConversation, b: PreviousConversation) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
                 setPreviousConversations(otherConvs);
+                setHasMorePreviousConversations(hasMore);
             }
         } catch (error: unknown) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -187,6 +196,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
         } else {
             setRecentOrders([]);
             setPreviousConversations([]);
+            setHasMorePreviousConversations(false);
         }
         return () => controller.abort();
     }, [customer?.wooId, conversation?.guestEmail, token, currentAccount?.id, fetchCustomerOrders, fetchOrdersByEmail]);
@@ -199,11 +209,17 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
     const email = customer?.email || conversation.guestEmail;
     const initials = (name || 'A').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
 
-    const totalSpent = customer?.totalSpent || 0;
-    const ordersCount = customer?.ordersCount || recentOrders.length || 0;
+    const totalSpent = Number(customer?.totalSpent ?? 0);
+    const customerOrdersCount = Number(customer?.ordersCount ?? 0);
+    const ordersCount = customerOrdersCount || recentOrders.length || 0;
     const avgOrderValue = ordersCount > 0 ? totalSpent / ordersCount : 0;
     const lastOrderDate = recentOrders.length > 0 ? recentOrders[0].dateCreated : null;
-    const openIssueCount = previousConversations.filter(c => c.status === 'OPEN' || c.status === 'SNOOZED').length;
+    const currentConversationIsOpenIssue = conversation.status === 'OPEN' || conversation.status === 'SNOOZED';
+    const previousOpenIssueCount = previousConversations.filter(c => c.status === 'OPEN' || c.status === 'SNOOZED').length;
+    const openIssueCount = previousOpenIssueCount + (currentConversationIsOpenIssue ? 1 : 0);
+    const conversationCountLabel = hasMorePreviousConversations
+        ? `${previousConversations.length + 1}+`
+        : `${previousConversations.length + 1}`;
 
     const ltvTier = totalSpent >= 5000 ? 'VIP' : totalSpent >= 1000 ? 'High Value' : totalSpent >= 250 ? 'Growing' : 'Standard';
     const likelyReason = (() => {
@@ -213,6 +229,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
         if (recentOrder?.status?.toLowerCase() === 'refunded') return 'Refund clarification';
 
         const recentText = previousConversations[0]?.messages?.[0]?.content?.toLowerCase() || '';
+        if (!recentOrder && previousConversations.length === 0) return 'Not enough context yet';
         if (recentText.includes('refund')) return 'Refund-related question';
         if (recentText.includes('shipping') || recentText.includes('delivery')) return 'Shipping update request';
         if (recentText.includes('cancel')) return 'Cancellation request';
@@ -240,23 +257,23 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
     return (
         <div className="w-80 border-l border-gray-200 bg-white hidden lg:flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                <span className="text-sm font-medium text-gray-700">Contact</span>
-                <button className="p-1 rounded-sm hover:bg-gray-100 text-gray-400">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 bg-white/95 backdrop-blur">
+                <span className="text-sm font-semibold text-gray-700 tracking-[0.01em]">Contact</span>
+                <button className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors">
                     <MoreVertical size={16} />
                 </button>
             </div>
 
             {/* Contact Card */}
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-4 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/35">
                 <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                    <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold shadow-sm">
                         {initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">{name}</h3>
+                        <h3 className="font-semibold text-gray-900 truncate leading-tight">{name}</h3>
                         {email && (
-                            <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate">
+                            <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate mt-0.5">
                                 <Mail size={12} />
                                 {email}
                             </a>
@@ -267,19 +284,19 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 {/* Quick Stats for WooCustomer */}
                 {customer && (
                     <div className="grid grid-cols-3 gap-2 mt-4">
-                        <div className="bg-gray-50 rounded-lg p-2 text-center">
-                            <div className="text-lg font-semibold text-gray-900">{customer.ordersCount || 0}</div>
-                            <div className="text-xs text-gray-500">Orders</div>
+                        <div className="rounded-xl p-2.5 text-center border border-gray-100 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                            <div className="text-lg font-semibold text-gray-900 leading-none">{ordersCount}</div>
+                            <div className="text-[11px] text-gray-500 mt-1">Orders</div>
                         </div>
-                        <div className="bg-gray-50 rounded-lg p-2 text-center">
-                            <div className="text-lg font-semibold text-gray-900">
-                                ${(customer.totalSpent || 0).toLocaleString()}
+                        <div className="rounded-xl p-2.5 text-center border border-gray-100 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                            <div className="text-lg font-semibold text-gray-900 leading-none">
+                                {formatCurrency(totalSpent, accountCurrency)}
                             </div>
-                            <div className="text-xs text-gray-500">Spent</div>
+                            <div className="text-[11px] text-gray-500 mt-1">Spent</div>
                         </div>
-                        <div className="bg-gray-50 rounded-lg p-2 text-center">
-                            <div className="text-lg font-semibold text-gray-900">{previousConversations.length + 1}</div>
-                            <div className="text-xs text-gray-500">Convos</div>
+                        <div className="rounded-xl p-2.5 text-center border border-gray-100 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                            <div className="text-lg font-semibold text-gray-900 leading-none">{conversationCountLabel}</div>
+                            <div className="text-[11px] text-gray-500 mt-1">Convos</div>
                         </div>
                     </div>
                 )}
@@ -305,6 +322,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                             isLoading={isLoadingOrders}
                             customerId={customer?.id}
                             ordersCount={customer?.ordersCount}
+                            accountCurrency={accountCurrency}
                         />
                     </Section>
                 )}
@@ -341,7 +359,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-500">Messages</span>
-                            <span className="text-gray-900">{conversation._count?.messages || 0}</span>
+                            <span className="text-gray-900 font-medium">{messageCount ?? 0}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-500">Created</span>
@@ -361,7 +379,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-500">Avg Order Value</span>
-                            <span className="text-gray-900">${avgOrderValue.toFixed(2)}</span>
+                            <span className="text-gray-900">{formatCurrency(avgOrderValue, accountCurrency)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-500">Open Issues</span>
@@ -376,14 +394,14 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                             </span>
                         </div>
                         <div className="pt-2 border-t border-gray-100">
-                            <div className="text-gray-500 text-xs mb-1">Likely reason for contact</div>
-                            <div className="text-gray-900 font-medium">{likelyReason}</div>
+                            <div className="text-gray-500 text-xs mb-1 uppercase tracking-wide">Likely reason for contact</div>
+                            <div className="text-gray-900 font-medium leading-snug">{likelyReason}</div>
                         </div>
                     </div>
                 </Section>
 
                 {/* Auto-reopen notice */}
-                <div className="px-4 py-3 bg-blue-50 text-xs text-blue-700">
+                <div className="mx-3 my-3 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700">
                     <strong>Note:</strong> Resolved conversations will automatically reopen when the customer replies.
                 </div>
 
@@ -412,6 +430,7 @@ export function ContactPanel({ conversation, onSelectConversation }: ContactPane
                 <Section title="Previous Conversations" defaultOpen={false}>
                     <PreviousConversationsSection
                         conversations={previousConversations}
+                        isLoading={isLoadingOrders}
                         onSelectConversation={onSelectConversation}
                     />
                 </Section>

@@ -7,9 +7,6 @@ if (!JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET environment variable is required');
 }
 
-// EDGE CASE FIX: Separate secrets for access and refresh tokens
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || JWT_SECRET + '_refresh';
-
 // Argon2id with OWASP recommended settings for 2025+
 const ARGON2_OPTIONS: argon2.Options = {
     type: argon2.argon2id,

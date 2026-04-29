@@ -4,6 +4,7 @@
  * Shows recognizable icons for common browsers (Chrome, Firefox, Safari, Edge)
  * and operating systems (Windows, macOS, iOS, Android, Linux).
  */
+/* eslint-disable react-refresh/only-export-components */
 import * as React from 'react';
 import { Monitor, Smartphone, Tablet, Globe, Apple } from 'lucide-react';
 

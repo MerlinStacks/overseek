@@ -278,7 +278,7 @@ export class AudienceAnalyzer {
     /**
      * Generate device performance insight.
      */
-    private static generateDeviceInsight(result: AudienceAnalysis, avgAov: number): void {
+    private static generateDeviceInsight(result: AudienceAnalysis, _avgAov: number): void {
         const mobile = result.devicePerformance.find(d => d.device === 'mobile');
         const desktop = result.devicePerformance.find(d => d.device === 'desktop');
 
@@ -358,7 +358,7 @@ export class AudienceAnalyzer {
      * Generate audience-based suggestions.
      */
     private static generateSuggestions(result: AudienceAnalysis): void {
-        const { devicePerformance, geoPerformance, peakHours, bidAdjustments, deviceInsight, geoInsight } = result;
+        const { geoPerformance, peakHours, bidAdjustments, deviceInsight, geoInsight } = result;
 
         // Device insight
         if (deviceInsight) {

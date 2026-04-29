@@ -1,4 +1,3 @@
-/* eslint-disable no-undef, @typescript-eslint/no-unused-vars */
 /**
  * PWA Icon Generator
  * 
@@ -7,7 +6,7 @@
  */
 
 import sharp from 'sharp';
-import { mkdir, copyFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 

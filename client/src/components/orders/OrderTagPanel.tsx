@@ -3,6 +3,7 @@ import { Tag, Plus, X, ChevronDown, Search, Loader2 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { emitCrossTabEvent } from '../../utils/productCrossTabEvents';
 
 interface TagMapping {
     productTag: string;
@@ -124,6 +125,12 @@ export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, 
             if (res.ok) {
                 const data = await res.json();
                 onTagsChange(data.tags);
+                emitCrossTabEvent({
+                    resource: 'order',
+                    type: 'tags-updated',
+                    accountId: currentAccount.id,
+                    resourceId: orderId,
+                });
             }
         } catch (error) {
             Logger.error('Failed to add tag', { error });
@@ -161,6 +168,12 @@ export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, 
             if (res.ok) {
                 const data = await res.json();
                 onTagsChange(data.tags);
+                emitCrossTabEvent({
+                    resource: 'order',
+                    type: 'tags-updated',
+                    accountId: currentAccount.id,
+                    resourceId: orderId,
+                });
             }
         } catch (error) {
             Logger.error('Failed to remove tag', { error });

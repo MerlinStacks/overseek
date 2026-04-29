@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Save, DollarSign, Users, TrendingUp, Globe, Activity, Percent } from 'lucide-react';
-import { DIMENSION_OPTIONS, METRIC_OPTIONS, ReportDimension, ReportMetric } from '../../types/analytics';
+import { DIMENSION_OPTIONS, METRIC_OPTIONS } from '../../types/analytics';
 
 interface ReportConfigPanelProps {
     dateRange: string;

@@ -11,7 +11,7 @@ import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 import { AdsService } from '../../ads';
 import { CampaignInsight } from '../../ads/types';
-import { getCampaignType, getExpectedRoasThreshold, isBrandCampaign, CampaignType } from '../AdContext';
+import { getCampaignType, getExpectedRoasThreshold, CampaignType } from '../AdContext';
 
 
 export type FunnelStage = 'awareness' | 'consideration' | 'conversion' | 'retention';
@@ -315,9 +315,9 @@ export class FunnelAnalyzer {
      */
     private static identifyIssues(
         campaign: CampaignFunnelAnalysis,
-        stageMetrics: FunnelStageMetrics
+        _stageMetrics: FunnelStageMetrics
     ): void {
-        const { funnelStage, roas, cpm, ctr, cpa, spend, conversions } = campaign;
+        const { funnelStage, roas, cpm, ctr, spend, conversions } = campaign;
 
         if (funnelStage === 'awareness') {
             // Awareness: don't judge on ROAS, focus on reach efficiency

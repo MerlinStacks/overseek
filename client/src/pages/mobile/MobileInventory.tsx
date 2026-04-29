@@ -4,6 +4,7 @@ import { Search, Package2, AlertTriangle, Grid, List, ChevronRight } from 'lucid
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency } from '../../utils/format';
+import { subscribeToProductChanges } from '../../utils/productCrossTabEvents';
 
 interface ProductVariation {
     stock_quantity?: number;
@@ -92,6 +93,18 @@ export function MobileInventory() {
     useEffect(() => {
         fetchProducts();
     }, [fetchProducts]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToProductChanges((event) => {
+            if (event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            void fetchProducts();
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchProducts]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();

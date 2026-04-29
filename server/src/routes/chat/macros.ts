@@ -12,8 +12,27 @@ import { requireAuthFastify } from '../../middleware/auth';
 export const macroRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
+    async function ensureConversationLabel(accountId: string, labelId: string) {
+        return prisma.conversationLabel.findFirst({
+            where: { id: labelId, accountId },
+            select: { id: true }
+        });
+    }
+
+    async function ensureAccountUser(accountId: string, userId: string) {
+        return prisma.accountUser.findUnique({
+            where: {
+                userId_accountId: {
+                    userId,
+                    accountId
+                }
+            },
+            select: { userId: true }
+        });
+    }
+
     // GET /macros - List all macros for account
-    fastify.get('/macros', async (request, reply) => {
+    fastify.get('/macros', async (request, _reply) => {
         const accountId = request.accountId;
         if (!accountId) return [];
         return prisma.inboxMacro.findMany({
@@ -83,12 +102,22 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
         for (const action of actions) {
             if (action.type === 'ASSIGN' && action.userId) {
+                const assignee = await ensureAccountUser(accountId, action.userId);
+                if (!assignee) {
+                    return reply.code(400).send({ error: `Invalid assignee for macro action: ${action.userId}` });
+                }
+
                 await prisma.conversation.update({
                     where: { id: conversationId },
                     data: { assignedTo: action.userId }
                 });
             }
             if (action.type === 'ADD_TAG' && action.labelId) {
+                const label = await ensureConversationLabel(accountId, action.labelId);
+                if (!label) {
+                    return reply.code(400).send({ error: `Invalid label for macro action: ${action.labelId}` });
+                }
+
                 await prisma.conversationLabelAssignment.upsert({
                     where: { conversationId_labelId: { conversationId, labelId: action.labelId } },
                     create: { conversationId, labelId: action.labelId },

@@ -10,7 +10,6 @@ import { Logger } from '../utils/logger';
 
 // Default embedding model
 const DEFAULT_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
-const EMBEDDING_DIMENSIONS = 1536;
 
 interface EmbeddingResult {
     id: string;

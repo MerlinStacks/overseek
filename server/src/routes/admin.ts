@@ -61,7 +61,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /admin/system-health
      * Comprehensive system health overview for diagnostics
      */
-    fastify.get('/system-health', async (request, reply) => {
+    fastify.get('/system-health', async (_request, reply) => {
         try {
             const { redisClient } = await import('../utils/redis');
             const { esClient } = await import('../utils/elastic');
@@ -270,7 +270,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // System Stats
-    fastify.get('/stats', async (request, reply) => {
+    fastify.get('/stats', async (_request, reply) => {
         try {
             const [totalAccounts, totalUsers, activeSyncs, failedSyncs24h] = await Promise.all([
                 prisma.account.count(),
@@ -291,7 +291,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // List Accounts
-    fastify.get('/accounts', async (request, reply) => {
+    fastify.get('/accounts', async (_request, reply) => {
         try {
             const accounts = await prisma.account.findMany({
                 include: { _count: { select: { users: true } }, features: true },
@@ -383,7 +383,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
      * DELETE /admin/sync-logs/failed
      * Clear all failed sync logs (admin maintenance)
      */
-    fastify.delete('/sync-logs/failed', async (request, reply) => {
+    fastify.delete('/sync-logs/failed', async (_request, reply) => {
         try {
             const result = await prisma.syncLog.deleteMany({
                 where: { status: 'FAILED' }

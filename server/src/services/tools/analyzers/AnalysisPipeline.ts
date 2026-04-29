@@ -9,11 +9,9 @@ import { Logger } from '../../../utils/logger';
 import {
     BaseAnalysisResult,
     Suggestion,
-    UnifiedAnalysis,
-    AnalysisMetadata
+    UnifiedAnalysis
 } from '../types/AnalysisTypes';
 import { ActionableRecommendation } from '../types/ActionableTypes';
-import { BaseAnalyzer } from './BaseAnalyzer';
 
 // Import individual analyzers
 import { MultiPeriodAnalyzer } from './MultiPeriodAnalyzer';

@@ -5,7 +5,7 @@
  * Supports OAuth for Google and token-based auth for Meta.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';

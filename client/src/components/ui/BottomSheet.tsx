@@ -19,7 +19,7 @@ interface BottomSheetProps {
     snapPoints?: number[];
 }
 
-export function BottomSheet({ isOpen, onClose, title, children, snapPoints = [0.5] }: BottomSheetProps) {
+export function BottomSheet({ isOpen, onClose, title, children, snapPoints: _snapPoints = [0.5] }: BottomSheetProps) {
     const sheetRef = useRef<HTMLDivElement>(null);
     const [dragY, setDragY] = useState(0);
     const [startY, setStartY] = useState(0);

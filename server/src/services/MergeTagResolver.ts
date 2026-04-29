@@ -10,6 +10,7 @@ interface MergeTagContext {
     customer?: any;
     product?: any;
     coupon?: any;
+    cart?: any;
 }
 
 /**
@@ -73,6 +74,17 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
             ? `${coupon.amount}%`
             : formatCurrency(coupon.amount, 'AUD'));
         result = result.replace(/\{\{coupon\.description\}\}/g, coupon.description || '');
+        result = result.replace(/\{\{coupon\.expiry\}\}/g, formatDate(coupon.expiresAt));
+    }
+
+    // Cart merge tags
+    if (context.cart) {
+        const cart = context.cart;
+        result = result.replace(/\{\{cart\.recoveryUrl\}\}/g, cart.recoveryUrl || '');
+        result = result.replace(/\{\{cart\.checkoutUrl\}\}/g, cart.checkoutUrl || '');
+        result = result.replace(/\{\{cart\.total\}\}/g, formatCurrency(cart.total ?? cart.cartValue, cart.currency));
+        result = result.replace(/\{\{cart\.currency\}\}/g, cart.currency || '');
+        result = result.replace(/\{\{cart\.itemsTable\}\}/g, renderOrderItemsTable(cart.items || cart.cartItems || []));
     }
 
     return result;

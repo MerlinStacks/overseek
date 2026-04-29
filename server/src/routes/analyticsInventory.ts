@@ -80,7 +80,7 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
             const buckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
             buckets.forEach((b: any) => { if (b.key) salesMap.set(b.key, b.total_qty.value); });
 
-            const buildReportEntry = (id: string, name: string, sku: string | null, image: string | null, stock: number, wooId: number, salesWooId: number) => {
+            const buildReportEntry = (id: string, name: string, sku: string | null, image: string | null, stock: number, salesWooId: number) => {
                 const sold30d = salesMap.get(salesWooId) || 0;
                 const dailyRate = sold30d / 30;
 
@@ -95,8 +95,8 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
             };
 
             const report = [
-                ...products.map(p => buildReportEntry(p.id, p.name, p.sku, p.mainImage, p.stock_quantity || 0, p.wooId, p.wooId)),
-                ...variantRows.map(v => buildReportEntry(v.id, v.sku ? `${v.name} (${v.sku})` : v.name, v.sku, v.mainImage, v.stock_quantity || 0, v.wooId, v.parentWooId))
+                ...products.map(p => buildReportEntry(p.id, p.name, p.sku, p.mainImage, p.stock_quantity || 0, p.wooId)),
+                ...variantRows.map(v => buildReportEntry(v.id, v.sku ? `${v.name} (${v.sku})` : v.name, v.sku, v.mainImage, v.stock_quantity || 0, v.parentWooId))
             ];
 
             report.sort((a, b) => {

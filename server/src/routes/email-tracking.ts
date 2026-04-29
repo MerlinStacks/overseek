@@ -173,14 +173,18 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                     <!DOCTYPE html>
                     <html><head><title>Unsubscribe</title></head>
                     <body style="font-family: system-ui; padding: 40px; text-align: center; max-width: 500px; margin: 0 auto;">
-                        <h1>Unsubscribe</h1>
-                        <p>You are about to unsubscribe <strong>${emailLog.to}</strong> from emails sent by <strong>${accountName}</strong>.</p>
-                        <form method="POST" action="/api/email/unsubscribe/${token}">
-                            <button type="submit" style="background: #dc2626; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
-                                Confirm Unsubscribe
+                        <h1>Email Preferences</h1>
+                        <p><strong>${emailLog.to}</strong> is receiving emails from <strong>${accountName}</strong>.</p>
+                        <p style="color: #555;">Choose whether to stop marketing emails only, or stop all email from this sender.</p>
+                        <form method="POST" action="/api/email/unsubscribe/${token}" style="display: grid; gap: 12px; margin-top: 24px;">
+                            <button type="submit" name="scope" value="MARKETING" style="background: #dc2626; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
+                                Unsubscribe From Marketing Emails
+                            </button>
+                            <button type="submit" name="scope" value="ALL" style="background: #111827; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
+                                Unsubscribe From All Emails
                             </button>
                         </form>
-                        <p style="margin-top: 20px; color: #666; font-size: 14px;">Changed your mind? Just close this page.</p>
+                        <p style="margin-top: 20px; color: #666; font-size: 14px;">Order receipts and other important updates can continue if you only opt out of marketing.</p>
                     </body></html>
                 `);
             } catch (error) {
@@ -194,11 +198,11 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
      * Process unsubscribe request.
      * POST /api/email/unsubscribe/:token
      */
-    fastify.post<{ Params: { token: string }; Body: { reason?: string } }>(
+    fastify.post<{ Params: { token: string }; Body: { reason?: string; scope?: string } }>(
         '/unsubscribe/:token',
         async (request, reply) => {
             const { token } = request.params;
-            const { reason } = request.body || {};
+            const { reason, scope } = request.body || {};
 
             try {
                 const emailLog = await prisma.emailLog.findUnique({
@@ -208,6 +212,8 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                 if (!emailLog) {
                     return reply.code(404).send({ error: 'Invalid token' });
                 }
+
+                const unsubscribeScope = scope === 'ALL' ? 'ALL' : 'MARKETING';
 
                 // Create unsubscribe record
                 await prisma.emailUnsubscribe.upsert({
@@ -220,9 +226,11 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                     create: {
                         accountId: emailLog.accountId,
                         email: emailLog.to,
+                        scope: unsubscribeScope,
                         reason: reason || null
                     },
                     update: {
+                        scope: unsubscribeScope,
                         reason: reason || null
                     }
                 });
@@ -237,14 +245,18 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                     });
                 }
 
-                Logger.info('Email unsubscribed', { email: emailLog.to, accountId: emailLog.accountId });
+                Logger.info('Email unsubscribed', {
+                    email: emailLog.to,
+                    accountId: emailLog.accountId,
+                    scope: unsubscribeScope
+                });
 
                 return reply.type('text/html').send(`
                     <!DOCTYPE html>
                     <html><head><title>Unsubscribed</title></head>
                     <body style="font-family: system-ui; padding: 40px; text-align: center;">
-                        <h1>✓ Successfully Unsubscribed</h1>
-                        <p>You have been unsubscribed from future emails.</p>
+                        <h1>✓ Preferences Updated</h1>
+                        <p>You have been unsubscribed from future ${unsubscribeScope === 'ALL' ? 'emails' : 'marketing emails'}.</p>
                         <p style="color: #666; font-size: 14px;">You may close this window.</p>
                     </body></html>
                 `);

@@ -5,7 +5,6 @@
  * Shows completed, active, and pending steps.
  */
 
-import React from 'react';
 import { LayoutGrid, ShoppingBag, Type, Banknote, LucideIcon } from 'lucide-react';
 import { WIZARD_STEPS } from './types';
 

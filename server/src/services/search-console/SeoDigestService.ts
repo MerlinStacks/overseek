@@ -11,7 +11,6 @@
  */
 
 import { prisma } from '../../utils/prisma';
-import { Logger } from '../../utils/logger';
 import { SearchConsoleService } from './SearchConsoleService';
 
 /** SEO Digest sections */
@@ -77,7 +76,6 @@ export class SeoDigestService {
 
         // Build previous period lookup
         const prevMap = new Map(previous.map(q => [q.query, q]));
-        const currMap = new Map(current.map(q => [q.query, q]));
 
         // Find top movers
         const improved: SeoDigest['topMovers']['improved'] = [];

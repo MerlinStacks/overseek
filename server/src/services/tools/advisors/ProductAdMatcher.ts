@@ -7,7 +7,7 @@
 
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
-import { ShoppingProductRef, ShoppingAnalysisData } from '../../ads/types';
+import { ShoppingAnalysisData } from '../../ads/types';
 
 /**
  * Match shopping ad products to WooCommerce inventory for margin analysis.

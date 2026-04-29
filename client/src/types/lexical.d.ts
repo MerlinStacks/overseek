@@ -104,7 +104,7 @@ declare module '@lexical/react/LexicalListPlugin' {
 }
 
 declare module '@lexical/html' {
-    import { LexicalEditor, EditorState } from 'lexical';
+    import { LexicalEditor } from 'lexical';
     export function $generateHtmlFromNodes(editor: LexicalEditor, selection?: any): string;
     export function $generateNodesFromDOM(editor: LexicalEditor, dom: Document): any[];
 }

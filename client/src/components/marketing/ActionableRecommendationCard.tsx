@@ -1,23 +1,17 @@
 
 import {
     TrendingUp,
-    TrendingDown,
     DollarSign,
     Search,
     ShoppingBag,
     Target,
-    ArrowRight,
     Check,
     X,
     Calendar,
-    AlertTriangle,
-    MinusCircle
+    AlertTriangle
 } from 'lucide-react';
 import {
     ActionableRecommendation,
-    BudgetAction,
-    KeywordAction,
-    ProductAction,
     isBudgetAction,
     isKeywordAction,
     isProductAction

@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, X } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Trash2, Save } from 'lucide-react';
 
 export interface SegmentRule {
     field: string;

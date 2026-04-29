@@ -316,7 +316,7 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     // ── Pre-flight token refresh via REST ──────────────────────────────
     // Validates the refresh token before gRPC touches it. On failure
     // the auth breaker is tripped with a clear error message.
-    const freshAccessToken = await refreshAccessToken(
+    await refreshAccessToken(
         adAccountId,
         adAccount.refreshToken,
         clientId,

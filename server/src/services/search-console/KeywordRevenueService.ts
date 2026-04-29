@@ -76,7 +76,6 @@ export class KeywordRevenueService {
         for (const kw of keywords) {
             let revenue = 0;
             let sessions = 0;
-            let conversions = 0;
 
             for (const session of organicSessions) {
                 const pageviews = session.events.filter(e => e.type === 'pageview');
@@ -109,7 +108,6 @@ export class KeywordRevenueService {
                         const payload = purchase.payload as any;
                         if (payload?.revenue || payload?.total) {
                             revenue += parseFloat(String(payload.revenue || payload.total)) || 0;
-                            conversions++;
                         }
                     }
                 }

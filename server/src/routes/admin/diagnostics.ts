@@ -14,7 +14,7 @@ export const diagnosticsRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /admin/diagnostics/push-subscriptions
      * List all push subscriptions across all accounts for debugging
      */
-    fastify.get('/diagnostics/push-subscriptions', async (request, reply) => {
+    fastify.get('/diagnostics/push-subscriptions', async (_request, reply) => {
         try {
             const subscriptions = await prisma.pushSubscription.findMany({
                 include: {
@@ -176,7 +176,7 @@ export const diagnosticsRoutes: FastifyPluginAsync = async (fastify) => {
      * DELETE /admin/diagnostics/push-subscriptions
      * Delete ALL push subscriptions (nuclear option for cleanup)
      */
-    fastify.delete('/diagnostics/push-subscriptions', async (request, reply) => {
+    fastify.delete('/diagnostics/push-subscriptions', async (_request, reply) => {
         try {
             const result = await prisma.pushSubscription.deleteMany();
             Logger.warn('[Admin] Deleted all push subscriptions', { count: result.count });

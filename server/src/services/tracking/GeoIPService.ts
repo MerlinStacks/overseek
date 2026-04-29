@@ -202,7 +202,7 @@ export async function updateGeoLiteDB(): Promise<boolean> {
 
         // Test the new database before swapping
         try {
-            const testReader = await maxmind.open(tempPath);
+            await maxmind.open(tempPath);
             // If we are here, it's valid
             // Check if it's actually newer than what we have? 
             // We can just overwrite. The prioritization logic in loadDatabases will handle it.

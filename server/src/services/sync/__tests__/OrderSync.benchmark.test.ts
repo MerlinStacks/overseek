@@ -2,7 +2,6 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { OrderSync } from '../OrderSync';
 import { prisma } from '../../../utils/prisma';
 import { WooService } from '../../woo';
-import { Logger } from '../../../utils/logger';
 
 // Mock prisma
 vi.mock('../../../utils/prisma', () => {

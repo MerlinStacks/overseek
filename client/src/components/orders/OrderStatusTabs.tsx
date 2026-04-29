@@ -9,7 +9,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { ORDER_STATUS_CONFIG, getStatusConfig } from '../../utils/orderStatus';
+import { getStatusConfig } from '../../utils/orderStatus';
 import { Loader2 } from 'lucide-react';
 
 interface StatusCounts {
@@ -109,7 +109,7 @@ export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusT
         return `${baseStyles} text-gray-600 hover:text-gray-900 hover:bg-gray-100`;
     };
 
-    const getCountStyles = (status: string, isActive: boolean) => {
+    const getCountStyles = (_status: string, isActive: boolean) => {
         if (isActive) {
             return 'bg-white/25 text-white/90 text-xs px-1.5 py-0.5 rounded-md font-medium tabular-nums';
         }

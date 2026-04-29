@@ -29,7 +29,7 @@ const helpRoutes: FastifyPluginAsync = async (fastify) => {
     // PUBLIC READ ROUTES
 
     // Get all collections with articles
-    fastify.get('/collections', async (request, reply) => {
+    fastify.get('/collections', async (_request, reply) => {
         try {
             const collections = await prisma.helpCollection.findMany({
                 include: {

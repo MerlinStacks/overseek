@@ -10,7 +10,7 @@
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 import { AdsService } from '../../ads';
-import { PeriodMetrics, testRoasChange, calculateAnomalyScore, ConfidenceResult } from '../utils/StatisticalUtils';
+import { PeriodMetrics, testRoasChange, ConfidenceResult } from '../utils/StatisticalUtils';
 import { ActionableRecommendation, BudgetAction, createBudgetHeadline } from '../types/ActionableTypes';
 
 

@@ -12,6 +12,7 @@ import { useAccount } from '../context/AccountContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import { Logger } from '../utils/logger';
 import { printPicklist } from '../utils/printPicklist';
+import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 export interface Order {
     id: number;
@@ -141,6 +142,31 @@ export function useOrders() {
         return () => controller.abort();
     }, [fetchOrders]);
 
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'order' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            void fetchOrders();
+            setStatusCountsKey((prev) => prev + 1);
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchOrders]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchOrders();
+                setStatusCountsKey((prev) => prev + 1);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchOrders]);
+
     // Reset page on filter change
     useEffect(() => { setPage(1); }, [debouncedSearch, selectedTags, selectedStatus]);
 
@@ -261,6 +287,12 @@ export function useOrders() {
                 setOrders(prev => prev.map(order =>
                     order.id === orderId ? { ...order, tags: (order.tags || []).filter(t => t !== tag) } : order
                 ));
+                emitCrossTabEvent({
+                    resource: 'order',
+                    type: 'tags-updated',
+                    accountId: currentAccount.id,
+                    resourceId: String(orderId),
+                });
             }
         } catch (err) {
             Logger.error('Failed to remove tag', { error: err });

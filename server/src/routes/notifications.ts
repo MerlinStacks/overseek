@@ -125,7 +125,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // GET /vapid-public-key
-    fastify.get('/vapid-public-key', async (request, reply) => {
+    fastify.get('/vapid-public-key', async (_request, reply) => {
         try {
             const publicKey = await PushNotificationService.getVapidPublicKey();
             if (!publicKey) {

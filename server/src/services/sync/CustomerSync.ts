@@ -171,6 +171,9 @@ export class CustomerSync extends BaseSync {
         if (linkedCount > 0) {
             Logger.info(`Auto-linked ${linkedCount} guest conversations to customers`, { accountId, syncId });
         }
+        if (totalSkipped > 0) {
+            Logger.debug('Customer sync skipped invalid records', { accountId, syncId, totalSkipped });
+        }
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }

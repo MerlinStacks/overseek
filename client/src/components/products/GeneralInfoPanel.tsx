@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FileText, Building2, Code, Eye, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { useAuth } from '../../context/AuthContext';

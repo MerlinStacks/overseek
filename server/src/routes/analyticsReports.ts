@@ -8,8 +8,22 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 
 const createTemplateSchema = z.object({ name: z.string().min(1), type: z.string(), config: z.record(z.string(), z.unknown()) });
-const createScheduleSchema = z.object({ templateId: z.string().uuid(), frequency: z.string(), time: z.string(), emailRecipients: z.array(z.string().email()) });
-const createDigestSchema = z.object({ accountId: z.string().uuid().optional(), emails: z.array(z.string().email()).optional() });
+const createScheduleSchema = z.object({
+    templateId: z.union([z.string().uuid(), z.string().regex(/^sys_[a-z0-9_]+$/)]),
+    frequency: z.string(),
+    time: z.string(),
+    emailRecipients: z.array(z.string().email()),
+    dayOfWeek: z.number().int().min(1).max(7).optional(),
+    dayOfMonth: z.number().int().min(1).max(31).optional(),
+    isActive: z.boolean().optional()
+});
+const createDigestSchema = z.object({
+    frequency: z.enum(['DAILY', 'WEEKLY']),
+    dayOfWeek: z.number().int().min(1).max(7).optional(),
+    time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    emailRecipients: z.array(z.string().email()).optional(),
+    isActive: z.boolean().optional()
+});
 
 // System Templates Config
 const SYSTEM_TEMPLATES = [
@@ -91,8 +105,7 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = createScheduleSchema.safeParse(request.body);
             if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
             const accountId = request.accountId;
-            const { templateId, frequency, time, emailRecipients } = parsed.data;
-            const { dayOfWeek, dayOfMonth, isActive } = request.body as any;
+            const { templateId, frequency, time, emailRecipients, dayOfWeek, dayOfMonth, isActive } = parsed.data;
 
             let targetTemplateId = templateId;
 
@@ -117,7 +130,12 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.delete<{ Params: { id: string } }>('/schedules/:id', async (request, reply) => {
         try {
             const accountId = request.accountId;
-            await prisma.reportSchedule.delete({ where: { id: request.params.id, accountId } });
+            const result = await prisma.reportSchedule.deleteMany({
+                where: { id: request.params.id, accountId }
+            });
+            if (result.count === 0) {
+                return reply.code(404).send({ error: 'Schedule not found' });
+            }
             return { success: true };
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
     });
@@ -128,8 +146,16 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId;
             const { frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive } = request.body as any;
 
-            const schedule = await prisma.reportSchedule.update({
+            const existing = await prisma.reportSchedule.findFirst({
                 where: { id: request.params.id, accountId },
+                select: { id: true }
+            });
+            if (!existing) {
+                return reply.code(404).send({ error: 'Schedule not found' });
+            }
+
+            const schedule = await prisma.reportSchedule.update({
+                where: { id: existing.id },
                 data: {
                     ...(frequency && { frequency }),
                     ...(dayOfWeek !== undefined && { dayOfWeek }),

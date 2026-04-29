@@ -2,7 +2,7 @@
  * FlowNodes - Custom node components for the visual flow builder.
  * Each node type represents a different automation element: trigger, action, delay, condition.
  */
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Clock, Split, Eye } from 'lucide-react';
 import { NodeWrapper } from './NodeWrapper';

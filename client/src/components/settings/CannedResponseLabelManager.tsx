@@ -3,7 +3,6 @@
  * 
  * Panel for managing canned response labels (colors and names).
  */
-import React from 'react';
 import { Plus, Trash2, Edit2, Save, X, Palette } from 'lucide-react';
 import { cn } from '../../utils/cn';
 

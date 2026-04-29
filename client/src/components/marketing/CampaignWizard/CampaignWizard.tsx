@@ -5,7 +5,7 @@
  * Guides users through goal selection, product selection, ad copy, and budget.
  */
 
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { X, CheckCircle, ArrowRight } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
 import { StepGoalType } from './steps/StepGoalType';

@@ -14,10 +14,6 @@ interface StatsData {
     avgSessionDuration: number;
 }
 
-interface AnalyticsStatsWidgetProps {
-    days?: number;
-}
-
 export const AnalyticsStatsWidget = ({ className, dateRange }: WidgetProps) => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
@@ -84,7 +80,7 @@ export const AnalyticsStatsWidget = ({ className, dateRange }: WidgetProps) => {
                     <Globe className="w-3 h-3" /> Top Countries
                 </div>
                 <div className="space-y-1">
-                    {stats.countries.slice(0, 5).map((c, i) => (
+                    {stats.countries.slice(0, 5).map((c) => (
                         <div key={c.country} className="flex items-center justify-between text-sm">
                             <span className="text-slate-700 dark:text-slate-300">{c.country}</span>
                             <span className="text-slate-500 dark:text-slate-400">{c.sessions}</span>

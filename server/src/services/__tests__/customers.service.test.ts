@@ -43,7 +43,6 @@ vi.mock('../../utils/logger', () => ({
 
 describe('CustomersService', () => {
     const accountId = 'account-123';
-    const otherAccountId = 'account-999';
     const customerId = 'customer-abc';
 
     beforeEach(() => {

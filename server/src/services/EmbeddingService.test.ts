@@ -1,5 +1,5 @@
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EmbeddingService } from './EmbeddingService';
 import { prisma } from '../utils/prisma';
 
@@ -40,7 +40,7 @@ describe('EmbeddingService Benchmark', () => {
         });
 
         // Smart mock for batching
-        fetchMock.mockImplementation(async (url, options) => {
+        fetchMock.mockImplementation(async (_url, options) => {
             const body = JSON.parse(options.body);
             const input = body.input;
             const count = Array.isArray(input) ? input.length : 1;

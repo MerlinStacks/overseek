@@ -201,7 +201,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /bom/sync-all
      * Bulk sync ALL BOM parent products for the account to WooCommerce.
      */
-    fastify.post('/bom/sync-all', async (request, reply) => {
+    fastify.post('/bom/sync-all', async (request, _reply) => {
         const accountId = request.accountId!;
 
         const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
@@ -280,7 +280,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /bom/sync-status
      * Check current status of BOM sync job for this account.
      */
-    fastify.get('/bom/sync-status', async (request, reply) => {
+    fastify.get('/bom/sync-status', async (request, _reply) => {
         const accountId = request.accountId!;
         const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
 

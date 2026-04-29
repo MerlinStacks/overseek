@@ -20,15 +20,6 @@ import {
  * Provides sync controls and quick access to key settings.
  */
 
-interface SettingItem {
-    id: string;
-    label: string;
-    description: string;
-    icon: typeof Bell;
-    iconColor: string;
-    iconBg: string;
-}
-
 export function MobileSettings() {
     const navigate = useNavigate();
     const { token } = useAuth();

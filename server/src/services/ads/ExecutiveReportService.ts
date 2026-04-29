@@ -395,7 +395,7 @@ Return a JSON object with:
      */
     private static async renderPdf(
         filePath: string,
-        accountId: string,
+        _accountId: string,
         metrics: ReportMetrics,
         aiSummary: AISummary | null
     ): Promise<void> {

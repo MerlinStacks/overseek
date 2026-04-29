@@ -3,6 +3,7 @@
  * Thin wrapper around the unified RichTextEditor component.
  */
 import { RichTextEditor } from '../common/RichTextEditor';
+import type { ReactNode } from 'react';
 
 interface InboxRichTextEditorProps {
     /** Current HTML value */
@@ -17,6 +18,8 @@ interface InboxRichTextEditorProps {
     isInternal?: boolean;
     /** Whether canned response picker is open (disables Enter submit) */
     cannedPickerOpen?: boolean;
+    /** Extra controls to render in the same toolbar row */
+    toolbarRightSlot?: ReactNode;
 }
 
 /**
@@ -29,7 +32,8 @@ export function InboxRichTextEditor({
     onSubmit,
     placeholder = 'Type your reply...',
     isInternal = false,
-    cannedPickerOpen = false
+    cannedPickerOpen = false,
+    toolbarRightSlot
 }: InboxRichTextEditorProps) {
     return (
         <RichTextEditor
@@ -41,6 +45,7 @@ export function InboxRichTextEditor({
             features={['bold', 'italic', 'link', 'emoji']}
             isInternal={isInternal}
             disableEnterSubmit={cannedPickerOpen}
+            toolbarRightSlot={toolbarRightSlot}
         />
     );
 }

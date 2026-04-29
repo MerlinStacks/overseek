@@ -43,7 +43,7 @@ export class TwitterCAPIService implements ConversionPlatformService {
     }
 
     private buildPayload(
-        eventName: string,
+        _eventName: string,
         eventId: string,
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,

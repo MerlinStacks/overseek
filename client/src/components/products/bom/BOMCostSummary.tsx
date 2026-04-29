@@ -2,7 +2,6 @@
  * BOMCostSummary - Displays composite cost and buildable units summary.
  * Extracted from BOMPanel.tsx for modularity.
  */
-import React from 'react';
 import { DollarSign, Package, AlertTriangle, RefreshCw, Loader2, CheckCircle } from 'lucide-react';
 
 export interface BOMCostSummaryProps {

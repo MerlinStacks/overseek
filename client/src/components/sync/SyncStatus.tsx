@@ -55,7 +55,7 @@ export function SyncStatus() {
     const [fullSyncTypes, setFullSyncTypes] = useState<Record<SyncEntityKey, boolean>>({
         orders: false, products: false, customers: false, reviews: false,
     });
-    const [syncBOM, setSyncBOM] = useState(false);
+    const [syncBOM] = useState(false);
     const [logFilter, setLogFilter] = useState<string | null>(null);
     const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
     const [syncTriggered, setSyncTriggered] = useState(false);
@@ -76,10 +76,6 @@ export function SyncStatus() {
         (activeJobs || []).forEach(j => { map[j.queue.replace('sync-', '')] = j; });
         return map;
     }, [activeJobs]);
-
-    const toggleFullSync = (key: SyncEntityKey) => {
-        setFullSyncTypes(prev => ({ ...prev, [key]: !prev[key] }));
-    };
 
     const allSelected = Object.values(fullSyncTypes).every(Boolean);
 

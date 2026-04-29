@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { useAccount } from './AccountContext';
 import { Logger } from '../utils/logger';
+/* eslint-disable react-refresh/only-export-components */
 
 interface SocketContextType {
     socket: Socket | null;

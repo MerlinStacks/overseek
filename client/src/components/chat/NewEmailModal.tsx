@@ -18,6 +18,9 @@ interface EmailAccount {
 interface NewEmailModalProps {
     onClose: () => void;
     onSent: (conversationId: string) => void;
+    initialTo?: string;
+    initialSubject?: string;
+    initialBody?: string;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -28,14 +31,20 @@ const formatFileSize = (bytes: number) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-export function NewEmailModal({ onClose, onSent }: NewEmailModalProps) {
+export function NewEmailModal({
+    onClose,
+    onSent,
+    initialTo = '',
+    initialSubject = '',
+    initialBody = '',
+}: NewEmailModalProps) {
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
 
-    const [to, setTo] = useState('');
+    const [to, setTo] = useState(initialTo);
     const [cc, setCc] = useState('');
-    const [subject, setSubject] = useState('');
-    const [body, setBody] = useState('');
+    const [subject, setSubject] = useState(initialSubject);
+    const [body, setBody] = useState(initialBody);
     const [emailAccountId, setEmailAccountId] = useState('');
     const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
     const [showCc, setShowCc] = useState(false);

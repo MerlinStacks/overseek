@@ -5,7 +5,7 @@
  * Fetches real products from the inventory API.
  */
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { Search, Check, Package, Loader2 } from 'lucide-react';
 import { WizardStepProps, WizardProduct } from '../types';
 import { useAuth } from '../../../../context/AuthContext';

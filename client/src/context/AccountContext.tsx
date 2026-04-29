@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from './AuthContext';
+/* eslint-disable react-refresh/only-export-components */
 
 export interface Account {
     id: string;
@@ -186,6 +187,30 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         }
         refreshAccounts();
     }, [token, authLoading, refreshAccounts]);
+
+    useEffect(() => {
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key !== 'selectedAccountId') {
+                return;
+            }
+
+            const selectedId = event.newValue;
+            if (!selectedId) {
+                return;
+            }
+
+            setCurrentAccount((prev) => {
+                if (prev?.id === selectedId) {
+                    return prev;
+                }
+
+                return accounts.find((account) => account.id === selectedId) || prev;
+            });
+        };
+
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, [accounts]);
 
     // isLoading should be true if either auth is loading or accounts are loading
     const effectiveLoading = authLoading || isLoading;

@@ -38,7 +38,7 @@ export class ContentBriefService {
     static async generateBrief(
         accountId: string,
         keyword: string,
-        keywordId?: string
+        _keywordId?: string
     ): Promise<ContentBrief> {
         // Get current search data for context
         const analytics = await SearchConsoleService.getSearchAnalytics(accountId, { days: 28 });
@@ -153,7 +153,7 @@ Return ONLY the JSON, no markdown formatting or explanation.`;
      */
     private static generateTemplateBrief(
         keyword: string,
-        kwData: any,
+        _kwData: any,
         relatedQueries: string[]
     ): ContentBrief['brief'] {
         const titleKeyword = keyword.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');

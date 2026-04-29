@@ -94,7 +94,6 @@ export class SalesForecastService {
             // - High: 90+ days of historical data AND YoY data available
             // - Medium: 30-90 days OR no YoY data but recent data available
             // - Low: <30 days of data - warn user predictions may be inaccurate
-            const totalHistoricalDays = recentData.length + lastYearData.length;
             let confidenceLevel: 'high' | 'medium' | 'low';
             let dataQualityWarning: string | undefined;
 

@@ -3,9 +3,8 @@
  * Delegates compose, typing, and send logic to extracted hooks and components.
  * Memoized to prevent re-renders from parent state changes (e.g. conversation list updates).
  */
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import DOMPurify from 'dompurify';
-import { Logger } from '../../utils/logger';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
@@ -107,7 +106,7 @@ export const ChatWindow = memo(function ChatWindow({
     cannedResponses,
     filteredCanned,
     showCanned,
-    setShowCanned,
+    setShowCanned: _setShowCanned,
     showCannedManager,
     setShowCannedManager,
     handleInputForCanned,

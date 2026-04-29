@@ -5,6 +5,7 @@
  * Categories: Product Options (variations), Custom Fields, and Uploaded Files (images).
  * Extracted from OrderDetailPage for reusability.
  */
+/* eslint-disable react-refresh/only-export-components */
 
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings } from 'lucide-react';

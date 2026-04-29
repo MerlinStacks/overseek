@@ -4,7 +4,6 @@
  * Expanded detail row for a variant showing inventory settings, COGS, gold pricing, 
  * profit margins, and BOM configuration.
  */
-import React from 'react';
 import { DollarSign, TrendingUp } from 'lucide-react';
 import { ProductVariant } from './variantTypes';
 import { BOMPanel, BOMPanelRef } from './BOMPanel';

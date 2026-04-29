@@ -53,7 +53,7 @@ export function identifyCrawler(userAgent: string): CrawlerIdentity | null {
 export async function logHitIfIdentifiable(
     accountId: string,
     userAgent: string,
-    url?: string,
+    _url?: string,
     ipAddress?: string
 ): Promise<void> {
     try {

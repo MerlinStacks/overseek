@@ -13,10 +13,7 @@ import { REVENUE_STATUSES } from '../../constants/orderStatus';
 import {
     monthsDifference,
     normalizeSource,
-    inferCategory,
-    ANALYTICS_CONFIG,
-    extractBillingInfo,
-    extractCustomerId
+    inferCategory
 } from './utils';
 
 export interface RetentionCohort {

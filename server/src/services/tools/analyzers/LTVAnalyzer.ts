@@ -317,7 +317,7 @@ export class LTVAnalyzer {
      * Generate LTV-based recommendations.
      */
     private static generateSuggestions(result: LTVInsight): void {
-        const { channelLtv, overall, highValueSegments } = result;
+        const { channelLtv, overall } = result;
 
         if (channelLtv.length === 0) return;
 

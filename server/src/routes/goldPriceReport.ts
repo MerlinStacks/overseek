@@ -12,8 +12,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import {
     calculateGoldCogs,
     calculateMargin,
-    parseAccountGoldPrices,
-    AccountGoldPrices
+    parseAccountGoldPrices
 } from '../utils/goldPriceCalculations';
 import { sumMiscCosts } from '../utils/miscCosts';
 

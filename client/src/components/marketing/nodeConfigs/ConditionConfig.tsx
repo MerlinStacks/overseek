@@ -2,6 +2,7 @@
  * ConditionConfig - Configuration panel for flow condition nodes.
  * Extracted from NodeConfigPanel for modularity.
  */
+/* eslint-disable react-refresh/only-export-components */
 import React, { useState, useEffect } from 'react';
 
 type MatchType = 'all' | 'any';
@@ -53,6 +54,7 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
         icon: 'Contact',
         conditions: [
             { field: 'customer.email', label: 'Email address', operators: ['contains', 'not_contains', 'eq', 'neq'] },
+            { field: 'customer.emailDomain', label: 'Email domain', operators: ['eq', 'neq', 'contains', 'not_contains'] },
             { field: 'customer.phone', label: 'Phone number', operators: ['is_set', 'not_set', 'eq'] },
             { field: 'customer.firstName', label: 'First name', operators: ['eq', 'neq', 'contains'] },
             { field: 'customer.lastName', label: 'Last name', operators: ['eq', 'neq', 'contains'] },
@@ -65,11 +67,15 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
         icon: 'Store',
         conditions: [
             { field: 'order.total', label: 'Order Total', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
+            { field: 'order.status', label: 'Order Status', operators: ['eq', 'neq'] },
             { field: 'order.itemCount', label: 'Order Item Count', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
             { field: 'order.productId', label: 'Order contains product', operators: ['eq', 'neq'] },
             { field: 'order.categoryId', label: 'Order contains category', operators: ['eq', 'neq'] },
+            { field: 'order.couponCode', label: 'Order used coupon', operators: ['contains', 'not_contains', 'eq', 'neq'] },
             { field: 'customer.totalSpent', label: 'Customer Lifetime Value', operators: ['gt', 'gte', 'lt', 'lte'] },
             { field: 'customer.ordersCount', label: 'Customer Total Orders', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
+            { field: 'customer.daysSinceLastOrder', label: 'Days Since Last Order', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
+            { field: 'customer.lastOrderDate', label: 'Last Order Date', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
         ]
     },
     {

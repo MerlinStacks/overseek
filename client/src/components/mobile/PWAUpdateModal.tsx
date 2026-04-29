@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, AlertTriangle, Download, X, Sparkles } from 'lucide-react';
 import { Logger } from '../../utils/logger';
+/* eslint-disable react-refresh/only-export-components */
 
 /**
  * PWAUpdateModal - Prominent update notification for PWA users.

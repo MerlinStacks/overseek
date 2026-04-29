@@ -8,7 +8,6 @@
 import {
     ArrowRight,
     Eye,
-    CheckCircle2
 } from 'lucide-react';
 import { ActionableRecommendation, isBudgetAction, isKeywordAction } from '../../types/ActionableTypes';
 
@@ -113,7 +112,7 @@ function extractMetrics(rec: ActionableRecommendation): { label: string; value: 
 export function ActionableChangeCard({
     recommendation,
     onImplementationGuide,
-    onApply
+    onApply: _onApply
 }: ActionableChangeCardProps) {
     const platformConfig = getPlatformConfig(recommendation.platform === 'both' ? 'google' : recommendation.platform);
     const campaignType = getCampaignType(recommendation);

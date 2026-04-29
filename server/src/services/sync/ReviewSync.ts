@@ -5,7 +5,6 @@ import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { IndexingService } from '../search/IndexingService';
 import { WooReviewSchema, WooReview } from './wooSchemas';
-import { Prisma } from '@prisma/client';
 
 
 /**
@@ -206,7 +205,8 @@ export class ReviewSync extends BaseSync {
             });
             const existingWooIds = new Set(existingReviews.map(r => r.wooId));
 
-            for (const r of reviews) {
+            for (let reviewIndex = 0; reviewIndex < reviews.length; reviewIndex++) {
+                const r = reviews[reviewIndex];
                 const reviewData = r as any;
                 const reviewerEmail = reviewData.reviewer_email;
 
@@ -357,6 +357,10 @@ export class ReviewSync extends BaseSync {
                 }
 
                 totalProcessed++;
+
+                if ((reviewIndex + 1) % 25 === 0) {
+                    await new Promise<void>((resolve) => setImmediate(resolve));
+                }
             }
 
             // Bulk index all reviews in one ES call (like CustomerSync/OrderSync)
@@ -409,6 +413,9 @@ export class ReviewSync extends BaseSync {
             }
         }
 
+        if (totalSkipped > 0) {
+            Logger.debug('Review sync skipped invalid records', { accountId, syncId, totalSkipped });
+        }
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 }

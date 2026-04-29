@@ -12,14 +12,10 @@ import { LineChart, BarChart, LineSeriesOption, BarSeriesOption } from 'echarts/
 import {
     GridComponent,
     TooltipComponent,
-    LegendComponent,
-    DataZoomComponent,
     GridComponentOption,
-    TooltipComponentOption,
-    LegendComponentOption,
-    DataZoomComponentOption
+    TooltipComponentOption
 } from 'echarts/components';
-import { SVGRenderer, CanvasRenderer } from 'echarts/renderers';
+import { SVGRenderer } from 'echarts/renderers';
 
 // Register only the components we use
 echarts.use([
@@ -27,10 +23,7 @@ echarts.use([
     BarChart,
     GridComponent,
     TooltipComponent,
-    LegendComponent,
-    DataZoomComponent,
-    SVGRenderer,
-    CanvasRenderer
+    SVGRenderer
 ]);
 
 // Compose option type from registered components
@@ -39,8 +32,6 @@ type EChartsOption = echarts.ComposeOption<
     | BarSeriesOption
     | GridComponentOption
     | TooltipComponentOption
-    | LegendComponentOption
-    | DataZoomComponentOption
 >;
 
 // Re-export echarts core for use in components

@@ -60,7 +60,7 @@ export function MobileMore() {
             items: [
                 { id: 'inventory', label: 'Inventory', icon: Package, path: '/m/inventory', iconColor: 'text-orange-400', iconBg: 'bg-orange-500/20' },
                 { id: 'customers', label: 'Customers', icon: Users, path: '/m/customers', iconColor: 'text-blue-400', iconBg: 'bg-blue-500/20' },
-                { id: 'visitors', label: 'Live Visitors', icon: Eye, path: '/m/visitors', iconColor: 'text-emerald-400', iconBg: 'bg-emerald-500/20' },
+                { id: 'visitors', label: 'Live Visitors', icon: Eye, path: '/m/live-visitors', iconColor: 'text-emerald-400', iconBg: 'bg-emerald-500/20' },
             ]
         },
         {

@@ -7,7 +7,6 @@
  */
 
 import { prisma } from '../../utils/prisma';
-import { Logger } from '../../utils/logger';
 
 /** Max groups per account */
 const MAX_GROUPS_PER_ACCOUNT = 20;

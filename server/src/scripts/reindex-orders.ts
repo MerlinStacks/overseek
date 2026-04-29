@@ -2,7 +2,6 @@
 import { createPrismaClient } from '../utils/prisma';
 import { IndexingService } from '../services/search/IndexingService';
 import { esClient } from '../utils/elastic';
-import { Logger } from '../utils/logger';
 
 const prisma = createPrismaClient();
 

@@ -11,7 +11,7 @@ interface MerchantCenterPanelProps {
     issues: MerchantIssue[];
 }
 
-export function MerchantCenterPanel({ score, issues }: MerchantCenterPanelProps) {
+export function MerchantCenterPanel({ score: _score, issues }: MerchantCenterPanelProps) {
     const criticalIssues = issues.filter(i => i.severity === 'error');
     const warnings = issues.filter(i => i.severity === 'warning');
     const isCompliant = criticalIssues.length === 0;

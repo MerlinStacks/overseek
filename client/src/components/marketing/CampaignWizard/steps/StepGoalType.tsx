@@ -4,7 +4,7 @@
  * Allows users to choose between Search and Performance Max campaign types.
  */
 
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { MousePointerClick, ShoppingCart } from 'lucide-react';
 import { WizardStepProps, CampaignType } from '../types';
 

@@ -48,6 +48,16 @@ function isPublicIp(ip: string | undefined): boolean {
 export class MetaCAPIService implements ConversionPlatformService {
     readonly platform = 'META';
 
+    private hasSufficientMatchData(userData: Record<string, any>): boolean {
+        return Boolean(
+            userData.em ||
+            userData.ph ||
+            userData.fbc ||
+            userData.fbp ||
+            (userData.client_ip_address && userData.client_user_agent)
+        );
+    }
+
     /**
      * Send a conversion event to Meta CAPI.
      * Handles PII hashing, payload formatting, delivery logging, and retries.
@@ -70,6 +80,22 @@ export class MetaCAPIService implements ConversionPlatformService {
         const eventId = data.eventId || crypto.randomUUID();
         const userData = extractUserData(data.payload, session, data.ipAddress);
         const payload = this.buildPayload(eventName, eventId, data, userData, testEventCode);
+        const payloadUserData = payload.data?.[0]?.user_data || {};
+
+        if (!this.hasSufficientMatchData(payloadUserData)) {
+            Logger.warn('[MetaCAPI] Skipping event with insufficient customer match data', {
+                pixelId,
+                eventName,
+                eventId,
+                hasEmail: Boolean(payloadUserData.em),
+                hasPhone: Boolean(payloadUserData.ph),
+                hasFbc: Boolean(payloadUserData.fbc),
+                hasFbp: Boolean(payloadUserData.fbp),
+                hasIp: Boolean(payloadUserData.client_ip_address),
+                hasUserAgent: Boolean(payloadUserData.client_user_agent),
+            });
+            return;
+        }
 
 
         // Log delivery as PENDING before sending
@@ -199,7 +225,7 @@ export class MetaCAPIService implements ConversionPlatformService {
 
                 // Non-retryable error (4xx except 429)
                 await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, responseBody);
-                Logger.error('[MetaCAPI] Event delivery failed', {
+                Logger.warn('[MetaCAPI] Event delivery failed', {
                     status: response.status,
                     response: responseBody.substring(0, 500),
                     pixelId,

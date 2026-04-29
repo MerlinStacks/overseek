@@ -13,6 +13,7 @@ import { ProductService } from '../services/ProductService';
 import { InventoryService } from '../services/InventoryService';
 import { calculateSeoScore } from '../utils/seoScoring';
 import { Logger } from '../utils/logger';
+import { emitProductChange } from '../utils/productCrossTabEvents';
 import { useToast } from '../context/ToastContext';
 import type { BOMPanelRef } from '../components/products/BOMPanel';
 import type { VariationsPanelRef } from '../components/products/VariationsPanel';
@@ -350,6 +351,11 @@ export function useProductEdit(productId: string | undefined) {
             isDirtyRef.current = false;
             setHasDraft(false);
             pendingDraftRef.current = null;
+            emitProductChange({
+                type: 'updated',
+                productId,
+                accountId: acct.id,
+            });
 
             fetchProduct(true, true);
         } catch (error) {
@@ -377,6 +383,11 @@ export function useProductEdit(productId: string | undefined) {
             setHasDraft(false);
             pendingDraftRef.current = null;
             await fetchProduct(true);
+            emitProductChange({
+                type: 'synced',
+                productId,
+                accountId: acct.id,
+            });
             showToast('Product synced successfully from WooCommerce.');
         } catch (error: unknown) {
             Logger.error('Sync failed:', { error });

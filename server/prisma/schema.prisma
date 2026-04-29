@@ -138,6 +138,7 @@ model Account {
   // Marketing & Automation
   marketingCampaigns   MarketingCampaign[]
   marketingAutomations MarketingAutomation[]
+  automationEnrollments AutomationEnrollment[]
   emailTemplates       EmailTemplate[]
   AnalyticsSession     AnalyticsSession[]
   segments             CustomerSegment[]
@@ -176,6 +177,9 @@ model Account {
   
   // Campaign ROI Tracking
   campaignEvents      CampaignEvent[]
+  automationGoalEvents AutomationGoalEvent[]
+  automationRunEvents  AutomationRunEvent[]
+  generatedCoupons     GeneratedCoupon[]
   
   // SMS Settings (per-account Twilio)
   smsSettings         SmsSettings?
@@ -1680,6 +1684,9 @@ model MarketingAutomation {
   steps AutomationStep[]
 
   enrollments AutomationEnrollment[]
+  runEvents   AutomationRunEvent[]
+  goalEvents  AutomationGoalEvent[]
+  generatedCoupons GeneratedCoupon[]
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -1702,6 +1709,7 @@ model AutomationStep {
 model AutomationEnrollment {
   id           String @id @default(uuid())
   automationId String
+  accountId    String
 
   // Target entity
   wooCustomerId Int?
@@ -1710,17 +1718,111 @@ model AutomationEnrollment {
   // Context data (e.g. invalidating if a new order comes in, or storing the Order ID that triggered this)
   contextData Json?
 
-  status        String  @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
-  currentNodeId String? // React Flow Node ID tracking progress
+  status              String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  statusReason        String?
+  currentNodeId       String? // React Flow Node ID tracking progress
+  lastProcessedNodeId String?
+
+  triggerEntityType String? // ORDER, CART, CUSTOMER, REVIEW
+  triggerEntityId   String?
+  dedupeKey         String?
 
   nextRunAt DateTime? // When to process the next step
+  enteredAt  DateTime @default(now())
+  completedAt DateTime?
+  cancelledAt DateTime?
+  conversionAt DateTime?
+  convertedOrderId String?
+  convertedRevenue Decimal? @db.Decimal(10, 2)
+  lastEmailLogId String?
 
   automation MarketingAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  account    Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  runEvents  AutomationRunEvent[]
+  goalEvents AutomationGoalEvent[]
+  generatedCoupons GeneratedCoupon[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([automationId, status, nextRunAt])
+  @@index([accountId, status, nextRunAt])
+  @@index([accountId, email, status])
+  @@index([accountId, triggerEntityType, triggerEntityId])
+  @@index([accountId, dedupeKey])
+}
+
+model AutomationRunEvent {
+  id           String @id @default(uuid())
+  accountId    String
+  automationId String
+  enrollmentId String
+
+  nodeId    String?
+  eventType String // ENROLLED, NODE_EXECUTED, WAITING, COMPLETED, CANCELLED, FAILED, SKIPPED
+  outcome   String?
+  metadata  Json?
+
+  account    Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  automation MarketingAutomation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  enrollment AutomationEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, automationId, createdAt])
+  @@index([accountId, enrollmentId, createdAt])
+  @@index([automationId, nodeId, createdAt])
+}
+
+model AutomationGoalEvent {
+  id           String @id @default(uuid())
+  accountId    String
+  automationId String
+  enrollmentId String
+
+  goalType               String // PURCHASE, RECOVERY, REVIEW, CUSTOM
+  orderId                String?
+  revenue                Decimal? @db.Decimal(10, 2)
+  attributionWindowHours Int      @default(168)
+  metadata               Json?
+
+  account    Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  automation MarketingAutomation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  enrollment AutomationEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, automationId, createdAt])
+  @@index([accountId, enrollmentId, createdAt])
+  @@index([accountId, orderId])
+}
+
+model GeneratedCoupon {
+  id           String @id @default(uuid())
+  accountId    String
+  automationId String
+  enrollmentId String
+
+  wooCouponId   Int?
+  code          String
+  amount        Decimal  @db.Decimal(10, 2)
+  discountType  String
+  description   String?
+  expiresAt     DateTime?
+  usedAt        DateTime?
+  orderId       String?
+  metadata      Json?
+
+  account    Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  automation MarketingAutomation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  enrollment AutomationEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, code])
+  @@index([accountId, automationId, createdAt])
+  @@index([accountId, enrollmentId, createdAt])
 }
 
 // --------------------------------------
@@ -1991,6 +2093,7 @@ model EmailUnsubscribe {
   id        String   @id @default(uuid())
   accountId String
   email     String
+  scope     String   @default("MARKETING") // MARKETING, ALL
   reason    String?
   
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)

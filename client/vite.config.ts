@@ -124,8 +124,9 @@ export default defineConfig(({ mode }) => {
                 output: {
                     manualChunks: (id) => {
                         if (id.includes('node_modules')) {
-                            // echarts and its dependencies (zrender) should be in the same chunk
-                            if (id.includes('echarts') || id.includes('zrender')) return 'echarts';
+                            // Split echarts internals so no single charting chunk dominates.
+                            if (id.includes('zrender')) return 'zrender';
+                            if (id.includes('echarts')) return 'echarts';
                             if (id.includes('jspdf')) return 'pdf';
                             if (id.includes('react-grid-layout') || id.includes('react-resizable')) return 'grid';
                             if (id.includes('@xyflow')) return 'flow';
@@ -133,11 +134,6 @@ export default defineConfig(({ mode }) => {
                             if (id.includes('react-email-editor')) return 'email-editor';
                             if (id.includes('react-markdown') || id.includes('remark-gfm')) return 'markdown';
                             if (id.includes('lucide-react')) return 'icons';
-
-                            // Vendor chunk for React core - exclude echarts/zrender deps
-                            if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/') || id.includes('node_modules/react-router-dom/')) {
-                                return 'vendor';
-                            }
                         }
                     }
                 }

@@ -54,6 +54,7 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-admin.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-frontend.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-cart-recovery.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-server-tracking.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixels.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
@@ -80,6 +81,8 @@ class OverSeek_Main
 		// Initialize API.
 		$api = new OverSeek_API();
 		add_action('rest_api_init', [$api, 'register_routes']);
+
+		new OverSeek_Cart_Recovery();
 
 		// Initialize Server-Side Tracking (runs on WooCommerce hooks).
 		if (get_option('overseek_enable_tracking')) {

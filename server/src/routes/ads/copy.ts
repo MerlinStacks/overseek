@@ -210,7 +210,7 @@ export const adCopyRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /api/ads/copy/tone-presets
      * Get available tone presets with descriptions
      */
-    fastify.get('/tone-presets', async (request, reply) => {
+    fastify.get('/tone-presets', async (_request, reply) => {
         return reply.send({
             success: true,
             data: [
@@ -242,7 +242,7 @@ export const adCopyRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /api/ads/copy/platforms
      * Get available platforms with limits
      */
-    fastify.get('/platforms', async (request, reply) => {
+    fastify.get('/platforms', async (_request, reply) => {
         return reply.send({
             success: true,
             data: [

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
+/* eslint-disable react-refresh/only-export-components */
 
 interface User {
     id: string;
@@ -151,6 +152,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         scheduleRefresh(token);
     }, [token, scheduleRefresh]);
+
+    useEffect(() => {
+        const handleStorage = (event: StorageEvent) => {
+            if (!['token', 'user', 'refreshToken'].includes(event.key || '')) {
+                return;
+            }
+
+            const storedToken = localStorage.getItem('token');
+            const storedUser = localStorage.getItem('user');
+            setToken(storedToken);
+            setUser(storedUser ? JSON.parse(storedUser) : null);
+        };
+
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, []);
 
     const login = (newToken: string, newUser: User, refreshToken?: string) => {
         localStorage.setItem('token', newToken);

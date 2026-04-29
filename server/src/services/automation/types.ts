@@ -25,4 +25,5 @@ export interface FlowDefinition {
 export interface NodeExecutionResult {
     action: 'NEXT' | 'WAIT';
     outcome?: string;
+    metadata?: Record<string, unknown>;
 }

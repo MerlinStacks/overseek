@@ -5,7 +5,7 @@
  * Simplified SMTP setup with test functionality.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Mail, ArrowRight, ArrowLeft, SkipForward, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';

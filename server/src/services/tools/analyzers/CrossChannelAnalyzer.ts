@@ -149,7 +149,6 @@ export class CrossChannelAnalyzer {
             // Calculate channel performance
             const channelRevenue = new Map<string, { revenue: number; orders: number }>();
             let totalRevenue = 0;
-            let attributedOrders = 0;
 
             for (const order of orders) {
                 const total = parseFloat(String(order.total)) || 0;
@@ -164,8 +163,6 @@ export class CrossChannelAnalyzer {
                 channelRevenue.set(channel, current);
 
                 if (attribution) {
-                    attributedOrders++;
-
                     // Count assisted conversions
                     if (attribution.firstTouch !== attribution.lastTouch) {
                         result.channelOverlap.multiChannel++;

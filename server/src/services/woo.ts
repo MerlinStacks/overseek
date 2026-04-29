@@ -2,7 +2,8 @@ import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
 import https from 'https';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
-import { retryWithBackoff, isRetryableError, isCredentialError } from '../utils/retryWithBackoff';
+import { retryWithBackoff, isCredentialError, isMaintenanceMode, getRetryAfterSeconds } from '../utils/retryWithBackoff';
+import { registerRuntimeMetricsProvider } from '../utils/runtimeMetrics';
 
 // Mock data removed - demo mode is currently disabled (see isDemo flag)
 type MockProduct = { id: number; name: string; price: string };
@@ -54,6 +55,26 @@ export class WooService {
 
     private static readonly MAX_AGENTS = 50;
 
+    static getAgentMetrics() {
+        let sockets = 0;
+        let freeSockets = 0;
+        let pendingRequests = 0;
+
+        for (const agent of WooService.agentCache.values()) {
+            sockets += Object.values(agent.sockets).reduce((sum, entries) => sum + entries.length, 0);
+            freeSockets += Object.values(agent.freeSockets).reduce((sum, entries) => sum + entries.length, 0);
+            pendingRequests += Object.values(agent.requests).reduce((sum, entries) => sum + entries.length, 0);
+        }
+
+        return {
+            agentCacheSize: WooService.agentCache.size,
+            maxAgents: WooService.MAX_AGENTS,
+            sockets,
+            freeSockets,
+            pendingRequests,
+        };
+    }
+
     /** Returns a shared https.Agent for the given hostname, creating one if needed. */
     private static getAgent(hostname: string): https.Agent {
         let agent = WooService.agentCache.get(hostname);
@@ -83,7 +104,7 @@ export class WooService {
 
     /** Destroys all pooled agents. Call during graceful shutdown. */
     static destroyAgents(): void {
-        for (const [hostname, agent] of WooService.agentCache) {
+        for (const [_hostname, agent] of WooService.agentCache) {
             agent.destroy();
         }
         WooService.agentCache.clear();
@@ -187,6 +208,15 @@ export class WooService {
                 }
             );
         } catch (error: any) {
+            if (isMaintenanceMode(error)) {
+                const retryAfterSeconds = getRetryAfterSeconds(error);
+                throw new Error(
+                    retryAfterSeconds
+                        ? `WooCommerce store is in maintenance mode. Retry after ${retryAfterSeconds}s.`
+                        : 'WooCommerce store is in maintenance mode.'
+                );
+            }
+
             // Detect credential revocation and mark account
             if (isCredentialError(error)) {
                 await this.markNeedsReconnection();
@@ -303,7 +333,17 @@ export class WooService {
 
         try {
             const cached = await redisClient.get(cacheKey);
-            if (cached) return JSON.parse(cached);
+            if (cached) {
+                if (cached.length > 5 * 1024 * 1024) {
+                    Logger.warn('[WooService] Cached variation payload exceeds safe size, skipping cache', {
+                        cacheKey,
+                        sizeMB: (cached.length / 1024 / 1024).toFixed(2)
+                    });
+                    await redisClient.del(cacheKey);
+                } else {
+                    return JSON.parse(cached);
+                }
+            }
         } catch {
             // Cache miss or Redis error — continue to API
         }
@@ -383,6 +423,52 @@ export class WooService {
                 'UPDATE',
                 'ORDER',
                 id.toString(),
+                data
+            );
+        }
+
+        return response.data;
+    }
+
+    async createCoupon(data: any, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug('[Demo] Created Coupon', { data });
+            return { id: Math.floor(Math.random() * 100000), ...data };
+        }
+
+        const response = await this.api.post('coupons', data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(
+                this.accountId,
+                userId || null,
+                'CREATE',
+                'COUPON',
+                response.data.id?.toString?.() || 'unknown',
+                data
+            );
+        }
+
+        return response.data;
+    }
+
+    async createOrderNote(orderId: number, data: any, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug(`[Demo] Created order note for ${orderId}`, { data });
+            return { id: Math.floor(Math.random() * 100000), ...data };
+        }
+
+        const response = await this.api.post(`orders/${orderId}/notes`, data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(
+                this.accountId,
+                userId || null,
+                'CREATE',
+                'ORDER_NOTE',
+                `${orderId}`,
                 data
             );
         }
@@ -562,3 +648,5 @@ export class WooService {
     }
 
 }
+
+registerRuntimeMetricsProvider('wooService', () => WooService.getAgentMetrics());

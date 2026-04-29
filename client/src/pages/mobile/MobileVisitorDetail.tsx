@@ -199,12 +199,14 @@ export function MobileVisitorDetail() {
 
     const fetchVisitorProfile = useCallback(async () => {
         if (!currentAccount || !token || !id) {
+            setData(null);
             setLoading(false);
             return;
         }
 
         try {
             setLoading(true);
+            setData(null);
             const res = await fetch(`/api/analytics/visitors/${id}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -215,8 +217,11 @@ export function MobileVisitorDetail() {
             if (res.ok) {
                 const json = await res.json();
                 setData(json);
+            } else {
+                setData(null);
             }
         } catch (error) {
+            setData(null);
             Logger.error('[MobileVisitorDetail] Error:', { error: error });
         } finally {
             setLoading(false);
@@ -225,6 +230,11 @@ export function MobileVisitorDetail() {
 
     useEffect(() => {
         fetchVisitorProfile();
+        const handleRefresh = () => {
+            fetchVisitorProfile();
+        };
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchVisitorProfile]);
 
     const getDeviceIcon = (deviceType: string | null | undefined) => {

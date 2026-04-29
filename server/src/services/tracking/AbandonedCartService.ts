@@ -154,6 +154,7 @@ export async function triggerAbandonedCartAutomations() {
                     await prisma.automationEnrollment.create({
                         data: {
                             automationId: automation.id,
+                            accountId,
                             email: cart.email,
                             wooCustomerId: cart.wooCustomerId,
                             status: 'ACTIVE',

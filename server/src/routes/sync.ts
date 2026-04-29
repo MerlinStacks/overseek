@@ -366,7 +366,6 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get unique order tags
     fastify.get('/orders/tags', async (request, reply) => {
-        const query = request.query as any;
         const accountId = request.accountId;
 
         if (!accountId) {

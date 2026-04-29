@@ -43,7 +43,7 @@ export class GA4MeasurementService implements ConversionPlatformService {
         // GA4 requires a client_id — use GA cookie value or fall back to visitorId
         const clientId = this.extractGAClientId(userData.gaClientId) || data.visitorId;
 
-        const payload = this.buildPayload(eventName, eventId, clientId, data, userData);
+        const payload = this.buildPayload(eventName, eventId, clientId, data);
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
 
         const endpoint = useDebugEndpoint ? GA4_DEBUG_ENDPOINT : GA4_ENDPOINT;
@@ -75,8 +75,7 @@ export class GA4MeasurementService implements ConversionPlatformService {
         eventName: string,
         eventId: string,
         clientId: string,
-        data: TrackingEventPayload,
-        userData: ReturnType<typeof extractUserData>,
+        data: TrackingEventPayload
     ): Record<string, any> {
         const event: Record<string, any> = {
             name: eventName,

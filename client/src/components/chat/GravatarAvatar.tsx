@@ -92,8 +92,8 @@ export const GravatarAvatar = memo(function GravatarAvatar({
         // Generate Gravatar URL
         md5Hash(email).then(hash => {
             if (!cancelled) {
-                // Use d=404 so we get a 404 if no Gravatar exists (triggers onError)
-                setGravatarUrl(`https://www.gravatar.com/avatar/${hash}?s=${pixelSize * 2}&d=404`);
+                // Use a transparent fallback to avoid noisy 404s in the browser console.
+                setGravatarUrl(`https://www.gravatar.com/avatar/${hash}?s=${pixelSize * 2}&d=blank`);
             }
         });
 
@@ -108,24 +108,23 @@ export const GravatarAvatar = memo(function GravatarAvatar({
     return (
         <div
             className={cn(
-                "rounded-full flex items-center justify-center font-medium shrink-0 overflow-hidden",
+                "rounded-full flex items-center justify-center font-medium shrink-0 overflow-hidden relative",
                 sizeClasses[size],
-                !showImage && variantClasses[variant],
-                !showImage && "text-white",
+                variantClasses[variant],
+                "text-white",
                 className
             )}
         >
+            {initial}
             {showImage ? (
                 <img
                     src={gravatarUrl}
                     alt={name}
-                    className="w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover"
                     onError={() => setImageError(true)}
                     loading="lazy"
                 />
-            ) : (
-                initial
-            )}
+            ) : null}
         </div>
     );
 });

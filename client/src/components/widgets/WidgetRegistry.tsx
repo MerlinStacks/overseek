@@ -2,6 +2,7 @@ import { ReactNode, lazy, Suspense, ComponentType } from 'react';
 import { Loader2 } from 'lucide-react';
 import { WidgetErrorBoundary } from './WidgetErrorBoundary';
 import { widgetCardClass } from './widgetStyles';
+/* eslint-disable react-refresh/only-export-components */
 
 /**
  * Lazy-loaded widget imports for code-splitting.

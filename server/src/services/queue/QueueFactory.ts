@@ -14,6 +14,7 @@ export const QUEUES = {
     CUSTOMERS: 'sync-customers',
     REPORTS: 'report-generation',
     BOM_SYNC: 'bom-inventory-sync',
+    AUTOMATIONS: 'automation-execution',
 };
 
 // Global Store for Queues to adapter

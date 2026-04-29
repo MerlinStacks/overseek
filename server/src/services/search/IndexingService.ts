@@ -63,7 +63,6 @@ export class IndexingService {
 
     static async initializeIndices() {
         Logger.info('Initializing Elasticsearch indices...');
-        const commonSettings = { number_of_shards: 1, number_of_replicas: 0 };
 
         // 1. Customers
         await this.createIndexIfNotExists('customers', {

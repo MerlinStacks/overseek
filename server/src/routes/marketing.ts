@@ -7,10 +7,33 @@ import { MarketingService } from '../services/MarketingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { cartRecoveryService } from '../services/CartRecoveryService';
 
 const service = new MarketingService();
 
 const marketingRoutes: FastifyPluginAsync = async (fastify) => {
+    fastify.get<{ Params: { token: string } }>('/recover-cart/:token', async (request, reply) => {
+        const payload = cartRecoveryService.verifyToken(request.params.token);
+        if (!payload) {
+            return reply.code(400).send({ error: 'Invalid or expired recovery link' });
+        }
+
+        const recoveryUrl = new URL(payload.checkoutUrl);
+        recoveryUrl.searchParams.set('overseek_recover_cart', '1');
+        recoveryUrl.searchParams.set('overseek_recovery_token', request.params.token);
+
+        return reply.redirect(recoveryUrl.toString());
+    });
+
+    fastify.get<{ Params: { token: string } }>('/recover-cart/:token/details', async (request, reply) => {
+        const details = await cartRecoveryService.getRecoveryDetails(request.params.token);
+        if (!details) {
+            return reply.code(400).send({ error: 'Invalid or expired recovery link' });
+        }
+
+        return details;
+    });
+
     fastify.addHook('preHandler', requireAuthFastify);
 
     // Campaigns
@@ -96,6 +119,44 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             if (!automation) return reply.code(404).send({ error: 'Not found' });
             return automation;
         } catch (e) {
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    fastify.get<{ Params: { id: string } }>('/automations/:id/analytics', async (request, reply) => {
+        try {
+            return await service.getAutomationAnalytics(request.params.id, request.user!.accountId!);
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Automation not found') {
+                return reply.code(404).send({ error: message });
+            }
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/automations/:id/enrollments', async (request, reply) => {
+        try {
+            const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+            return await service.listAutomationEnrollments(request.params.id, request.user!.accountId!, limit);
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Automation not found') {
+                return reply.code(404).send({ error: message });
+            }
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/automations/:id/run-events', async (request, reply) => {
+        try {
+            const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+            return await service.listAutomationRunEvents(request.params.id, request.user!.accountId!, limit);
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Automation not found') {
+                return reply.code(404).send({ error: message });
+            }
             return reply.code(500).send({ error: e });
         }
     });

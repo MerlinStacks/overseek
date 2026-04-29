@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { CheckCircle, SkipForward, ArrowLeft, Rocket, Store, Plug, Mail, TrendingUp, AlertCircle } from 'lucide-react';
-import { OnboardingStepProps, ONBOARDING_STEPS, STEP_CONFIG } from '../types';
+import { OnboardingStepProps, ONBOARDING_STEPS } from '../types';
 
 interface IntegrationStatus {
     step: number;
@@ -21,7 +21,7 @@ interface IntegrationStatus {
 /**
  * Shows a summary of all configured integrations and allows final confirmation.
  */
-export function ReviewStep({ draft, setDraft, onNext, onBack, isSubmitting }: OnboardingStepProps) {
+export function ReviewStep({ draft, setDraft: _setDraft, onNext, onBack, isSubmitting }: OnboardingStepProps) {
     // Build integration status list
     const integrations: IntegrationStatus[] = [
         {

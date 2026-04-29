@@ -4,6 +4,7 @@
  * Pre-built automation recipe templates for common workflows.
  * Extracted from RecipeSelectorModal for modularity.
  */
+/* eslint-disable react-refresh/only-export-components */
 import React from 'react';
 import { ShoppingCart, Mail, Star, Tag, Gift, Heart } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';

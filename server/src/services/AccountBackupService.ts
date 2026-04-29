@@ -18,7 +18,6 @@ import {
     BackupOptions,
     BackupPreview,
     StoredBackupInfo,
-    RestoreResult,
     ScheduledBackupResult,
     FREQUENCY_MS,
     saveBackupToStorage,

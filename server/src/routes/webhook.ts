@@ -18,6 +18,8 @@ const VALID_ORDER_STATUSES = new Set([
     'cancelled', 'refunded', 'failed'
 ]);
 
+const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
+
 /** Verify WooCommerce HMAC signature */
 const verifySignature = (
     payload: unknown,
@@ -45,6 +47,31 @@ const verifySignature = (
     }
 };
 
+const isFirstOrderForCustomer = async (accountId: string, order: any): Promise<boolean> => {
+    const rawEmail = order.billing?.email;
+    const billingEmail = typeof rawEmail === 'string' && rawEmail.trim()
+        ? rawEmail.toLowerCase().trim()
+        : null;
+    const externalCustomerId = order.customer_id > 0 ? Number(order.customer_id) : null;
+
+    if (!billingEmail && !externalCustomerId) {
+        return false;
+    }
+
+    const count = await prisma.wooOrder.count({
+        where: {
+            accountId,
+            status: { in: PURCHASE_TRACKING_STATUSES },
+            OR: [
+                ...(externalCustomerId ? [{ wooCustomerId: externalCustomerId }] : []),
+                ...(billingEmail ? [{ billingEmail }] : [])
+            ]
+        }
+    });
+
+    return count === 1;
+};
+
 /**
  * Process a webhook payload (used for both live and replay).
  * Exported for use by admin replay endpoint.
@@ -57,6 +84,12 @@ export async function processWebhookPayload(
 ): Promise<void> {
     // Handle Order Events
     if (topic === 'order.created' || topic === 'order.updated') {
+        const existingOrder = await prisma.wooOrder.findUnique({
+            where: { accountId_wooId: { accountId, wooId: Number(body.id) } },
+            select: { status: true }
+        });
+        const previousStatus = existingOrder?.status || null;
+
         const orderStatus = ((body as any).status || '').toLowerCase();
         if (!VALID_ORDER_STATUSES.has(orderStatus)) {
             Logger.debug('[Webhook] Skipping order with non-standard status', {
@@ -144,6 +177,27 @@ export async function processWebhookPayload(
             }
         }
 
+        if (previousStatus && previousStatus !== orderStatus) {
+            EventBus.emit(EVENTS.ORDER.STATUS_CHANGED, {
+                accountId,
+                order: body,
+                previousStatus,
+                newStatus: orderStatus
+            });
+        }
+
+        if ((orderStatus === 'processing' || orderStatus === 'on-hold') && previousStatus !== orderStatus) {
+            EventBus.emit(EVENTS.ORDER.PAID, { accountId, order: body });
+        }
+
+        if (orderStatus === 'completed' && previousStatus !== 'completed') {
+            EventBus.emit(EVENTS.ORDER.COMPLETED, { accountId, order: body });
+        }
+
+        if ((topic === 'order.created' || !previousStatus) && await isFirstOrderForCustomer(accountId, body as any)) {
+            EventBus.emit(EVENTS.ORDER.FIRST, { accountId, order: body });
+        }
+
         // Emit ORDER.SYNCED so BOM consumption triggers immediately on webhook,
         // not just when the next sync cycle picks up the order.
         EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order: body });
@@ -211,6 +265,12 @@ export async function processWebhookPayload(
             await IndexingService.indexCustomer(accountId, body);
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to index customer in ES', { accountId, customerId: body.id, error: err.message });
+        }
+
+        if (topic === 'customer.created') {
+            EventBus.emit(EVENTS.CUSTOMER.CREATED, { accountId, customer: body });
+        } else {
+            EventBus.emit(EVENTS.CUSTOMER.UPDATED, { accountId, customer: body });
         }
         Logger.info(`Processed customer webhook`, { customerId: body.id, accountId });
     }

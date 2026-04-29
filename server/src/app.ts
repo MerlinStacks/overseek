@@ -150,7 +150,7 @@ async function build() {
     });
 
     // Disable caching for API responses
-    fastify.addHook('onSend', async (request, reply, payload) => {
+    fastify.addHook('onSend', async (_request, reply, payload) => {
         reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         reply.header('Pragma', 'no-cache');
         reply.header('Expires', '0');
@@ -210,6 +210,26 @@ async function build() {
 
     // Global Error Handler
     fastify.setErrorHandler((error: FastifyError, request, reply) => {
+        const isUploadAssetRequest = request.url.startsWith('/uploads/');
+        const isMissingUploadAsset =
+            isUploadAssetRequest &&
+            ((error as NodeJS.ErrnoException).code === 'ENOENT' ||
+                /no such file/i.test(error.message));
+
+        if (isMissingUploadAsset) {
+            Logger.warn('Missing upload asset', {
+                path: request.url,
+                method: request.method,
+                requestId: (request as any).requestId,
+            });
+
+            return reply.status(404).send({
+                error: 'File not found',
+                statusCode: 404,
+                requestId: (request as any).requestId,
+            });
+        }
+
         const statusCode = error.statusCode || 500;
         const isClientError = statusCode >= 400 && statusCode < 500;
 
@@ -328,6 +348,30 @@ async function initializeApp() {
     // Listen for Automation Events
     EventBus.on(EVENTS.ORDER.CREATED, async (data) => {
         await automationEngine.processTrigger(data.accountId, 'ORDER_CREATED', data.order);
+    });
+
+    EventBus.on(EVENTS.ORDER.PAID, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ORDER_PAID', data.order);
+    });
+
+    EventBus.on(EVENTS.ORDER.COMPLETED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ORDER_COMPLETED', data.order);
+    });
+
+    EventBus.on(EVENTS.ORDER.FIRST, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'FIRST_ORDER', data.order);
+    });
+
+    EventBus.on(EVENTS.ORDER.STATUS_CHANGED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ORDER_STATUS_CHANGED', {
+            ...data.order,
+            previousStatus: data.previousStatus,
+            newStatus: data.newStatus
+        });
+    });
+
+    EventBus.on(EVENTS.CUSTOMER.CREATED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'CUSTOMER_CREATED', data.customer);
     });
 
     EventBus.on(EVENTS.REVIEW.LEFT, async (data) => {

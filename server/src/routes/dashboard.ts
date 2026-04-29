@@ -7,7 +7,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AdsTools } from '../services/tools/AdsTools';
-import { cacheAside, cacheDelete, CacheTTL, CacheNamespace, invalidateCache } from '../utils/cache';
+import { cacheAside, cacheDelete, CacheTTL } from '../utils/cache';
 
 const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);

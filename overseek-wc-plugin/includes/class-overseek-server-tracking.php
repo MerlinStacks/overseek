@@ -64,6 +64,7 @@ class OverSeek_Server_Tracking
      */
     private $cart_view_tracked = false;
     private $checkout_view_tracked = false;
+    private $last_rest_checkout_email = '';
 
     /**
      * Click ID parameter mapping for major ad platforms.
@@ -144,6 +145,12 @@ class OverSeek_Server_Tracking
         // The shutdown hook may not fire reliably for REST API requests,
         // so we hook into cart response to ensure events are sent
         add_filter('woocommerce_store_api_cart_response', array($this, 'flush_on_store_api_response'), 999, 2);
+
+        // Capture checkout/customer email from WooCommerce Blocks Store API requests.
+        add_filter('rest_pre_dispatch', array($this, 'maybe_capture_rest_checkout'), 5, 3);
+
+        // Earlier checkout email capture for both classic and block checkout flows.
+        add_action('wp_footer', array($this, 'inject_checkout_email_capture'), 20);
     }
 
     /**
@@ -1146,6 +1153,57 @@ class OverSeek_Server_Tracking
         return $response;
     }
 
+    public function maybe_capture_rest_checkout($result, $server, $request)
+    {
+        if (!$request || !method_exists($request, 'get_route')) {
+            return $result;
+        }
+
+        $route = $request->get_route();
+        $is_checkout_route = (
+            strpos($route, '/wc/store/v1/checkout') !== false ||
+            strpos($route, '/wc/store/checkout') !== false ||
+            strpos($route, '/wc/store/v1/cart/update-customer') !== false ||
+            strpos($route, '/wc/store/cart/update-customer') !== false
+        );
+
+        if (!$is_checkout_route) {
+            return $result;
+        }
+
+        $params = $request->get_json_params();
+        if (!is_array($params)) {
+            return $result;
+        }
+
+        $email = $this->extract_checkout_email_from_rest_params($params);
+        if (empty($email) || $email === $this->last_rest_checkout_email) {
+            return $result;
+        }
+
+        $cart = $this->get_cart_safely();
+        if (!$cart || $cart->is_empty()) {
+            return $result;
+        }
+
+        $this->last_rest_checkout_email = $email;
+
+        $payload = array(
+            'email' => $email,
+            'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
+            'eventId' => 'os_store_api_' . time() . '_' . wp_generate_password(6, false, false),
+            'source' => 'store_api_checkout',
+            'total' => floatval($cart->get_cart_contents_total()),
+            'itemCount' => $cart->get_cart_contents_count(),
+            'items' => $this->get_cart_items_snapshot($cart),
+        );
+
+        $this->attach_platform_cookies($payload);
+        $this->queue_event('checkout_start', $payload);
+
+        return $result;
+    }
+
     /**
      * Track pageview on every page load.
      */
@@ -1331,6 +1389,7 @@ class OverSeek_Server_Tracking
         if ($cart) {
             $payload['total'] = floatval($cart->get_cart_contents_total());
             $payload['itemCount'] = $cart->get_cart_contents_count();
+            $payload['items'] = $this->get_cart_items_snapshot($cart);
         }
 
         // Forward ad platform cookies for server-side attribution
@@ -1346,6 +1405,126 @@ class OverSeek_Server_Tracking
         }
 
         $this->queue_event('checkout_start', $payload);
+    }
+
+    public function inject_checkout_email_capture()
+    {
+        if (!function_exists('is_checkout') || !is_checkout() || is_order_received_page()) {
+            return;
+        }
+
+        $visitor_id = $this->get_visitor_id();
+        if (empty($visitor_id)) {
+            return;
+        }
+
+        $cart = $this->get_cart_safely();
+        if (!$cart || $cart->is_empty()) {
+            return;
+        }
+
+        $payload = array(
+            'accountId' => $this->account_id,
+            'visitorId' => $visitor_id,
+            'type' => 'checkout_start',
+            'url' => function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/'),
+            'payload' => array(
+                'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD',
+                'total' => floatval($cart->get_cart_contents_total()),
+                'itemCount' => $cart->get_cart_contents_count(),
+                'items' => $this->get_cart_items_snapshot($cart),
+                'source' => 'checkout_email_capture',
+                'eventId' => wp_generate_uuid4(),
+            ),
+        );
+
+        ?>
+        <script>
+        (function(){
+            const endpoint = <?php echo wp_json_encode($this->api_url . '/api/t/e'); ?>;
+            const basePayload = <?php echo wp_json_encode($payload); ?>;
+            const selectors = [
+                'input[name="billing_email"]',
+                '#billing_email',
+                'input[type="email"][name="email"]',
+                'input[type="email"][autocomplete="email"]',
+                'input[type="email"]'
+            ];
+            const sentEmails = new Set();
+            let debounceTimer = null;
+
+            function isValidEmail(email) {
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+
+            function sendEmailCapture(email) {
+                const normalized = String(email || '').trim().toLowerCase();
+                if (!isValidEmail(normalized) || sentEmails.has(normalized)) {
+                    return;
+                }
+
+                sentEmails.add(normalized);
+                const body = JSON.stringify({
+                    ...basePayload,
+                    payload: {
+                        ...basePayload.payload,
+                        email: normalized,
+                        eventId: `os_checkout_capture_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+                    }
+                });
+
+                fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body,
+                    keepalive: true,
+                    credentials: 'omit'
+                }).catch(function(){});
+            }
+
+            function scheduleSend(value) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function() {
+                    sendEmailCapture(value);
+                }, 800);
+            }
+
+            function bindInput(input) {
+                if (!input || input.dataset.overseekEmailBound === '1') {
+                    return;
+                }
+
+                input.dataset.overseekEmailBound = '1';
+                input.addEventListener('input', function(e) {
+                    scheduleSend(e.target && e.target.value ? e.target.value : '');
+                });
+                input.addEventListener('change', function(e) {
+                    sendEmailCapture(e.target && e.target.value ? e.target.value : '');
+                });
+                input.addEventListener('blur', function(e) {
+                    sendEmailCapture(e.target && e.target.value ? e.target.value : '');
+                });
+
+                if (input.value) {
+                    scheduleSend(input.value);
+                }
+            }
+
+            function bindKnownInputs(root) {
+                selectors.forEach(function(selector) {
+                    (root || document).querySelectorAll(selector).forEach(bindInput);
+                });
+            }
+
+            bindKnownInputs(document);
+
+            const observer = new MutationObserver(function() {
+                bindKnownInputs(document);
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+        </script>
+        <?php
     }
 
     /**
@@ -1409,6 +1588,16 @@ class OverSeek_Server_Tracking
             'billingFirst' => $order->get_billing_first_name(),
             'billingLast' => $order->get_billing_last_name(),
         );
+
+        $recoveryEnrollmentId = $order->get_meta('_overseek_recovery_enrollment_id');
+        $recoverySessionId = $order->get_meta('_overseek_recovery_session_id');
+        if (!empty($recoveryEnrollmentId)) {
+            $payload['recoveryEnrollmentId'] = (string) $recoveryEnrollmentId;
+            $payload['recoveredCart'] = true;
+        }
+        if (!empty($recoverySessionId)) {
+            $payload['recoverySessionId'] = (string) $recoverySessionId;
+        }
 
         // Forward ad platform cookies for server-side attribution
         $this->attach_platform_cookies($payload);
@@ -1560,6 +1749,46 @@ class OverSeek_Server_Tracking
         }
 
         $this->queue_event('cart_view', $payload);
+    }
+
+    private function get_cart_items_snapshot($cart)
+    {
+        $items = array();
+
+        foreach ($cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'] ?? null;
+            $items[] = array(
+                'productId' => isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0,
+                'variationId' => isset($cart_item['variation_id']) ? absint($cart_item['variation_id']) : 0,
+                'name' => ($product && is_object($product)) ? $product->get_name() : '',
+                'sku' => ($product && is_object($product) && method_exists($product, 'get_sku')) ? $product->get_sku() : '',
+                'quantity' => isset($cart_item['quantity']) ? absint($cart_item['quantity']) : 1,
+                'price' => isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0,
+                'total' => isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0,
+            );
+        }
+
+        return $items;
+    }
+
+    private function extract_checkout_email_from_rest_params(array $params)
+    {
+        $candidates = array(
+            $params['email'] ?? null,
+            $params['billing_email'] ?? null,
+            $params['billingAddress']['email'] ?? null,
+            $params['billing_address']['email'] ?? null,
+            $params['customer']['billing_address']['email'] ?? null,
+        );
+
+        foreach ($candidates as $candidate) {
+            $email = is_string($candidate) ? sanitize_email($candidate) : '';
+            if (!empty($email) && is_email($email)) {
+                return strtolower($email);
+            }
+        }
+
+        return '';
     }
 
     /**

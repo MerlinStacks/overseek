@@ -1,9 +1,7 @@
-import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { AIToolsService } from './ai_tools';
 import { Logger } from '../utils/logger';
 import { AI_LIMITS } from '../config/limits';
-import { AIServiceError, AIRateLimitError, ExternalAPIError, isOverseekError } from '../utils/errors';
 
 
 /** Result from AI tool execution */
@@ -27,13 +25,6 @@ interface ToolCall {
         name: string;
         arguments: string;
     };
-}
-
-/** OpenRouter API response */
-interface OpenRouterResponse {
-    choices: Array<{
-        message: ChatMessage;
-    }>;
 }
 
 /** Order billing information from rawData */

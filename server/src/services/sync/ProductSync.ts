@@ -217,7 +217,8 @@ export class ProductSync extends BaseSync {
                 p.type === 'variable' || (p.type && p.type.includes('variable'))
             );
 
-            const VAR_BATCH_SIZE = 5;
+            const VAR_BATCH_SIZE = 2;
+            const VARIATION_UPSERT_CHUNK = 25;
             for (let vi = 0; vi < variableProducts.length; vi += VAR_BATCH_SIZE) {
                 const varBatch = variableProducts.slice(vi, vi + VAR_BATCH_SIZE);
                 await Promise.allSettled(varBatch.map(async (varProduct) => {
@@ -263,9 +264,13 @@ export class ProductSync extends BaseSync {
                             })
                         );
 
-                        await Promise.all(variationOps.map(op => op.catch((err) => {
-                            Logger.warn('Failed to upsert variation', { accountId, syncId, error: err.message });
-                        })));
+                        for (let i = 0; i < variationOps.length; i += VARIATION_UPSERT_CHUNK) {
+                            const chunk = variationOps.slice(i, i + VARIATION_UPSERT_CHUNK);
+                            await Promise.all(chunk.map(op => op.catch((err) => {
+                                Logger.warn('Failed to upsert variation', { accountId, syncId, error: err.message });
+                            })));
+                            await new Promise<void>((resolve) => setImmediate(resolve));
+                        }
                         totalVariationsSynced += variations.length;
 
                         Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {
@@ -277,6 +282,7 @@ export class ProductSync extends BaseSync {
                         });
                     }
                 }));
+                await new Promise<void>((resolve) => setImmediate(resolve));
             }
 
             Logger.info(`Synced batch of ${products.length} products (${totalVariationsSynced} variations)`, { accountId, syncId, page, totalPages, skipped: totalSkipped });

@@ -17,6 +17,7 @@ import { useHaptic } from '../../hooks/useHaptic';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatCurrency } from '../../utils/format';
 import { OrdersSkeleton } from '../../components/mobile/MobileSkeleton';
+import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 interface OrderApiResponse {
     id: string;
@@ -138,6 +139,18 @@ export function MobileOrders() {
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchOrders]);
 
+    useEffect(() => {
+        const unsubscribe = subscribeToCrossTabEvents((event) => {
+            if (event.resource !== 'order' || event.accountId !== currentAccount?.id) {
+                return;
+            }
+
+            void fetchOrders(1, true);
+        });
+
+        return unsubscribe;
+    }, [currentAccount?.id, fetchOrders]);
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         triggerHaptic();
@@ -170,6 +183,12 @@ export function MobileOrders() {
     const advanceStatus = async (orderId: string, currentStatus: string) => {
         const config = getStatusConfig(currentStatus);
         if (!config.next) return;
+        const wooOrderId = Number(orderId);
+        if (Number.isNaN(wooOrderId)) {
+            Logger.warn('[MobileOrders] Cannot advance order with non-numeric Woo ID', { orderId });
+            fetchOrders(1, true);
+            return;
+        }
 
         triggerHaptic(15);
 
@@ -179,14 +198,21 @@ export function MobileOrders() {
         ));
 
         try {
-            await fetch(`/api/sync/orders/${orderId}`, {
-                method: 'PATCH',
+            const res = await fetch('/api/orders/bulk-status', {
+                method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount!.id,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ status: config.next })
+                body: JSON.stringify({ orderIds: [wooOrderId], status: config.next })
+            });
+            if (!res.ok) throw new Error('Failed to update order status');
+            emitCrossTabEvent({
+                resource: 'order',
+                type: 'status-updated',
+                accountId: currentAccount!.id,
+                resourceId: orderId,
             });
         } catch (error) {
             Logger.error('[MobileOrders] Status update failed:', { error: error });

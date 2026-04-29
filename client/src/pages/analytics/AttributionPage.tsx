@@ -48,7 +48,7 @@ export const AttributionPage: React.FC = () => {
         return <div className="p-6 text-gray-500">No data available</div>;
     }
 
-    const getSourceColor = (source: string, index: number) => {
+    const getSourceColor = (_source: string, index: number) => {
         const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-yellow-500', 'bg-teal-500'];
         return colors[index % colors.length];
     };

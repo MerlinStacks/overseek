@@ -5,7 +5,7 @@
  * Includes connection testing functionality.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Store, ArrowRight, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
