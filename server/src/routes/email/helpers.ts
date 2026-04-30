@@ -1,6 +1,6 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
-import { encrypt, decrypt } from '../../utils/encryption';
+import { decrypt } from '../../utils/encryption';
 
 export interface NormalizedDeliveryWebhookEntry {
     emailAccountId?: string;

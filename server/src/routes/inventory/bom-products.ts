@@ -5,8 +5,8 @@ import { bomVariationQuerySchema, bomSaveBodySchema } from './schemas';
 import { Logger } from '../../utils/logger';
 import { BOMInventorySyncService } from '../../services/BOMInventorySyncService';
 
-function enrichBOMItems(bomItems: any[]): Promise<any[]>;
-async function enrichBOMItems(bomItems: any[]) {
+function enrichBOMItems(bomItems: any[], accountId: string): Promise<any[]>;
+async function enrichBOMItems(bomItems: any[], accountId: string) {
     let enrichedItems = [...bomItems];
 
     const internalItemsNeedingHydration = bomItems.filter(
@@ -15,7 +15,7 @@ async function enrichBOMItems(bomItems: any[]) {
     if (internalItemsNeedingHydration.length > 0) {
         const internalProductIds = [...new Set(internalItemsNeedingHydration.map(i => i.internalProductId!))];
         const internalProducts = await prisma.internalProduct.findMany({
-            where: { id: { in: internalProductIds } }
+            where: { id: { in: internalProductIds }, accountId }
         });
         const internalProductMap = new Map(internalProducts.map(p => [p.id, p]));
         enrichedItems = enrichedItems.map(item => {
@@ -33,7 +33,7 @@ async function enrichBOMItems(bomItems: any[]) {
     if (variantItemsNeedingHydration.length > 0) {
         const parentProductIds = [...new Set(variantItemsNeedingHydration.map(i => i.childProductId!))];
         const parentProducts = await prisma.wooProduct.findMany({
-            where: { id: { in: parentProductIds } },
+            where: { id: { in: parentProductIds }, accountId },
             select: { id: true, name: true, rawData: true }
         });
         const parentMap = new Map(parentProducts.map(p => [p.id, p]));
@@ -99,7 +99,7 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
                 }
             }
 
-            const enrichedItems = await enrichBOMItems(bom.items);
+            const enrichedItems = await enrichBOMItems(bom.items, accountId);
             return { ...bom, items: enrichedItems };
         } catch (error: any) {
             Logger.error('Error fetching BOM', { error, productId, variationId });

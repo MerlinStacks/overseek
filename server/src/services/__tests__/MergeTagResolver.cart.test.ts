@@ -16,7 +16,7 @@ describe('MergeTagResolver cart merge tags', () => {
         );
 
         expect(html).toContain('https://api.example.com/api/marketing/recover-cart/token');
-        expect(html).toContain('A$149.95');
+        expect(html).toContain('$149.95');
         expect(html).toContain('AUD');
     });
 

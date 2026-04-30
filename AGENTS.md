@@ -148,17 +148,29 @@ Register in `server/src/app.ts`: `app.register(featureRoutes, { prefix: '/api/fe
 
 ### Frontend Data Fetching
 
-Use native `fetch` with auth headers — **do not use React Query** for data fetching in components.
+Use the `useApiQuery` and `useApiMutation` hooks (wraps `@tanstack/react-query`) for data fetching in components. These hooks handle auth headers automatically.
 
 ```tsx
-const { token } = useAuth();
-const { selectedAccount } = useAccount();
+import { useApiQuery, useApiMutation } from '../hooks/useApiQuery';
 
-const res = await fetch('/api/endpoint', {
-    headers: {
-        'Authorization': `Bearer ${token}`,
-        'X-Account-ID': selectedAccount.id,
+// Query
+const { data, isLoading, error } = useApiQuery({
+    queryKey: ['endpoint'],
+    queryFn: async () => {
+        const res = await fetch('/api/endpoint', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-Account-ID': selectedAccount.id,
+            }
+        });
+        return res.json();
     }
+});
+
+// Mutation
+const { mutate, isPending } = useApiMutation({
+    mutationFn: async (data) => { /* ... */ },
+    invalidateQueries: [['endpoint']]
 });
 ```
 

@@ -1,5 +1,4 @@
 import { prisma } from '../../../utils/prisma';
-import { Logger } from '../../../utils/logger';
 import type { ManagedProduct } from './types';
 
 export async function getManagedStockProducts(accountId: string): Promise<ManagedProduct[]> {

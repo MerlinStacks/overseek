@@ -5,7 +5,7 @@
  * State management delegated to useProductEdit hook.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -333,7 +333,7 @@ function ProductEditPageContent({
         }
     ];
 
-    const tabIds = useMemo(() => tabs.map(tab => tab.id), [tabs]);
+       const tabIds = tabs.map(tab => tab.id);
     const activeTab = tabIds.includes(activeTabParam || '') ? (activeTabParam as string) : tabIds[0];
 
     useEffect(() => {

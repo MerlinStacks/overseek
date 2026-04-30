@@ -10,7 +10,7 @@
  * the static SEO score logic, keeping both maintainable independently.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Search, TrendingUp, MousePointerClick, Eye, ArrowUpDown,
     Loader2, Link2, BarChart3, ChevronDown, ChevronUp
@@ -37,19 +37,23 @@ export function ProductSearchInsightsPanel({ permalink }: Props) {
     const [sortField, setSortField] = useState<SortField>('clicks');
     const [sortDir, setSortDir] = useState<SortDir>('desc');
     const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
+    const prevPermalinkRef = useRef(permalink);
 
+    // Reset tracking when permalink changes, mark resolved when loading finishes
     useEffect(() => {
-        setHasResolvedOnce(false);
-    }, [permalink]);
-
-    useEffect(() => {
-        if (!permalink) return;
-        if (!isStatusLoading && !isLoading) {
+        /* eslint-disable react-hooks/set-state-in-effect */
+        if (prevPermalinkRef.current !== permalink) {
+            prevPermalinkRef.current = permalink;
+            setHasResolvedOnce(false);
+        } else if (permalink && !isStatusLoading && !isLoading && !hasResolvedOnce) {
             setHasResolvedOnce(true);
         }
-    }, [isLoading, isStatusLoading, permalink]);
+        /* eslint-enable react-hooks/set-state-in-effect */
+    }, [permalink, isLoading, isStatusLoading, hasResolvedOnce]);
 
-    if (!hasResolvedOnce && (isStatusLoading || isLoading)) {
+    const isInitialLoading = permalink && !hasResolvedOnce && (isStatusLoading || isLoading);
+
+    if (isInitialLoading) {
         return <LoadingSkeleton />;
     }
 

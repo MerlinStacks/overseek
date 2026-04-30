@@ -4,7 +4,6 @@ import {
     useQueryClient,
     type QueryKey,
     type UseQueryOptions,
-    type UseMutationOptions,
 } from '@tanstack/react-query';
 
 interface UseApiQueryOptions<TData> {
@@ -55,7 +54,7 @@ interface UseApiMutationOptions<TData, TVariables = void> {
 }
 
 interface UseApiMutationResult<TData, TVariables = void> {
-    mutate: (variables?: TVariables) => void;
+    mutate: (variables?: TVariables, options?: { onSuccess?: (data: TData) => void }) => void;
     mutateAsync: (variables?: TVariables) => Promise<TData>;
     isPending: boolean;
     error: Error | null;
@@ -79,7 +78,13 @@ export function useApiMutation<TData, TVariables = void>({
     });
 
     return {
-        mutate: (variables?: TVariables) => mutation.mutate(variables as TVariables),
+        mutate: (variables?: TVariables, options?: { onSuccess?: (data: TData) => void }) => {
+            if (options?.onSuccess) {
+                mutation.mutate(variables as TVariables, { onSuccess: options.onSuccess as any });
+            } else {
+                mutation.mutate(variables as TVariables);
+            }
+        },
         mutateAsync: async (variables?: TVariables) => mutation.mutateAsync(variables as TVariables),
         isPending: mutation.isPending,
         error: mutation.error,
@@ -90,7 +95,7 @@ export function useApiMutation<TData, TVariables = void>({
  * Invalidate queries matching the given prefix key.
  * Backwards-compatible with the old custom-cache prefix invalidation.
  */
-export function invalidateQuery(prefix: QueryKey): void {
+export function invalidateQuery(_prefix: QueryKey): void {
     // This function requires a QueryClient instance, so it's replaced by
     // the hook-based pattern. For non-hook consumers, import useQueryClient.
 }

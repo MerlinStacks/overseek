@@ -10,8 +10,6 @@ import type {
     SkuForecast,
     StockoutAlert,
     SkuForecastDetail,
-    ForecastCurvePoint,
-    ManagedProduct,
 } from './inventory-forecast/types';
 import { getManagedStockProducts } from './inventory-forecast/queries';
 import { getHistoricalSales } from './inventory-forecast/sales';

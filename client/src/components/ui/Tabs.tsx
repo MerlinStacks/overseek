@@ -25,17 +25,20 @@ export function Tabs({
     onTabChange
 }: TabsProps) {
     const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState(defaultTab || tabs[0].id);
-    const activeTab = controlledActiveTab ?? uncontrolledActiveTab;
+
+    const rawActiveTab = controlledActiveTab ?? uncontrolledActiveTab;
+    const isValidTab = tabs.some(tab => tab.id === rawActiveTab);
+    const fallbackTab = defaultTab || tabs[0].id;
+    const activeTab = isValidTab ? rawActiveTab : fallbackTab;
 
     useEffect(() => {
-        if (!tabs.some(tab => tab.id === activeTab)) {
-            const fallbackTab = defaultTab || tabs[0].id;
-            if (controlledActiveTab === undefined) {
-                setUncontrolledActiveTab(fallbackTab);
-            }
+        if (!isValidTab && controlledActiveTab === undefined) {
+            // Guard: when active tab is removed from tab list, fall back to a valid tab
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setUncontrolledActiveTab(fallbackTab);
             onTabChange?.(fallbackTab);
         }
-    }, [activeTab, controlledActiveTab, defaultTab, onTabChange, tabs]);
+    }, [isValidTab, controlledActiveTab, fallbackTab, onTabChange]);
 
     const handleTabChange = (tabId: string) => {
         if (controlledActiveTab === undefined) {

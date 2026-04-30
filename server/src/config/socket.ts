@@ -34,20 +34,26 @@ export async function initializeSocketIO(server: http.Server, fastify: FastifyIn
             if (!token) return next(new Error('Unauthorized'));
 
             const decoded = verifyToken(token) as { userId: string };
-            const user = await prisma.user.findUnique({
-                where: { id: decoded.userId },
-                select: { isSuperAdmin: true }
-            });
-            const memberships = await prisma.accountUser.findMany({
-                where: { userId: decoded.userId },
-                select: { accountId: true }
-            });
 
-            socket.data.userId = decoded.userId;
-            socket.data.isSuperAdmin = user?.isSuperAdmin === true;
-            socket.data.accountIds = memberships.map(m => m.accountId);
+            try {
+                const user = await prisma.user.findUnique({
+                    where: { id: decoded.userId },
+                    select: { isSuperAdmin: true }
+                });
+                const memberships = await prisma.accountUser.findMany({
+                    where: { userId: decoded.userId },
+                    select: { accountId: true }
+                });
 
-            return next();
+                socket.data.userId = decoded.userId;
+                socket.data.isSuperAdmin = user?.isSuperAdmin === true;
+                socket.data.accountIds = memberships.map(m => m.accountId);
+
+                return next();
+            } catch (dbError) {
+                Logger.error('[Socket.IO] Database error during auth', { error: dbError });
+                return next(new Error('Internal Server Error'));
+            }
         } catch (error) {
             const isExpired = error instanceof Error && error.name === 'TokenExpiredError';
             if (isExpired) {

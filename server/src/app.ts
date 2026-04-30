@@ -166,17 +166,18 @@ async function build() {
 }
 
 let server: http.Server;
-let io: ReturnType<typeof import('socket.io').Server>;
+let io: import('socket.io').Server | undefined;
 
 async function initializeApp() {
-    await build();
-    server = fastify.server;
-    const { io: socketIo, chatService } = await initializeSocketIO(server, fastify);
+    const app = await build();
+    server = app.server;
+    const { io: socketIo, chatService } = await initializeSocketIO(server, app);
     io = socketIo;
     subscribeEventBus(chatService, automationEngine);
     setupSocketHandlers(io);
+    return app;
 }
 
 const appPromise = initializeApp();
 
-export { fastify as app, server, io, automationEngine, appPromise };
+export { fastify, server, io, automationEngine, appPromise };

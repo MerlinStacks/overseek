@@ -4,7 +4,7 @@ dotenv.config({ quiet: true });
 
 import os from 'os';
 
-import { appPromise, app } from './app';
+import { appPromise, fastify } from './app';
 import { SchedulerService } from './services/scheduler';
 import { startWorkers } from './workers';
 import { IndexingService } from './services/search/IndexingService';
@@ -134,7 +134,7 @@ async function start() {
 
   // Start Fastify server
   try {
-    await app.listen({ port: Number(port), host: '0.0.0.0' });
+    await fastify.listen({ port: Number(port), host: '0.0.0.0' });
     Logger.info(`[Server] Fastify listening on http://0.0.0.0:${port}`);
 
     // Print human-readable startup banner to console
@@ -151,7 +151,7 @@ async function start() {
     console.log('');
 
     // Initialize graceful shutdown after server starts
-    initGracefulShutdown(app.server);
+    initGracefulShutdown(fastify.server);
   } catch (error) {
     Logger.error('[CRITICAL] Failed to start server', { error });
     process.exit(1);

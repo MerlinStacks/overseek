@@ -1,5 +1,4 @@
 import { FastifyPluginAsync } from 'fastify';
-import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
 import { PicklistService } from '../../services/PicklistService';
