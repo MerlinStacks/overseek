@@ -1,0 +1,355 @@
+
+// --------------------------------------
+// Identity & Access Management
+// --------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String?
+  avatarUrl    String?
+  shiftStart   String? // e.g. "09:00"
+  shiftEnd     String? // e.g. "17:00"
+  emailSignature String? @db.Text // Rich HTML email signature for inbox replies
+  isSuperAdmin Boolean  @default(false)
+  
+  // Password Reset
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  // Two-Factor Auth
+  twoFactorSecret    String? // Store encrypted ideally, but raw for MVP
+  isTwoFactorEnabled Boolean @default(false)
+  twoFactorBackupCodes Json? @default("[]")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts              AccountUser[]
+  dashboards            DashboardLayout[]
+  assignedConversations Conversation[]
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+  pushSubscriptions     PushSubscription[]
+  notificationReads     NotificationRead[]
+  blockedContacts       BlockedContact[]
+  messageReactions      MessageReaction[]
+  scheduledMessages     Message[]            @relation("ScheduledMessages")
+  conversationNotes     ConversationNote[]   @relation("UserConversationNotes")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+}
+
+model Account {
+  id     String  @id @default(uuid())
+  name   String
+  domain String? // e.g. "mystore.com"
+
+  // WooCommerce Connection (Secrets should be encrypted at app level)
+  wooUrl            String
+  wooConsumerKey    String
+  wooConsumerSecret String
+  webhookSecret     String?
+  wooNeedsReconnect Boolean  @default(false) // Set to true when credentials are revoked
+
+  // Settings
+  currency      String @default("USD")
+  timezone      String @default("UTC")
+  weightUnit    String @default("kg")
+  dimensionUnit String @default("cm")
+
+  // Financial Settings
+  revenueTaxInclusive Boolean @default(true)
+
+  // Gold Price Settings
+  goldPrice         Decimal? @default(0) @db.Decimal(10, 2)
+  goldPriceCurrency String?  @default("USD")
+
+  goldPrice18ct      Decimal? @default(0) @db.Decimal(10, 2)
+  goldPrice9ct       Decimal? @default(0) @db.Decimal(10, 2)
+  goldPrice18ctWhite Decimal? @default(0) @db.Decimal(10, 2)
+  goldPrice9ctWhite  Decimal? @default(0) @db.Decimal(10, 2)
+  goldPriceMargin    Decimal? @default(10) @db.Decimal(10, 2)
+  goldPriceUpdatedAt DateTime? // When gold prices were last successfully fetched (independent of general updatedAt)
+
+  // AI Settings
+  openRouterApiKey String?
+  aiModel          String? @default("mistralai/mistral-7b-instruct")
+  embeddingModel   String? @default("openai/text-embedding-3-small")
+
+  // Whitelabel / Appearance
+  appearance Json? @default("{}")
+
+  // Order Tag Mappings - defines which product tags create order tags
+  // Format: [{ productTag: "engrave", orderTag: "Engraving", enabled: true }]
+  orderTagMappings Json? @default("[]")
+
+  // Analytics IP Exclusion List - IPs to exclude from tracking (admins, team, etc.)
+  // Format: ["192.168.1.1", "10.0.0.0/24", "2001:db8::1"]
+  excludedIps Json? @default("[]")
+
+  // Crawler block page template (HTML). Served to blocked bots instead of bare 403.
+  crawlerBlockPageHtml String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         AccountUser[]
+  adAccounts    AdAccount[]
+  features      AccountFeature[]
+  dashboards    DashboardLayout[]
+  emailAccounts EmailAccount[]
+  emailLogs     EmailLog[]
+  SyncState     SyncState[]
+  SyncLog       SyncLog[]
+  WooOrder      WooOrder[]
+  WooProduct    WooProduct[]
+  WooCustomer   WooCustomer[]
+  WooReview     WooReview[]
+  Notification  Notification[]
+  Supplier      Supplier[]
+
+  // Chat & Support
+  conversations         Conversation[]
+  cannedResponses       CannedResponse[]
+  cannedResponseLabels  CannedResponseLabel[]
+
+  // Marketing & Automation
+  marketingCampaigns   MarketingCampaign[]
+  marketingAutomations MarketingAutomation[]
+  automationEnrollments AutomationEnrollment[]
+  emailTemplates       EmailTemplate[]
+  AnalyticsSession     AnalyticsSession[]
+  segments             CustomerSegment[]
+  audienceSyncs        AudienceSync[]
+
+  reportTemplates ReportTemplate[]
+  reportSchedules ReportSchedule[]
+  invoiceTemplates InvoiceTemplate[]
+
+  purchaseOrders PurchaseOrder[]
+
+  // Advanced Operations
+  auditLogs         AuditLog[]
+  inventorySettings InventorySettings?
+  
+  // Policies & SOP
+  policies          Policy[]
+  
+  // Push Notifications
+  pushSubscriptions PushSubscription[]
+  
+  // Social Media Messaging
+  socialAccounts    SocialAccount[]
+  
+  // Blocked Contacts
+  blockedContacts   BlockedContact[]
+  
+  // Conversation Labels
+  conversationLabels ConversationLabel[]
+  
+  // Inbox Macros
+  inboxMacros        InboxMacro[]
+  
+  // AI Ad Optimization Context
+  adSuggestionContext AdSuggestionContext?
+  
+  // Campaign ROI Tracking
+  campaignEvents      CampaignEvent[]
+  automationGoalEvents AutomationGoalEvent[]
+  automationRunEvents  AutomationRunEvent[]
+  generatedCoupons     GeneratedCoupon[]
+  
+  // SMS Settings (per-account Twilio)
+  smsSettings         SmsSettings?
+  
+  // Email Unsubscribes
+  emailUnsubscribes   EmailUnsubscribe[]
+
+  // Roles
+  roles               AccountRole[]
+  
+  // Webhook Deliveries (for replay)
+  webhookDeliveries   WebhookDelivery[]
+  
+  // Notification Deliveries
+  notificationDeliveries NotificationDelivery[]
+  notificationReads      NotificationRead[]
+
+  // Rate Limiting
+  rateLimit           AccountRateLimit?
+
+  // Internal Products (component-only, not synced to WooCommerce)
+  internalProducts    InternalProduct[]
+  
+  // BOM Deduction Ledger (crash-recovery audit trail)
+  bomDeductionLedger  BOMDeductionLedger[]
+
+  // Backup System
+  backupSettings      AccountBackupSettings?
+  storedBackups       StoredBackup[]
+
+  // Google Search Console
+  searchConsoleAccounts      SearchConsoleAccount[]
+  defaultSearchConsoleSiteUrl String?  // Persisted domain selection for SEO page
+  trackedKeywords       TrackedKeyword[]
+  keywordGroups         KeywordGroup[]
+  competitorDomains     CompetitorDomain[]
+
+  // Crawler Detection & Blocking
+  crawlerLogs           CrawlerLog[]
+  crawlerRules          CrawlerRule[]
+
+  // Real User Monitoring
+  webVitalSamples       WebVitalSample[]
+}
+
+// --------------------------------------
+// Per-Account Rate Limiting
+// --------------------------------------
+
+/// Configurable per-account API rate limits.
+model AccountRateLimit {
+  id        String @id @default(uuid())
+  accountId String @unique
+  
+  /// Maximum requests per window
+  maxRequests   Int @default(1000)
+  /// Window size in seconds (default 15 minutes)
+  windowSeconds Int @default(900)
+  
+  /// Tier for different limit profiles
+  tier String @default("STANDARD") // STANDARD, PREMIUM, ENTERPRISE
+  
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model NotificationRead {
+  id             String   @id @default(uuid())
+  notificationId String
+  userId         String
+  accountId      String
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([accountId, userId, readAt(sort: Desc)])
+  @@index([notificationId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+  VIEWER
+}
+
+model AccountUser {
+  id        String @id @default(uuid())
+  userId    String
+  accountId String
+  role      Role   @default(STAFF)
+
+  // Granular permissions override (e.g. { "can_manage_ads": true })
+  permissions Json? @default("{}")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roleId String?
+  maxRole AccountRole? @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, accountId])
+}
+
+model AccountRole {
+  id        String   @id @default(uuid())
+  accountId String
+  name      String   // e.g. "Packing & QA", "Production"
+  
+  // JSON object defining granular capabilities
+  // e.g. { "view_finance": false, "view_products": true, "edit_orders": false, "edit_order_tags": true }
+  permissions Json   @default("{}")
+
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  users     AccountUser[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+}
+
+// --------------------------------------
+// Feature Flags & Integrations
+// --------------------------------------
+
+model AccountFeature {
+  id         String  @id @default(uuid())
+  accountId  String
+  featureKey String // e.g. "META_ADS", "GOOGLE_ADS", "ADVANCED_REPORTS"
+  isEnabled  Boolean @default(false)
+
+  // Feature specific config (e.g. Ad Account ID, Access Token)
+  config Json? @default("{}")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, featureKey])
+}
+
+// --------------------------------------
+// Push Notifications
+// --------------------------------------
+
+/// Stores Web Push subscription data per user/device for sending notifications.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  accountId String
+  
+  /// Web Push subscription endpoint URL
+  endpoint    String   @db.Text
+  /// P-256 public key for payload encryption
+  p256dh      String
+  /// Authentication secret
+  auth        String
+  
+  /// User preferences for notification types
+  notifyNewMessages Boolean @default(true)
+  notifyNewOrders   Boolean @default(true)
+  notifyLowStock    Boolean @default(false)
+  notifyDailySummary Boolean @default(false)
+  
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, endpoint])
+  @@index([accountId])
+}

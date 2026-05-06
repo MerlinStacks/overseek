@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.3.2-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.6.0-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/AI-powered-ff6b6b?logo=openai&logoColor=white" alt="AI Powered">
@@ -45,6 +45,7 @@ OverSeek fixes that. It's a self-hosted dashboard that syncs with your WooCommer
 - 📦 **Inventory & warehouse** — Stock alerts based on sales velocity, BOM management, purchase orders, and picklists
 - ⚡ **Marketing automation** — Abandoned cart flows, welcome series, post-purchase emails with visual flow builder
 - 📧 **Business intelligence** — Daily/weekly email digests, customer cohort analysis, and product performance rankings
+- 🔌 **MCP Server & CLI** — AI-friendly read-only store access via Model Context Protocol and terminal
 - 🧾 **Invoice designer** — Drag-and-drop invoice builder with PDF generation
 - 📱 **Progressive Web App** — Full mobile experience with push notifications and share target support
 
@@ -156,6 +157,9 @@ Daily/weekly email digests land in your inbox with revenue, top products, and tr
 ### 📦 Inventory & Warehouse
 Low stock alerts based on sales velocity (not just static thresholds). Bill of Materials for bundles and kits with circular-reference prevention. Purchase orders with supplier management. Picklists that optimize your warehouse walking path. SEO and Google Merchant Center health scores per product.
 
+### 🛡️ Bot Shield
+Browser fingerprinting at checkout blocks known crawlers and bots in real-time. Crawler management dashboard with live detection, whitelist/blacklist controls, and 24-hour blocked hit counters. Web Vitals collection for real-user performance monitoring.
+
 ### ⚡ Marketing Automation
 Visual flow builder with drag-and-drop. Abandoned cart sequences, post-purchase follow-ups, welcome series. MJML-powered email templates that look great everywhere. Broadcast campaigns with audience segmentation.
 
@@ -181,7 +185,7 @@ Centralized event-driven notification engine with in-app, web push (VAPID), and 
 | Backend | Node.js 22, Fastify 5, Prisma 7 |
 | Database | PostgreSQL 17 (pgvector), Elasticsearch 9, Redis 7 |
 | AI | OpenRouter API (GPT-4, Claude, etc.) |
-| Infrastructure | Docker Compose, GitHub Actions CI/CD |
+| Infrastructure | Docker Compose, GitHub Actions CI/CD, MCP |
 
 ---
 

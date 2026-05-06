@@ -1,0 +1,462 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --------------------------------------
+// Webhook Delivery Logging
+// --------------------------------------
+
+/// Stores all incoming webhook deliveries for auditing and replay.
+model WebhookDelivery {
+  id        String   @id @default(uuid())
+  accountId String
+
+  /// Webhook topic: "order.created", "product.updated", etc.
+  topic     String
+  /// Source platform: WOOCOMMERCE, META, TIKTOK
+  source    String   @default("WOOCOMMERCE")
+  /// Full webhook payload for replay
+  payload   Json
+  
+  /// Delivery status: RECEIVED, PROCESSED, FAILED
+  status    String   @default("RECEIVED")
+  /// Number of processing attempts
+  attempts  Int      @default(1)
+  /// Error message if failed
+  lastError String?  @db.Text
+  
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  @@index([accountId, status])
+  @@index([accountId, receivedAt])
+  @@index([status, receivedAt])
+}
+
+// --------------------------------------
+// Conversion Delivery Logging (CAPI)
+// --------------------------------------
+
+/// Logs server-side conversion events sent to ad platforms.
+/// Enables auditing, retry, and debugging of CAPI/Events API deliveries.
+model ConversionDelivery {
+  id          String   @id @default(uuid())
+  accountId   String
+
+  /// Target platform: META, TIKTOK, GOOGLE, PINTEREST, GA4
+  platform    String
+  /// Platform event name: "Purchase", "AddToCart", etc.
+  eventName   String
+  /// Deduplication key — matches plugin-generated eventId for pixel dedup
+  eventId     String
+  /// Full payload sent to the platform API
+  payload     Json
+  /// Delivery status: PENDING, SENT, FAILED
+  status      String   @default("PENDING")
+  /// HTTP response code from platform
+  httpStatus  Int?
+  /// Platform response body (for debugging)
+  response    String?  @db.Text
+  /// Number of delivery attempts
+  attempts    Int      @default(0)
+  /// Error message from last failed attempt
+  lastError   String?  @db.Text
+  /// When the event was successfully sent
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  // Note: intentionally no Account relation — adding a FK retroactively
+  // risks data loss if any orphaned rows exist. accountId is enforced at
+  // the application layer instead.
+
+  @@index([accountId, status])
+  @@index([accountId, platform, createdAt])
+  @@index([eventId])
+}
+
+/// Per-account SMS/Twilio configuration.
+
+model SmsSettings {
+  id        String @id @default(uuid())
+  accountId String @unique
+
+  /// Twilio Account SID
+  accountSid String
+
+  /// Twilio Auth Token (encrypted)
+  authToken String
+
+  /// From phone number (E.164 format, e.g., +1234567890)
+  fromNumber String
+
+  /// Optional: enabled flag
+  enabled Boolean @default(true)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String @id @default(uuid())
+  accountId String
+
+  title   String
+  message String
+  type    String  @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  isRead  Boolean @default(false)
+  link    String? // Optional URL to navigate to
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reads   NotificationRead[]
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, isRead])
+}
+
+// --------------------------------------
+// Dashboard & Widgets
+// --------------------------------------
+
+model WidgetDefinition {
+  id          String  @id @default(uuid())
+  key         String  @unique // e.g. "REVENUE_CHART_V1"
+  name        String
+  description String?
+  category    String // "Analytics", "Marketing", "Operations"
+
+  // Default configuration schema for this widget
+  defaultConfig Json? @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DashboardLayout {
+  id        String  @id @default(uuid())
+  userId    String
+  accountId String
+  name      String  @default("Main Dashboard")
+  isDefault Boolean @default(false)
+
+  // Layout Grid Configuration
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  widgets DashboardWidget[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DashboardWidget {
+  id          String @id @default(uuid())
+  dashboardId String
+  widgetKey   String // References WidgetDefinition.key
+
+  // Grid Position (x, y, w, h)
+  position Json
+
+  // Instance specific settings (e.g. "Show last 7 days")
+  settings Json? @default("{}")
+
+  // Ordering for stable layout persistence
+  sortOrder Int @default(0)
+
+  dashboard DashboardLayout @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// Email Integration
+// --------------------------------------
+
+model EmailAccount {
+  id        String @id @default(uuid())
+  accountId String
+  name      String // e.g. "Support Inbox"
+  email     String // e.g. "support@myapp.com"
+
+  // SMTP (Outgoing) Configuration
+  smtpEnabled  Boolean @default(false)
+  smtpHost     String?
+  smtpPort     Int?
+  smtpUsername String?
+  smtpPassword String? // Encrypted at app level
+  smtpSecure   Boolean @default(true)
+
+  // IMAP (Incoming) Configuration
+  imapEnabled  Boolean @default(false)
+  imapHost     String?
+  imapPort     Int?
+  imapUsername String?
+  imapPassword String? // Encrypted at app level
+  imapSecure   Boolean @default(true)
+
+  // HTTP Relay Configuration (for SMTP-blocked environments)
+  relayEndpoint String? // e.g. "https://example.com/wp-json/overseek/v1/email-relay"
+  relayApiKey   String? // API key for relay authentication (encrypted at app level)
+
+  isDefault Boolean @default(false) // Default for sending
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  logs    EmailLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+model EmailLog {
+  id             String   @id @default(uuid())
+  accountId      String
+  emailAccountId String
+  
+  to             String
+  subject        String
+  
+  status         String   // SUCCESS, FAILED, PENDING_RETRY
+  errorMessage   String?  @db.Text
+  errorCode      String?  // SMTP error code if available
+  
+  // Context (what triggered this email)
+  source         String?  // "AUTOMATION", "REPORT", "INVENTORY_ALERT", "MANUAL"
+  sourceId       String?  // e.g. automationId, reportScheduleId
+  
+  messageId      String?  // SMTP message ID on success
+  
+  // Email tracking (read receipts)
+  trackingId     String?  @unique  // UUID for tracking pixel
+  firstOpenedAt  DateTime?
+  openCount      Int      @default(0)
+  
+  // Retry support for failed emails
+  retryCount     Int      @default(0)   // Number of retry attempts
+  maxRetries     Int      @default(3)   // Max allowed retries
+  canRetry       Boolean  @default(true) // Whether retry is allowed
+  lastRetryAt    DateTime?              // When last retry was attempted
+  emailPayload   Json?                  // Stored payload for retry { html, attachments, options }
+  
+  createdAt      DateTime @default(now())
+  
+  account        Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  trackingEvents MessageTrackingEvent[]
+  
+  @@index([accountId, createdAt])
+  @@index([emailAccountId])
+  @@index([trackingId])
+  @@index([status, canRetry]) // For finding retryable failed emails
+}
+
+// --------------------------------------
+// Advanced Operations
+// --------------------------------------
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  accountId  String
+  userId     String? // Nullable if automated system action
+  action     String // "UPDATE", "CREATE", "DELETE"
+  resource   String // "PRODUCT", "ORDER", "SETTINGS"
+  resourceId String // e.g. Product ID
+  details    Json // { field: "price", from: 10, to: 20 }
+  
+  // Enhanced audit fields for stock tracking
+  source           String?  @default("USER") // USER, SYSTEM_BOM, SYSTEM_SYNC
+  previousValue    Json?    // State before change (e.g. { stock_quantity: 10 })
+  validationStatus String?  // PASSED, SKIPPED, MISMATCH_OVERRIDE
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, resource, resourceId])
+  @@index([accountId, createdAt])
+}
+
+// --------------------------------------
+// Platform Credentials (Super Admin)
+// --------------------------------------
+
+/// Stores global platform API credentials for integrations.
+/// Only Super Admins can manage these credentials.
+model PlatformCredentials {
+  id        String @id @default(uuid())
+  
+  /// Platform identifier: "GOOGLE_ADS", "META_ADS", etc.
+  platform  String @unique
+  
+  /// Encrypted/stored credentials as JSON
+  /// For Google: { clientId, clientSecret, developerToken }
+  /// For Meta: { appId, appSecret }
+  credentials Json
+  
+  /// Optional notes for admin reference
+  notes String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// Platform Settings (Super Admin)
+// --------------------------------------
+
+/// Global platform settings (singleton pattern).
+/// Only Super Admins can manage these settings.
+model PlatformSettings {
+  id        String @id @default(uuid())
+  
+  /// Unique key - always "default" for singleton pattern
+  key       String @unique @default("default")
+  
+  /// Whether new user registrations are allowed
+  registrationEnabled Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// AI Prompts (Super Admin)
+// --------------------------------------
+
+/// Stores configurable AI prompt templates.
+/// Only Super Admins can manage these prompts.
+model AIPrompt {
+  id        String @id @default(uuid())
+  
+  /// Unique prompt identifier: "product_description", "customer_email", etc.
+  promptId  String @unique
+  
+  /// The prompt template content
+  content   String @db.Text
+  
+  /// Name for display purposes
+  name      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------
+// Policies & SOP
+// --------------------------------------
+
+/// Stores policies, SOPs, and training materials for staff and AI reference.
+model Policy {
+  id        String @id @default(uuid())
+  accountId String
+
+  title     String
+  content   String  @db.Text  // Markdown content
+  type      String  @default("POLICY")  // POLICY, SOP, TRAINING
+  category  String?  // Optional grouping (e.g. "Safety", "Operations")
+  isPublished Boolean @default(true)
+  
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, type])
+}
+
+// --------------------------------------
+// Notification Delivery Logging
+// --------------------------------------
+
+/// Logs all notification delivery attempts for debugging and observability.
+model NotificationDelivery {
+  id             String   @id @default(uuid())
+  accountId      String
+  
+  /// Event that triggered this notification
+  eventType      String   // "ORDER_CREATED", "MESSAGE_RECEIVED", etc.
+  
+  /// Channels attempted
+  channels       Json     // ["in_app", "push"]
+  
+  /// Delivery status per channel
+  results        Json     // { "in_app": "sent", "push": { "sent": 2, "failed": 0 } }
+  
+  /// Subscription lookup debug info
+  subscriptionLookup Json? // { "accountId": "...", "found": 2, "filtered": 1 }
+  
+  /// Original event payload (truncated for size)
+  payload        Json?
+  
+  createdAt      DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  @@index([accountId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+// --------------------------------------
+// Account Backup System
+// --------------------------------------
+
+/// Per-account backup configuration for scheduled auto-backups.
+model AccountBackupSettings {
+  id        String @id @default(uuid())
+  accountId String @unique
+
+  /// Whether scheduled backups are enabled
+  isEnabled     Boolean   @default(false)
+  /// Backup frequency: "DAILY", "EVERY_3_DAYS", "WEEKLY"
+  frequency     String    @default("WEEKLY")
+  /// Maximum number of backups to retain (auto-delete oldest)
+  maxBackups    Int       @default(5)
+  /// When the last backup was created
+  lastBackupAt  DateTime?
+  /// When the next scheduled backup should run
+  nextBackupAt  DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Stored backup file metadata.
+model StoredBackup {
+  id        String @id @default(uuid())
+  accountId String
+
+  /// Filename on disk, e.g., "backup_2026-01-20_143000.json.gz"
+  filename    String
+  /// File size in bytes
+  sizeBytes   Int
+  /// Total number of records in the backup
+  recordCount Int
+  
+  /// Backup status: "COMPLETED", "FAILED", "RESTORING"
+  status      String @default("COMPLETED")
+  /// Backup type: "SCHEDULED", "MANUAL"
+  type        String @default("SCHEDULED")
+
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt(sort: Desc)])
+}

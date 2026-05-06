@@ -1,0 +1,315 @@
+
+// --------------------------------------
+// Customer Support (Chat & Inbox)
+// --------------------------------------
+
+enum ConversationChannel {
+  EMAIL
+  CHAT
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+  SMS
+}
+
+model Conversation {
+  id        String @id @default(uuid())
+  accountId String
+
+  // Channel type for message source
+  channel  ConversationChannel @default(CHAT)
+
+  // Link to specific known customer (optional, for visitors it's null)
+  wooCustomerId String?
+
+  status   String @default("OPEN") // OPEN, CLOSED, SNOOZED
+  isRead   Boolean @default(false) // Tracks whether staff has read the conversation
+  priority String @default("MEDIUM") // LOW, MEDIUM, HIGH
+  
+  // Snooze support - when set, conversation is snoozed until this time
+  snoozedUntil DateTime?
+
+  assignedTo String? // User ID of agent
+
+  // For "Live Chat", we might track a visitor token if they aren't logged in
+  visitorToken String?
+
+  // For email conversations from unknown senders (no WooCustomer match)
+  guestEmail String?
+  guestName  String?
+  
+  // Conversation title (e.g., email subject line)
+  title      String?
+
+  // Social messaging platform identifiers
+  externalConversationId String?        // Platform-specific thread ID
+  socialAccountId        String?        // Links to SocialAccount
+  socialAccount          SocialAccount? @relation(fields: [socialAccountId], references: [id])
+
+  // Merging support
+  mergedIntoId String?
+  mergedInto   Conversation?  @relation("ConversationMerges", fields: [mergedIntoId], references: [id])
+  mergedFrom   Conversation[] @relation("ConversationMerges")
+
+  messages Message[]
+  labels   ConversationLabelAssignment[]
+  notes    ConversationNote[]
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  wooCustomer WooCustomer? @relation(fields: [wooCustomerId], references: [id])
+  assignee    User?        @relation(fields: [assignedTo], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Performance indexes for inbox queries
+  @@index([accountId, status])
+  @@index([accountId, channel])
+  @@index([accountId, status, updatedAt(sort: Desc)])  // Covers main list query with ORDER BY
+  @@index([accountId, isRead])                          // For unread filter
+  @@index([accountId, assignedTo])                      // For assignment filter
+  @@index([visitorToken])
+  @@index([externalConversationId])
+  @@index([accountId, mergedIntoId])                     // For merged conversation filter
+}
+
+// Conversation Notes - sticky notes visible to all agents
+model ConversationNote {
+  id             String   @id @default(uuid())
+  conversationId String
+  content        String   @db.Text
+  createdById    String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("UserConversationNotes", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conversationId])
+}
+
+model Message {
+  id             String @id @default(uuid())
+  conversationId String
+
+  content     String @db.Text
+  contentType String @default("TEXT") // TEXT, IMAGE, FILE
+
+  senderType String // AGENT, CUSTOMER, SYSTEM
+  senderId   String? // If AGENT -> User.id, If CUSTOMER -> WooCustomer.id (or null if visitor)
+
+  isInternal Boolean   @default(false) // For private notes
+  readAt     DateTime?
+
+  // Email threading: stores RFC 5322 Message-ID for In-Reply-To matching
+  emailMessageId String?
+  
+  // Message scheduling - if set, message won't send until this time
+  scheduledFor   DateTime?
+  scheduledBy    String?    // User ID who scheduled it
+  
+  // Stored attachments for scheduled messages (JSON array of { filename, path, contentType })
+  attachmentPaths Json?     // Attachment metadata preserved until message is sent
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reactions       MessageReaction[]
+  scheduledByUser User?        @relation("ScheduledMessages", fields: [scheduledBy], references: [id])
+
+  createdAt DateTime @default(now())
+  
+  @@index([scheduledFor]) // For efficient scheduled message queries
+  @@index([conversationId, createdAt(sort: Desc)])  // Thread rendering with ORDER BY
+}
+
+model MessageReaction {
+  id        String @id @default(uuid())
+  messageId String
+  userId    String // Agent who reacted
+  emoji     String // e.g. "👍", "❤️", "😊"
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji]) // One reaction per emoji per user per message
+  @@index([messageId])
+}
+
+model CannedResponse {
+  id        String @id @default(uuid())
+  accountId String
+
+  shortcut String // e.g. "hi", "refund"
+  content  String @db.Text
+  labelId  String? // Optional label for grouping
+
+  account Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label   CannedResponseLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, shortcut])
+  @@index([accountId, labelId])
+}
+
+// Labels for canned responses (editable categories)
+model CannedResponseLabel {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+  color     String @default("#6366f1") // Tailwind indigo-500
+
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  responses CannedResponse[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId])
+}
+
+// --------------------------------------
+// Conversation Labels/Tags
+// --------------------------------------
+
+model ConversationLabel {
+  id        String @id @default(uuid())
+  accountId String
+  name      String
+  color     String @default("#6366f1") // Tailwind indigo-500
+  
+  account       Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations ConversationLabelAssignment[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([accountId, name])
+  @@index([accountId])
+}
+
+model ConversationLabelAssignment {
+  id             String @id @default(uuid())
+  conversationId String
+  labelId        String
+  
+  conversation Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  label        ConversationLabel  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([conversationId, labelId])
+  @@index([conversationId])
+  @@index([labelId])
+}
+
+// Inbox Macros - Quick 1-click automation shortcuts
+model InboxMacro {
+  id        String  @id @default(uuid())
+  accountId String
+  name      String            // "Escalate to Manager", "Quick Close"
+  icon      String?           // Lucide icon name
+  color     String? @default("#6366f1")
+  actions   Json              // [{type: 'ASSIGN', userId: 'x'}, {type: 'ADD_TAG', labelId: 'y'}]
+  sortOrder Int     @default(0)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+// Social media messaging accounts (Facebook Pages, Instagram, TikTok)
+model SocialAccount {
+  id            String   @id @default(uuid())
+  accountId     String
+  
+  platform      String   // FACEBOOK, INSTAGRAM, TIKTOK
+  externalId    String   // Page ID or Account ID from platform
+  name          String   // Page/Account display name
+  
+  // Authentication
+  accessToken   String   // Page access token (should be encrypted)
+  refreshToken  String?  // For platforms that use refresh tokens
+  tokenExpiry   DateTime?
+  
+  // Platform-specific metadata
+  // Facebook: { pageId, instagramBusinessAccountId }
+  // Instagram: { igUserId, username }
+  // TikTok: { openId, displayName }
+  metadata      Json?    @default("{}")
+  
+  // Webhook configuration
+  webhookSecret String?  // For verifying incoming webhooks
+  
+  isActive      Boolean  @default(true)
+  
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([accountId, platform, externalId])
+  @@index([accountId])
+  @@index([platform, externalId])
+}
+
+// Blocked contacts for inbox filtering
+model BlockedContact {
+  id        String   @id @default(uuid())
+  accountId String
+  email     String   // The blocked email address
+  reason    String?  // Optional reason for blocking
+  blockedAt DateTime @default(now())
+  blockedBy String?  // User ID who blocked
+  
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  blocker   User?    @relation(fields: [blockedBy], references: [id])
+  
+  @@unique([accountId, email])
+  @@index([accountId])
+}
+
+// --------------------------------------
+// Help Center
+// --------------------------------------
+
+model HelpCollection {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  slug        String  @unique
+  icon        String? // e.g. "Box", "Settings" (Lucide icon name)
+  order       Int     @default(0)
+
+  articles HelpArticle[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model HelpArticle {
+  id           String  @id @default(uuid())
+  collectionId String
+  title        String
+  slug         String  @unique
+  content      String  @db.Text // Markdown content
+  excerpt      String?
+  isPublished  Boolean @default(true)
+  viewCount    Int     @default(0)
+  order        Int     @default(0)
+
+  collection HelpCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([collectionId])
+}

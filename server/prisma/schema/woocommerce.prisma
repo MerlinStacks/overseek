@@ -1,0 +1,254 @@
+
+// --------------------------------------
+// WooCommerce Sync Engine
+// --------------------------------------
+
+model SyncState {
+  id        String @id @default(uuid())
+  accountId String
+
+  // "orders", "products", "customers", "reviews"
+  entityType String
+
+  // The last time we successfully synced this type
+  lastSyncedAt DateTime?
+
+  // Cursor/Page for pagination if needed (optional for now, using dates)
+  cursor String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt // Tracks when this state was last touched
+
+  @@unique([accountId, entityType])
+}
+
+model SyncLog {
+  id        String @id @default(uuid())
+  accountId String
+
+  entityType String // "orders", "products", "customers", "reviews"
+  status     String // "SUCCESS", "FAILED", "IN_PROGRESS"
+  triggerSource String @default("SYSTEM") // SYSTEM, MANUAL, RETRY
+  retryCount Int @default(0)
+
+  itemsProcessed Int     @default(0)
+  errorMessage   String?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, startedAt])
+  @@index([accountId, entityType, status])  // Sync status dashboard queries
+}
+
+// --------------------------------------
+// WooCommerce Cached Data
+// --------------------------------------
+
+model WooOrder {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId  Int // The ID from WooCommerce
+  number String // Order number (e.g "1001")
+
+  status   String // "completed", "processing", etc.
+  currency String
+  total    Decimal @db.Decimal(10, 2)
+
+  // Denormalized fields for performance (extracted from rawData)
+  billingEmail    String?  // Extracted from rawData.billing.email
+  billingCountry  String?  // Extracted from rawData.billing.country
+  wooCustomerId   Int?     // Extracted from rawData.customer_id
+
+  // Store the full raw object for future-proofing
+  rawData Json
+
+  dateCreated  DateTime
+  dateModified DateTime
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviews WooReview[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, dateCreated])
+  @@index([accountId, status, dateCreated(sort: Desc)])  // Order list with status filter
+  @@index([accountId, billingEmail])                      // Customer email lookup
+  @@index([accountId, wooCustomerId])                     // Customer ID lookup
+}
+
+model WooProduct {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId       Int
+  name        String
+  sku         String?
+  price       Decimal? @db.Decimal(10, 2)
+  stockStatus String? // "instock", "outofstock"
+
+  permalink String?
+  mainImage String? // URL
+  images    Json?   @default("[]") // Array of { id, src, alt }
+
+  // Gold Price / Dimensions
+  isGoldPriceApplied Boolean  @default(false)
+  goldPriceType      String?  // "18ct", "9ct", "18ctWhite", "9ctWhite"
+  weight             Decimal? @db.Decimal(10, 4) // kg presumably, or unit based on store
+  length             Decimal? @db.Decimal(10, 2)
+  width              Decimal? @db.Decimal(10, 2)
+  height             Decimal? @db.Decimal(10, 2)
+
+  // COGS & Supplier
+  cogs       Decimal?  @db.Decimal(10, 2)
+  miscCosts  Json?     @default("[]") // Array of { amount, note }
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  // SEO & Scoring
+  seoScore Int?  @default(0) // 0-100
+  seoData  Json? @default("{}") // { focusKeyword: "...", analysis: [...] }
+
+  merchantCenterScore  Int?  @default(0) // 0-100
+  merchantCenterIssues Json? @default("[]") // [{ type: "error", message: "Missing GTIN" }]
+
+  binLocation String? // Warehouse bin location
+
+  // Local stock management (can override WooCommerce)
+  stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
+  manageStock   Boolean @default(false)  // Whether to use local stock instead of WooCommerce
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  boms BOM[]
+  variations ProductVariation[]
+
+  usedInBOMItems     BOMItem[]           @relation("ProductAsBOMComponent")
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, sku])                   // SKU search/lookup
+  @@index([accountId, stockStatus])           // Stock filter (out of stock view)
+  @@index([accountId, updatedAt(sort: Desc)]) // Recent products list
+}
+
+model ProductVariation {
+  id        String @id @default(uuid())
+  productId String // Link to internal WooProduct
+  wooId     Int    // ID of the variation in WooCommerce
+
+  sku         String?
+  price       Decimal? @db.Decimal(10, 2)
+  salePrice   Decimal? @db.Decimal(10, 2)
+  stockStatus String? // "instock", "outofstock"
+  
+  // Local stock management (can override WooCommerce)
+  stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
+  manageStock   Boolean @default(false)  // Whether to use local stock
+  
+  // Physical attributes (synced with WooCommerce)
+  weight  Decimal? @db.Decimal(10, 4)
+  length  Decimal? @db.Decimal(10, 2)
+  width   Decimal? @db.Decimal(10, 2)
+  height  Decimal? @db.Decimal(10, 2)
+  
+  // Custom Fields
+  cogs        Decimal? @db.Decimal(10, 2)
+  miscCosts   Json?    @default("[]") // Array of { amount, note }
+  binLocation String?
+  
+  // Gold Price (per-variant override)
+  isGoldPriceApplied Boolean  @default(false)
+  goldPriceType      String?  // "18ct", "9ct", "18ctWhite", "9ctWhite"
+  
+  images      Json? @default("[]") // Local overrides or cached images
+  rawData     Json? // Store full Woo response
+
+  product     WooProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  bomItemsAsChild BOMItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, wooId])
+  @@index([productId, stockStatus])           // Variant inventory queries
+}
+
+model WooCustomer {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId     Int
+  email     String
+  firstName String?
+  lastName  String?
+
+  totalSpent  Decimal @db.Decimal(10, 2)
+  ordersCount Int
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations Conversation[]
+  reviews       WooReview[]
+
+  @@unique([accountId, wooId])
+  @@index([accountId, email])
+}
+
+model WooReview {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId       Int
+  productId   Int
+  productName String?
+
+  reviewer String
+  rating   Int
+  content  String @db.Text
+  status   String // "approved", "hold", etc.
+
+  dateCreated DateTime
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviewerEmail String?
+
+  // Relations
+  wooCustomerId String?
+  customer      WooCustomer? @relation(fields: [wooCustomerId], references: [id])
+
+  wooOrderId String?
+  order      WooOrder? @relation(fields: [wooOrderId], references: [id])
+
+  // EDGE CASE: Track match status for manual review of orphaned reviews
+  matchStatus String? // "matched" or "unmatched"
+
+  @@unique([accountId, wooId])
+  @@index([accountId, status])                 // Review moderation queries
+  @@index([accountId, rating])                 // Star rating filters
+  @@index([accountId, dateCreated(sort: Desc)]) // Recent reviews list
+}

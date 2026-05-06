@@ -2,6 +2,64 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+**Bot Shield & Crawler Management**
+- Bot Shield: Browser fingerprinting at checkout with crawler guard hardening and live detection
+- Crawler Tracking System: Intelligent crawler detection with management dashboard
+- Web Vitals Collection: Real-user performance metrics (CLS, LCP, FID/INP)
+
+**Advanced Analytics**
+- Customer Lifetime Value (CLV) analysis page with cohort-based projections
+- Average Order Value (AOV) trend visualization
+- Conversion Rate Optimization (CRO) analytics with actionable insights
+- Geographic sales distribution visualization
+- Marketing attribution modeling (first-touch, last-touch, linear, time-decay)
+- A/B testing experiment tracking with statistical significance
+- Product Performance Service: Enhanced ranking with profitability metrics
+- Data refresh hook (`useDataRefresh`) for consistent cache invalidation
+
+**Expanded API Surface**
+- MCP Server (`@overseek/mcp`): Model Context Protocol server for AI tool access
+- CLI (`@overseek/cli`): Read-only store data access from terminal
+- Internal product schemas + dedicated orders route module
+- Invoice template service with custom PDF rendering
+
+**Help Center**
+- Content seeding script for help article database population
+
+### Fixed
+- OOM crashes — replaced in-memory sync Sets with DB-based reconciliation
+- Circuit breaker added to SyncScheduler to prevent OOM retry storms
+- Memory leaks causing OOM kill (exit 137) after ~23h uptime
+- Mobile push notification toggle unresponsive on Android
+- False-SENT Google Conversions now properly retried (response/payload in delivery logs)
+- Blocked checkout page from synchronous pixel config fetch (plugin)
+- Missing X-Account-Id headers causing 400 errors on strict routes
+- Fixed `toLocaleString` calls against undefined in CrawlerManagement
+- Extra brace syntax error in statusCenter.ts
+- Security, reliability, and correctness fixes across 50+ files
+
+### Changed
+- Merged sturdy-v2 fork — consolidated codebases with lint fixes
+- Migrated to React Query for consistent data fetching patterns
+- Refactored app.ts — socket, CAPI, event extraction into modules
+- Decomposed InventoryForecastService into `inventory-forecast/` sub-modules
+- Decomposed routes: orders/, internal products into sub-routers
+- Eliminated N+1 query patterns across 13 service files
+- Hardened Redis error handling
+- Plugin bumped to v2.7.1 with TikTok content_id parameters
+
+### Infrastructure
+- Prisma hygiene audit script (Phase 5) + CI job
+- Conditional husky prepare script (Docker build fix)
+- Removed invalid Elasticsearch settings
+- Web deploy webhook variable correction
+
+---
+
 ## [2.5.0] - 2026-03-24
 
 ### 📡 Server-Side Conversion Tracking (CAPI)
