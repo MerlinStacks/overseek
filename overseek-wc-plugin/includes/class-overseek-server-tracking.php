@@ -211,6 +211,48 @@ class OverSeek_Server_Tracking
 
 
     /**
+     * Auto-configure cache exclusions for popular caching plugins.
+     * Ensures the _os_vid cookie isn't stripped and tracking pages aren't cached.
+     *
+     * Supports: LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache,
+     * WP Fastest Cache, SG Optimizer.
+     */
+    public function configure_cache_exclusions()
+    {
+        // LiteSpeed Cache: vary by our tracking cookie so each visitor
+        // gets their own cached version
+        if (defined('LSCWP_V')) {
+            add_action('litespeed_vary_add', function () {
+                if (function_exists('do_action')) {
+                    do_action('litespeed_vary_append', '_os_vid');
+                }
+            });
+        }
+
+        // WP Rocket: add cookie to "Don't cache pages with these cookies"
+        add_filter('rocket_cache_reject_cookies', function ($cookies) {
+            $cookies[] = '_os_vid';
+            $cookies[] = '_os_utm';
+            $cookies[] = '_os_click';
+            return $cookies;
+        });
+
+        // W3 Total Cache: add cookie to rejected cookies list
+        add_filter('w3tc_rejected_cookies', function ($cookies) {
+            if (!is_array($cookies)) {
+                $cookies = array();
+            }
+            $cookies[] = '_os_vid';
+            return $cookies;
+        });
+
+        // General: send Vary header so CDN/proxies vary cache by cookie
+        if (!headers_sent() && !is_admin()) {
+            header('Vary: Cookie', false);
+        }
+    }
+
+    /**
      * Get or create visitor ID from cookie.
      * Uses cached value if available, falls back to cookie or generates new.
      */
