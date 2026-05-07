@@ -364,6 +364,8 @@ JS;
     {
         if (empty($config['ga4']['measurementId'])) return '';
 
+        if (!function_exists('WC') || !WC() || !WC()->cart) return '';
+
         $value = (float) WC()->cart->get_total('edit');
         $currency = esc_js(get_woocommerce_currency());
 
@@ -420,7 +422,7 @@ JS;
             $events = $platform_config['events'] ?? array();
             if (!empty($events[$event_key])) return true;
         }
-        return true;
+        return false;
     }
 
 

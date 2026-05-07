@@ -148,6 +148,7 @@ class OverSeek_Preference_Center {
 					'status'  => 400,
 				]
 			);
+			return;
 		}
 
 		if ( empty( $this->api_url ) ) {
@@ -158,6 +159,7 @@ class OverSeek_Preference_Center {
 					'status'  => 503,
 				]
 			);
+			return;
 		}
 
 		if ( OverSeek_Preference_Center_Request::current_request_uses_embedded_preference_center( $this->shortcode_tag ) ) {

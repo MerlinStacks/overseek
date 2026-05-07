@@ -180,7 +180,7 @@ class OverSeek_Server_Tracking
         }
 
         // Check consent before setting any cookies
-        if (!$this->has_tracking_consent()) {
+        if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
             return;
         }
 
@@ -246,9 +246,10 @@ class OverSeek_Server_Tracking
             return $cookies;
         });
 
-        // General: send Vary header so CDN/proxies vary cache by cookie
+        // General: send Vary header scoped to our tracking cookie so CDN/proxies
+        // don't invalidate cache for unrelated cookies.
         if (!headers_sent() && !is_admin()) {
-            header('Vary: Cookie', false);
+            header('Vary: Cookie=_os_vid', false);
         }
     }
 

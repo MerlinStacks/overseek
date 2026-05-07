@@ -28,7 +28,7 @@ class OverSeek_Preference_Center_Request {
 
 		$nonce = sanitize_text_field( wp_unslash( $_POST[ $nonce_name ] ) );
 
-		return wp_verify_nonce( $nonce, $nonce_action ) === 1;
+		return wp_verify_nonce( $nonce, $nonce_action ) !== false;
 	}
 
 	public static function current_request_uses_embedded_preference_center( string $shortcode_tag ): bool {

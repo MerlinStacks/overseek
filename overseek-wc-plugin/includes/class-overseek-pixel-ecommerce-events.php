@@ -100,6 +100,10 @@ class OverSeek_Pixel_Ecommerce_Events
             return '';
         }
 
+        if (!function_exists('WC') || !WC() || !WC()->cart) {
+            return '';
+        }
+
         $cart = WC()->cart;
         if (!$cart) {
             return '';
@@ -128,6 +132,10 @@ class OverSeek_Pixel_Ecommerce_Events
 
     public static function build_initiate_checkout_events(array $config): string
     {
+        if (!function_exists('WC') || !WC() || !WC()->cart) {
+            return '';
+        }
+
         $cart = WC()->cart;
         if (!$cart) {
             return '';
