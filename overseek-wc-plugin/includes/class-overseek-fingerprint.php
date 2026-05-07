@@ -195,6 +195,12 @@ class OverSeek_Fingerprint
                     403
                 );
             }
+            // Fallback for WooCommerce versions without RouteException — block via wp_die
+            wp_die(
+                esc_html__('We were unable to process your order. Please refresh the page and try again.', 'overseek-wc'),
+                esc_html__('Access Restricted', 'overseek-wc'),
+                array('response' => 403)
+            );
         }
 
         if ($score >= self::FLAG_THRESHOLD) {
@@ -358,7 +364,7 @@ class OverSeek_Fingerprint
             $factors[] = 'Elevated checkout burst from IP (5m)';
         }
 
-            $visitor_short = $this->increment_velocity_counter('visitor_short_' . OverSeek_Crypto_Utils::hash_key_fragment($visitor_id, self::HASH_LENGTH_SHORT), self::VELOCITY_WINDOW_SHORT);
+        $visitor_short = $this->increment_velocity_counter('visitor_short_' . OverSeek_Crypto_Utils::hash_key_fragment($visitor_id, self::HASH_LENGTH_SHORT), self::VELOCITY_WINDOW_SHORT);
         if ($visitor_short >= 7) {
             $score += 25;
             $factors[] = 'High checkout burst from visitor (5m)';

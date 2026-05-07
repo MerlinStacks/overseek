@@ -64,6 +64,7 @@ const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOver
 const RevenuePage = lazy(() => import('./pages/analytics/RevenuePage').then(m => ({ default: m.RevenuePage })));
 const AttributionPage = lazy(() => import('./pages/analytics/AttributionPage').then(m => ({ default: m.AttributionPage })));
 const CohortsPage = lazy(() => import('./pages/analytics/CohortsPage').then(m => ({ default: m.CohortsPage })));
+const CLVPage = lazy(() => import('./pages/analytics/CLVPage').then(m => ({ default: m.CLVPage })));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -250,6 +251,7 @@ function App() {
                                                 <Route path="/analytics/revenue" element={<AccountGuard><RevenuePage /></AccountGuard>} />
                                                 <Route path="/analytics/attribution" element={<AccountGuard><AttributionPage /></AccountGuard>} />
                                                 <Route path="/analytics/cohorts" element={<AccountGuard><CohortsPage /></AccountGuard>} />
+                                                <Route path="/analytics/clv" element={<AccountGuard><CLVPage /></AccountGuard>} />
 
                                                 <Route path="/reviews" element={<AccountGuard><ReviewsPage /></AccountGuard>} />
                                                 <Route path="/help" element={<AccountGuard><HelpCenterHome /></AccountGuard>} />

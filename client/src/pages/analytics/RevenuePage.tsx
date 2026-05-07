@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
 import { DollarSign, TrendingUp, ShoppingCart, Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { AOVTrendView } from '../../components/analytics/AOVTrendView';
 
 interface RevenueData {
     totalRevenue: number;
@@ -109,6 +110,9 @@ export const RevenuePage: React.FC = () => {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* AOV Trend */}
+            <AOVTrendView days={days} />
 
             {/* Revenue by Source */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

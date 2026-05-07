@@ -469,6 +469,10 @@ export async function processEvent(data: TrackingEventPayload) {
     }
 
     try {
+        const payload = data.payload as Record<string, unknown> | undefined;
+        const orderId = payload?.orderId ?? payload?.order_id;
+        const eventOrderId = (typeof orderId === 'number' && Number.isInteger(orderId)) ? orderId : undefined;
+
         await prisma.analyticsEvent.create({
             data: {
                 sessionId: session.id,
@@ -476,6 +480,7 @@ export async function processEvent(data: TrackingEventPayload) {
                 type: data.type,
                 url: data.url,
                 pageTitle: data.pageTitle,
+                orderId: eventOrderId,
                 payload: eventPayload
             }
         });

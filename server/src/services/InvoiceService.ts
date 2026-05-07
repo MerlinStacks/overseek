@@ -509,7 +509,7 @@ export class InvoiceService {
                                 // Resolve relative URL to local file path
                                 const logoUrl: string = itemConfig.logo;
                                 if (logoUrl.startsWith('/uploads/')) {
-                                    const localPath = path.join(__dirname, '../../', logoUrl);
+                                    const localPath = path.join(__dirname, '../../', logoUrl.replace(/^\//, ''));
                                     if (fs.existsSync(localPath)) {
                                         doc.image(localPath, x, startY, { width: 120, height: 60, fit: [120, 60] });
                                     } else {
@@ -803,7 +803,7 @@ export class InvoiceService {
                             try {
                                 const imgUrl: string = itemConfig.content;
                                 if (imgUrl.startsWith('/uploads/')) {
-                                    const localPath = path.join(__dirname, '../../', imgUrl);
+                                    const localPath = path.join(__dirname, '../../', imgUrl.replace(/^\//, ''));
                                     if (fs.existsSync(localPath)) {
                                         doc.image(localPath, x, startY, { width, fit: [width, 150] });
                                         blockHeight = 150;

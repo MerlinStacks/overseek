@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Plus, FileText, BookOpen, GraduationCap, Trash2, Edit2, EyeOff, Save, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, FileText, BookOpen, GraduationCap, Sparkles, Trash2, Edit2, EyeOff, Save, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { PoliciesPageSkeleton } from '../components/ui/PageSkeletons';
 import { Toast, ToastType } from '../components/ui/Toast';
@@ -18,6 +18,13 @@ interface Policy {
     updatedAt: string;
 }
 
+interface AIPrompt {
+    id: string;
+    name: string | null;
+    content: string;
+    updatedAt: string;
+}
+
 const typeConfig = {
     POLICY: { label: 'Policy', icon: FileText, color: 'bg-blue-100 text-blue-700' },
     SOP: { label: 'SOP', icon: BookOpen, color: 'bg-purple-100 text-purple-700' },
@@ -28,8 +35,10 @@ export function PoliciesPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [policies, setPolicies] = useState<Policy[]>([]);
+    const [aiPrompts, setAIPrompts] = useState<AIPrompt[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
+    const [selectedPrompt, setSelectedPrompt] = useState<AIPrompt | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [expandedTypes, setExpandedTypes] = useState<string[]>(['POLICY', 'SOP', 'TRAINING']);
 
@@ -65,9 +74,23 @@ export function PoliciesPage() {
         }
     }, [token, currentAccount?.id]);
 
+    const fetchAIPrompts = useCallback(async () => {
+        try {
+            const res = await fetch('/api/policies/ai-prompts', {
+                headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
+            });
+            if (res.ok) setAIPrompts(await res.json());
+        } catch (e) {
+            Logger.error('Failed to fetch AI prompts:', { error: e });
+        }
+    }, [token, currentAccount?.id]);
+
     useEffect(() => {
-        if (currentAccount && token) fetchPolicies();
-    }, [currentAccount, token, fetchPolicies]);
+        if (currentAccount && token) {
+            fetchPolicies();
+            fetchAIPrompts();
+        }
+    }, [currentAccount, token, fetchPolicies, fetchAIPrompts]);
 
     const handleCreate = () => {
         setSelectedPolicy(null);
@@ -91,6 +114,13 @@ export function PoliciesPage() {
 
     const handleView = (policy: Policy) => {
         setSelectedPolicy(policy);
+        setSelectedPrompt(null);
+        setIsEditing(false);
+    };
+
+    const handleViewPrompt = (prompt: AIPrompt) => {
+        setSelectedPrompt(prompt);
+        setSelectedPolicy(null);
         setIsEditing(false);
     };
 
@@ -187,6 +217,18 @@ export function PoliciesPage() {
         TRAINING: policies.filter(p => p.type === 'TRAINING')
     };
 
+    const promptLabelMap: Record<string, string> = {
+        product_description: 'Product Description Rewrite',
+        customer_email: 'Customer Email Response',
+        review_reply: 'Review Reply Generator',
+        seo_meta: 'SEO Meta Generator',
+        inbox_draft_reply: 'Inbox Draft Reply Generator'
+    };
+
+    const handlePromptClick = (prompt: AIPrompt) => {
+        handleViewPrompt(prompt);
+    };
+
     if (isLoading) return <PoliciesPageSkeleton />;
 
     return (
@@ -253,18 +295,83 @@ export function PoliciesPage() {
                                 </div>
                             );
                         })}
+
+                        {/* AI Prompts Section */}
+                        <div className="border-b border-gray-100">
+                            <div className="w-full flex items-center gap-2 px-4 py-3 text-left">
+                                <Sparkles size={16} className="text-purple-500" />
+                                <span className="font-medium text-gray-700">AI Prompts</span>
+                                <span className="ml-auto text-xs text-gray-400">{aiPrompts.length}</span>
+                            </div>
+
+                            {aiPrompts.length > 0 && (
+                                <div className="pb-2">
+                                    {aiPrompts.map(prompt => (
+                                        <button
+                                            key={prompt.id}
+                                            onClick={() => handlePromptClick(prompt)}
+                                            className={cn(
+                                                "w-full flex items-center gap-2 px-6 py-2 text-left text-sm transition-colors",
+                                                selectedPrompt?.id === prompt.id
+                                                    ? "bg-purple-50 text-purple-700 border-r-2 border-purple-600"
+                                                    : "hover:bg-gray-50 text-gray-600"
+                                            )}
+                                        >
+                                            <Lock size={12} className="text-gray-400 shrink-0" />
+                                            <span className="truncate flex-1">
+                                                {prompt.name || promptLabelMap[prompt.id] || prompt.id}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {aiPrompts.length === 0 && (
+                                <p className="px-6 py-2 text-xs text-gray-400 italic">No AI prompts configured</p>
+                            )}
+                        </div>
                     </div>
                 </div>
 
                 {/* Right Panel: View/Edit */}
                 <div className="flex-1 bg-gray-50 flex flex-col">
-                    {!selectedPolicy && !isEditing ? (
+                    {!selectedPolicy && !selectedPrompt && !isEditing ? (
                         <div className="flex-1 flex items-center justify-center text-gray-400">
                             <div className="text-center">
                                 <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
                                 <p>Select a policy to view or click + to create new</p>
                             </div>
                         </div>
+                    ) : selectedPrompt ? (
+                        <>
+                            {/* AI Prompt Header */}
+                            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles size={20} className="text-purple-500" />
+                                        <h2 className="text-xl font-bold text-gray-900">
+                                            {selectedPrompt.name || promptLabelMap[selectedPrompt.id] || selectedPrompt.id}
+                                        </h2>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
+                                            AI Prompt
+                                        </span>
+                                        <Lock size={12} className="text-gray-400" />
+                                        <span className="text-xs text-gray-500">Read-only • Manage in Admin {'>'} AI Prompts</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* AI Prompt Content */}
+                            <div className="flex-1 overflow-y-auto p-6">
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
+                                        {selectedPrompt.content || <span className="text-gray-400 italic">No content</span>}
+                                    </pre>
+                                </div>
+                            </div>
+                        </>
                     ) : (
                         <>
                             {/* Header */}

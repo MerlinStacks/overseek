@@ -15,6 +15,11 @@ import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AnalyticsService } from '../services/AnalyticsService';
+import { clvService } from '../services/analytics/CLVService';
+import { aovService } from '../services/analytics/AOVService';
+import { CROAnalytics } from '../services/analytics/cro';
+import { GeographyAnalytics } from '../services/analytics/geography';
+import { abTestingService } from '../services/analytics/abtesting';
 
 import analyticsReportsRoutes from './analyticsReports';
 import analyticsInventoryRoutes from './analyticsInventory';
@@ -349,6 +354,193 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             return viewData;
         } catch (e: any) {
             Logger.error('Product Views Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // --- CLV (Customer Lifetime Value) ---
+    fastify.get('/clv', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { monthsBack?: string };
+            const monthsBack = parseInt(query.monthsBack || '12', 10);
+            return await clvService.getCLVDashboard(accountId, monthsBack);
+        } catch (e: any) {
+            Logger.error('CLV Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // --- AOV (Average Order Value) ---
+    fastify.get('/aov-trend', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { days?: string };
+            const days = parseInt(query.days || '30', 10);
+            return await aovService.getAOVTrend(accountId, days);
+        } catch (e: any) {
+            Logger.error('AOV Trend Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.get('/aov-trend/comparison', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { days?: string };
+            const days = parseInt(query.days || '30', 10);
+            return await aovService.getAOVComparison(accountId, days);
+        } catch (e: any) {
+            Logger.error('AOV Comparison Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // --- CRO (Conversion Rate Optimization) ---
+    fastify.get('/cro/device', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { startDate?: string; endDate?: string };
+            const data = await CROAnalytics.getConversionByDevice(accountId, query.startDate, query.endDate);
+            return data.map((d: any) => ({
+                device: d.deviceType,
+                sessions: d.sessions,
+                conversions: d.purchases,
+                conversionRate: d.conversionRate
+            }));
+        } catch (e: any) {
+            Logger.error('CRO Device Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.get('/cro/source', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { startDate?: string; endDate?: string };
+            const data = await CROAnalytics.getConversionBySource(accountId, query.startDate, query.endDate);
+            return data.map((d: any) => ({
+                source: d.source,
+                sessions: d.sessions,
+                conversions: d.purchases,
+                conversionRate: d.conversionRate
+            }));
+        } catch (e: any) {
+            Logger.error('CRO Source Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.get('/cro/bounce-rate', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { startDate?: string; endDate?: string };
+            const data = await CROAnalytics.getBounceRate(accountId, query.startDate, query.endDate);
+            return { overallBounceRate: data.bounceRate };
+        } catch (e: any) {
+            Logger.error('CRO Bounce Rate Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // --- Geography ---
+    fastify.get('/geography/countries', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { startDate?: string; endDate?: string };
+            const traffic = await GeographyAnalytics.getTrafficByCountry(accountId, query.startDate, query.endDate);
+            const revenue = await GeographyAnalytics.getRevenueByCountry(accountId, query.startDate, query.endDate);
+            const conversion = await GeographyAnalytics.getConversionRateByCountry(accountId, query.startDate, query.endDate);
+
+            const revenueMap = new Map(revenue.map((r: any) => [r.country, r.revenue]));
+            const conversionMap = new Map(conversion.map((c: any) => [c.country, c.conversionRate]));
+
+            return traffic.map((t: any) => ({
+                country: t.country,
+                sessions: t.sessions,
+                revenue: revenueMap.get(t.country) || 0,
+                conversionRate: conversionMap.get(t.country) || 0
+            }));
+        } catch (e: any) {
+            Logger.error('Geography Countries Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.get('/geography/cities', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as { country?: string; startDate?: string; endDate?: string };
+            const cities = await GeographyAnalytics.getTrafficByCity(accountId, query.country, query.startDate, query.endDate);
+            return cities.map((c: any) => ({
+                city: c.city,
+                sessions: c.sessions,
+                revenue: 0
+            }));
+        } catch (e: any) {
+            Logger.error('Geography Cities Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // --- AB Testing ---
+    fastify.get('/ab-testing/experiments', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            return await abTestingService.getExperimentsList(accountId);
+        } catch (e: any) {
+            Logger.error('AB Testing List Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.post('/ab-testing/experiments', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const body = request.body as { name: string; description: string; variantNames: string[] };
+            if (!body.name || !body.variantNames?.length) {
+                return reply.code(400).send({ error: 'name and variantNames are required' });
+            }
+            return await abTestingService.createExperiment(accountId, body.name, body.description || '', body.variantNames);
+        } catch (e: any) {
+            Logger.error('AB Testing Create Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.patch<{ Params: { id: string } }>('/ab-testing/experiments/:id/status', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id } = request.params;
+            const body = request.body as { status: 'draft' | 'running' | 'completed' };
+            if (!body.status) {
+                return reply.code(400).send({ error: 'status is required' });
+            }
+            return await abTestingService.updateExperimentStatus(accountId, id, body.status);
+        } catch (e: any) {
+            Logger.error('AB Testing Update Status Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.get<{ Params: { id: string } }>('/ab-testing/experiments/:id/results', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id } = request.params;
+            return await abTestingService.getExperimentResults(accountId, id);
+        } catch (e: any) {
+            Logger.error('AB Testing Results Error', { error: e });
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    fastify.get<{ Params: { id: string } }>('/ab-testing/experiments/:id/significance', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id } = request.params;
+            return await abTestingService.getStatisticalSignificance(accountId, id);
+        } catch (e: any) {
+            Logger.error('AB Testing Significance Error', { error: e });
             return reply.code(500).send({ error: e.message });
         }
     });

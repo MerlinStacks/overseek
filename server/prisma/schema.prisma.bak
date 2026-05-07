@@ -1942,7 +1942,6 @@ model AnalyticsEvent {
   type      String // "pageview", "add_to_cart", "search", "purchase"
   url       String
   pageTitle String? // Human readable title
-  orderId   Int?    // Denormalized Woo order ID for purchase events (avoids O(N×M) payload scans)
   payload   Json? // e.g. { query: "blue shoes" } for search
 
   createdAt DateTime @default(now())
@@ -1955,7 +1954,6 @@ model AnalyticsEvent {
   @@index([visitId])
   @@index([createdAt]) // For time-based cleanup queries
   @@index([type, createdAt(sort: Desc)])  // Cross-session event queries (ecommerce log, behaviour analytics)
-  @@index([orderId])                       // Order attribution lookups
 }
 
 // Individual browsing visit (session gap detection: 30 min inactivity = new visit)

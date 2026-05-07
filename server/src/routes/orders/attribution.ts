@@ -18,10 +18,7 @@ const orderIdParamSchema = z.object({
 const attributionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    // Batch attribution lookup — replaces N individual calls with one
-    // TODO(perf): Store orderId as a denormalized column on AnalyticsEvent
-    // to replace this O(N×M) linear scan over 1000 events. For accounts
-    // with high purchase volume this will degrade significantly.
+    // Batch attribution lookup — uses denormalized orderId column for O(1) lookups
     fastify.post<{ Body: { orderIds: number[] } }>('/batch-attributions', async (request, reply) => {
         const accountId = request.user?.accountId;
         if (!accountId) return reply.code(400).send({ error: 'accountId header is required' });
@@ -40,10 +37,10 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
             });
             const wooIds = new Set(orders.map(o => o.wooId));
 
-            // 2. Fetch all purchase events for this account in one query
+            // 2. Query purchase events directly by denormalized orderId
             const purchaseEvents = await prisma.analyticsEvent.findMany({
                 where: {
-                    type: 'purchase',
+                    orderId: { in: ids },
                     session: { accountId }
                 },
                 include: {
@@ -57,12 +54,20 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                             referrer: true
                         }
                     }
-                },
-                orderBy: { createdAt: 'desc' },
-                take: 1000
+                }
             });
 
-            // 3. Match events to orders by wooId in payload
+            // 3. Build a map from orderId to the most recent event per order
+            const eventMap = new Map<number, typeof purchaseEvents[0]>();
+            for (const event of purchaseEvents) {
+                const oid = event.orderId!;
+                const existing = eventMap.get(oid);
+                if (!existing || event.createdAt > existing.createdAt) {
+                    eventMap.set(oid, event);
+                }
+            }
+
+            // 4. Build result
             const result: Record<number, {
                 lastTouchSource: string;
                 firstTouchSource?: string;
@@ -78,11 +83,7 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                     continue;
                 }
 
-                const matched = purchaseEvents.find(e => {
-                    const payload = e.payload as Record<string, unknown>;
-                    return payload?.orderId === wooId || payload?.order_id === wooId;
-                });
-
+                const matched = eventMap.get(wooId);
                 result[wooId] = matched
                     ? {
                         lastTouchSource: matched.session.lastTouchSource || 'direct',
@@ -130,9 +131,7 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
-            // Find purchase event matching this order by scanning all recent events.
-            // Cannot filter by JSON payload fields in Prisma, so we fetch a reasonable set
-            // and scan for a match.
+            // Query purchase event directly by denormalized orderId
             const sessionSelect = {
                 firstTouchSource: true,
                 lastTouchSource: true,
@@ -147,38 +146,30 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                 os: true
             };
 
-            let attribution = null;
-
-            const allPurchaseEvents = await prisma.analyticsEvent.findMany({
+            const matchedEvent = await prisma.analyticsEvent.findFirst({
                 where: {
-                    type: 'purchase',
+                    orderId: order.wooId,
                     session: { accountId }
                 },
                 include: { session: { select: sessionSelect } },
-                orderBy: { createdAt: 'desc' },
-                take: 500
+                orderBy: { createdAt: 'desc' }
             });
 
-            for (const event of allPurchaseEvents) {
-                const payload = event.payload as Record<string, unknown>;
-                if (payload?.orderId === order.wooId || payload?.order_id === order.wooId) {
-                    const session = event.session;
-                    attribution = {
-                        firstTouchSource: session.firstTouchSource || 'direct',
-                        lastTouchSource: session.lastTouchSource || 'direct',
-                        utmSource: session.utmSource,
-                        utmMedium: session.utmMedium,
-                        utmCampaign: session.utmCampaign,
-                        referrer: session.referrer,
-                        country: session.country,
-                        city: session.city,
-                        deviceType: session.deviceType,
-                        browser: session.browser,
-                        os: session.os
-                    };
-                    break;
+            const attribution = matchedEvent
+                ? {
+                    firstTouchSource: matchedEvent.session.firstTouchSource || 'direct',
+                    lastTouchSource: matchedEvent.session.lastTouchSource || 'direct',
+                    utmSource: matchedEvent.session.utmSource,
+                    utmMedium: matchedEvent.session.utmMedium,
+                    utmCampaign: matchedEvent.session.utmCampaign,
+                    referrer: matchedEvent.session.referrer,
+                    country: matchedEvent.session.country,
+                    city: matchedEvent.session.city,
+                    deviceType: matchedEvent.session.deviceType,
+                    browser: matchedEvent.session.browser,
+                    os: matchedEvent.session.os
                 }
-            }
+                : null;
 
             return { attribution };
         } catch (error) {

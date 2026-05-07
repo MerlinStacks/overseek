@@ -112,6 +112,24 @@ const policiesRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // Get AI prompts (read-only, non-admin)
+    fastify.get('/ai-prompts', async (request, reply) => {
+        try {
+            const prompts = await prisma.aIPrompt.findMany({
+                orderBy: { promptId: 'asc' }
+            });
+            return prompts.map(p => ({
+                id: p.promptId,
+                name: p.name,
+                content: p.content,
+                updatedAt: p.updatedAt
+            }));
+        } catch (error) {
+            Logger.error('Failed to fetch AI prompts', { error });
+            return reply.code(500).send({ error: 'Failed to fetch AI prompts' });
+        }
+    });
+
     // Delete policy
     fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
         const accountId = request.user?.accountId;

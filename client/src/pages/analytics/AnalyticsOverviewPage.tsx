@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import FunnelWidget from '../../components/widgets/FunnelWidget';
 import AnalyticsStatsWidget from '../../components/widgets/AnalyticsStatsWidget';
+import { CROView } from '../../components/analytics/CROView';
+import { GeographyView } from '../../components/analytics/GeographyView';
 
 interface AbandonmentData {
     addedToCartCount: number;
@@ -35,6 +37,14 @@ export const AnalyticsOverviewPage: React.FC = () => {
     const [abandonment, setAbandonment] = useState<AbandonmentData | null>(null);
     const [searches, setSearches] = useState<SearchData | null>(null);
     const [exits, setExits] = useState<ExitData | null>(null);
+
+    const dateRangeOption = useMemo(() => {
+        if (days === 1) return 'today';
+        if (days === 7) return '7d';
+        if (days === 30) return '30d';
+        if (days === 90) return '90d';
+        return `${days}d`;
+    }, [days]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -184,6 +194,10 @@ export const AnalyticsOverviewPage: React.FC = () => {
                     </Card>
                 )}
             </div>
+
+            {/* CRO & Geography */}
+            <CROView dateRange={dateRangeOption} />
+            <GeographyView dateRange={dateRangeOption} />
         </div>
     );
 };

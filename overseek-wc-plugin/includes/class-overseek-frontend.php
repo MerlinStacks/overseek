@@ -98,11 +98,24 @@ class OverSeek_Frontend
 
 			$current_minutes = (int) $now->format('H') * 60 + (int) $now->format('i');
 
-			[$open_h, $open_m] = array_map('intval', explode(':', $schedule['open'] ?? '09:00'));
-			[$close_h, $close_m] = array_map('intval', explode(':', $schedule['close'] ?? '17:00'));
+			$open_parts  = explode(':', $schedule['open'] ?? '09:00');
+			$close_parts = explode(':', $schedule['close'] ?? '17:00');
 
-			$open_minutes = $open_h * 60 + $open_m;
+			if (count($open_parts) < 2 || count($close_parts) < 2) {
+				return true; // Fail open on malformed time strings.
+			}
+
+			$open_h  = (int) $open_parts[0];
+			$open_m  = (int) $open_parts[1];
+			$close_h = (int) $close_parts[0];
+			$close_m = (int) $close_parts[1];
+
+			$open_minutes  = $open_h * 60 + $open_m;
 			$close_minutes = $close_h * 60 + $close_m;
+
+			if ($open_minutes < 0 || $close_minutes < 0 || $open_minutes > 1439 || $close_minutes > 1439) {
+				return true; // Fail open on out-of-range time values.
+			}
 
 			return $current_minutes >= $open_minutes && $current_minutes <= $close_minutes;
 		} catch (Exception $e) {
