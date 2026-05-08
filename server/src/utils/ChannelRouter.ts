@@ -95,7 +95,8 @@ export async function routeMessageToChannel(
             source: 'INBOX',
             sourceId: conversation.id,
             inReplyTo: originalEmailLog?.messageId || undefined,
-            references: originalEmailLog?.messageId || undefined
+            references: originalEmailLog?.messageId || undefined,
+            category: 'TRANSACTIONAL'
         });
         Logger.info('[ChannelRouter] Email sent', { to: recipientEmail, conversationId });
 
@@ -192,7 +193,8 @@ export async function sendEmailWithAttachments(
         source: 'INBOX',
         sourceId: conversation.id,
         inReplyTo: originalEmailLog?.messageId || undefined,
-        references: originalEmailLog?.messageId || undefined
+        references: originalEmailLog?.messageId || undefined,
+        category: 'TRANSACTIONAL'
     });
 
     Logger.info('[ChannelRouter] Email sent with attachments', {

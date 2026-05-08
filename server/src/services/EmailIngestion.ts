@@ -447,7 +447,8 @@ export class EmailIngestion {
                     source: 'AUTO_REPLY',
                     sourceId: conversationId,
                     inReplyTo: inReplyToMessageId,
-                    references: inReplyToMessageId
+                    references: inReplyToMessageId,
+                    category: 'TRANSACTIONAL'
                 }
             );
         } catch (error: any) {

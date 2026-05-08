@@ -106,7 +106,6 @@ export function useMobileChat(conversationId: string | undefined) {
         }
 
         try {
-            setLoading(true);
             const headers = buildHeaders(token, currentAccount.id);
 
             const convRes = await fetch(`/api/chat/${conversationId}`, { headers });

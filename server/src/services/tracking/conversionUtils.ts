@@ -109,6 +109,8 @@ export interface ConversionUserData {
     msclkid?: string;
     /** Twitter/X twclid */
     twclid?: string;
+    /** External ID for Meta CAPI match quality (e.g. "wc_123") */
+    externalId?: string;
 }
 
 /**
@@ -174,6 +176,7 @@ export function extractUserData(
         sclid: p.sclid || undefined,
         msclkid: p.msclkid || undefined,
         twclid: p.twclid || undefined,
+        externalId: p.externalId || (p.customerId ? `wc_${p.customerId}` : undefined),
     };
 }
 

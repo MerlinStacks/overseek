@@ -74,14 +74,14 @@ export function MobileInbox() {
     const [showSearch, setShowSearch] = useState(false);
     const [composeDraft, setComposeDraft] = useState<SharedComposeDraft | null>(null);
 
-    const fetchConversations = useCallback(async () => {
+    const fetchConversations = useCallback(async (initialLoad = false) => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
         }
 
         try {
-            setLoading(true);
+            if (initialLoad) setLoading(true);
             const response = await fetch('/api/chat/conversations?status=OPEN&limit=50', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -113,12 +113,12 @@ export function MobileInbox() {
         } catch (error) {
             Logger.error('[MobileInbox] Error:', { error: error });
         } finally {
-            setLoading(false);
+            if (initialLoad) setLoading(false);
         }
     }, [currentAccount, token]);
 
     useEffect(() => {
-        fetchConversations();
+        fetchConversations(true);
         const handleRefresh = () => fetchConversations();
         window.addEventListener('mobile-refresh', handleRefresh);
         return () => window.removeEventListener('mobile-refresh', handleRefresh);

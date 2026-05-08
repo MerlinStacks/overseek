@@ -106,11 +106,21 @@ export class GA4MeasurementService implements ConversionPlatformService {
             }
             if (Array.isArray(data.payload.items)) {
                 event.params.items = data.payload.items.map((item: any) => ({
-                    item_id: String(item.id || item.sku || ''),
+                    item_id: String(item.contentId || item.id || item.sku || ''),
                     item_name: item.name || '',
                     quantity: item.quantity || 1,
                     price: item.price || 0,
                 }));
+
+                // Product category from items array
+                if (data.payload.items[0]?.categories) {
+                    event.params.item_category = data.payload.items[0].categories.join(' > ');
+                }
+            }
+
+            // Product category from payload top-level
+            if (Array.isArray(data.payload.categories) && data.payload.categories.length > 0) {
+                event.params.item_category = data.payload.categories.join(' > ');
             }
 
             // Search term

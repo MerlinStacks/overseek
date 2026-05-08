@@ -149,9 +149,13 @@ export function buildWidgetScript(config: WidgetConfig): string {
             const options = { timeZone: BUSINESS_TIMEZONE, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
             const formatter = new Intl.DateTimeFormat('en-US', options);
             const parts = formatter.formatToParts(now);
-            const weekday = parts.find(p => p.type === 'weekday').value.toLowerCase().slice(0, 3);
-            const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
-            const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
+            const weekdayPart = parts.find(p => p.type === 'weekday');
+            const hourPart = parts.find(p => p.type === 'hour');
+            const minutePart = parts.find(p => p.type === 'minute');
+            if (!weekdayPart || !hourPart || !minutePart) return true;
+            const weekday = weekdayPart.value.toLowerCase().slice(0, 3);
+            const hour = parseInt(hourPart.value, 10);
+            const minute = parseInt(minutePart.value, 10);
             
             const schedule = BUSINESS_HOURS.days && BUSINESS_HOURS.days[weekday];
             if (!schedule || !schedule.isOpen) return false;
@@ -161,7 +165,6 @@ export function buildWidgetScript(config: WidgetConfig): string {
             const [closeH, closeM] = schedule.close.split(':').map(Number);
             return nowTime >= openH * 60 + openM && nowTime <= closeH * 60 + closeM;
         } catch (e) {
-            console.warn('Business hours check failed:', e);
             return true;
         }
     }
@@ -371,7 +374,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
                     addMessageUI('[Image]', 'user', uploadData.url);
                 }
             } catch (err) {
-                console.error('Upload failed', err);
+                addMessageUI('Upload failed. Please try again.', 'agent');
             }
             
             selectedFile = null;
@@ -430,7 +433,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
                 }
                 pollMessages();
             }
-        } catch (err) { console.error('Chat Init Error', err); }
+        } catch (err) { addMessageUI('Failed to connect. Please refresh the page.', 'agent'); }
     }
 
     async function pollMessages() {
@@ -450,7 +453,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
                     });
                 }
             }
-        } catch (err) { console.error('Poll error', err); }
+        } catch (err) { /* Silent fail - network transient, will retry on next poll */ }
         pollTimeout = setTimeout(pollMessages, 3000);
     }
 
@@ -461,21 +464,36 @@ export function buildWidgetScript(config: WidgetConfig): string {
         
         let avatarHtml = '';
         if (type === 'agent') {
-            avatarHtml = '<div class="os-avatar">' + (avatarUrl || agentAvatar ? '<img src="' + (avatarUrl || agentAvatar) + '">' : '🤖') + '</div>';
+            const src = avatarUrl || agentAvatar;
+            if (src) {
+                avatarHtml = '<div class="os-avatar"><img src="' + escapeAttr(src) + '"></div>';
+            } else {
+                avatarHtml = '<div class="os-avatar">🤖</div>';
+            }
         } else {
-            const initials = visitorName ? visitorName.charAt(0).toUpperCase() : '👤';
+            const initials = visitorName ? escapeHtmlAttr(visitorName.charAt(0).toUpperCase()) : '👤';
             avatarHtml = '<div class="os-avatar">' + initials + '</div>';
         }
         
         let msgContent = '<div class="os-message ' + type + '">' + escapeHtml(text);
         if (imageUrl) {
-            msgContent += '<img src="' + imageUrl + '" alt="Attachment">';
+            msgContent += '<img src="' + escapeAttr(imageUrl) + '" alt="Attachment">';
         }
         msgContent += '</div>';
         
         row.innerHTML = avatarHtml + msgContent;
         messagesEl.appendChild(row);
         scrollToBottom();
+    }
+
+    function escapeAttr(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function escapeHtmlAttr(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     function escapeHtml(str) {

@@ -299,7 +299,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const emailService = new EmailService();
                 await emailService.sendEmail(accountId, emailAccountId, to, subject, body, attachments, {
                     source: 'INBOX',
-                    sourceId: conversation.id
+                    sourceId: conversation.id,
+                    category: 'TRANSACTIONAL'
                 });
 
                 if (cc && cc.trim()) {
@@ -307,7 +308,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     for (const ccEmail of ccRecipients) {
                         await emailService.sendEmail(accountId, emailAccountId, ccEmail, subject, body, attachments, {
                             source: 'INBOX',
-                            sourceId: conversation.id
+                            sourceId: conversation.id,
+                            category: 'TRANSACTIONAL'
                         });
                     }
                 }

@@ -63,6 +63,15 @@ function getBuildDate(reader: Reader<CityResponse>): Date {
  * Initialize all available databases
  */
 async function loadDatabases(): Promise<void> {
+    // Close existing readers to release memory-mapped file handles
+    for (const existing of readers) {
+        try {
+            (existing.reader as any).close();
+        } catch {
+            // Ignore close errors
+        }
+    }
+
     const newReaders: GeoIPReader[] = [];
 
     // 1. Try Manual DB

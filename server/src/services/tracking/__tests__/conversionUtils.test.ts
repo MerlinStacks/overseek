@@ -128,6 +128,21 @@ describe('conversionUtils', () => {
             expect(result.zip).toBe('2000');
             expect(result.country).toBe('AU');
         });
+
+        it('should extract externalId from customerId in payload', () => {
+            const result = extractUserData({ customerId: 42 }, null);
+            expect(result.externalId).toBe('wc_42');
+        });
+
+        it('should prefer explicit externalId over customerId', () => {
+            const result = extractUserData({ externalId: 'direct-ext', customerId: 99 }, null);
+            expect(result.externalId).toBe('direct-ext');
+        });
+
+        it('should return undefined externalId when neither is present', () => {
+            const result = extractUserData({ email: 'test@test.com' }, null);
+            expect(result.externalId).toBeUndefined();
+        });
     });
 
     describe('getSupportedPlatforms', () => {

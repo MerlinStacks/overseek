@@ -41,7 +41,7 @@ export function EmailTemplateSelectorModal({ onSelect, onClose }: Props) {
                     setTemplates(data);
                 }
             } catch (err) {
-                console.error('Failed to fetch templates:', err);
+                // Silently fail - user can retry by reopening modal
             } finally {
                 setLoading(false);
             }

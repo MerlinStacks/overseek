@@ -24,8 +24,10 @@ class OverSeek_Tracking_Payload_Utils
 
         foreach ($cart->get_cart() as $cart_item) {
             $product = $cart_item['data'] ?? null;
+            $product_id = isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0;
             $items[] = array(
-                'productId' => isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0,
+                'id' => $product_id,
+                'productId' => $product_id,
                 'variationId' => isset($cart_item['variation_id']) ? absint($cart_item['variation_id']) : 0,
                 'name' => ($product && is_object($product)) ? $product->get_name() : '',
                 'sku' => ($product && is_object($product) && method_exists($product, 'get_sku')) ? $product->get_sku() : '',

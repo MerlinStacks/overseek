@@ -32,7 +32,7 @@ const MAX_RETRIES = 3;
  * Note (Feb 2026): Google no longer accepts IP address or session attributes
  * in conversion imports via this API. Use Data Manager API for those fields.
  */
-const GOOGLE_ADS_API_VERSION = 'v23';
+const GOOGLE_ADS_API_VERSION = 'v24';
 
 export class GoogleEnhancedConversionsService implements ConversionPlatformService {
     readonly platform = 'GOOGLE';

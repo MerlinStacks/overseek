@@ -2,7 +2,7 @@
  * Meta CAPI Service
  *
  * Sends server-side conversion events to Meta (Facebook/Instagram)
- * Conversions API: POST https://graph.facebook.com/v24.0/{pixelId}/events
+ * Conversions API: POST https://graph.facebook.com/v25.0/{pixelId}/events
  *
  * Why server-side: Browser-side Meta Pixel is blocked by ~30% of users
  * via ad blockers. CAPI sends the same events server-to-server for
@@ -79,7 +79,7 @@ export class MetaCAPIService implements ConversionPlatformService {
 
         const eventId = data.eventId || crypto.randomUUID();
         const userData = extractUserData(data.payload, session, data.ipAddress);
-        const payload = this.buildPayload(eventName, eventId, data, userData, testEventCode);
+        const payload = this.buildPayload(eventName, eventId, data, userData, config, testEventCode);
         const payloadUserData = payload.data?.[0]?.user_data || {};
 
         if (!this.hasSufficientMatchData(payloadUserData)) {
@@ -113,8 +113,18 @@ export class MetaCAPIService implements ConversionPlatformService {
         eventId: string,
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
+        config: Record<string, any>,
         testEventCode?: string,
     ): Record<string, any> {
+        const contentIdFormat = config.contentIdFormat || 'sku';
+        const contentIdPrefix = config.contentIdPrefix || '';
+        const contentIdSuffix = config.contentIdSuffix || '';
+
+        const getContentId = (item: any): string => {
+            if (item.contentId) return String(item.contentId);
+            const raw = contentIdFormat === 'id' ? String(item.id || '') : String(item.sku || item.id || '');
+            return `${contentIdPrefix}${raw}${contentIdSuffix}` || raw;
+        };
         const eventData: Record<string, any> = {
             event_name: eventName,
             event_time: Math.floor(Date.now() / 1000),
@@ -136,6 +146,8 @@ export class MetaCAPIService implements ConversionPlatformService {
                 client_user_agent: userData.userAgent,
                 fbc: userData.fbc,
                 fbp: userData.fbp,
+                // External ID for dedup/match quality (e.g. "wc_123") — hashed per Meta spec
+                ...(userData.externalId ? { external_id: hashSHA256(userData.externalId) } : {}),
             },
         };
 
@@ -159,12 +171,19 @@ export class MetaCAPIService implements ConversionPlatformService {
             }
             if (Array.isArray(data.payload.items)) {
                 customData.contents = data.payload.items.map((item: any) => ({
-                    id: String(item.id || item.sku || ''),
+                    id: getContentId(item),
                     quantity: item.quantity || 1,
                     item_price: item.price || 0,
                 }));
                 customData.content_type = 'product';
                 customData.num_items = data.payload.items.length;
+            }
+
+            // Include product category for better audience targeting
+            if (Array.isArray(data.payload.categories) && data.payload.categories.length > 0) {
+                customData.content_category = data.payload.categories.join(' > ');
+            } else if (Array.isArray(data.payload.items) && data.payload.items[0]?.categories) {
+                customData.content_category = data.payload.items[0].categories.join(' > ');
             }
 
             if (Object.keys(customData).length > 0) {

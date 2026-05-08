@@ -302,13 +302,13 @@ class OverSeek_Pixels
     function fireATC(productName,productId,value,currency,eid){
         eid=eid||makeEid();
         if(p.meta) fbq('track','AddToCart',{content_ids:[productId],content_type:'product',content_name:productName,value:value,currency:currency},{eventID:eid});
-        if(p.tiktok) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency});
-        if(p.pinterest) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency});
-        if(p.snapchat) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency});
+        if(p.tiktok) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency},{event_id:eid});
+        if(p.pinterest) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency,event_id:eid});
+        if(p.snapchat) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency,event_tag:eid});
         if(p.ga4) gtag('event','add_to_cart',{items:[{item_id:productId,item_name:productName,price:value}],value:value,currency:currency});
         if(p.googleAdsAtc) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency});
-        if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency});}
-        if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1});
+        if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency,event_id:eid});}
+        if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1,event_id:eid});
     }
     jQuery(document).on('click','.add_to_cart_button, .ajax_add_to_cart',function(){
         ensureButtonEid(this);

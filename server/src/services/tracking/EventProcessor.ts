@@ -12,6 +12,7 @@ import { isExcludedIp } from './IpExclusionService';
 import { ConversionForwarder } from './ConversionForwarder';
 import * as CrawlerService from './CrawlerService';
 import { automationEnrollmentService } from '../AutomationEnrollmentService';
+import { Logger } from '../../utils/logger';
 
 const UAParser = require('ua-parser-js');
 
@@ -485,8 +486,14 @@ export async function processEvent(data: TrackingEventPayload) {
             }
         });
     } catch (eventError: any) {
-        console.error('Prisma event create error:', eventError.message || eventError);
-        console.error('Event data was:', { sessionId: session.id, visitId: currentVisit.id, type: data.type, url: data.url, pageTitle: data.pageTitle });
+        Logger.error('[EventProcessor] Prisma event create error', {
+            error: eventError.message || eventError,
+            sessionId: session.id,
+            visitId: currentVisit.id,
+            type: data.type,
+            url: data.url,
+            pageTitle: data.pageTitle
+        });
         throw eventError;
     }
 

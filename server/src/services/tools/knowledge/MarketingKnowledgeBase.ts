@@ -8,6 +8,7 @@
  */
 
 import { CampaignType } from '../AdContext';
+import { Logger } from '../../../utils/logger';
 
 
 export interface AnalysisContext {
@@ -447,7 +448,7 @@ export class MarketingKnowledgeBase {
             return allMatches;
         } catch (error) {
             // Fall back to static matches if dynamic loading fails
-            console.error('Error loading dynamic learnings:', error);
+            Logger.warn('[MarketingKnowledgeBase] Error loading dynamic learnings', { error });
             return staticMatches;
         }
     }

@@ -43,7 +43,7 @@ export class PlatformEmailService {
 
             return {
                 host: creds.host || '',
-                port: parseInt(creds.port) || 587,
+                port: parseInt(creds.port, 10) || 587,
                 username: creds.username || '',
                 password: creds.password || '',
                 fromEmail: creds.fromEmail || '',

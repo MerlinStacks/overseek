@@ -285,7 +285,7 @@ self.addEventListener('push', (event) => {
         data = event.data?.json() || {};
         console.log('[SW] Push data parsed:', data);
     } catch (e) {
-        console.error('[SW] Failed to parse push data:', e);
+        /* Parse error - falling back to default notification */
         data = { title: 'OverSeek', body: event.data?.text() || 'You have a new notification' };
     }
 
@@ -324,14 +324,14 @@ self.addEventListener('push', (event) => {
                             notifications.forEach(n => n.close());
                             console.log('[SW] Auto-dismissed notification:', tag);
                         } catch (e) {
-                            console.error('[SW] Auto-dismiss failed:', e);
+                            /* Auto-dismiss failed - best effort, ignore */
                         } finally {
                             resolve();
                         }
                     }, NOTIFICATION_AUTO_DISMISS_MS);
                 });
             })
-            .catch((err) => console.error('[SW] Failed to show notification:', err))
+            .catch(() => { /* Notification display failed - browser may have blocked it */ })
     );
 });
 
@@ -413,11 +413,11 @@ async function syncOfflineActions() {
                     console.warn('[SW] Action sync failed:', action.id, response.status);
                 }
             } catch (err) {
-                console.error('[SW] Error syncing action:', action.id, err);
+                /* Sync action failed - will retry later */
             }
         }
     } catch (err) {
-        console.error('[SW] Error getting pending actions:', err);
+        /* Failed to get pending actions - will retry on next sync */
     }
 }
 
@@ -461,7 +461,7 @@ async function refreshDashboardData() {
             client.postMessage({ type: 'DASHBOARD_REFRESHED' });
         });
     } catch (err) {
-        console.error('[SW] Dashboard refresh error:', err);
+        /* Dashboard refresh failed - will retry on next periodic sync */
     }
 }
 
@@ -477,7 +477,7 @@ self.addEventListener('message', (event) => {
                 return self.registration.sync.register(SYNC_TAG);
             })
             .catch((err) => {
-                console.error('[SW] Failed to queue action:', err);
+                /* Failed to queue action - user will need to retry */
             });
     }
 

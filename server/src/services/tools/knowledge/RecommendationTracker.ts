@@ -310,6 +310,9 @@ export class RecommendationTracker {
             };
             if (accountId) {
                 where.accountId = accountId;
+            } else {
+                Logger.warn('[RecommendationTracker] getSuccessRate called without accountId', { recommendationId });
+                return null;
             }
 
             const logs = await prisma.recommendationLog.findMany({ where });

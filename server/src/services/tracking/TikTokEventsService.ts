@@ -91,13 +91,20 @@ export class TikTokEventsService implements ConversionPlatformService {
             if (data.payload.orderId) properties.order_id = String(data.payload.orderId);
             if (Array.isArray(data.payload.items)) {
                 properties.contents = data.payload.items.map((item: any) => ({
-                    content_id: String(item.id || item.sku || ''),
+                    content_id: String(item.contentId || item.id || item.sku || ''),
                     content_type: 'product',
                     content_name: item.name || '',
                     quantity: item.quantity || 1,
                     price: item.price || 0,
                 }));
                 properties.content_type = 'product';
+            }
+
+            // Product category for better audience targeting
+            if (Array.isArray(data.payload.categories) && data.payload.categories.length > 0) {
+                properties.content_category = data.payload.categories.join(' > ');
+            } else if (Array.isArray(data.payload.items) && data.payload.items[0]?.categories) {
+                properties.content_category = data.payload.items[0].categories.join(' > ');
             }
         }
 

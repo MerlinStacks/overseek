@@ -104,3 +104,10 @@ client/ios/App/App.xcodeproj/xcuserdata/
 # Firebase config (add these but track the examples)
 client/android/app/google-services.json
 client/ios/App/App/GoogleService-Info.plist
+
+# ESLint report artifacts (regenerated on demand)
+server/eslint-server.json
+client/eslint-report.json
+client/eslint-latest.json
+client/eslint-errors.json
+client/eslint-client.json

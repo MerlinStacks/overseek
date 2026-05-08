@@ -35,7 +35,20 @@ class OverSeek_Tracking_Event_Builder
             'eventId' => $event_id,
         );
 
-        return OverSeek_Tracking_Payload_Utils::attach_platform_cookies(self::add_cart_totals($payload, $cart));
+        $payload = OverSeek_Tracking_Payload_Utils::attach_platform_cookies(self::add_cart_totals($payload, $cart));
+
+        // Include items array for CAPI services
+        $payload['items'] = array(
+            array(
+                'id' => $product_id,
+                'sku' => ($product && is_object($product) && method_exists($product, 'get_sku')) ? $product->get_sku() : '',
+                'name' => ($product && is_object($product)) ? $product->get_name() : '',
+                'quantity' => $quantity,
+                'price' => ($product && is_object($product)) ? floatval($product->get_price()) : 0,
+            ),
+        );
+
+        return $payload;
     }
 
     /**
@@ -126,9 +139,10 @@ class OverSeek_Tracking_Event_Builder
 
     /**
      * @param object $order WooCommerce order instance.
+     * @param array<string, mixed> $meta_config Meta pixel config (contentIdFormat, contentIdPrefix, contentIdSuffix)
      * @return array<string, mixed>
      */
-    public static function build_purchase_payload($order, int $order_id, string $event_id): array
+    public static function build_purchase_payload($order, int $order_id, string $event_id, array $meta_config = array()): array
     {
         $items = array();
 
@@ -142,6 +156,16 @@ class OverSeek_Tracking_Event_Builder
                 'price' => floatval($item->get_total()),
             );
         }
+
+        // Add formatted contentId to each item if pixel config is available
+        $content_config = array('meta' => $meta_config);
+        foreach ($items as &$item) {
+            $product_for_id = wc_get_product((int) $item['id']);
+            if ($product_for_id) {
+                $item['contentId'] = OverSeek_Pixel_Matching_Utils::get_content_id($product_for_id, $content_config);
+            }
+        }
+        unset($item);
 
         $payload = array(
             'orderId' => $order_id,
@@ -183,14 +207,22 @@ class OverSeek_Tracking_Event_Builder
 
     /**
      * @param object $product WooCommerce product instance.
+     * @param array<string, mixed> $meta_config Meta pixel config (contentIdFormat, contentIdPrefix, contentIdSuffix)
      * @return array<string, mixed>
      */
-    public static function build_product_view_payload($product, array $categories, ?string $visitor_id): array
+    public static function build_product_view_payload($product, array $categories, ?string $visitor_id, array $meta_config = array()): array
     {
+        $sku = $product->get_sku();
+        $product_id = $product->get_id();
+
+        // Compute formatted contentId using pixel config (matches browser pixel)
+        $content_config = array('meta' => $meta_config);
+        $content_id = OverSeek_Pixel_Matching_Utils::get_content_id($product, $content_config);
+
         $payload = array(
-            'productId' => $product->get_id(),
+            'productId' => $product_id,
             'productName' => $product->get_name(),
-            'sku' => $product->get_sku(),
+            'sku' => $sku ?: '',
             'price' => floatval($product->get_price()),
             'regularPrice' => floatval($product->get_regular_price()),
             'salePrice' => $product->get_sale_price() ? floatval($product->get_sale_price()) : null,
@@ -199,6 +231,19 @@ class OverSeek_Tracking_Event_Builder
             'categories' => $categories,
             'productType' => $product->get_type(),
             'eventId' => OverSeek_Tracking_Payload_Utils::get_shared_product_view_event_id((int) $product->get_id(), $visitor_id),
+        );
+
+        // Include items array for CAPI services — matches the format used by purchase/checkout events
+        $payload['items'] = array(
+            array(
+                'id' => $product_id,
+                'sku' => $sku ?: '',
+                'contentId' => $content_id,
+                'name' => $product->get_name(),
+                'quantity' => 1,
+                'price' => floatval($product->get_price()),
+                'categories' => $categories,
+            ),
         );
 
         return OverSeek_Tracking_Payload_Utils::attach_platform_cookies($payload);

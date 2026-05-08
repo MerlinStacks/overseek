@@ -187,7 +187,8 @@ export class MessageScheduler {
                         recipientEmail,
                         subject,
                         message.content,
-                        attachments
+                        attachments,
+                        { category: 'TRANSACTIONAL' }
                     );
 
                     Logger.info(`[Scheduler] Sent scheduled message ${message.id}`, {

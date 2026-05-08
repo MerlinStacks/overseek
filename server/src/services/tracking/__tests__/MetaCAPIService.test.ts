@@ -82,6 +82,74 @@ describe('MetaCAPIService', () => {
         expect(userData.fbp).toBe('fb.1.456');
     });
 
+    it('should include hashed external_id when customerId is in payload', async () => {
+        const dataWithCustomer = {
+            ...purchaseData,
+            payload: { ...purchaseData.payload, customerId: 42 },
+        };
+        await service.sendEvent(accountId, config, dataWithCustomer, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const userData = body.data[0].user_data;
+
+        // SHA-256('wc_42')
+        expect(userData.external_id).toBe('273e5904d9210e4b0df8ade46146f166a9d7ac7fa61b857cd429ce1a99ba0ec0');
+    });
+
+    it('should use externalId from payload when explicitly provided', async () => {
+        const dataWithExternalId = {
+            ...purchaseData,
+            payload: { ...purchaseData.payload, externalId: 'custom-ext-123' },
+        };
+        await service.sendEvent(accountId, config, dataWithExternalId, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const userData = body.data[0].user_data;
+
+        expect(userData.external_id).toBe('7372a5106b48ca67e297f0051ecb3eb538dab1afec82344555634f29df54c2a4');
+    });
+
+    it('should apply contentIdFormat=sku by default for custom_data contents', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const contents = body.data[0].custom_data.contents;
+
+        // Default format is 'sku', item has sku 'SKU1'
+        expect(contents[0].id).toBe('SKU1');
+    });
+
+    it('should apply contentIdFormat=id with prefix/suffix from config', async () => {
+        const customConfig = {
+            ...config,
+            contentIdFormat: 'id',
+            contentIdPrefix: 'OS-',
+            contentIdSuffix: '-AU',
+        };
+        await service.sendEvent(accountId, customConfig, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const contents = body.data[0].custom_data.contents;
+
+        expect(contents[0].id).toBe('OS-10-AU');
+    });
+
+    it('should fall back to item id when sku is missing and format=sku', async () => {
+        const noSkuData = {
+            ...purchaseData,
+            payload: {
+                ...purchaseData.payload,
+                items: [{ id: 99, name: 'No SKU', quantity: 1, price: 10 }],
+            },
+        };
+        await service.sendEvent(accountId, config, noSkuData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const contents = body.data[0].custom_data.contents;
+
+        expect(contents[0].id).toBe('99');
+    });
+
     it('should include test_event_code when configured', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 

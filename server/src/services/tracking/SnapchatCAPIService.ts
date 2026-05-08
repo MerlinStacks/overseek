@@ -87,7 +87,7 @@ export class SnapchatCAPIService implements ConversionPlatformService {
             if (data.payload.orderId) event.transaction_id = String(data.payload.orderId);
             if (Array.isArray(data.payload.items)) {
                 event.number_items = String(data.payload.items.length);
-                event.item_ids = JSON.stringify(data.payload.items.map((i: any) => String(i.id || i.sku || '')));
+                event.item_ids = JSON.stringify(data.payload.items.map((i: any) => String(i.contentId || i.id || i.sku || '')));
             }
         }
 

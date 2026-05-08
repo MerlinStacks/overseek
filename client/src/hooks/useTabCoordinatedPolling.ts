@@ -104,7 +104,6 @@ export function useTabCoordinatedPolling<T>(
                 }
             } catch (error) {
                 // Silently fail - individual components handle their own error states
-                console.warn(`[TabCoordinatedPolling] Fetch failed for ${channelName}:`, error);
             }
         };
 

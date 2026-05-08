@@ -115,7 +115,7 @@ describe('GoogleEnhancedConversionsService', () => {
 
         const url = (global.fetch as any).mock.calls[0][0] as string;
         expect(url).toContain('uploadConversionAdjustments');
-        expect(url).toContain('/v23/');
+        expect(url).toContain('/v24/');
         expect(url).toContain('1234567890'); // Dashes removed
     });
 

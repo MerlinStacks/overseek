@@ -32,11 +32,8 @@ export class MobileErrorBoundary extends Component<Props, State> {
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-        // Log error for debugging
-        Logger.error('[MobileErrorBoundary] Caught error:', { error: error });
-        console.error('[MobileErrorBoundary] Error info:', errorInfo.componentStack);
+        Logger.error('[MobileErrorBoundary] Caught error', { error, componentStack: errorInfo.componentStack });
 
-        // Send to error monitoring service (e.g., Sentry)
         Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
     }
 

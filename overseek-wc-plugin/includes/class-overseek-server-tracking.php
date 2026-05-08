@@ -753,8 +753,12 @@ class OverSeek_Server_Tracking
             return;
         }
 
+        // Fetch pixel config for content ID formatting
+        $pixel_config = OverSeek_Pixel_Config_Provider::get_config($this->api_url, $this->account_id);
+        $meta_config = isset($pixel_config['meta']) && is_array($pixel_config['meta']) ? $pixel_config['meta'] : array();
+
         $event_id = OverSeek_Tracking_Event_Builder::ensure_order_event_id($order);
-        $payload = OverSeek_Tracking_Event_Builder::build_purchase_payload($order, (int) $order_id, $event_id);
+        $payload = OverSeek_Tracking_Event_Builder::build_purchase_payload($order, (int) $order_id, $event_id, $meta_config);
 
         $this->queue_event('purchase', $payload);
 
@@ -843,7 +847,11 @@ class OverSeek_Server_Tracking
             }
         }
 
-        $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $this->get_visitor_id());
+        // Fetch pixel config for content ID formatting
+        $pixel_config = OverSeek_Pixel_Config_Provider::get_config($this->api_url, $this->account_id);
+        $meta_config = isset($pixel_config['meta']) && is_array($pixel_config['meta']) ? $pixel_config['meta'] : array();
+
+        $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $this->get_visitor_id(), $meta_config);
 
         $this->queue_event('product_view', $payload);
     }

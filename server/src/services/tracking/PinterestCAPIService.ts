@@ -95,12 +95,19 @@ export class PinterestCAPIService implements ConversionPlatformService {
             }
             if (Array.isArray(data.payload.items)) {
                 customData.contents = data.payload.items.map((item: any) => ({
-                    id: String(item.id || item.sku || ''),
+                    id: String(item.contentId || item.id || item.sku || ''),
                     item_name: item.name || '',
                     quantity: item.quantity || 1,
                     item_price: String(item.price || 0),
                 }));
                 customData.num_items = data.payload.items.length;
+            }
+
+            // Product category for better audience targeting
+            if (Array.isArray(data.payload.categories) && data.payload.categories.length > 0) {
+                customData.content_category = data.payload.categories.join(' > ');
+            } else if (Array.isArray(data.payload.items) && data.payload.items[0]?.categories) {
+                customData.content_category = data.payload.items[0].categories.join(' > ');
             }
 
             if (Object.keys(customData).length > 0) {
