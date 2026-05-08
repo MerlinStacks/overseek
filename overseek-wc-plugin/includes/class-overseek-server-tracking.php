@@ -971,6 +971,9 @@ class OverSeek_Server_Tracking
         }
         return 'granted';
     }
+
+    /**
+     * Parse and validate inbound event ID from checkout/add-to-cart request params.
      */
     private function get_request_event_id()
     {
