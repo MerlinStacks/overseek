@@ -29,7 +29,17 @@ export interface ConversionPlatformService {
         accountId: string,
         config: Record<string, any>,
         data: TrackingEventPayload,
-        session: { id: string; email?: string | null; ipAddress?: string | null; userAgent?: string | null; country?: string | null } | null,
+        session: {
+            id: string;
+            email?: string | null;
+            ipAddress?: string | null;
+            userAgent?: string | null;
+            country?: string | null;
+            /** Session referrer for page_referrer in GA4 */
+            referrer?: string | null;
+            /** Unix timestamp (seconds) for GA4 session_id */
+            sessionStartAt?: number | null;
+        } | null,
     ): Promise<void>;
 }
 
@@ -97,7 +107,15 @@ export class ConversionForwarder {
      */
     static async forwardIfConversion(
         data: TrackingEventPayload,
-        session: { id: string; email?: string | null; ipAddress?: string | null; userAgent?: string | null; country?: string | null } | null,
+        session: {
+            id: string;
+            email?: string | null;
+            ipAddress?: string | null;
+            userAgent?: string | null;
+            country?: string | null;
+            referrer?: string | null;
+            sessionStartAt?: number | null;
+        } | null,
     ): Promise<void> {
         try {
             if (!isConversionEvent(data.type)) return;

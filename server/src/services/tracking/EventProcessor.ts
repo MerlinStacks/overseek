@@ -3,6 +3,11 @@
  *
  * Handles session upsert, event logging, attribution tracking,
  * and cart state management for analytics sessions.
+ *
+ * FIXES APPLIED (May 2026):
+ * - Passes session referrer to CAPI services (enables page_referrer in GA4)
+ * - Passes consent state through payload for platform-specific consent handling
+ * - Includes session start timestamp for GA4 session_id generation
  */
 
 import { prisma } from '../../utils/prisma';
@@ -53,6 +58,9 @@ export interface TrackingEventPayload {
     // Session enrichment from logged-in users (for session stitching)
     customerId?: number;
     email?: string;
+
+    // FIX: Consent state from plugin (e.g. 'granted', 'denied') for platform-specific handling
+    consentState?: 'granted' | 'denied';
 }
 
 /**
@@ -192,7 +200,7 @@ export async function processEvent(data: TrackingEventPayload) {
             sessionPayload.cartValue = payloadTotal;
             sessionPayload.currency = data.payload.currency || 'USD';
 
-            // Only update items if the full list is provided. 
+            // Only update items if the full list is provided.
             // Otherwise we risk wiping the list on simple 'add_to_cart' events that only send totals.
             if (Array.isArray(data.payload.items)) {
                 sessionPayload.cartItems = data.payload.items;
@@ -504,7 +512,21 @@ export async function processEvent(data: TrackingEventPayload) {
     // 5. Fire-and-forget: forward conversion events to ad platforms (CAPI)
     // Wrapped in try/catch to ensure CAPI failures never affect tracking
     try {
-        void ConversionForwarder.forwardIfConversion(data, session);
+        // FIX: Build a richer session object for CAPI services that includes
+        // referrer, session start time, and consent state.
+        const capiSession = {
+            id: session.id,
+            email: session.email,
+            ipAddress: data.ipAddress,
+            userAgent: data.userAgent,
+            country: session.country,
+            referrer: session.referrer,
+            // FIX: sessionStartAt enables GA4 session_id generation
+            sessionStartAt: session.firstTouchAt
+                ? Math.floor(new Date(session.firstTouchAt).getTime() / 1000)
+                : null,
+        };
+        void ConversionForwarder.forwardIfConversion(data, capiSession);
     } catch (_) { /* intentionally swallowed */ }
 
     return session;

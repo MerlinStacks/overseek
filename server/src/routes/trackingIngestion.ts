@@ -28,7 +28,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/events', async (request, reply) => {
         try {
             const body = request.body as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
             if (!accountId || !visitorId || !type) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -57,7 +57,8 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, utmSource, utmMedium, utmCampaign, is404,
-                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId
+                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
+                consentState
             });
 
             if (session) {
@@ -79,7 +80,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/e', async (request, reply) => {
         try {
             const body = request.body as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
             if (!accountId || !visitorId || !type) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -106,7 +107,8 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, utmSource, utmMedium, utmCampaign, is404,
-                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId
+                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
+                consentState
             });
 
             if (session) {

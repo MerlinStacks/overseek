@@ -350,6 +350,7 @@ class OverSeek_Server_Tracking
             'serverSide' => true,
             'userAgent' => isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field($_SERVER['HTTP_USER_AGENT']) : '',
             'visitorIp' => $visitor_ip,
+            'consentState' => $this->get_consent_state(),
         );
 
         // Add 404 flag if this is an error page
@@ -959,7 +960,17 @@ class OverSeek_Server_Tracking
 
 
     /**
-     * Parse and validate inbound event ID from checkout/add-to-cart request params.
+     * Get the current consent state for this visitor.
+     * Returns 'granted' when auto-accept is enabled or no consent is required.
+     * Returns 'denied' when consent is required but not granted.
+     */
+    private function get_consent_state(): string
+    {
+        if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
+            return 'denied';
+        }
+        return 'granted';
+    }
      */
     private function get_request_event_id()
     {

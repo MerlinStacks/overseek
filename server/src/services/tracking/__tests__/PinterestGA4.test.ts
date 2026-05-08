@@ -88,13 +88,22 @@ describe('GA4MeasurementService', () => {
     const service = new GA4MeasurementService();
     const accountId = 'test-account';
     const config = { measurementId: 'G-ABCDEF', apiSecret: 'secret-123' };
-    const session = { id: 'sess-1', email: 'user@test.com', ipAddress: '1.2.3.4', userAgent: 'Mozilla', country: 'AU' };
+    const session = {
+        id: 'sess-1',
+        email: 'user@test.com',
+        ipAddress: '1.2.3.4',
+        userAgent: 'Mozilla',
+        country: 'AU',
+        referrer: 'https://google.com',
+        sessionStartAt: Math.floor(Date.now() / 1000) - 300,
+    };
 
     const purchaseData: any = {
         accountId,
         visitorId: 'vis-1',
         type: 'purchase',
         url: 'https://store.com/order-received',
+        pageTitle: 'Order Received',
         eventId: 'evt-uuid-5',
         payload: {
             orderId: 500,
@@ -183,5 +192,80 @@ describe('GA4MeasurementService', () => {
 
         const url = (global.fetch as any).mock.calls[0][0] as string;
         expect(url).toContain('/debug/mp/collect');
+    });
+
+    // FIX TESTS (May 2026)
+
+    it('should include session_id as a number in event params', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[1]?.[1]?.body || (global.fetch as any).mock.calls[0][1].body);
+        const event = body.events[0];
+        expect(typeof event.params.session_id).toBe('number');
+        expect(event.params.session_id).toBeGreaterThan(0);
+    });
+
+    it('should include timestamp_micros in root payload', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(typeof body.timestamp_micros).toBe('number');
+        expect(body.timestamp_micros).toBeGreaterThan(Date.now() * 1000 - 10000000);
+    });
+
+    it('should include consent object with GRANTED values', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.consent).toEqual({
+            ad_user_data: 'GRANTED',
+            ad_personalization: 'GRANTED',
+            analytics_storage: 'GRANTED',
+        });
+    });
+
+    it('should include engagement_time_msec as a number', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const event = body.events[0];
+        expect(typeof event.params.engagement_time_msec).toBe('number');
+        expect(event.params.engagement_time_msec).toBe(100);
+    });
+
+    it('should include page_title when available', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const event = body.events[0];
+        expect(event.params.page_title).toBe('Order Received');
+    });
+
+    it('should include page_referrer from session', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const event = body.events[0];
+        expect(event.params.page_referrer).toBe('https://google.com');
+    });
+
+    it('should generate deterministic session_id from visitorId when sessionStartAt is missing', async () => {
+        const sessionWithoutStart = { ...session, sessionStartAt: null };
+        await service.sendEvent(accountId, config, purchaseData, sessionWithoutStart);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const event = body.events[0];
+        expect(typeof event.params.session_id).toBe('number');
+        // Should be deterministic for same visitorId
+        const firstSessionId = event.params.session_id;
+
+        vi.clearAllMocks();
+        (global.fetch as any).mockResolvedValue({
+            ok: true, status: 204, text: async () => '',
+        });
+
+        await service.sendEvent(accountId, config, purchaseData, sessionWithoutStart);
+        const body2 = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body2.events[0].params.session_id).toBe(firstSessionId);
     });
 });

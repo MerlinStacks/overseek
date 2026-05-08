@@ -155,7 +155,7 @@ export function extractUserData(
 ): ConversionUserData {
     const p = payload || {};
     return {
-        email: p.email || session?.email || undefined,
+        email: p.email || p.billingEmail || session?.email || undefined,
         phone: p.billingPhone || p.phone || undefined,
         firstName: p.billingFirst || p.firstName || undefined,
         lastName: p.billingLast || p.lastName || undefined,

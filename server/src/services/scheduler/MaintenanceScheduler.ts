@@ -9,6 +9,7 @@
  * - Janitor cleanup (daily)
  * - Meta token proactive refresh (daily)
  * - Queue depth enforcement (every 5 minutes)
+ * - Conversion retry (every 10 minutes)
  */
 import { QueueFactory, QUEUES } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
@@ -75,6 +76,15 @@ export class MaintenanceScheduler {
             jobId: 'queue-depth-check-5min'
         });
         Logger.info('Scheduled Queue Depth Check (Every 5 minutes)');
+
+        // FIX: Conversion retry (Every 10 minutes)
+        // Retries failed CAPI deliveries for all platforms so transient
+        // errors don't permanently lose conversions.
+        await this.queue.add('conversion-retry', {}, {
+            repeat: { pattern: '*/10 * * * *' },
+            jobId: 'conversion-retry-10min'
+        });
+        Logger.info('Scheduled Conversion Retry (Every 10 minutes)');
     }
 
     /**
@@ -402,6 +412,26 @@ export class MaintenanceScheduler {
             await BOMConsumptionService.recoverStalledDeductions();
         } catch (error) {
             Logger.error('[Scheduler] BOM deduction recovery failed', { error });
+        }
+    }
+
+    /**
+     * Dispatch conversion retry job
+     */
+    static async dispatchConversionRetry() {
+        Logger.info('[Scheduler] Starting conversion retry batch');
+        try {
+            const { retryFailedConversions } = await import('../tracking/ConversionRetryService');
+            const result = await retryFailedConversions();
+            if (result.totalAttempted > 0) {
+                Logger.info('[Scheduler] Conversion retry complete', {
+                    attempted: result.totalAttempted,
+                    recovered: result.totalRecovered,
+                    breakdown: result.platformBreakdown,
+                });
+            }
+        } catch (error) {
+            Logger.error('[Scheduler] Conversion retry failed', { error });
         }
     }
 

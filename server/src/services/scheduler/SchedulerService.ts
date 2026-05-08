@@ -81,6 +81,9 @@ export class SchedulerService {
                 case 'queue-depth-check':
                     await MaintenanceScheduler.dispatchQueueDepthCheck();
                     break;
+                case 'conversion-retry':
+                    await MaintenanceScheduler.dispatchConversionRetry();
+                    break;
 
                 // Marketing jobs
                 case 'outcome-assessment':
