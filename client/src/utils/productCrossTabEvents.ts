@@ -1,16 +1,16 @@
 const CHANNEL_NAME = 'overseek-product-events';
 const STORAGE_KEY = 'overseek-product-event';
 
-export interface ProductChangeEvent {
+interface ProductChangeEvent {
     type: 'updated' | 'synced';
     productId: string;
     accountId: string;
     timestamp: number;
 }
 
-export type CrossTabResource = 'product' | 'order' | 'customer' | 'purchase-order';
+type CrossTabResource = 'product' | 'order' | 'customer' | 'purchase-order';
 
-export interface CrossTabEvent {
+interface CrossTabEvent {
     resource: CrossTabResource;
     type: 'updated' | 'synced' | 'deleted' | 'merged' | 'tags-updated' | 'status-updated';
     accountId: string;

@@ -22,7 +22,7 @@ interface CachedData {
     accountId: string;
 }
 
-export interface SuggestionsData {
+interface SuggestionsData {
     suggestions: string[];
     prioritized: { text: string; priority: 1 | 2 | 3; category: string }[];
     actionableRecommendations?: ActionableRecommendation[];

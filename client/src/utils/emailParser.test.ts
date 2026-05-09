@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseQuotedContent, parseEmailContent, stripHtmlForAnalysis } from './emailParser';
+import { parseQuotedContent, parseEmailContent } from './emailParser';
 
 describe('parseEmailContent', () => {
     it('extracts subject and body from Subject: prefixed content', () => {
@@ -146,21 +146,5 @@ On Mon, Jan 15, 2026 at 8:52 AM Support <support@example.com> wrote:
                 expect(result.mainContent).toContain('Old thread');
             }
         });
-    });
-});
-
-describe('stripHtmlForAnalysis', () => {
-    it('converts HTML to readable plain text', () => {
-        const html = '<p>Hello</p><br/><div>World</div>';
-        const text = stripHtmlForAnalysis(html);
-        expect(text).toContain('Hello');
-        expect(text).toContain('World');
-    });
-
-    it('decodes HTML entities', () => {
-        const html = '&lt;tag&gt; &amp; &nbsp;more';
-        const text = stripHtmlForAnalysis(html);
-        expect(text).toContain('<tag>');
-        expect(text).toContain('&');
     });
 });

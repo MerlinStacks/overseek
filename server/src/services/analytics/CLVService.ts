@@ -169,7 +169,7 @@ export class CLVService {
             const customerSource = new Map<string, string>();
             const emailToCustomerId = new Map<number, string>();
 
-            for (const [email, data] of customerOrders) {
+            for (const [email] of customerOrders) {
                 const rawData = orders.find((o) => {
                     const r = o.rawData as Prisma.JsonObject | null;
                     const billing = typeof r?.billing === 'object' && r?.billing !== null ? (r.billing as Prisma.JsonObject) : null;
@@ -213,7 +213,7 @@ export class CLVService {
 
             const monthlyCLVMap = new Map<string, { totalCLV: number; count: number }>();
 
-            for (const [email, data] of customerCLVs) {
+            for (const [, data] of customerCLVs) {
                 const monthKey = `${data.firstOrderDate.getFullYear()}-${String(data.firstOrderDate.getMonth() + 1).padStart(2, '0')}`;
                 if (!monthlyCLVMap.has(monthKey)) {
                     monthlyCLVMap.set(monthKey, { totalCLV: 0, count: 0 });

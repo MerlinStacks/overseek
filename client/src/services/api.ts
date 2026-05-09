@@ -2,7 +2,7 @@
 /** Why: Timezone never changes during a session; computing it per-request was wasteful. */
 const USER_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Sydney';
 
-export interface RequestOptions extends RequestInit {
+interface RequestOptions extends RequestInit {
     token?: string;
     accountId?: string;
 }
@@ -11,7 +11,7 @@ export interface RequestOptions extends RequestInit {
  * Enhanced API Error with structured data from server.
  * Includes error code and recoverability for better client handling.
  */
-export class ApiError extends Error {
+class ApiError extends Error {
     /** HTTP status code */
     readonly status: number;
     /** Error code for client-side handling */

@@ -180,27 +180,7 @@ class OverSeek_Web_Vitals
      */
     private function get_page_type(): string
     {
-        if (is_product()) {
-            return 'product';
-        }
-
-        if (is_product_category() || is_product_tag() || is_shop()) {
-            return 'category';
-        }
-
-        if (is_cart()) {
-            return 'cart';
-        }
-
-        if (is_checkout()) {
-            return 'checkout';
-        }
-
-        if (is_front_page() || is_home()) {
-            return 'home';
-        }
-
-        return 'other';
+        return OverSeek_Tracking_Guard_Utils::get_page_type();
     }
 
     /**

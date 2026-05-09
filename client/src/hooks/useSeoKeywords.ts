@@ -144,26 +144,12 @@ export function useKeywordTrends(siteUrl?: string) {
     });
 }
 
-/** Hook: Fetch top pages */
-export function useTopPages(days: number = 28) {
-    const api = useApi();
-
-    return useApiQuery<{ pages: Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number }>; count: number }>({
-        queryKey: ['search-console', 'pages', days],
-        queryFn: () => api.get(`/api/search-console/pages?days=${days}`),
-        enabled: api.isReady,
-        staleTime: 10 * 60 * 1000,
-    });
-}
-
 export type {
-    SearchConsoleStatus,
     QueryAnalytics,
     LowHangingFruit,
     KeywordGap,
     QueryTrend,
     AIKeywordRecommendation,
-    RecommendationsResponse,
 };
 
 /* ─────────────────────────────────────────────────────
@@ -332,14 +318,6 @@ export interface CompetitorDomain {
     createdAt: string;
 }
 
-/** Legacy gap analysis result (backward compat) */
-export interface CompetitorAnalysis {
-    competitor: string;
-    sharedKeywords: Array<{ keyword: string; yourPosition: number; theirEstimate: string }>;
-    yourOnlyKeywords: string[];
-    theirOnlyKeywords: string[];
-    overlapPct: number;
-}
 
 /** Competitor keyword with SERP position data */
 export interface CompetitorKeywordPosition {
@@ -403,16 +381,6 @@ export function useRemoveCompetitor() {
     });
 }
 
-/** Hook: Run competitor gap analysis (legacy) */
-export function useCompetitorAnalysis(domain?: string) {
-    const api = useApi();
-    return useApiQuery<CompetitorAnalysis>({
-        queryKey: ['search-console', 'competitor-analysis', domain],
-        queryFn: () => api.get(`/api/search-console/competitor-analysis${domain ? `?domain=${domain}` : ''}`),
-        enabled: api.isReady && !!domain,
-        staleTime: 10 * 60 * 1000,
-    });
-}
 
 /** Hook: Get tracked keyword positions for a competitor */
 export function useCompetitorKeywords(competitorId: string | null) {
@@ -425,16 +393,6 @@ export function useCompetitorKeywords(competitorId: string | null) {
     });
 }
 
-/** Hook: Get rank history for a specific competitor keyword (chart data) */
-export function useCompetitorKeywordHistory(competitorId: string | null, kwId: string | null, days: number = 30) {
-    const api = useApi();
-    return useApiQuery<{ history: Array<{ date: string; position: number | null }>; count: number }>({
-        queryKey: ['search-console', 'competitor-keyword-history', competitorId, kwId, days],
-        queryFn: () => api.get(`/api/search-console/competitors/${competitorId}/keywords/${kwId}/history?days=${days}`),
-        enabled: api.isReady && !!competitorId && !!kwId,
-        staleTime: 10 * 60 * 1000,
-    });
-}
 
 /** Hook: Fetch recent significant competitor position changes */
 export function useCompetitorMovement(days: number = 7) {
@@ -601,4 +559,3 @@ export function useSeoDigest() {
         staleTime: 15 * 60 * 1000,
     });
 }
-

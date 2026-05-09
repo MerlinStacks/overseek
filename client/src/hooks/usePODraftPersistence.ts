@@ -16,7 +16,7 @@ interface PODraftItem {
 }
 
 /** Full form snapshot persisted to localStorage */
-export interface PODraftState {
+interface PODraftState {
     supplierId: string;
     status: string;
     notes: string;
@@ -39,7 +39,7 @@ const SAVE_DEBOUNCE_MS = 500;
  * Build the localStorage key scoped to account + PO.
  * Why: prevents collisions when a user works across multiple accounts or POs.
  */
-export function buildDraftKey(accountId: string, poId: string): string {
+function buildDraftKey(accountId: string, poId: string): string {
     return `po-draft:${accountId}:${poId}`;
 }
 
@@ -47,7 +47,7 @@ export function buildDraftKey(accountId: string, poId: string): string {
  * Try to read a stored draft, returning null if missing or expired.
  * Why: centralised read logic keeps expiry checks in one place.
  */
-export function readDraft(key: string): PODraftState | null {
+function readDraft(key: string): PODraftState | null {
     try {
         const raw = localStorage.getItem(key);
         if (!raw) return null;
@@ -70,7 +70,7 @@ export function readDraft(key: string): PODraftState | null {
  * Write a draft snapshot to localStorage.
  * Why: separated so it can be called independently and tested easily.
  */
-export function writeDraft(key: string, state: PODraftState): void {
+function writeDraft(key: string, state: PODraftState): void {
     try {
         localStorage.setItem(key, JSON.stringify(state));
     } catch (err) {

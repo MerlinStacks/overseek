@@ -30,22 +30,3 @@ export function useMobile(): boolean {
         () => false  // Server snapshot (SSR fallback)
     );
 }
-
-/**
- * Get the current small mobile state from window.
- */
-function getIsSmallMobile(): boolean {
-    if (typeof window === 'undefined') return false;
-    return window.innerWidth < 768;
-}
-
-/**
- * Hook for smaller mobile devices (< 768px / md breakpoint).
- */
-export function useSmallMobile(): boolean {
-    return useSyncExternalStore(
-        subscribe,
-        getIsSmallMobile,
-        () => false
-    );
-}

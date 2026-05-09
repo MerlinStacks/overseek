@@ -19,7 +19,7 @@ import type { BOMPanelRef } from '../components/products/BOMPanel';
 import type { VariationsPanelRef } from '../components/products/VariationsPanel';
 import type { StockManagementPanelRef } from '../components/products/StockManagementPanel';
 
-export interface ProductFormData {
+interface ProductFormData {
     name: string;
     sku: string;
     price: string;

@@ -7,7 +7,7 @@
 
 import Dexie, { Table } from 'dexie';
 
-export interface CachedOrder {
+interface CachedOrder {
     id: string;
     wooId: number;
     accountId: string;
@@ -25,7 +25,7 @@ export interface CachedProduct {
     syncedAt: number;
 }
 
-export interface CachedCustomer {
+interface CachedCustomer {
     id: string;
     wooId: number;
     accountId: string;
@@ -35,12 +35,12 @@ export interface CachedCustomer {
     syncedAt: number;
 }
 
-export interface CacheMeta {
+interface CacheMeta {
     key: string;
     value: unknown;
 }
 
-export class HotTierDB extends Dexie {
+class HotTierDB extends Dexie {
     orders!: Table<CachedOrder>;
     products!: Table<CachedProduct>;
     customers!: Table<CachedCustomer>;
@@ -59,64 +59,15 @@ export class HotTierDB extends Dexie {
 }
 
 // Singleton instance
-export const hotTierDB = new HotTierDB();
-
-// Cache configuration
-const CACHE_CONFIG = {
-    orders: { maxItems: 1000, maxAgeMs: 24 * 60 * 60 * 1000 }, // 24 hours
-    products: { maxItems: 5000, maxAgeMs: 7 * 24 * 60 * 60 * 1000 }, // 7 days
-    customers: { maxItems: 1000, maxAgeMs: 24 * 60 * 60 * 1000 } // 24 hours
-};
+const hotTierDB = new HotTierDB();
 
 /**
  * Get the last sync timestamp for a table
  */
-export async function getLastSyncTime(table: 'orders' | 'products' | 'customers', accountId: string): Promise<number | null> {
+async function getLastSyncTime(table: 'orders' | 'products' | 'customers', accountId: string): Promise<number | null> {
     const key = `lastSync:${table}:${accountId}`;
     const meta = await hotTierDB.meta.get(key);
     return typeof meta?.value === 'number' ? meta.value : null;
-}
-
-/**
- * Update the last sync timestamp for a table
- */
-export async function setLastSyncTime(table: 'orders' | 'products' | 'customers', accountId: string): Promise<void> {
-    const key = `lastSync:${table}:${accountId}`;
-    await hotTierDB.meta.put({ key, value: Date.now() });
-}
-
-/**
- * Prune old entries from a table
- */
-export async function pruneTable(table: 'orders' | 'products' | 'customers', accountId: string): Promise<number> {
-    const config = CACHE_CONFIG[table];
-    const cutoff = Date.now() - config.maxAgeMs;
-
-    // Delete old entries
-    const deletedByAge = await hotTierDB[table]
-        .where('accountId').equals(accountId)
-        .and(item => item.syncedAt < cutoff)
-        .delete();
-
-    // Count remaining
-    const remaining = await hotTierDB[table]
-        .where('accountId').equals(accountId)
-        .count();
-
-    // If still over limit, delete oldest
-    if (remaining > config.maxItems) {
-        const toDelete = remaining - config.maxItems;
-        const oldest = await hotTierDB[table]
-            .where('accountId').equals(accountId)
-            .sortBy('syncedAt');
-
-        const idsToDelete = oldest.slice(0, toDelete).map(item => item.id);
-        await hotTierDB[table].bulkDelete(idsToDelete);
-
-        return deletedByAge + toDelete;
-    }
-
-    return deletedByAge;
 }
 
 /**
@@ -176,37 +127,6 @@ export async function searchProductsLocal(accountId: string, query: string): Pro
 /**
  * Search customers locally
  */
-export async function searchCustomersLocal(accountId: string, query: string): Promise<CachedCustomer[]> {
-    const lowerQuery = query.toLowerCase();
-
-    return hotTierDB.customers
-        .where('accountId').equals(accountId)
-        .filter((c: CachedCustomer) =>
-            c.name.toLowerCase().includes(lowerQuery) ||
-            Boolean(c.email && c.email.toLowerCase().includes(lowerQuery))
-        )
-        .limit(50)
-        .toArray();
-}
-
-/**
- * Search orders locally by ID
- */
-export async function searchOrdersLocal(accountId: string, query: string): Promise<CachedOrder[]> {
-    // If query looks like a number, search by wooId
-    const numericQuery = parseInt(query, 10);
-
-    if (!isNaN(numericQuery)) {
-        return hotTierDB.orders
-            .where('accountId').equals(accountId)
-            .and(o => o.wooId === numericQuery || o.wooId.toString().includes(query))
-            .limit(20)
-            .toArray();
-    }
-
-    return [];
-}
-
 /**
  * Get cache stats
  */
@@ -239,5 +159,3 @@ export async function getCacheStats(accountId: string): Promise<{
         }
     };
 }
-
-export default hotTierDB;

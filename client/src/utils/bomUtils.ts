@@ -16,7 +16,7 @@ interface BOMItemCostData {
  * Calculates the total cost of a single BOM item including waste factor.
  * Priority order: Internal Product > Variant > Product > Supplier Item
  */
-export function calculateBomItemCost(item: BOMItemCostData): number {
+function calculateBomItemCost(item: BOMItemCostData): number {
     let unitCost = 0;
 
     if (item.internalProduct?.cogs) {

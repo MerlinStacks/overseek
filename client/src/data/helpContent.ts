@@ -3,7 +3,7 @@
  * This ensures documentation is available on every install without database seeding.
  */
 
-export interface HelpArticle {
+interface HelpArticle {
     id: string;
     title: string;
     slug: string;
@@ -14,7 +14,7 @@ export interface HelpArticle {
     updatedAt: string;
 }
 
-export interface HelpCollection {
+interface HelpCollection {
     id: string;
     title: string;
     slug: string;
@@ -26,7 +26,7 @@ export interface HelpCollection {
 
 const LAST_UPDATED = '2026-01-19';
 
-export const helpCollections: HelpCollection[] = [
+const helpCollections: HelpCollection[] = [
     {
         id: 'col-getting-started',
         title: 'Getting Started',
@@ -1417,7 +1417,7 @@ export function getHelpCollections(): HelpCollection[] {
 /**
  * Get all articles flattened with collection info
  */
-export function getAllArticles(): (HelpArticle & { collection: { title: string; slug: string } })[] {
+function getAllArticles(): (HelpArticle & { collection: { title: string; slug: string } })[] {
     return helpCollections.flatMap(collection =>
         collection.articles.map(article => ({
             ...article,

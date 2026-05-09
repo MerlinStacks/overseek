@@ -1,7 +1,7 @@
 export type DateRangeOption = 'today' | 'yesterday' | '7d' | '30d' | '90d' | 'ytd' | 'all';
 export type ComparisonOption = 'none' | 'previous_period' | 'previous_year' | 'smart';
 
-export interface DateRange {
+interface DateRange {
     startDate: string; // ISO Date string YYYY-MM-DD
     endDate: string;   // ISO Date string YYYY-MM-DD
 }
@@ -73,7 +73,7 @@ export const getDateRange = (option: DateRangeOption | string): DateRange => {
  *   3–14 days → previous period         (week-over-week)
  *   >14 days  → same period last year   (YoY — the standard for monthly+)
  */
-export function resolveSmartComparison(current: DateRange): { resolved: 'previous_week_same_day' | 'previous_period' | 'previous_year' | 'none' } {
+function resolveSmartComparison(current: DateRange): { resolved: 'previous_week_same_day' | 'previous_period' | 'previous_year' | 'none' } {
     const start = new Date(current.startDate);
     const end = new Date(current.endDate);
     const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -140,16 +140,3 @@ export function getComparisonLabel(current: DateRange, type: ComparisonOption): 
         default: return 'vs last period';
     }
 }
-
-export const formatDateOption = (option: string): string => {
-    switch (option) {
-        case 'today': return 'Today';
-        case 'yesterday': return 'Yesterday';
-        case '7d': return 'Last 7 Days';
-        case '30d': return 'Last 30 Days';
-        case '90d': return 'Last 90 Days';
-        case 'ytd': return 'Year to Date';
-        case 'all': return 'All Time';
-        default: return 'Custom';
-    }
-};

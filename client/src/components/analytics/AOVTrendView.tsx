@@ -174,5 +174,3 @@ export const AOVTrendView: React.FC<{ days: number }> = ({ days }) => {
         </Card>
     );
 };
-
-export default AOVTrendView;

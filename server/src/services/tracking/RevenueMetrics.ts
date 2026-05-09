@@ -6,61 +6,7 @@
  */
 
 import { prisma } from '../../utils/prisma';
-
-/**
- * Calculate proper date range based on days parameter and timezone.
- * Uses the account's timezone to correctly determine "today" boundaries.
- */
-function getDateRangeForDays(days: number, timezone: string = 'Australia/Sydney'): { startDate: Date; endDate: Date } {
-    const now = new Date();
-
-    // Helper: Get date components in the specified timezone
-    const getDatePartsInTz = (date: Date, tz: string) => {
-        const formatter = new Intl.DateTimeFormat('en-AU', {
-            timeZone: tz,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
-        const parts = formatter.formatToParts(date);
-        const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0');
-        return { year: get('year'), month: get('month') - 1, day: get('day') };
-    };
-
-    // Helper: Create a Date from timezone-local midnight
-    const getMidnightInTz = (year: number, month: number, day: number, tz: string): Date => {
-        // Create a date string in the target timezone and parse it
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00`;
-        // Use a temp date to find the UTC offset for this timezone at this date
-        const tempDate = new Date(dateStr + 'Z');
-        const tzOffset = new Date(tempDate.toLocaleString('en-US', { timeZone: tz })).getTime() -
-            new Date(tempDate.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
-        return new Date(tempDate.getTime() - tzOffset);
-    };
-
-    if (days === 1) {
-        // Today: from midnight in user's timezone to now
-        const { year, month, day } = getDatePartsInTz(now, timezone);
-        const startDate = getMidnightInTz(year, month, day, timezone);
-        return { startDate, endDate: now };
-    } else if (days === -1) {
-        // Yesterday: full day in user's timezone
-        const { year, month, day } = getDatePartsInTz(now, timezone);
-        const yesterdayDate = new Date(year, month, day - 1);
-        const startDate = getMidnightInTz(yesterdayDate.getFullYear(), yesterdayDate.getMonth(), yesterdayDate.getDate(), timezone);
-        const endDate = getMidnightInTz(year, month, day, timezone);
-        endDate.setMilliseconds(endDate.getMilliseconds() - 1); // End of yesterday
-        return { startDate, endDate };
-    } else {
-        // X days ago: simple offset from now
-        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-        return { startDate, endDate: now };
-    }
-}
+import { getDateRangeForDays } from '../../utils/dateRange';
 
 /**
  * Get revenue analytics: AOV, total, by source.

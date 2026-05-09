@@ -3,7 +3,7 @@ import { useCallback, useRef } from 'react';
 /**
  * Haptic feedback patterns for consistent tactile responses.
  */
-export type HapticPattern =
+type HapticPattern =
     | 'light'    // 10ms - subtle tap
     | 'medium'   // 20ms - standard interaction  
     | 'heavy'    // 30ms - significant action

@@ -27,12 +27,6 @@ vi.mock('../../utils/prisma', () => ({
     }
 }));
 
-// Mock prismaReplica to prevent connection errors during import
-vi.mock('../../utils/prismaReplica', () => ({
-    prismaReplica: {},
-    isReplicaConfigured: false
-}));
-
 // Mock cache
 vi.mock('../../utils/cache', () => ({
     cacheAside: vi.fn((_key, fn) => fn()),

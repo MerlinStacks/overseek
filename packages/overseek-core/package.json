@@ -9,5 +9,5 @@
     "dev": "tsc --watch"
   },
   "files": ["dist"],
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

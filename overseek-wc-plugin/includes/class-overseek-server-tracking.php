@@ -903,25 +903,6 @@ class OverSeek_Server_Tracking
     }
 
     /**
-     * Track A/B test experiment assignment.
-     * Call this from your theme/plugin when assigning a user to a variation.
-     *
-     * Example: OverSeek_Server_Tracking::track_experiment('header_test', 'variation_b');
-     */
-    public static function track_experiment($experiment_id, $variation_id)
-    {
-        $instance = new self();
-
-        $payload = array(
-            'experimentId' => $experiment_id,
-            'variationId' => $variation_id,
-        );
-
-        $instance->queue_event('experiment', $payload);
-        $instance->flush_event_queue(); // Flush immediately for static calls
-    }
-
-    /**
      * Track product review submission.
      */
     public function track_review($comment_id, $comment_approved, $commentdata)

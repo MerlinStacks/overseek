@@ -5,12 +5,12 @@
  */
 
 /** Available dimensions for grouping report data */
-export type ReportDimension =
+type ReportDimension =
     | 'day' | 'month' | 'product' | 'category' | 'customer' | 'customer_segment'
     | 'traffic_source' | 'utm_source' | 'device' | 'country' | 'order_status';
 
 /** Available metrics for report calculations */
-export type ReportMetric =
+type ReportMetric =
     | 'sales' | 'orders' | 'aov' | 'quantity'
     | 'visitors' | 'sessions' | 'page_views' | 'conversion_rate' | 'new_customers';
 

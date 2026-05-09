@@ -90,12 +90,3 @@ export function useApiMutation<TData, TVariables = void>({
         error: mutation.error,
     };
 }
-
-/**
- * Invalidate queries matching the given prefix key.
- * Backwards-compatible with the old custom-cache prefix invalidation.
- */
-export function invalidateQuery(_prefix: QueryKey): void {
-    // This function requires a QueryClient instance, so it's replaced by
-    // the hook-based pattern. For non-hook consumers, import useQueryClient.
-}

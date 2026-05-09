@@ -233,17 +233,7 @@ class OverSeek_Crawler_Guard
         $raw_ua  = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : $user_agent;
         $raw_url = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
 
-        // Bug fix: REMOTE_ADDR returns the load-balancer/proxy IP on most production
-        // setups (Cloudflare, nginx, AWS ELB). Prefer forwarded headers in priority order.
-        // CF-Connecting-IP is set by Cloudflare (most reliable when present).
-        // HTTP_X_FORWARDED_FOR may contain a comma-separated list — take the first.
-        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-            $raw_ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
-        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $raw_ip = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
-        } else {
-            $raw_ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
-        }
+        $raw_ip = OverSeek_HTTP_Utils::get_client_ip();
 
         // Bug fix: wp_json_encode returns false on failure (e.g. invalid UTF-8 in UA).
         // Abort rather than send a malformed body.

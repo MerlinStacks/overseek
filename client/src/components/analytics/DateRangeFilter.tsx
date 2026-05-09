@@ -34,5 +34,3 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ value, onChang
         </div>
     );
 };
-
-export default DateRangeFilter;

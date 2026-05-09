@@ -19,7 +19,7 @@ import {
     type LucideIcon
 } from 'lucide-react';
 
-export interface StatusConfig {
+interface StatusConfig {
     icon: LucideIcon;
     color: string;
     bg: string;
@@ -32,7 +32,7 @@ export interface StatusConfig {
  * Complete order status configuration map.
  * Covers all WooCommerce standard statuses plus common custom ones.
  */
-export const ORDER_STATUS_CONFIG: Record<string, StatusConfig> = {
+const ORDER_STATUS_CONFIG: Record<string, StatusConfig> = {
     pending: {
         icon: Clock,
         color: 'text-amber-600',
@@ -118,26 +118,6 @@ export function getStatusColor(status: string): string {
     const config = getStatusConfig(status);
     return `${config.bg} ${config.color}`;
 }
-
-/**
- * Get the display label for a status.
- */
-export function getStatusLabel(status: string): string {
-    return getStatusConfig(status).label;
-}
-
-/**
- * Get the icon component for a status.
- */
-export function getStatusIcon(status: string): LucideIcon {
-    return getStatusConfig(status).icon;
-}
-
-/**
- * Filter options for order list views.
- */
-export const ORDER_FILTER_OPTIONS = ['All', 'Pending', 'Processing', 'Shipped', 'Completed'] as const;
-export type OrderFilterOption = typeof ORDER_FILTER_OPTIONS[number];
 
 /**
  * Get Tailwind classes for a status badge (bg + text + border).

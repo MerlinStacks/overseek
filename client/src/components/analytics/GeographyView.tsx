@@ -147,5 +147,3 @@ export const GeographyView: React.FC<{ dateRange: string }> = ({ dateRange }) =>
         </div>
     );
 };
-
-export default GeographyView;

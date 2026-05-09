@@ -1,5 +1,5 @@
 
-export interface SeoAnalysisResult {
+interface SeoAnalysisResult {
     score: number;
     tests: {
         test: string;

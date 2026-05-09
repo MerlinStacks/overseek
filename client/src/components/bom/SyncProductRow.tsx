@@ -43,9 +43,10 @@ export function SyncProductRow({
     const errorDetails = errorMsg ? getErrorDetails(errorMsg) : null;
 
     // Find bottleneck component
-    const bottleneckComponent = item.components?.reduce((min, c) =>
-        c.buildableUnits < min.buildableUnits ? c : min
-        , item.components[0]);
+    const bottleneckComponent = item.components?.reduce<BOMComponent>((min, c) =>
+        c.buildableUnits < min.buildableUnits ? c : min,
+        item.components[0]
+    );
 
     return (
         <div>

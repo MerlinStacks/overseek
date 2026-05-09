@@ -173,13 +173,6 @@ export function InboxSkeleton() {
 }
 
 /**
- * Skeleton for just the chat area (when switching conversations)
- */
-export function ChatWindowSkeleton() {
-    return <ChatAreaSkeleton />;
-}
-
-/**
  * Export individual pieces for granular use
  */
 export { ContactPanelSkeleton };

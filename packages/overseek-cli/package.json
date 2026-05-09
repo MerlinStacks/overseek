@@ -16,5 +16,5 @@
     "commander": "^13.1.0"
   },
   "files": ["dist"],
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

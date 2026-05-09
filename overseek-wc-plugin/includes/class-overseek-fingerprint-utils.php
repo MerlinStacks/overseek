@@ -16,39 +16,13 @@ class OverSeek_Fingerprint_Utils
 {
     public static function is_suspicious_user_agent(): bool
     {
-        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower((string) $_SERVER['HTTP_USER_AGENT']) : '';
-        if ($ua === '') {
-            return true;
-        }
-
-        $signals = array('headless', 'bot', 'crawler', 'spider', 'curl', 'wget', 'python', 'java/');
-        foreach ($signals as $signal) {
-            if (strpos($ua, $signal) !== false) {
-                return true;
-            }
-        }
-
-        return false;
+        return OverSeek_Tracking_Guard_Utils::is_bot_request();
     }
 
     public static function get_client_ip(): string
     {
-        $ip = '';
-
-        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-            $ip = sanitize_text_field((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
-        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $xff = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
-            $ip = sanitize_text_field(trim($xff[0]));
-        } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
-            $ip = sanitize_text_field((string) $_SERVER['REMOTE_ADDR']);
-        }
-
-        if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) {
-            return $ip;
-        }
-
-        return 'unknown';
+        $ip = OverSeek_HTTP_Utils::get_client_ip();
+        return $ip !== '' ? $ip : 'unknown';
     }
 
     public static function screen_dims_suspicious(string $dims): bool

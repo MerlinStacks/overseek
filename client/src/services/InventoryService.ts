@@ -1,6 +1,6 @@
 import { api } from './api';
 
-export interface Supplier {
+interface Supplier {
     id: string;
     name: string;
     [key: string]: unknown;

@@ -4,12 +4,11 @@
  * Shows recognizable icons for common browsers (Chrome, Firefox, Safari, Edge)
  * and operating systems (Windows, macOS, iOS, Android, Linux).
  */
-/* eslint-disable react-refresh/only-export-components */
 import * as React from 'react';
 import { Monitor, Smartphone, Tablet, Globe, Apple } from 'lucide-react';
 
 /** Browser icon mapping - returns inline SVG for brand recognition */
-export function getBrowserIcon(browser?: string | null): React.ReactNode {
+function getBrowserIcon(browser?: string | null): React.ReactNode {
     if (!browser) return <Globe className="w-3.5 h-3.5 text-gray-400" />;
 
     const b = browser.toLowerCase();
@@ -114,7 +113,7 @@ export function getBrowserIcon(browser?: string | null): React.ReactNode {
 }
 
 /** OS icon mapping */
-export function getOSIcon(os?: string | null): React.ReactNode {
+function getOSIcon(os?: string | null): React.ReactNode {
     if (!os) return null;
 
     const o = os.toLowerCase();
@@ -160,7 +159,7 @@ export function getOSIcon(os?: string | null): React.ReactNode {
 }
 
 /** Device type icon */
-export function getDeviceIcon(deviceType?: string | null): React.ReactNode {
+function getDeviceIcon(deviceType?: string | null): React.ReactNode {
     if (!deviceType) return <Monitor className="w-3.5 h-3.5 text-gray-400" />;
 
     const d = deviceType.toLowerCase();
@@ -205,5 +204,3 @@ export const DeviceBrowserBadge: React.FC<DeviceBrowserBadgeProps> = ({
         </div>
     );
 };
-
-export default DeviceBrowserBadge;

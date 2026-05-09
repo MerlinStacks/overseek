@@ -20,7 +20,7 @@ export interface ProductQueryRow {
 }
 
 /** Aggregate summary computed client-side from query rows */
-export interface ProductSearchSummary {
+interface ProductSearchSummary {
     totalClicks: number;
     totalImpressions: number;
     avgPosition: number;

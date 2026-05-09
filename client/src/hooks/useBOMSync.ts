@@ -36,7 +36,7 @@ export interface PendingChange {
     lastSyncAttempt?: string;
 }
 
-export interface SyncLogEntry {
+interface SyncLogEntry {
     id: string;
     productId: string;
     productName: string;
@@ -47,7 +47,7 @@ export interface SyncLogEntry {
     createdAt: string;
 }
 
-export interface ConsumptionEntry {
+interface ConsumptionEntry {
     id: string;
     orderId: number;
     orderNumber: string;
@@ -66,12 +66,12 @@ export interface SyncStats {
     errors: number;
 }
 
-export interface SyncProgress {
+interface SyncProgress {
     current: number;
     total: number;
 }
 
-export interface UseBOMSyncReturn {
+interface UseBOMSyncReturn {
     // Data
     pendingChanges: PendingChange[];
     syncHistory: SyncLogEntry[];
@@ -545,4 +545,3 @@ export function getErrorDetails(error: string): { message: string; fix: string }
         fix: 'Check logs for more details or contact support'
     };
 }
-

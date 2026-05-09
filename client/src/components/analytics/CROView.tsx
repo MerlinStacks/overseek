@@ -177,5 +177,3 @@ export const CROView: React.FC<{ dateRange: string }> = ({ dateRange }) => {
         </div>
     );
 };
-
-export default CROView;

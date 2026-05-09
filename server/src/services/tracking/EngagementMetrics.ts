@@ -6,26 +6,7 @@
  */
 
 import { prisma } from '../../utils/prisma';
-
-/**
- * Calculate proper date range based on days parameter.
- */
-function getDateRangeForDays(days: number): { startDate: Date; endDate: Date } {
-    const now = new Date();
-
-    if (days === 1) {
-        const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        return { startDate, endDate: now };
-    } else if (days === -1) {
-        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        const startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
-        const endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
-        return { startDate, endDate };
-    } else {
-        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-        return { startDate, endDate: now };
-    }
-}
+import { getDateRangeForDays } from '../../utils/dateRange';
 
 /**
  * Get search analytics: top queries.

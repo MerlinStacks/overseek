@@ -2,7 +2,7 @@
  * WooCommerce API Response Schemas
  * Zod validation for type-safe sync payload handling
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 const WooImageSchema = z.object({
     id: z.number(),
@@ -162,17 +162,9 @@ export function safeParseProduct(data: unknown): WooProduct | null {
     return result.success ? result.data : null;
 }
 
-export function safeParseProducts(data: unknown[]): WooProduct[] {
-    return data.map(item => safeParseProduct(item)).filter((p): p is WooProduct => p !== null);
-}
-
 export function safeParseCustomer(data: unknown): WooCustomer | null {
     const result = WooCustomerSchema.safeParse(data);
     return result.success ? result.data : null;
-}
-
-export function safeParseCustomers(data: unknown[]): WooCustomer[] {
-    return data.map(item => safeParseCustomer(item)).filter((c): c is WooCustomer => c !== null);
 }
 
 export function safeParseOrder(data: unknown): WooOrder | null {
@@ -180,17 +172,9 @@ export function safeParseOrder(data: unknown): WooOrder | null {
     return result.success ? result.data : null;
 }
 
-export function safeParseOrders(data: unknown[]): WooOrder[] {
-    return data.map(item => safeParseOrder(item)).filter((o): o is WooOrder => o !== null);
-}
-
 export function safeParseReview(data: unknown): WooReview | null {
     const result = WooReviewSchema.safeParse(data);
     return result.success ? result.data : null;
-}
-
-export function safeParseReviews(data: unknown[]): WooReview[] {
-    return data.map(item => safeParseReview(item)).filter((r): r is WooReview => r !== null);
 }
 
 export function safeParseVariation(data: unknown): WooProductVariation | null {
@@ -201,4 +185,3 @@ export function safeParseVariation(data: unknown): WooProductVariation | null {
 export function safeParseVariations(data: unknown[]): WooProductVariation[] {
     return data.map(item => safeParseVariation(item)).filter((v): v is WooProductVariation => v !== null);
 }
-

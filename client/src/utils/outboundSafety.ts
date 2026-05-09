@@ -1,4 +1,4 @@
-export type OutboundSafetySeverity = 'warning' | 'block';
+type OutboundSafetySeverity = 'warning' | 'block';
 
 export interface OutboundSafetyIssue {
     code: string;

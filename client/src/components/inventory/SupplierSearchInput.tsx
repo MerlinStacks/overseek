@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Building2, ChevronDown, X, Plus } from 'lucide-react';
 
-export interface SupplierSelection {
+interface SupplierSelection {
     id: string;
     name: string;
     currency: string;

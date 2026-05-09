@@ -32,12 +32,6 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-export interface CursorPaginatedResponse<T> {
-  data: T[];
-  hasMore: boolean;
-  nextCursor: string | null;
-}
-
 // ── Date range filter ──────────────────────────
 
 export interface DateRangeParams {

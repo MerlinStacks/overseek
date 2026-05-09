@@ -25,12 +25,3 @@ export function getPublicApiUrl(): string {
     // Use the dashboard origin — nginx proxies /api to the backend
     return window.location.origin;
 }
-
-/**
- * Gets the internal API URL for direct requests from the browser.
- * In Docker, this may be the container service name (e.g., `http://api:3000`),
- * but requests are proxied through Vite/Nginx so they still work.
- */
-export function getInternalApiUrl(): string {
-    return import.meta.env.VITE_API_URL || window.location.origin;
-}

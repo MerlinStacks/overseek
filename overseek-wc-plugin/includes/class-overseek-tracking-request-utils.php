@@ -30,25 +30,13 @@ class OverSeek_Tracking_Request_Utils
 
     /**
      * Resolve the visitor IP from common proxy headers.
+     * Delegates to the shared HTTP utility for consistent priority.
      *
      * @return string
      */
     public static function resolve_visitor_ip(): string
     {
-        $ip = '';
-
-        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $ips = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
-            $ip = trim($ips[0]);
-        } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
-            $ip = (string) $_SERVER['HTTP_X_REAL_IP'];
-        } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-            $ip = (string) $_SERVER['HTTP_CLIENT_IP'];
-        } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
-            $ip = (string) $_SERVER['REMOTE_ADDR'];
-        }
-
-        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '';
+        return OverSeek_HTTP_Utils::get_client_ip();
     }
 
     /**

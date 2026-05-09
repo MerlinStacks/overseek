@@ -17,7 +17,7 @@ import { Check, AlertCircle, ChevronDown, ChevronUp, Reply, Eye } from 'lucide-r
 import { useAuth } from '../../context/AuthContext';
 import { GravatarAvatar } from './GravatarAvatar';
 import { parseEmailContent, parseQuotedContent, cleanEmailMetadata } from '../../utils/emailParser';
-import { extractAttachments, AttachmentGallery } from './AttachmentDisplay';
+import { AttachmentGallery } from './AttachmentDisplay';
 
 interface MessageBubbleProps {
     message: {
@@ -62,7 +62,98 @@ export const MessageBubble = memo(function MessageBubble({
 
     const { subject, body } = useMemo(() => parseEmailContent(message.content), [message.content]);
     const { mainContent, quotedContent, quotedPreview, quotedLineCount, quotedAttachmentCount } = useMemo(() => parseQuotedContent(body), [body]);
-    const attachments = useMemo(() => extractAttachments(body), [body]); // Extract from full body to catch attachments after quoted markers
+    const attachments = useMemo(() => {
+        // Extract from full body to catch attachments after quoted markers
+        const content = body;
+        const attachmentsList: Array<{ type: 'image' | 'pdf' | 'document' | 'file'; url: string; filename: string; isInline?: boolean }> = [];
+        const seenUrls = new Set<string>();
+
+        // Extract inline images
+        const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+        let match;
+        while ((match = imgRegex.exec(content)) !== null) {
+            const url = match[1];
+            if (!seenUrls.has(url)) {
+                seenUrls.add(url);
+                const filename = url.split('/').pop() || 'image';
+                attachmentsList.push({ type: 'image', url, filename, isInline: true });
+            }
+        }
+
+        // Extract HTML linked files
+        const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi;
+        while ((match = linkRegex.exec(content)) !== null) {
+            const url = match[1];
+            const text = match[2];
+            if (seenUrls.has(url)) continue;
+
+            const ext = url.split('.').pop()?.toLowerCase() || '';
+
+            if (['pdf'].includes(ext)) {
+                seenUrls.add(url);
+                attachmentsList.push({ type: 'pdf', url, filename: text || url.split('/').pop() || 'document.pdf' });
+            } else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) {
+                seenUrls.add(url);
+                attachmentsList.push({ type: 'document', url, filename: text || url.split('/').pop() || 'document' });
+            } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+                seenUrls.add(url);
+                attachmentsList.push({ type: 'image', url, filename: text || url.split('/').pop() || 'image' });
+            }
+        }
+
+        // Extract markdown-style links: [filename](url)
+        const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/gi;
+        while ((match = markdownLinkRegex.exec(content)) !== null) {
+            const text = match[1];
+            const url = match[2];
+            if (seenUrls.has(url)) continue;
+
+            const urlExt = url.split('.').pop()?.toLowerCase().split(/[?#]/)[0] || '';
+            const textExt = text.split('.').pop()?.toLowerCase() || '';
+
+            const validExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'];
+            const ext = validExtensions.includes(urlExt) ? urlExt : (validExtensions.includes(textExt) ? textExt : '');
+
+            const isAttachmentPath = url.includes('/uploads/attachments/') ||
+                url.includes('/attachment/') ||
+                url.includes('/files/');
+            const hasFileExtensionInText = validExtensions.some(e => text.toLowerCase().endsWith('.' + e));
+            const isAttachment = ext && (isAttachmentPath || hasFileExtensionInText);
+
+            if (isAttachment) {
+                seenUrls.add(url);
+
+                let type: 'image' | 'pdf' | 'document' | 'file' = 'file';
+                if (ext === 'pdf') type = 'pdf';
+                else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) type = 'document';
+                else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image';
+
+                const filename = text || url.split('/').pop() || 'file';
+                const isSignatureLikeFilename = (name: string) => /^(logo|signature|sig|banner|brand|header|footer|icon|avatar|divider|spacer|separator|bullet|pixel|tracker|tracking|beacon|dot|arrow)\d*[-_]?\w*\.(png|jpe?g|gif|webp|bmp)$/i.test(name);
+                if (type === 'image' && isSignatureLikeFilename(filename)) continue;
+
+                attachmentsList.push({ type, url, filename });
+            }
+        }
+
+        // Extract email attachment references like "<55340 - Jules Denslow.pdf>"
+        const emailAttachmentRegex = /<([^>]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp))>/gi;
+        while ((match = emailAttachmentRegex.exec(content)) !== null) {
+            const filename = match[1].trim();
+            const ext = match[2].toLowerCase();
+
+            let type: 'image' | 'pdf' | 'document' | 'file' = 'file';
+            if (ext === 'pdf') type = 'pdf';
+            else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) type = 'document';
+            else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image';
+
+            if (!attachmentsList.some(a => a.filename === filename)) {
+                attachmentsList.push({ type, url: '', filename });
+            }
+        }
+
+        return attachmentsList;
+    }, [body]);
     const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(mainContent), [mainContent]);
 
     const sanitizedContent = useMemo(() => {

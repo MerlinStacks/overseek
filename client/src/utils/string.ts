@@ -51,51 +51,6 @@ export function getInitials(
 }
 
 /**
- * Truncate a string to a maximum length with ellipsis.
- * 
- * @param str - The string to truncate
- * @param maxLength - Maximum length including ellipsis
- * @param ellipsis - The ellipsis string (default: '...')
- */
-export function truncate(str: string, maxLength: number, ellipsis = '...'): string {
-    if (!str || str.length <= maxLength) return str || '';
-    return str.slice(0, maxLength - ellipsis.length) + ellipsis;
-}
-
-/**
- * Capitalize the first letter of a string.
- */
-export function capitalize(str: string): string {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/**
- * Convert a string to title case.
- */
-export function toTitleCase(str: string): string {
-    if (!str) return '';
-    return str
-        .toLowerCase()
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-}
-
-/**
- * Slugify a string (convert to URL-safe format).
- */
-export function slugify(str: string): string {
-    if (!str) return '';
-    return str
-        .toLowerCase()
-        .trim()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/[\s_-]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-}
-
-/**
  * Escapes special regex characters in a string for safe use in RegExp constructor.
  * 
  * @param str - The string to escape
@@ -112,4 +67,3 @@ export function escapeRegex(str: string): string {
         return str;
     }
 }
-

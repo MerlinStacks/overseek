@@ -1,15 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import {
-    buildDraftKey,
-    readDraft,
-    writeDraft,
-    usePODraftPersistence,
-    PODraftState,
-} from './usePODraftPersistence';
+import { usePODraftPersistence } from './usePODraftPersistence';
 
 /** Factory for a valid draft snapshot */
-function makeDraft(overrides: Partial<PODraftState> = {}): PODraftState {
+type DraftState = {
+    supplierId: string;
+    status: string;
+    notes: string;
+    orderDate: string;
+    expectedDate: string;
+    trackingNumber: string;
+    trackingLink: string;
+    items: Array<{ name: string; quantity: number; unitCost: number; totalCost: number }>;
+    savedAt: number;
+};
+
+function makeDraft(overrides: Partial<DraftState> = {}): DraftState {
     return {
         supplierId: 'sup-1',
         status: 'DRAFT',
@@ -23,47 +29,6 @@ function makeDraft(overrides: Partial<PODraftState> = {}): PODraftState {
         ...overrides,
     };
 }
-
-describe('buildDraftKey', () => {
-    it('scopes key by account and PO id', () => {
-        expect(buildDraftKey('acc-1', 'po-42')).toBe('po-draft:acc-1:po-42');
-    });
-
-    it('uses "new" for unsaved POs', () => {
-        expect(buildDraftKey('acc-1', 'new')).toBe('po-draft:acc-1:new');
-    });
-});
-
-describe('readDraft / writeDraft', () => {
-    const key = 'po-draft:test:1';
-
-    beforeEach(() => localStorage.clear());
-
-    it('returns null when no draft exists', () => {
-        expect(readDraft(key)).toBeNull();
-    });
-
-    it('round-trips a draft through write + read', () => {
-        const draft = makeDraft();
-        writeDraft(key, draft);
-        const loaded = readDraft(key);
-        expect(loaded).toEqual(draft);
-    });
-
-    it('discards drafts older than 24 hours', () => {
-        const stale = makeDraft({ savedAt: Date.now() - 25 * 60 * 60 * 1000 });
-        writeDraft(key, stale);
-        expect(readDraft(key)).toBeNull();
-        // Key should also be removed from storage
-        expect(localStorage.getItem(key)).toBeNull();
-    });
-
-    it('handles corrupt JSON gracefully', () => {
-        localStorage.setItem(key, '{not valid json!!!');
-        expect(readDraft(key)).toBeNull();
-        expect(localStorage.getItem(key)).toBeNull();
-    });
-});
 
 describe('usePODraftPersistence', () => {
     beforeEach(() => {
@@ -82,7 +47,7 @@ describe('usePODraftPersistence', () => {
         expectedDate: '',
         trackingNumber: '',
         trackingLink: '',
-        items: [] as PODraftState['items'],
+        items: [] as DraftState['items'],
     };
 
     it('auto-saves to localStorage after debounce', () => {
@@ -122,7 +87,7 @@ describe('usePODraftPersistence', () => {
 
     it('loadDraft returns stored draft', () => {
         const draft = makeDraft();
-        writeDraft('po-draft:acc-1:new', draft);
+        localStorage.setItem('po-draft:acc-1:new', JSON.stringify(draft));
 
         const { result } = renderHook(() =>
             usePODraftPersistence({
@@ -138,7 +103,7 @@ describe('usePODraftPersistence', () => {
     });
 
     it('clearDraft removes the entry from localStorage', () => {
-        writeDraft('po-draft:acc-1:new', makeDraft());
+        localStorage.setItem('po-draft:acc-1:new', JSON.stringify(makeDraft()));
 
         const { result } = renderHook(() =>
             usePODraftPersistence({
@@ -150,6 +115,39 @@ describe('usePODraftPersistence', () => {
         );
 
         act(() => { result.current.clearDraft(); });
+        expect(localStorage.getItem('po-draft:acc-1:new')).toBeNull();
+    });
+
+    it('drops stale drafts older than 24 hours', () => {
+        const stale = makeDraft({ savedAt: Date.now() - 25 * 60 * 60 * 1000 });
+        localStorage.setItem('po-draft:acc-1:new', JSON.stringify(stale));
+
+        const { result } = renderHook(() =>
+            usePODraftPersistence({
+                accountId: 'acc-1',
+                poId: 'new',
+                formState: baseFormState,
+                enabled: true,
+            }),
+        );
+
+        expect(result.current.loadDraft()).toBeNull();
+        expect(localStorage.getItem('po-draft:acc-1:new')).toBeNull();
+    });
+
+    it('clears corrupt draft payloads', () => {
+        localStorage.setItem('po-draft:acc-1:new', '{not valid json!!!');
+
+        const { result } = renderHook(() =>
+            usePODraftPersistence({
+                accountId: 'acc-1',
+                poId: 'new',
+                formState: baseFormState,
+                enabled: true,
+            }),
+        );
+
+        expect(result.current.loadDraft()).toBeNull();
         expect(localStorage.getItem('po-draft:acc-1:new')).toBeNull();
     });
 });

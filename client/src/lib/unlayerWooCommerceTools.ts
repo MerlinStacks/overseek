@@ -15,36 +15,6 @@ interface UnlayerEditor {
 }
 
 /**
- * Merge tag definitions for WooCommerce data
- * These are replaced server-side with actual order/customer data
- */
-export const WOO_MERGE_TAGS = {
-    // Order
-    'order.number': '{{order.number}}',
-    'order.date': '{{order.date}}',
-    'order.status': '{{order.status}}',
-    'order.paymentMethod': '{{order.paymentMethod}}',
-    'order.subtotal': '{{order.subtotal}}',
-    'order.shippingTotal': '{{order.shippingTotal}}',
-    'order.discountTotal': '{{order.discountTotal}}',
-    'order.total': '{{order.total}}',
-    'order.itemsTable': '{{order.itemsTable}}',
-    'order.billingAddress': '{{order.billingAddress}}',
-    'order.shippingAddress': '{{order.shippingAddress}}',
-    'order.customerNote': '{{order.customerNote}}',
-    'order.downloads': '{{order.downloads}}',
-    // Customer
-    'customer.firstName': '{{customer.firstName}}',
-    'customer.lastName': '{{customer.lastName}}',
-    'customer.email': '{{customer.email}}',
-    'customer.phone': '{{customer.phone}}',
-    // Coupon
-    'coupon.code': '{{coupon.code}}',
-    'coupon.discount': '{{coupon.discount}}',
-    'coupon.description': '{{coupon.description}}',
-};
-
-/**
  * Get merge tags configuration for Unlayer editor
  * Enables merge tag autocomplete in the editor
  */

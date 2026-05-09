@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useAuth } from './AuthContext';
 /* eslint-disable react-refresh/only-export-components */
 
-export interface Account {
+interface Account {
     id: string;
     name: string;
     domain: string | null;

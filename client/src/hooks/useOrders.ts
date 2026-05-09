@@ -14,7 +14,7 @@ import { Logger } from '../utils/logger';
 import { printPicklist } from '../utils/printPicklist';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
-export interface Order {
+interface Order {
     id: number;
     status: string;
     total: number;

@@ -7,7 +7,7 @@ import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 /* eslint-disable react-refresh/only-export-components */
 
 
-export interface SyncJob {
+interface SyncJob {
     id: string;
     queue: string;
     progress: number;
@@ -32,7 +32,7 @@ export interface SyncLog {
     maxAttempts?: number;
 }
 
-export interface SyncState {
+interface SyncState {
     id: string;
     accountId: string;
     entityType: string;
@@ -42,7 +42,7 @@ export interface SyncState {
 }
 
 /** Summary returned by the /health endpoint */
-export interface SyncHealthSummary {
+interface SyncHealthSummary {
     lastSuccessAt: string | null;
     lastFailureAt: string | null;
     failureRate24h: number;

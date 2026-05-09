@@ -10,7 +10,7 @@ export interface InboxMessage {
     [key: string]: unknown;
 }
 
-export interface InboxWooCustomer {
+interface InboxWooCustomer {
     firstName?: string;
     lastName?: string;
     email?: string;

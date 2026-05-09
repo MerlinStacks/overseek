@@ -413,12 +413,6 @@ class OverSeek_Fingerprint
     }
 
     /**
-     * Determine whether user agent is likely automation tooling.
-     *
-     * @return bool True if UA appears suspicious.
-     */
-
-    /**
      * Get the score computed during this request (for use by tracking).
      *
      * @return int|null Score or null if not yet computed.

@@ -1,4 +1,3 @@
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProductSync } from '../ProductSync';
 import { IndexingService } from '../../search/IndexingService';
@@ -110,10 +109,6 @@ describe('ProductSync Reconciliation Performance', () => {
         // Run sync (non-incremental to trigger reconciliation)
         // Accessing protected member via any cast
         await (productSync as any).sync(mockWooService as any, accountId, false);
-
-        // Verification
-        console.log('delete calls:', mockPrisma.wooProduct.delete.mock.calls.length);
-        console.log('deleteMany calls:', mockPrisma.wooProduct.deleteMany.mock.calls.length);
 
         // Assert optimized behavior
         expect(mockPrisma.wooProduct.delete).toHaveBeenCalledTimes(0);

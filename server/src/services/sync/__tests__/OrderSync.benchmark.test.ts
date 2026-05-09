@@ -83,6 +83,5 @@ describe('OrderSync Benchmark', () => {
         // updateMany called once per customer (batched in groups of 50)
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(customerCount);
 
-        console.log(`Executed two-step batch update for ${customerCount} customers.`);
     });
 });

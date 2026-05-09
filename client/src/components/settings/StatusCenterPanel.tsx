@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { formatRelativeTime } from '../../utils/relativeTime';
 
 /**
  * Health status levels matching backend API response.
@@ -90,23 +91,6 @@ const STATUS_CONFIG: Record<HealthLevel, {
         pulse: true
     }
 };
-
-/**
- * Format a date string to relative time (e.g., "2 minutes ago").
- */
-function formatRelativeTime(dateString: string): string {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
-    const diffHours = Math.floor(diffMins / 60);
-
-    if (diffSecs < 60) return 'Just now';
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    return date.toLocaleDateString();
-}
 
 /**
  * StatusCenterPanel - Full-featured status center panel for settings or standalone use.

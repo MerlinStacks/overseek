@@ -2,10 +2,10 @@
  * Actionable Recommendation Types (Client Side)
  */
 
-export type SuggestionCategory = 'stock' | 'performance' | 'budget' | 'creative' | 'seasonal' | 'info' | 'optimization' | 'structure' | 'audience';
+type SuggestionCategory = 'stock' | 'performance' | 'budget' | 'creative' | 'seasonal' | 'info' | 'optimization' | 'structure' | 'audience';
 
 
-export interface BudgetAction {
+interface BudgetAction {
     actionType: 'budget_increase' | 'budget_decrease' | 'pause' | 'enable';
     campaignId: string;
     campaignName: string;
@@ -17,7 +17,7 @@ export interface BudgetAction {
     reason: string;
 }
 
-export interface KeywordAction {
+interface KeywordAction {
     actionType: 'add_keyword' | 'add_negative' | 'adjust_bid' | 'pause_keyword';
     keyword: string;
     matchType: 'exact' | 'phrase' | 'broad';
@@ -31,7 +31,7 @@ export interface KeywordAction {
     platform?: 'google' | 'meta';
 }
 
-export interface ProductAction {
+interface ProductAction {
     actionType: 'create_campaign' | 'increase_visibility' | 'exclude_product' | 'adjust_bid';
     productId: string;
     productName: string;
@@ -43,10 +43,10 @@ export interface ProductAction {
     margin?: number;
 }
 
-export type RecommendationAction = BudgetAction | KeywordAction | ProductAction;
+type RecommendationAction = BudgetAction | KeywordAction | ProductAction;
 
 
-export interface EstimatedImpact {
+interface EstimatedImpact {
     revenueChange?: number;
     roasChange?: number;
     spendChange?: number;
@@ -73,7 +73,7 @@ export interface BudgetSpec {
     maxCpc?: number;
 }
 
-export interface CreativeSpec {
+interface CreativeSpec {
     headlines: string[];
     descriptions: string[];
     callToActions?: string[];
@@ -84,7 +84,7 @@ export interface CreativeSpec {
 }
 
 /** Sitelink extension spec */
-export interface SitelinkSpec {
+interface SitelinkSpec {
     text: string;
     description1?: string;
     description2?: string;
@@ -92,7 +92,7 @@ export interface SitelinkSpec {
 }
 
 /** Full ad specifications for campaign creation */
-export interface AdSpec {
+interface AdSpec {
     /** Responsive Search Ad headlines (up to 15) */
     headlines: string[];
     /** Responsive Search Ad descriptions (up to 4) */
@@ -105,7 +105,7 @@ export interface AdSpec {
     sitelinks?: SitelinkSpec[];
 }
 
-export interface ImplementationDetails {
+interface ImplementationDetails {
     /** Suggested keywords with CPCs and match types */
     suggestedKeywords?: KeywordSpec[];
     /** Budget and bidding configuration */

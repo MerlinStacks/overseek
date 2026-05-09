@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 
-export interface CannedResponseLabel {
+interface CannedResponseLabel {
     id: string;
     name: string;
     color: string;
@@ -174,4 +174,3 @@ export function useCannedResponses(): UseCannedResponsesReturn {
         refetchCanned: fetchCanned
     };
 }
-

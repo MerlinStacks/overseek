@@ -1,10 +1,6 @@
 import { useUser } from './useUser';
 import { useAccount } from '../context/AccountContext';
 
-export interface PermissionSet {
-    [key: string]: boolean;
-}
-
 /**
  * Why sourced from AccountContext: The /me endpoint returns resolved
  * permissions keyed by accountId. Reading from the React Query cache
@@ -30,4 +26,3 @@ export function usePermissions() {
         permissions
     };
 }
-

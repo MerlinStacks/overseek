@@ -1,3 +1,5 @@
+import { formatRelativeTime } from './relativeTime';
+
 const DEFAULT_LOCALE = 'en-AU';
 
 /**
@@ -45,19 +47,13 @@ export function formatDateTime(dateString: string): string {
 
 /**
  * Format a date as relative time (e.g., "5m ago", "2h ago", "3d ago").
+ * Re-exported from relativeTime.ts for backward compatibility.
  * @param date - Date string or Date object
  * @returns Relative time string
  */
 export function formatTimeAgo(date: string | Date): string {
     if (!date) return '';
-    const now = new Date();
-    const then = typeof date === 'string' ? new Date(date) : date;
-    const diff = Math.floor((now.getTime() - then.getTime()) / 1000);
-
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    return formatRelativeTime(typeof date === 'string' ? date : date.toISOString());
 }
 
 /**
@@ -82,21 +78,6 @@ export function formatCurrency(
 }
 
 /**
- * Format a value as money (convenience wrapper for formatCurrency).
- * Handles string-to-number conversion for values from APIs.
- * @param amount - Numeric amount or string to format
- * @param currency - Currency code (default: 'AUD')
- * @returns Formatted currency string
- */
-export function formatMoney(
-    amount: number | string,
-    currency: string = 'AUD'
-): string {
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) || 0 : amount;
-    return formatCurrency(numAmount, currency);
-}
-
-/**
  * Format a number in compact notation (e.g., 1.2K, 3.4M).
  * @param value - Number to format
  * @returns Compact formatted string
@@ -106,16 +87,6 @@ export function formatCompact(value: number): string {
         notation: 'compact',
         maximumFractionDigits: 1
     }).format(value);
-}
-
-/**
- * Format a number as a percentage.
- * @param value - Number to format (0.15 = 15%)
- * @param decimals - Decimal places (default: 1)
- * @returns Formatted percentage string
- */
-export function formatPercent(value: number, decimals: number = 1): string {
-    return `${(value * 100).toFixed(decimals)}%`;
 }
 
 /**

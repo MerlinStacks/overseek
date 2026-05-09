@@ -5,7 +5,7 @@
  */
 import { escapeRegex } from './string';
 
-export interface QuotedContentInfo {
+interface QuotedContentInfo {
     mainContent: string;
     quotedContent: string | null;
     quotedPreview: string | null;
@@ -78,7 +78,7 @@ export function cleanEmailMetadata(content: string): string {
 /**
  * Strips HTML tags and returns plain text for analysis.
  */
-export function stripHtmlForAnalysis(html: string): string {
+function stripHtmlForAnalysis(html: string): string {
     // First clean email metadata then strip HTML
     return cleanEmailMetadata(html)
         .replace(/<br\s*\/?>/gi, '\n')
@@ -96,7 +96,7 @@ export function stripHtmlForAnalysis(html: string): string {
 /**
  * Extracts a preview snippet from quoted content (first meaningful line or two).
  */
-export function extractQuotedPreview(quotedContent: string): string {
+function extractQuotedPreview(quotedContent: string): string {
     const text = stripHtmlForAnalysis(quotedContent);
     const lines = text.split('\n').filter(line => {
         const trimmed = line.trim();
@@ -117,7 +117,7 @@ export function extractQuotedPreview(quotedContent: string): string {
 /**
  * Counts meaningful lines in quoted content.
  */
-export function countQuotedLines(quotedContent: string): number {
+function countQuotedLines(quotedContent: string): number {
     const text = stripHtmlForAnalysis(quotedContent);
     return text.split('\n').filter(line => line.trim().length > 0).length;
 }
@@ -125,7 +125,7 @@ export function countQuotedLines(quotedContent: string): number {
 /**
  * Counts attachments referenced in quoted content.
  */
-export function countQuotedAttachments(quotedContent: string): number {
+function countQuotedAttachments(quotedContent: string): number {
     const imgMatches = quotedContent.match(/<img[^>]+>/gi) || [];
     const attachmentMatches = quotedContent.match(/<\d+.*?\.pdf>|<\d+.*?\.docx?>|<\d+.*?\.xlsx?>/gi) || [];
     return imgMatches.length + attachmentMatches.length;
@@ -135,7 +135,7 @@ export function countQuotedAttachments(quotedContent: string): number {
  * Detects and separates quoted email content from the main message.
  * Handles various email clients: Gmail, Outlook, Apple Mail, etc.
  */
-export function parseQuotedContent(body: string): QuotedContentInfo {
+export function parseQuotedContent(body: string): { mainContent: string; quotedContent: string | null; quotedPreview: string | null; quotedLineCount: number; quotedAttachmentCount: number } {
     // First, try to find HTML-based quote markers (Gmail blockquote, etc.)
     const htmlQuotePatterns = [
         // Gmail-style blockquote
