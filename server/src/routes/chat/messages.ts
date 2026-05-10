@@ -164,6 +164,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 let content = '';
                 let type: 'AGENT' | 'SYSTEM' = 'AGENT';
                 let isInternal = false;
+                let channel: string | undefined;
                 let emailAccountId: string | undefined;
                 const attachmentLinks: string[] = [];
                 // Track attachments with full paths for email relay
@@ -238,6 +239,9 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                                 case 'emailAccountId':
                                     emailAccountId = value;
                                     break;
+                                case 'channel':
+                                    channel = value;
+                                    break;
                             }
                         }
                     }
@@ -252,15 +256,25 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 // Add message to conversation
                 const msg = await chatService.addMessage(conversationId, fullContent, type, userId, isInternal, accountId);
 
-                // Send via email if this is an EMAIL conversation and not internal
-                if (!isInternal && attachments.length > 0) {
+                // Route externally when this is not an internal note.
+                // Why: attachment sends previously swallowed routing errors, so agents saw
+                // success while customers never received the message/attachments.
+                if (!isInternal) {
                     try {
-                        await sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId);
-                    } catch (emailError: any) {
-                        // Log but don't fail - message is already stored
-                        Logger.error('[message-with-attachments] Failed to send email', {
-                            error: emailError.message,
-                            conversationId
+                        if (attachments.length > 0) {
+                            await sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId);
+                        } else if (channel) {
+                            await routeMessageToChannel(conversationId, content, channel, accountId, emailAccountId);
+                        }
+                    } catch (routingError: any) {
+                        Logger.error('[message-with-attachments] External routing failed', {
+                            error: routingError?.message,
+                            conversationId,
+                            channel,
+                            hasAttachments: attachments.length > 0
+                        });
+                        return reply.code(502).send({
+                            error: 'Message saved, but delivery to customer failed. Please retry or check channel configuration.'
                         });
                     }
                 }

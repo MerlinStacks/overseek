@@ -7,9 +7,41 @@ import { FastifyPluginAsync } from 'fastify';
 import { TrackingService } from '../services/TrackingService';
 import { Logger } from '../utils/logger';
 import { isValidAccount, isRateLimited } from '../middleware/trackingMiddleware';
+import { z } from 'zod';
+import { incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
 
 // Transparent 1x1 GIF for pixel tracking
 const TRANSPARENT_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+const botHitPayloadSchema = z.object({
+    accountId: z.string().uuid(),
+    userAgent: z.string().min(1).max(1000),
+    url: z.string().max(1000).optional(),
+    ip: z.string().max(128).optional(),
+});
+
+const BOT_HIT_IP_WINDOW_MS = 60 * 1000;
+const BOT_HIT_IP_MAX_REQUESTS = 180;
+const botHitIpHits = new Map<string, { count: number; startedAt: number }>();
+
+function isBotHitIpRateLimited(ip: string): boolean {
+    const now = Date.now();
+
+    for (const [key, value] of botHitIpHits) {
+        if (now - value.startedAt > BOT_HIT_IP_WINDOW_MS) {
+            botHitIpHits.delete(key);
+        }
+    }
+
+    const existing = botHitIpHits.get(ip);
+    if (!existing || now - existing.startedAt > BOT_HIT_IP_WINDOW_MS) {
+        botHitIpHits.set(ip, { count: 1, startedAt: now });
+        return false;
+    }
+
+    existing.count += 1;
+    return existing.count > BOT_HIT_IP_MAX_REQUESTS;
+}
 
 const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -251,19 +283,41 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
      * cleanly, then do the async work after reply is flushed.
      */
     fastify.post('/bot-hit', async (request, reply) => {
+        incrementBotShieldMetric('botHitRequests');
         reply.code(202).send({ ok: true });
 
         try {
-            const body = request.body as { accountId?: string; userAgent?: string; url?: string; ip?: string };
+            const sourceIp = request.ip || 'unknown';
+            if (isBotHitIpRateLimited(sourceIp)) {
+                incrementBotShieldMetric('botHitRateLimited');
+                Logger.warn('[BotHit] Source IP rate limited', { ip: sourceIp });
+                return;
+            }
 
-            if (!body.accountId || !body.userAgent) return;
-            if (body.userAgent.length > 1000) return;
+            const parsedBody = botHitPayloadSchema.safeParse(request.body);
+            if (!parsedBody.success) {
+                incrementBotShieldMetric('botHitInvalidPayload');
+                Logger.debug('[BotHit] Invalid payload rejected', {
+                    ip: sourceIp,
+                    issue: parsedBody.error.issues[0]?.message
+                });
+                return;
+            }
 
-            if (!(await isValidAccount(body.accountId))) return;
-            if (isRateLimited(body.accountId)) return;
+            const body = parsedBody.data;
+
+            if (!(await isValidAccount(body.accountId))) {
+                incrementBotShieldMetric('botHitInvalidAccount');
+                return;
+            }
+            if (isRateLimited(body.accountId)) {
+                incrementBotShieldMetric('botHitDroppedByAccountRateLimit');
+                return;
+            }
 
             const { logHitIfIdentifiable } = await import('../services/tracking/CrawlerService');
             await logHitIfIdentifiable(body.accountId, body.userAgent, body.url, body.ip);
+            incrementBotShieldMetric('botHitProcessed');
         } catch (error) {
             Logger.debug('[BotHit] Failed (non-fatal)', { error });
         }
@@ -271,4 +325,3 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default trackingIngestionRoutes;
-

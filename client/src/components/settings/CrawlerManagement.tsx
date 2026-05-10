@@ -40,6 +40,21 @@ interface CrawlerStats {
     blockedCount: number;
 }
 
+interface ShieldMetrics {
+    blockedAgentsRequests: number;
+    blockedAgentsRateLimited: number;
+    blockedAgentsInvalidAccountId: number;
+    blockedAgentsAccountNotFound: number;
+    blockedAgentsSuccess: number;
+    botHitRequests: number;
+    botHitRateLimited: number;
+    botHitInvalidPayload: number;
+    botHitInvalidAccount: number;
+    botHitDroppedByAccountRateLimit: number;
+    botHitProcessed: number;
+    generatedAt: string;
+}
+
 interface RulePayload {
     crawlerName: string;
     pattern: string;
@@ -84,6 +99,7 @@ export function CrawlerManagement() {
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
     const [confirmBlock, setConfirmBlock] = useState<CrawlerEntry | null>(null);
+    const [shieldMetrics, setShieldMetrics] = useState<ShieldMetrics | null>(null);
 
     const fetchCrawlers = useCallback(async (signal?: AbortSignal) => {
         if (!currentAccount || !token) return;
@@ -118,6 +134,27 @@ export function CrawlerManagement() {
         fetchCrawlers(controller.signal);
         return () => controller.abort();
     }, [fetchCrawlers]);
+
+    useEffect(() => {
+        const fetchShieldMetrics = async () => {
+            if (!currentAccount || !token) return;
+            try {
+                const res = await fetch('/api/crawlers/shield-metrics', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id,
+                    }
+                });
+                if (!res.ok) return;
+                const json = await res.json();
+                setShieldMetrics(json?.metrics || null);
+            } catch {
+                // Non-blocking diagnostics panel.
+            }
+        };
+
+        fetchShieldMetrics();
+    }, [currentAccount, token]);
 
     const handleToggleBlock = async (crawler: CrawlerEntry) => {
         // Warn before blocking beneficial crawlers (SEO impact)
@@ -193,6 +230,18 @@ export function CrawlerManagement() {
                         <StatCard icon={<ShieldOff size={18} />} label="Blocked (24h)" value={(data.totalBlockedHits24h ?? 0).toLocaleString()} color="red" />
                         <StatCard icon={<Bot size={18} />} label="Unique Crawlers" value={(data.uniqueCrawlers ?? 0).toString()} color="purple" />
                         <StatCard icon={<ShieldOff size={18} />} label="Rules Active" value={(data.blockedCount ?? 0).toString()} color="red" />
+                    </div>
+                )}
+
+                {shieldMetrics && (
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 p-3">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-slate-300 mb-2">Shield Endpoint Diagnostics</p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600 dark:text-slate-400">
+                            <span>/blocked-agents req: {(shieldMetrics.blockedAgentsRequests ?? 0).toLocaleString()}</span>
+                            <span>/blocked-agents rl: {(shieldMetrics.blockedAgentsRateLimited ?? 0).toLocaleString()}</span>
+                            <span>/bot-hit req: {(shieldMetrics.botHitRequests ?? 0).toLocaleString()}</span>
+                            <span>/bot-hit processed: {(shieldMetrics.botHitProcessed ?? 0).toLocaleString()}</span>
+                        </div>
                     </div>
                 )}
 
@@ -339,13 +388,11 @@ function CrawlerRow({ crawler, isToggling, onToggle }: {
                 <p className="text-[10px] text-gray-400 dark:text-slate-500">hits</p>
             </div>
 
-            {/* Blocked Hit Count — only shown when there are blocked hits */}
-            {crawler.blockedHits > 0 && (
-                <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">{(crawler.blockedHits ?? 0).toLocaleString()}</p>
-                    <p className="text-[10px] text-red-400 dark:text-red-500">blocked</p>
-                </div>
-            )}
+            {/* Blocked Hit Count */}
+            <div className="text-right shrink-0">
+                <p className="text-sm font-semibold text-red-600 dark:text-red-400">{(crawler.blockedHits ?? 0).toLocaleString()}</p>
+                <p className="text-[10px] text-red-400 dark:text-red-500">blocked</p>
+            </div>
 
             {/* Block Toggle */}
             <button

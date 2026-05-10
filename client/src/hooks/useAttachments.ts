@@ -109,6 +109,7 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
         // Upload attachments with message content
         setIsUploading(true);
         setUploadProgress(0);
+        setAttachmentError(null);
 
         try {
             const formData = new FormData();
@@ -154,8 +155,11 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
 
             // Clear staged attachments on success
             clearAttachments();
+            setAttachmentError(null);
         } catch (error) {
             Logger.error('Failed to send message with attachments', { error });
+            const message = error instanceof Error ? error.message : 'Failed to send message with attachments';
+            setAttachmentError(message);
             throw error;
         } finally {
             setIsUploading(false);

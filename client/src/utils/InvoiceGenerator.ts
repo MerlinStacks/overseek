@@ -89,6 +89,7 @@ export const generateInvoicePDF = async (
         await delay(500);
         await nextFrame();
         normalizeImageSources(container);
+        await inlineImageSources(container);
         await waitForImages(container);
         await nextFrame();
 
@@ -102,6 +103,9 @@ export const generateInvoicePDF = async (
             innerDiv.style.outline = 'none';
             innerDiv.style.border = 'none';
             innerDiv.style.borderRadius = '0';
+            innerDiv.style.padding = '0';
+            innerDiv.style.maxWidth = 'none';
+            innerDiv.style.width = `${CONTAINER_WIDTH_PX}px`;
             innerDiv.classList.remove('shadow-2xl', 'ring-1', 'rounded-sm');
         }
 
@@ -175,10 +179,48 @@ function normalizeImageSources(container: HTMLElement): void {
         }
 
         try {
-            img.setAttribute('src', new URL(rawSrc, window.location.origin).toString());
+            const normalized = new URL(rawSrc, window.location.origin).toString();
+            img.setAttribute('src', normalized);
+            img.crossOrigin = 'anonymous';
+            img.referrerPolicy = 'no-referrer-when-downgrade';
+            img.loading = 'eager';
+            img.decoding = 'sync';
         } catch {
             // Keep original src when parsing fails
         }
+    });
+}
+
+async function inlineImageSources(container: HTMLElement): Promise<void> {
+    const images = Array.from(container.querySelectorAll('img'));
+    await Promise.all(images.map(async (img) => {
+        const src = img.getAttribute('src');
+        if (!src || src.startsWith('data:') || src.startsWith('blob:')) return;
+
+        try {
+            const response = await fetch(src, { mode: 'cors', credentials: 'omit' });
+            if (!response.ok) return;
+            const blob = await response.blob();
+            const dataUrl = await blobToDataUrl(blob);
+            img.setAttribute('src', dataUrl);
+        } catch {
+            // Keep original src when CORS or fetch fails.
+        }
+    }));
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+                resolve(reader.result);
+                return;
+            }
+            reject(new Error('Failed to read blob as data URL'));
+        };
+        reader.onerror = () => reject(reader.error ?? new Error('Failed to read blob'));
+        reader.readAsDataURL(blob);
     });
 }
 

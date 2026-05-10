@@ -11,6 +11,7 @@ import { z } from 'zod';
 import * as CrawlerService from '../services/tracking/CrawlerService';
 import { CRAWLER_REGISTRY, CATEGORY_META } from '../services/tracking/CrawlerRegistry';
 import { cacheDelete } from '../utils/cache';
+import { getBotShieldMetrics, incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
 
 // =============================================================================
 // VALIDATION SCHEMAS
@@ -37,6 +38,30 @@ const querySchema = z.object({
     category: z.string().optional(),
 });
 
+const accountIdSchema = z.string().uuid();
+const BLOCKED_AGENTS_IP_WINDOW_MS = 60 * 1000;
+const BLOCKED_AGENTS_IP_MAX_REQUESTS = 120;
+const blockedAgentsIpHits = new Map<string, { count: number; startedAt: number }>();
+
+function isBlockedAgentsIpRateLimited(ip: string): boolean {
+    const now = Date.now();
+
+    for (const [key, value] of blockedAgentsIpHits) {
+        if (now - value.startedAt > BLOCKED_AGENTS_IP_WINDOW_MS) {
+            blockedAgentsIpHits.delete(key);
+        }
+    }
+
+    const existing = blockedAgentsIpHits.get(ip);
+    if (!existing || now - existing.startedAt > BLOCKED_AGENTS_IP_WINDOW_MS) {
+        blockedAgentsIpHits.set(ip, { count: 1, startedAt: now });
+        return false;
+    }
+
+    existing.count += 1;
+    return existing.count > BLOCKED_AGENTS_IP_MAX_REQUESTS;
+}
+
 // =============================================================================
 // ROUTE PLUGIN
 // =============================================================================
@@ -53,8 +78,22 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
     // live outside the auth-scoped register() to avoid the JWT preHandler.
     // -------------------------------------------------------------------------
     fastify.get('/blocked-agents', async (request, reply) => {
+        incrementBotShieldMetric('blockedAgentsRequests');
         const accountId = request.headers['x-account-id'] as string | undefined;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        const accountIdParsed = accountIdSchema.safeParse(accountId);
+        if (!accountIdParsed.success) {
+            incrementBotShieldMetric('blockedAgentsInvalidAccountId');
+            return reply.code(400).send({ error: 'Invalid account ID format' });
+        }
+
+        const sourceIp = request.ip || 'unknown';
+        if (isBlockedAgentsIpRateLimited(sourceIp)) {
+            incrementBotShieldMetric('blockedAgentsRateLimited');
+            Logger.warn('[CrawlerRoutes] blocked-agents rate limited', { ip: sourceIp });
+            return reply.code(429).send({ error: 'Rate limit exceeded' });
+        }
 
         try {
             // Validate account exists to prevent enumeration
@@ -62,13 +101,17 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: accountId },
                 select: { id: true }
             });
-            if (!account) return reply.code(404).send({ error: 'Account not found' });
+            if (!account) {
+                incrementBotShieldMetric('blockedAgentsAccountNotFound');
+                return reply.code(404).send({ error: 'Account not found' });
+            }
 
             const [patterns, blockPageHtml] = await Promise.all([
-                CrawlerService.getBlockedPatterns(accountId),
-                CrawlerService.getBlockPageHtml(accountId),
+                CrawlerService.getBlockedPatterns(accountIdParsed.data),
+                CrawlerService.getBlockPageHtml(accountIdParsed.data),
             ]);
 
+            incrementBotShieldMetric('blockedAgentsSuccess');
             return { patterns, blockPageHtml };
         } catch (error) {
             Logger.error('[CrawlerRoutes] Blocked agents error', { error });
@@ -133,6 +176,7 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                         name: c.name,
                         slug: c.slug,
                         hits: c.totalHits,
+                        blockedHits: c.blockedHits,
                         category: c.category,
                     })),
                 };
@@ -140,6 +184,10 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                 Logger.error('[CrawlerRoutes] Stats error', { error });
                 return reply.code(500).send({ error: 'Failed to fetch crawler stats' });
             }
+        });
+
+        authScope.get('/shield-metrics', async (_request, _reply) => {
+            return { metrics: getBotShieldMetrics() };
         });
 
         // ---------------------------------------------------------------------
