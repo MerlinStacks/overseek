@@ -23,6 +23,9 @@ interface NewEmailModalProps {
     initialBody?: string;
 }
 
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_COUNT = 10;
+
 const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -120,9 +123,28 @@ export function NewEmailModal({
     const signature = user?.emailSignature || '';
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            setAttachments(prev => [...prev, ...Array.from(e.target.files!)]);
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const incoming = Array.from(files);
+        const oversized = incoming.filter(file => file.size > MAX_ATTACHMENT_SIZE);
+        if (oversized.length > 0) {
+            setError(`Attachment exceeds 10 MB: ${oversized.map(file => file.name).join(', ')}`);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+            return;
         }
+
+        setAttachments(prev => {
+            if (prev.length + incoming.length > MAX_ATTACHMENT_COUNT) {
+                setError(`Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`);
+                return prev;
+            }
+            return [...prev, ...incoming];
+        });
+
+        setError(null);
         // Reset input so same file can be selected again
         if (fileInputRef.current) {
             fileInputRef.current.value = '';

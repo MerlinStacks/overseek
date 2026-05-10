@@ -10,10 +10,14 @@ type MockProduct = { id: number; name: string; price: string };
 type MockOrder = { id: number; status: string; total: string };
 type MockCustomer = { id: number; email: string };
 type MockReview = { id: number; review: string; rating: number };
+type MockPage = { id: number; title: { rendered: string }; link: string };
+type MockPost = { id: number; title: { rendered: string }; link: string };
 const MOCK_PRODUCTS: MockProduct[] = [];
 const MOCK_ORDERS: MockOrder[] = [];
 const MOCK_CUSTOMERS: MockCustomer[] = [];
 const MOCK_REVIEWS: MockReview[] = [];
+const MOCK_PAGES: MockPage[] = [];
+const MOCK_POSTS: MockPost[] = [];
 
 export interface WooProductData {
     name: string;
@@ -277,6 +281,74 @@ export class WooService {
             ...(after && { modified_after: after })
         };
         return this.requestWithRetry('get', 'products/reviews', apiParams);
+    }
+
+    private async requestWpWithRetry(endpoint: 'pages' | 'posts', params: any = {}): Promise<any> {
+        try {
+            return await retryWithBackoff(
+                async () => {
+                    const wpApi = new WooCommerceRestApi({
+                        url: this.url,
+                        consumerKey: this.consumerKey,
+                        consumerSecret: this.consumerSecret,
+                        version: 'wp/v2' as any,
+                        queryStringAuth: true,
+                        axiosConfig: this.axiosConfig
+                    });
+
+                    const response = await wpApi.get(endpoint, params);
+                    return {
+                        data: response.data,
+                        total: parseInt(response.headers['x-wp-total'] || '0', 10),
+                        totalPages: parseInt(response.headers['x-wp-totalpages'] || '0', 10)
+                    };
+                },
+                {
+                    maxRetries: this.maxRetries,
+                    baseDelayMs: 1000,
+                    context: `WordPress:${endpoint}`
+                }
+            );
+        } catch (error: any) {
+            if (isMaintenanceMode(error)) {
+                const retryAfterSeconds = getRetryAfterSeconds(error);
+                throw new Error(
+                    retryAfterSeconds
+                        ? `WordPress content API is in maintenance mode. Retry after ${retryAfterSeconds}s.`
+                        : 'WordPress content API is in maintenance mode.'
+                );
+            }
+
+            if (isCredentialError(error)) {
+                await this.markNeedsReconnection();
+                throw new Error('WordPress credentials revoked or invalid. Please reconnect your store.');
+            }
+            throw error;
+        }
+    }
+
+    async getPages(params: { after?: string; page?: number; per_page?: number } = {}) {
+        if (this.isDemo) return Promise.resolve({ data: MOCK_PAGES, total: MOCK_PAGES.length, totalPages: 1 });
+        const { after, ...rest } = params;
+        const apiParams = {
+            ...rest,
+            per_page: params.per_page || 20,
+            ...(after && { modified_after: after }),
+            context: 'view'
+        };
+        return this.requestWpWithRetry('pages', apiParams);
+    }
+
+    async getPosts(params: { after?: string; page?: number; per_page?: number } = {}) {
+        if (this.isDemo) return Promise.resolve({ data: MOCK_POSTS, total: MOCK_POSTS.length, totalPages: 1 });
+        const { after, ...rest } = params;
+        const apiParams = {
+            ...rest,
+            per_page: params.per_page || 20,
+            ...(after && { modified_after: after }),
+            context: 'view'
+        };
+        return this.requestWpWithRetry('posts', apiParams);
     }
 
     /**

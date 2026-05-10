@@ -23,6 +23,7 @@ interface SkuForecast {
     image: string | null;
     currentStock: number;
     dailyDemand: number;
+    derivedDemand: number;
     forecastedDemand: number;
     daysUntilStockout: number;
     stockoutRisk: StockoutRisk;
@@ -81,6 +82,7 @@ export function InventoryForecastPage() {
         if (!currentAccount || !token) return;
         setIsLoading(true);
         setError(null);
+        setAlerts(null);
 
         try {
             const headers = {
@@ -110,6 +112,8 @@ export function InventoryForecastPage() {
             if (alertRes.ok) {
                 const data = await alertRes.json();
                 setAlerts(data);
+            } else {
+                throw new Error('Failed to fetch stockout alerts');
             }
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Failed to load forecast data');
@@ -136,6 +140,7 @@ export function InventoryForecastPage() {
 
     // Apply filters and sorting
     const filteredForecasts = forecasts
+        .filter(f => f.daysUntilStockout <= 60)
         .filter(f => riskFilter === 'ALL' || f.stockoutRisk === riskFilter)
         .sort((a, b) => {
             let comparison = 0;
@@ -390,12 +395,16 @@ export function InventoryForecastPage() {
 
                                     {/* Name */}
                                     <td className="px-4 py-3">
-                                        <Link
-                                            to={`/inventory/product/${forecast.parentWooId || forecast.wooId}`}
-                                            className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
-                                        >
-                                            {forecast.name}
-                                        </Link>
+                                        {forecast.wooId > 0 ? (
+                                            <Link
+                                                to={`/inventory/product/${forecast.parentWooId || forecast.wooId}`}
+                                                className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
+                                            >
+                                                {forecast.name}
+                                            </Link>
+                                        ) : (
+                                            <span className="font-medium text-gray-900">{forecast.name}</span>
+                                        )}
                                     </td>
 
                                     {/* SKU */}
@@ -425,7 +434,7 @@ export function InventoryForecastPage() {
                                                 forecast.daysUntilStockout <= 30 ? 'text-yellow-600' :
                                                     'text-green-600'
                                             }`}>
-                                            {forecast.daysUntilStockout >= 999 ? '8' : `${forecast.daysUntilStockout}d`}
+                                            {forecast.daysUntilStockout >= 999 ? 'No stockout' : `${forecast.daysUntilStockout}d`}
                                         </span>
                                     </td>
 
@@ -494,4 +503,3 @@ function StatCard({ label, value, suffix = '', color }: {
         </div>
     );
 }
-

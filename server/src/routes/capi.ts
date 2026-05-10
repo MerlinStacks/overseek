@@ -10,6 +10,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { ConversionForwarder } from '../services/tracking/ConversionForwarder';
 import { requireAuthFastify } from '../middleware/auth';
+import { getRouteAccountIdOrReply } from './routeHelpers';
 
 /** Maps URL platform param → AccountFeature.featureKey */
 const PLATFORM_FEATURE_KEY: Record<string, string> = {
@@ -24,13 +25,24 @@ const PLATFORM_FEATURE_KEY: Record<string, string> = {
     _consent: 'CONSENT_MODE',
 };
 
+function getFeatureKeyOrReply(platform: string, reply: any): string | null {
+    const featureKey = PLATFORM_FEATURE_KEY[platform];
+    if (!featureKey) {
+        reply.code(400).send({
+            error: `Invalid platform: ${platform}. Supported: ${Object.keys(PLATFORM_FEATURE_KEY).join(', ')}`,
+        });
+        return null;
+    }
+    return featureKey;
+}
+
 const capiRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * GET /api/capi/config — Get all CAPI platform configs for account
      */
     fastify.get('/config', { preHandler: requireAuthFastify }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const features = await prisma.accountFeature.findMany({
             where: {
@@ -46,10 +58,12 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         // Build a map of platform → config for the frontend
+        const featuresByKey = new Map(features.map((feature) => [feature.featureKey, feature]));
+
         const platforms: Record<string, any> = {};
         let consent: Record<string, any> | null = null;
         for (const [urlKey, featureKey] of Object.entries(PLATFORM_FEATURE_KEY)) {
-            const feature = features.find((f) => f.featureKey === featureKey);
+            const feature = featuresByKey.get(featureKey);
             if (urlKey === '_consent') {
                 consent = (feature?.config as Record<string, any>) || null;
                 continue;
@@ -69,20 +83,15 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.put('/config/:platform', { preHandler: requireAuthFastify }, async (request, reply) => {
         const { platform } = request.params as { platform: string };
-        const accountId = request.accountId;
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { enabled, config } = request.body as {
             enabled: boolean;
             config: Record<string, any>;
         };
 
-        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
-
-        const featureKey = PLATFORM_FEATURE_KEY[platform];
-        if (!featureKey) {
-            return reply.code(400).send({
-                error: `Invalid platform: ${platform}. Supported: ${Object.keys(PLATFORM_FEATURE_KEY).join(', ')}`,
-            });
-        }
+        const featureKey = getFeatureKeyOrReply(platform, reply);
+        if (!featureKey) return;
 
         await prisma.accountFeature.upsert({
             where: { accountId_featureKey: { accountId, featureKey } },
@@ -110,14 +119,11 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.delete('/config/:platform', { preHandler: requireAuthFastify }, async (request, reply) => {
         const { platform } = request.params as { platform: string };
-        const accountId = request.accountId;
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
-        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
-
-        const featureKey = PLATFORM_FEATURE_KEY[platform];
-        if (!featureKey) {
-            return reply.code(400).send({ error: `Invalid platform: ${platform}` });
-        }
+        const featureKey = getFeatureKeyOrReply(platform, reply);
+        if (!featureKey) return;
 
         await prisma.accountFeature.updateMany({
             where: { accountId, featureKey },
@@ -135,14 +141,11 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/test/:platform', { preHandler: requireAuthFastify }, async (request, reply) => {
         const { platform } = request.params as { platform: string };
-        const accountId = request.accountId;
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
-        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
-
-        const featureKey = PLATFORM_FEATURE_KEY[platform];
-        if (!featureKey) {
-            return reply.code(400).send({ error: `Invalid platform: ${platform}` });
-        }
+        const featureKey = getFeatureKeyOrReply(platform, reply);
+        if (!featureKey) return;
 
         // Get the platform config
         const feature = await prisma.accountFeature.findUnique({
@@ -182,15 +185,14 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /api/capi/deliveries — List recent CAPI delivery logs
      */
     fastify.get('/deliveries', { preHandler: requireAuthFastify }, async (request, reply) => {
-        const accountId = request.accountId;
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { platform, status, limit = '50', page = '1' } = request.query as {
             platform?: string;
             status?: string;
             limit?: string;
             page?: string;
         };
-
-        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const take = Math.min(parseInt(limit, 10) || 50, 100);
         const skip = ((parseInt(page, 10) || 1) - 1) * take;
@@ -236,9 +238,9 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
      * event type breakdown, and recent failures in a single request.
      */
     fastify.get('/health', { preHandler: requireAuthFastify }, async (request, reply) => {
-        const accountId = request.accountId;
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { range = '7d' } = request.query as { range?: string };
-        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
 
         const rangeMs: Record<string, number> = {
             '24h': 24 * 60 * 60 * 1000,
@@ -346,9 +348,11 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
             CONSENT_MODE: ['autoAccept'],
         };
 
+        const featuresByKey = new Map(features.map((feature) => [feature.featureKey, feature]));
+
         const pixels: Record<string, any> = {};
         for (const [urlKey, featureKey] of Object.entries(PLATFORM_FEATURE_KEY)) {
-            const feature = features.find(f => f.featureKey === featureKey);
+            const feature = featuresByKey.get(featureKey);
 
             // Consent config goes under _consent key
             if (urlKey === '_consent') {

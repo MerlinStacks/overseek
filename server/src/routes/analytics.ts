@@ -31,6 +31,11 @@ import { cacheAside, CacheNamespace, CacheTTL } from '../utils/cache';
 const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
+    const parsePositiveInt = (value: string | undefined, fallback: number) => {
+        const parsed = Number.parseInt(value || '', 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+
     // Mount sub-routers as nested plugins
     await fastify.register(analyticsReportsRoutes);     // /templates, /schedules, /digests
     await fastify.register(analyticsInventoryRoutes, { prefix: '/inventory' });   // /inventory/health, /inventory/stock-velocity, /inventory/sku-forecasts
@@ -41,8 +46,8 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { page?: string; limit?: string; live?: string; startDate?: string; endDate?: string };
-            const page = parseInt(query.page || '1', 10);
-            const limit = parseInt(query.limit || '50', 10);
+            const page = parsePositiveInt(query.page, 1);
+            const limit = Math.min(parsePositiveInt(query.limit, 50), 200);
             const liveMode = query.live === 'true';
             return await AnalyticsService.getVisitorLog(accountId, page, limit, liveMode, query.startDate, query.endDate);
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
@@ -52,8 +57,8 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { page?: string; limit?: string; live?: string };
-            const page = parseInt(query.page || '1', 10);
-            const limit = parseInt(query.limit || '50', 10);
+            const page = parsePositiveInt(query.page, 1);
+            const limit = Math.min(parsePositiveInt(query.limit, 50), 200);
             const liveMode = query.live === 'true';
             return await AnalyticsService.getEcommerceLog(accountId, page, limit, liveMode);
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
@@ -123,7 +128,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { period?: string; sortBy?: string; limit?: string };
             const period = (query.period || '30d') as '7d' | '30d' | '90d' | 'ytd';
             const sortBy = (query.sortBy || 'revenue') as 'revenue' | 'units' | 'orders' | 'margin';
-            const limit = parseInt(query.limit || '10', 10);
+            const limit = Math.min(parsePositiveInt(query.limit, 10), 100);
             return await ProductRankingService.getProductRankings(request.accountId!, period, sortBy, limit);
         } catch (e) { Logger.error('Product Ranking Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
@@ -147,7 +152,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const query = request.query as { days?: string };
-            const days = parseInt(query.days || '30', 10);
+            const days = parsePositiveInt(query.days, 30);
             return await SalesAnalytics.getSalesForecast(accountId, days);
         } catch (e) { Logger.error('Forecast Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });
@@ -363,7 +368,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { monthsBack?: string };
-            const monthsBack = parseInt(query.monthsBack || '12', 10);
+            const monthsBack = Math.min(parsePositiveInt(query.monthsBack, 12), 60);
             return await clvService.getCLVDashboard(accountId, monthsBack);
         } catch (e: any) {
             Logger.error('CLV Error', { error: e });
@@ -376,7 +381,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { days?: string };
-            const days = parseInt(query.days || '30', 10);
+            const days = Math.min(parsePositiveInt(query.days, 30), 365);
             return await aovService.getAOVTrend(accountId, days);
         } catch (e: any) {
             Logger.error('AOV Trend Error', { error: e });
@@ -388,7 +393,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { days?: string };
-            const days = parseInt(query.days || '30', 10);
+            const days = Math.min(parsePositiveInt(query.days, 30), 365);
             return await aovService.getAOVComparison(accountId, days);
         } catch (e: any) {
             Logger.error('AOV Comparison Error', { error: e });

@@ -6,6 +6,7 @@ import { encrypt } from '../../utils/encryption';
 import { EmailAccountBodySchema, TestConnectionBodySchema, TestRelayBodySchema } from './schemas';
 import { EmailService } from '../../services/EmailService';
 import { decrypt } from '../../utils/encryption';
+import { getEmailAccountIdOrReply, parseBodyOrReply } from './routeHelpers';
 
 const emailService = new EmailService();
 
@@ -20,12 +21,72 @@ function maskPasswords<T extends { smtpPassword?: string | null; imapPassword?: 
     };
 }
 
+function buildEmailAccountBaseData(body: any) {
+    return {
+        name: body.name,
+        email: body.email,
+        smtpEnabled: Boolean(body.smtpEnabled),
+        smtpHost: body.smtpHost || null,
+        smtpPort: body.smtpPort ? parseInt(String(body.smtpPort), 10) : null,
+        smtpUsername: body.smtpUsername || null,
+        smtpSecure: body.smtpSecure ?? true,
+        imapEnabled: Boolean(body.imapEnabled),
+        imapHost: body.imapHost || null,
+        imapPort: body.imapPort ? parseInt(String(body.imapPort), 10) : null,
+        imapUsername: body.imapUsername || null,
+        imapSecure: body.imapSecure ?? true,
+        relayEndpoint: body.relayEndpoint || null,
+    };
+}
+
+function maybeEncryptSecret(value?: string | null) {
+    if (!value || value === '••••••••') return undefined;
+    return encrypt(value);
+}
+
+function parseHttpsUrlOrReply(relayEndpoint: string, reply: any): URL | null {
+    if (!relayEndpoint.startsWith('https://')) {
+        reply.code(400).send({ success: false, error: 'Relay endpoint must use HTTPS' });
+        return null;
+    }
+    try {
+        return new URL(relayEndpoint);
+    } catch {
+        reply.code(400).send({ success: false, error: 'Invalid URL format' });
+        return null;
+    }
+}
+
+async function resolveTestPassword(
+    accountId: string | undefined,
+    protocol: string,
+    id: string | undefined,
+    password: string,
+) {
+    if (password !== '••••••••' || !id || !accountId) {
+        return password;
+    }
+
+    const existing = await prisma.emailAccount.findFirst({ where: { id, accountId } });
+    if (!existing) return password;
+
+    const encryptedPwd = protocol === 'SMTP' ? existing.smtpPassword : existing.imapPassword;
+    if (!encryptedPwd) return password;
+
+    try {
+        return decrypt(encryptedPwd);
+    } catch (error) {
+        Logger.error('Decryption failed for test', { error });
+        return password;
+    }
+}
+
 const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
     fastify.get('/accounts', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
         try {
             const accounts = await prisma.emailAccount.findMany({ where: { accountId } });
             return accounts.map(maskPasswords);
@@ -36,35 +97,21 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/accounts', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
-        const parse = EmailAccountBodySchema.safeParse(request.body);
-        if (!parse.success) {
-            return reply.code(400).send({ error: 'Invalid input', issues: parse.error.flatten() });
-        }
-        const body = parse.data;
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const body = parseBodyOrReply(reply, EmailAccountBodySchema.safeParse(request.body));
+        if (!body) return;
         if (!body.name || !body.email) {
             return reply.code(400).send({ error: 'Name and email are required' });
         }
         try {
+            const baseData = buildEmailAccountBaseData(body);
             const account = await prisma.emailAccount.create({
                 data: {
                     accountId,
-                    name: body.name,
-                    email: body.email,
-                    smtpEnabled: Boolean(body.smtpEnabled),
-                    smtpHost: body.smtpHost || null,
-                    smtpPort: body.smtpPort ? parseInt(String(body.smtpPort), 10) : null,
-                    smtpUsername: body.smtpUsername || null,
+                    ...baseData,
                     smtpPassword: body.smtpPassword ? encrypt(body.smtpPassword) : null,
-                    smtpSecure: body.smtpSecure ?? true,
-                    imapEnabled: Boolean(body.imapEnabled),
-                    imapHost: body.imapHost || null,
-                    imapPort: body.imapPort ? parseInt(String(body.imapPort), 10) : null,
-                    imapUsername: body.imapUsername || null,
                     imapPassword: body.imapPassword ? encrypt(body.imapPassword) : null,
-                    imapSecure: body.imapSecure ?? true,
-                    relayEndpoint: body.relayEndpoint || null,
                     relayApiKey: body.relayApiKey ? encrypt(body.relayApiKey) : null,
                 }
             });
@@ -76,43 +123,25 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.put('/accounts/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { id } = request.params as { id: string };
-        const parse = EmailAccountBodySchema.safeParse(request.body);
-        if (!parse.success) {
-            return reply.code(400).send({ error: 'Invalid input', issues: parse.error.flatten() });
-        }
-        const body = parse.data;
+        const body = parseBodyOrReply(reply, EmailAccountBodySchema.safeParse(request.body));
+        if (!body) return;
         const existing = await prisma.emailAccount.findFirst({ where: { id, accountId } });
         if (!existing) return reply.code(404).send({ error: 'Account not found' });
 
         const updateData: any = {
-            name: body.name,
-            email: body.email,
-            smtpEnabled: Boolean(body.smtpEnabled),
-            smtpHost: body.smtpHost || null,
-            smtpPort: body.smtpPort ? parseInt(String(body.smtpPort), 10) : null,
-            smtpUsername: body.smtpUsername || null,
-            smtpSecure: body.smtpSecure ?? true,
-            imapEnabled: Boolean(body.imapEnabled),
-            imapHost: body.imapHost || null,
-            imapPort: body.imapPort ? parseInt(String(body.imapPort), 10) : null,
-            imapUsername: body.imapUsername || null,
-            imapSecure: body.imapSecure ?? true,
-            relayEndpoint: body.relayEndpoint || null,
+            ...buildEmailAccountBaseData(body),
             updatedAt: new Date(),
         };
 
-        if (body.smtpPassword && body.smtpPassword !== '••••••••') {
-            updateData.smtpPassword = encrypt(body.smtpPassword);
-        }
-        if (body.imapPassword && body.imapPassword !== '••••••••') {
-            updateData.imapPassword = encrypt(body.imapPassword);
-        }
-        if (body.relayApiKey && body.relayApiKey !== '••••••••') {
-            updateData.relayApiKey = encrypt(body.relayApiKey);
-        }
+        const smtpPassword = maybeEncryptSecret(body.smtpPassword);
+        if (smtpPassword) updateData.smtpPassword = smtpPassword;
+        const imapPassword = maybeEncryptSecret(body.imapPassword);
+        if (imapPassword) updateData.imapPassword = imapPassword;
+        const relayApiKey = maybeEncryptSecret(body.relayApiKey);
+        if (relayApiKey) updateData.relayApiKey = relayApiKey;
 
         try {
             const updated = await prisma.emailAccount.update({ where: { id }, data: updateData });
@@ -124,8 +153,8 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.delete('/accounts/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { id } = request.params as { id: string };
         try {
             const result = await prisma.emailAccount.deleteMany({ where: { id, accountId } });
@@ -138,8 +167,8 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.patch('/accounts/:id/default', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { id } = request.params as { id: string };
         const target = await prisma.emailAccount.findFirst({ where: { id, accountId } });
         if (!target) return reply.code(404).send({ error: 'Email account not found' });
@@ -158,22 +187,10 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/test', async (request, reply) => {
         const accountId = request.accountId;
-        const parse = TestConnectionBodySchema.safeParse(request.body);
-        if (!parse.success) {
-            return reply.code(400).send({ error: 'Invalid input', issues: parse.error.flatten() });
-        }
-        const { id, protocol, host, port, username, password, isSecure } = parse.data;
-        let passwordToTest = password;
-        if (password === '••••••••' && id && accountId) {
-            const existing = await prisma.emailAccount.findFirst({ where: { id, accountId } });
-            if (existing) {
-                const encryptedPwd = protocol === 'SMTP' ? existing.smtpPassword : existing.imapPassword;
-                if (encryptedPwd) {
-                    try { passwordToTest = decrypt(encryptedPwd); }
-                    catch (e) { Logger.error('Decryption failed for test', { error: e }); }
-                }
-            }
-        }
+        const parsed = parseBodyOrReply(reply, TestConnectionBodySchema.safeParse(request.body));
+        if (!parsed) return;
+        const { id, protocol, host, port, username, password, isSecure } = parsed;
+        const passwordToTest = await resolveTestPassword(accountId, protocol, id, password);
         const mockAccount = {
             host,
             port: parseInt(String(port)),
@@ -193,17 +210,11 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/test-relay', async (request, reply) => {
         const accountId = request.accountId;
-        const parse = TestRelayBodySchema.safeParse(request.body);
-        if (!parse.success) {
-            return reply.code(400).send({ error: 'Invalid input', issues: parse.error.flatten() });
-        }
-        const { relayEndpoint, relayApiKey, emailAccountId, testEmail } = parse.data;
-        if (!relayEndpoint.startsWith('https://')) {
-            return reply.code(400).send({ success: false, error: 'Relay endpoint must use HTTPS' });
-        }
-        try { new URL(relayEndpoint); } catch {
-            return reply.code(400).send({ success: false, error: 'Invalid URL format' });
-        }
+        const parsed = parseBodyOrReply(reply, TestRelayBodySchema.safeParse(request.body));
+        if (!parsed) return;
+        const { relayEndpoint, relayApiKey, emailAccountId, testEmail } = parsed;
+        const parsedUrl = parseHttpsUrlOrReply(relayEndpoint, reply);
+        if (!parsedUrl) return;
         let apiKeyToUse = relayApiKey;
         if (!apiKeyToUse || apiKeyToUse === '••••••••') {
             if (!emailAccountId || !accountId) {
@@ -225,7 +236,7 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
             test_mode: true
         };
         try {
-            const response = await fetch(relayEndpoint, {
+            const response = await fetch(parsedUrl.toString(), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

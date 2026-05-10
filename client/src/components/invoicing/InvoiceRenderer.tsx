@@ -170,35 +170,35 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
                 return (
                     <div className="py-3">
-                        <table className="text-sm">
+                        <table className="w-full text-sm table-fixed">
                             <tbody>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Invoice Number:</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Invoice Number:</td>
                                     <td className="font-medium text-slate-800">{invoiceNumber}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Invoice Date:</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Invoice Date:</td>
                                     <td className="font-medium text-slate-800">{formatInvoiceDate(invoiceIssueDate, mergedSettings)}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Due Date:</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Due Date:</td>
                                     <td className="font-medium text-slate-800">{formatInvoiceDate(invoiceDueDate, mergedSettings)}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Order Number:</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Number:</td>
                                     <td className="font-medium text-slate-800">{orderNumber}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Order Date:</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Date:</td>
                                     <td className="font-medium text-slate-800">{orderDate}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Payment Method:</td>
-                                    <td className="font-medium text-slate-800">{paymentMethod}</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Payment Method:</td>
+                                    <td className="font-medium text-slate-800 break-words">{paymentMethod}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-8 py-1">Shipping Method:</td>
-                                    <td className="font-medium text-slate-800">{shippingMethod}</td>
+                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Shipping Method:</td>
+                                    <td className="font-medium text-slate-800 break-words">{shippingMethod}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -537,44 +537,43 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
     const pages = getPagedLayout();
 
-    // For readOnly (preview) mode, use flow-based layout to prevent overlap
-    // Grid layout doesn't auto-size cells, causing content overflow issues
+    // Read-only mode should preserve the designer's exact placement/size.
     if (readOnly) {
-        // Sort items by Y position to render in visual order
-        const sortedLayout = [...layout].sort((a, b) => a.y - b.y);
-
-        // Separate footer items to render at the end
-        const footerItems: Array<{ layout: InvoiceLayoutItem; config: InvoiceItem }> = [];
-        const contentItems: Array<{ layout: InvoiceLayoutItem; config: InvoiceItem }> = [];
-
-        sortedLayout.forEach(l => {
-            const itemConfig = items.find(i => i.id === l.i);
-            if (!itemConfig) return;
-            if (itemConfig.type === 'footer') {
-                footerItems.push({ layout: l, config: itemConfig });
-            } else {
-                contentItems.push({ layout: l, config: itemConfig });
-            }
-        });
+        const sortedLayout = [...layout].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+        const maxRowBottom = sortedLayout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
+        const pageHeightPx = Math.max(1, maxRowBottom) * 30;
 
         return (
             <div
                 className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50 p-4"
                 style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}
             >
-                {/* Content items in flow layout */}
-                {contentItems.map(({ layout: l, config: itemConfig }) => (
-                    <div key={l.i} className="mb-2">
-                        {renderContent(itemConfig)}
-                    </div>
-                ))}
+                <div
+                    className="grid gap-x-4 gap-y-2"
+                    style={{
+                        gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
+                        gridTemplateRows: `repeat(${Math.max(1, maxRowBottom)}, 30px)`,
+                        minHeight: `${pageHeightPx}px`,
+                    }}
+                >
+                    {sortedLayout.map((l) => {
+                        const itemConfig = items.find(i => i.id === l.i);
+                        if (!itemConfig) return null;
 
-                {/* Footer items at the end */}
-                {footerItems.map(({ layout: l, config: itemConfig }) => (
-                    <div key={l.i} className="mt-4 pt-4 border-t border-slate-200">
-                        {renderContent(itemConfig)}
-                    </div>
-                ))}
+                        return (
+                            <div
+                                key={l.i}
+                                style={{
+                                    gridColumn: `${l.x + 1} / span ${Math.max(1, l.w)}`,
+                                    gridRow: `${l.y + 1} / span ${Math.max(1, l.h)}`,
+                                    minWidth: 0,
+                                }}
+                            >
+                                {renderContent(itemConfig)}
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
         );
     }

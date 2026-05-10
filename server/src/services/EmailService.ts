@@ -22,6 +22,8 @@ if (!fs.existsSync(attachmentsDir)) {
 }
 
 export class EmailService {
+    private static readonly RELAY_MAX_ATTACHMENTS = 10;
+    private static readonly RELAY_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
     // -------------------
     // Sending (SMTP)
@@ -387,18 +389,43 @@ export class EmailService {
 
         // Convert attachments to base64 for JSON transport
         const base64Attachments: Array<{ filename: string; content: string; contentType: string }> = [];
+        const attachmentErrors: string[] = [];
         if (attachments && attachments.length > 0) {
+            if (attachments.length > EmailService.RELAY_MAX_ATTACHMENTS) {
+                throw new Error(`Relay supports up to ${EmailService.RELAY_MAX_ATTACHMENTS} attachments per email`);
+            }
+
             for (const att of attachments) {
                 try {
+                    if (!att?.path || typeof att.path !== 'string') {
+                        throw new Error('Attachment path missing');
+                    }
+
+                    const stats = fs.statSync(att.path);
+                    if (stats.size > EmailService.RELAY_MAX_ATTACHMENT_BYTES) {
+                        throw new Error(`Attachment exceeds ${Math.round(EmailService.RELAY_MAX_ATTACHMENT_BYTES / (1024 * 1024))}MB limit`);
+                    }
+
                     const fileBuffer = fs.readFileSync(att.path);
                     base64Attachments.push({
                         filename: att.filename || 'attachment',
                         content: fileBuffer.toString('base64'),
                         contentType: att.contentType || 'application/octet-stream'
                     });
-                } catch (err) {
-                    Logger.warn('Failed to read attachment for relay', { path: att.path, error: err });
+                } catch (err: any) {
+                    const filename = att?.filename || att?.path || 'attachment';
+                    const reason = err?.message || 'Failed to process attachment';
+                    attachmentErrors.push(`${filename}: ${reason}`);
+                    Logger.warn('Failed to read attachment for relay', {
+                        path: att?.path,
+                        filename: att?.filename,
+                        error: reason
+                    });
                 }
+            }
+
+            if (base64Attachments.length !== attachments.length) {
+                throw new Error(`Relay attachment validation failed. ${attachmentErrors.join('; ')}`);
             }
         }
 

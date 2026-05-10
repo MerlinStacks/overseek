@@ -21,6 +21,10 @@ export interface ToolDefinition {
 }
 
 export class AIToolsService {
+    private static normalizePositiveInt(value: unknown, fallback: number): number {
+        const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    }
 
     static getDefinitions(): ToolDefinition[] {
         return [
@@ -250,7 +254,7 @@ export class AIToolsService {
             // ─────────────────────────────────────────────────────────
             {
                 name: "get_seo_keyword_recommendations",
-                description: "Get AI-powered SEO keyword recommendations. Shows low-hanging fruit keywords (position 5-20), keyword gaps (products without organic visibility), and trending search queries. Requires Google Search Console connection.",
+                description: "Get AI-powered SEO keyword recommendations. Shows low-hanging fruit keywords (position 5-20), keyword gaps (products without organic visibility), and keyword movers by biggest ranking movement over the last 7 days vs previous 7 days. Requires Google Search Console connection.",
                 parameters: { type: "object", properties: {}, required: [] }
             },
             {
@@ -312,8 +316,8 @@ export class AIToolsService {
         // Advertising
         get_ad_performance: (args, accountId) => AdsTools.getAdPerformance(accountId, args.platform as string | undefined),
         compare_ad_platforms: (_args, accountId) => AdsTools.compareAdPlatforms(accountId),
-        analyze_google_ads_campaigns: (args, accountId) => AdsTools.analyzeGoogleAdsCampaigns(accountId, (args.days as number) || 30),
-        analyze_meta_ads_campaigns: (args, accountId) => AdsTools.analyzeMetaAdsCampaigns(accountId, (args.days as number) || 30),
+        analyze_google_ads_campaigns: (args, accountId) => AdsTools.analyzeGoogleAdsCampaigns(accountId, AIToolsService.normalizePositiveInt(args.days, 30)),
+        analyze_meta_ads_campaigns: (args, accountId) => AdsTools.analyzeMetaAdsCampaigns(accountId, AIToolsService.normalizePositiveInt(args.days, 30)),
         get_ad_optimization_suggestions: (_args, accountId) => AdsTools.getAdOptimizationSuggestions(accountId),
 
         // Advanced Analytics
@@ -325,7 +329,7 @@ export class AIToolsService {
 
         // SEO & Organic Search
         get_seo_keyword_recommendations: (_args, accountId) => SearchConsoleTools.getKeywordRecommendations(accountId),
-        get_organic_search_performance: (args, accountId) => SearchConsoleTools.getOrganicPerformance(accountId, (args.days as number) || 28),
+        get_organic_search_performance: (args, accountId) => SearchConsoleTools.getOrganicPerformance(accountId, AIToolsService.normalizePositiveInt(args.days, 28)),
 
         // Search Intelligence (SC ↔ Ads Bridge)
         get_search_ads_correlation: (_args, accountId) => SearchToAdsTools.getSearchAdsCorrelation(accountId),
@@ -348,4 +352,3 @@ export class AIToolsService {
         return handler(args, accountId);
     }
 }
-

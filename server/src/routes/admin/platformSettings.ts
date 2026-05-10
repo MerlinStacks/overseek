@@ -7,6 +7,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { z } from 'zod';
+import { parseFirstIssueOrReply } from '../routeHelpers';
 
 const updateSettingsSchema = z.object({
     registrationEnabled: z.boolean().optional()
@@ -53,17 +54,18 @@ export const platformSettingsRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.put('/platform-settings', async (request, reply) => {
         try {
-            const parsed = updateSettingsSchema.safeParse(request.body);
-            if (!parsed.success) {
-                return reply.code(400).send({ error: parsed.error.issues[0].message });
-            }
+            const parsed = parseFirstIssueOrReply<{ registrationEnabled?: boolean }>(
+                reply,
+                updateSettingsSchema.safeParse(request.body),
+            );
+            if (!parsed) return;
 
             const settings = await prisma.platformSettings.upsert({
                 where: { key: 'default' },
-                update: parsed.data,
+                update: parsed,
                 create: {
                     key: 'default',
-                    registrationEnabled: parsed.data.registrationEnabled ?? true
+                    registrationEnabled: parsed.registrationEnabled ?? true
                 }
             });
 

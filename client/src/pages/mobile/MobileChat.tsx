@@ -76,6 +76,7 @@ export function MobileChat() {
         isUploading,
         isGeneratingDraft,
         messagesEndRef,
+        messagesContainerRef,
         inputRef,
         fileInputRef,
         filteredCanned,
@@ -170,7 +171,7 @@ export function MobileChat() {
             </header>
 
             {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-slate-900">
+            <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-slate-900">
                 {messages.length === 0 ? (
                     <div className="text-center py-12">
                         <p className="text-slate-400">No messages yet</p>

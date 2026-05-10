@@ -39,6 +39,9 @@ if (!fs.existsSync(attachmentsDir)) {
     fs.mkdirSync(attachmentsDir, { recursive: true });
 }
 
+const MAX_RELAY_ATTACHMENTS = 10;
+const MAX_RELAY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
 export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync => {
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
@@ -230,14 +233,39 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 let to, cc, subject, body, emailAccountId;
                 const attachments: any[] = [];
 
+                const cleanupAttachments = () => {
+                    for (const attachment of attachments) {
+                        try {
+                            if (attachment?.path && fs.existsSync(attachment.path)) {
+                                fs.unlinkSync(attachment.path);
+                            }
+                        } catch {
+                            // Ignore cleanup errors.
+                        }
+                    }
+                };
+
                 if (request.isMultipart()) {
                     const parts = request.parts();
                     for await (const part of parts) {
                         if (part.type === 'file') {
+                            if (attachments.length >= MAX_RELAY_ATTACHMENTS) {
+                                cleanupAttachments();
+                                return reply.code(400).send({ error: `Maximum ${MAX_RELAY_ATTACHMENTS} attachments allowed` });
+                            }
+
                             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
                             const filename = uniqueSuffix + '-' + part.filename;
                             const filePath = path.join(attachmentsDir, filename);
                             await pipeline(part.file, fs.createWriteStream(filePath));
+
+                            const stats = fs.statSync(filePath);
+                            if (stats.size > MAX_RELAY_ATTACHMENT_BYTES) {
+                                try { fs.unlinkSync(filePath); } catch { /* ignore cleanup errors */ }
+                                cleanupAttachments();
+                                return reply.code(400).send({ error: `Attachment exceeds 10 MB limit: ${part.filename}` });
+                            }
+
                             attachments.push({
                                 filename: part.filename,
                                 path: filePath,

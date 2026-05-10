@@ -10,6 +10,13 @@ import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 
+function sendBomError(reply: any, statusCode: number, error: string, code: string, details?: unknown) {
+    if (details !== undefined) {
+        return reply.code(statusCode).send({ error, code, details });
+    }
+    return reply.code(statusCode).send({ error, code });
+}
+
 export const bomManagementRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -79,7 +86,7 @@ export const bomManagementRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (error) {
             Logger.error('[BOMManagement] Error fetching deactivated items', { error, accountId });
-            return reply.code(500).send({ error: 'Failed to fetch deactivated items' });
+            return sendBomError(reply, 500, 'Failed to fetch deactivated items', 'BOM_DEACTIVATED_ITEMS_FETCH_FAILED');
         }
     });
 
@@ -103,7 +110,7 @@ export const bomManagementRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             if (!item) {
-                return reply.code(404).send({ error: 'BOM item not found' });
+                return sendBomError(reply, 404, 'BOM item not found', 'BOM_ITEM_NOT_FOUND');
             }
 
             if (item.isActive) {
@@ -124,7 +131,7 @@ export const bomManagementRoutes: FastifyPluginAsync = async (fastify) => {
             return { message: 'BOM item reactivated successfully', itemId };
         } catch (error) {
             Logger.error('[BOMManagement] Error reactivating BOM item', { error, accountId, itemId });
-            return reply.code(500).send({ error: 'Failed to reactivate BOM item' });
+            return sendBomError(reply, 500, 'Failed to reactivate BOM item', 'BOM_ITEM_REACTIVATE_FAILED');
         }
     });
 };

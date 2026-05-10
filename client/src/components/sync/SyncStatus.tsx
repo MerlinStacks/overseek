@@ -3,7 +3,7 @@ import { useSyncStatus, SyncLog } from '../../context/SyncStatusContext';
 import { formatRelativeTime, getStalenessLevel } from '../../utils/relativeTime';
 import {
     RefreshCw, CheckCircle, XCircle, Clock, Package,
-    ShoppingCart, Users, Star, Layers, Filter,
+    ShoppingCart, Users, Star, Layers, Filter, FileText,
     ChevronDown, ChevronUp, AlertTriangle, Loader2,
     Pause, Play, X, RotateCcw, Database, Activity,
     TrendingDown, Zap, WifiOff, PlayCircle
@@ -16,6 +16,8 @@ const SYNC_ENTITIES = [
     { key: 'products', label: 'Products', icon: Package, color: 'violet' },
     { key: 'customers', label: 'Customers', icon: Users, color: 'emerald' },
     { key: 'reviews', label: 'Reviews', icon: Star, color: 'amber' },
+    { key: 'pages', label: 'Pages', icon: FileText, color: 'cyan' },
+    { key: 'blog-posts', label: 'Blog Posts', icon: FileText, color: 'rose' },
 ] as const;
 
 /** BOM is handled separately — always full sync via dedicated queue */
@@ -53,7 +55,7 @@ export function SyncStatus() {
 
     // Per-entity full-sync toggles
     const [fullSyncTypes, setFullSyncTypes] = useState<Record<SyncEntityKey, boolean>>({
-        orders: false, products: false, customers: false, reviews: false,
+        orders: false, products: false, customers: false, reviews: false, pages: false, 'blog-posts': false,
     });
     const [syncBOM] = useState(false);
     const [logFilter, setLogFilter] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function SyncStatus() {
 
     const handleSelectToggle = () => {
         const next = !allSelected;
-        setFullSyncTypes({ orders: next, products: next, customers: next, reviews: next });
+        setFullSyncTypes({ orders: next, products: next, customers: next, reviews: next, pages: next, 'blog-posts': next });
     };
 
     const handleSync = async () => {
@@ -571,6 +573,8 @@ function LogFilterPills({ activeFilter, onFilter }: { activeFilter: string | nul
         { key: 'products', label: 'Products' },
         { key: 'customers', label: 'Customers' },
         { key: 'reviews', label: 'Reviews' },
+        { key: 'pages', label: 'Pages' },
+        { key: 'blog-posts', label: 'Blog Posts' },
         { key: 'bom', label: 'BOM' },
     ];
 

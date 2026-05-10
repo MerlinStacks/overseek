@@ -10,7 +10,7 @@
  * when switching tabs.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Target, TrendingUp, Globe, ChevronDown } from 'lucide-react';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { SeoKeywordsPanel } from '../components/Seo/SeoKeywordsPanel';
@@ -43,17 +43,16 @@ export function SeoPage() {
     const [selectedSiteUrl, setSelectedSiteUrl] = useState<string | undefined>();
     const setDefaultSite = useSetDefaultSite();
 
-    /** Initialize from the persisted default, falling back to first site */
-    useEffect(() => {
-        if (sites.length > 0 && !selectedSiteUrl) {
-            const defaultUrl = status.data?.defaultSiteUrl;
-            // Use the persisted default if it's still in the connected sites list
-            const validDefault = defaultUrl && sites.some((s: { siteUrl: string }) => s.siteUrl === defaultUrl);
-            queueMicrotask(() => {
-                setSelectedSiteUrl(validDefault ? defaultUrl : sites[0].siteUrl);
-            });
+    const activeSiteUrl = useMemo(() => {
+        if (selectedSiteUrl && sites.some((s: { siteUrl: string }) => s.siteUrl === selectedSiteUrl)) {
+            return selectedSiteUrl;
         }
-    }, [sites, selectedSiteUrl, status.data?.defaultSiteUrl]);
+        const defaultUrl = status.data?.defaultSiteUrl;
+        if (defaultUrl && sites.some((s: { siteUrl: string }) => s.siteUrl === defaultUrl)) {
+            return defaultUrl;
+        }
+        return sites[0]?.siteUrl;
+    }, [selectedSiteUrl, sites, status.data?.defaultSiteUrl]);
 
     return (
         <div className="space-y-8">
@@ -88,7 +87,7 @@ export function SeoPage() {
                                     <Globe size={14} className="absolute left-3 text-blue-500 pointer-events-none z-10" />
                                     <select
                                         id="seo-domain-selector"
-                                        value={selectedSiteUrl ?? ''}
+                                        value={activeSiteUrl ?? ''}
                                         onChange={e => {
                                             const url = e.target.value;
                                             setSelectedSiteUrl(url);
@@ -135,7 +134,7 @@ export function SeoPage() {
             <div key={activeTab} className="animate-fade-slide-up">
                 {activeTab === 'overview' && (
                     <ErrorBoundary>
-                        <SeoKeywordsPanel siteUrl={selectedSiteUrl} />
+                        <SeoKeywordsPanel siteUrl={activeSiteUrl} />
                     </ErrorBoundary>
                 )}
 

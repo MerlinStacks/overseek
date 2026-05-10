@@ -34,7 +34,8 @@ import {
     RefreshCw,
     Activity,
     Search,
-    Bot
+    Bot,
+    FileText
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -94,6 +95,7 @@ const navItems = [
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
             { icon: Star, label: 'Reviews', path: '/reviews' },
             { icon: Search, label: 'SEO Keywords', path: '/seo' },
+            { icon: FileText, label: 'SEO Content', path: '/seo/content' },
         ]
     },
     { type: 'link', icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },

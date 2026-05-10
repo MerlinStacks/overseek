@@ -5,7 +5,10 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
+import { getRouteAccountIdOrReply } from './routeHelpers';
+import { parseFirstIssueOrReply } from './routeHelpers';
 
 const createTemplateSchema = z.object({ name: z.string().min(1), type: z.string(), config: z.record(z.string(), z.unknown()) });
 const createScheduleSchema = z.object({
@@ -41,26 +44,17 @@ const SYSTEM_TEMPLATES = [
     { id: 'sys_conversion', name: 'Conversion Report', type: 'SYSTEM', category: 'Conversion', config: { dimension: 'day', metrics: ['sessions', 'orders', 'conversion_rate'], dateRange: '30d' } }
 ];
 
-const SYSTEM_CONFIGS: Record<string, any> = {
-    'sys_overview': { dimension: 'day', metrics: ['sales', 'orders', 'aov'], dateRange: '30d' },
-    'sys_products': { dimension: 'product', metrics: ['quantity', 'sales', 'orders'], dateRange: '30d' },
-    'sys_top_sellers': { dimension: 'product', metrics: ['sales', 'quantity'], dateRange: '90d' },
-    'sys_order_status': { dimension: 'order_status', metrics: ['orders', 'sales'], dateRange: '30d' },
-    'sys_category_performance': { dimension: 'category', metrics: ['sales', 'orders', 'quantity'], dateRange: '30d' },
-    'sys_traffic_sources': { dimension: 'traffic_source', metrics: ['sessions', 'visitors', 'conversion_rate'], dateRange: '30d' },
-    'sys_campaigns': { dimension: 'utm_source', metrics: ['sessions', 'sales', 'conversion_rate'], dateRange: '30d' },
-    'sys_devices': { dimension: 'device', metrics: ['sessions', 'sales', 'conversion_rate'], dateRange: '30d' },
-    'sys_geographic': { dimension: 'country', metrics: ['sales', 'orders', 'sessions'], dateRange: '30d' },
-    'sys_customer_performance': { dimension: 'customer', metrics: ['sales', 'orders'], dateRange: '90d' },
-    'sys_new_customers': { dimension: 'day', metrics: ['new_customers', 'sales'], dateRange: '30d' },
-    'sys_conversion': { dimension: 'day', metrics: ['sessions', 'orders', 'conversion_rate'], dateRange: '30d' }
-};
+const SYSTEM_CONFIGS = SYSTEM_TEMPLATES.reduce<Record<string, Prisma.InputJsonValue>>((acc, template) => {
+    acc[template.id] = template.config as Prisma.InputJsonValue;
+    return acc;
+}, {});
 
 const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Templates
     fastify.get('/templates', async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const userTemplates = await prisma.reportTemplate.findMany({
                 where: { accountId }, orderBy: { createdAt: 'desc' }
             });
@@ -70,10 +64,14 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/templates', async (request, reply) => {
         try {
-            const parsed = createTemplateSchema.safeParse(request.body);
-            if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
-            const accountId = request.accountId;
-            const { name, config } = parsed.data;
+            const parsed = parseFirstIssueOrReply<z.infer<typeof createTemplateSchema>>(
+                reply,
+                createTemplateSchema.safeParse(request.body),
+            );
+            if (!parsed) return;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
+            const { name, config } = parsed;
             const template = await prisma.reportTemplate.create({
                 data: { accountId, name, config: config as any, type: 'CUSTOM' }
             });
@@ -83,8 +81,12 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.delete<{ Params: { id: string } }>('/templates/:id', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            await prisma.reportTemplate.delete({ where: { id: request.params.id, accountId } });
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
+            const result = await prisma.reportTemplate.deleteMany({ where: { id: request.params.id, accountId } });
+            if (result.count === 0) {
+                return reply.code(404).send({ error: 'Template not found' });
+            }
             return { success: true };
         } catch (e: any) { return reply.code(500).send({ error: e.message }); }
     });
@@ -92,7 +94,8 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Schedules
     fastify.get('/schedules', async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const schedules = await prisma.reportSchedule.findMany({
                 where: { accountId }, include: { template: true }
             });
@@ -102,10 +105,14 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/schedules', async (request, reply) => {
         try {
-            const parsed = createScheduleSchema.safeParse(request.body);
-            if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
-            const accountId = request.accountId;
-            const { templateId, frequency, time, emailRecipients, dayOfWeek, dayOfMonth, isActive } = parsed.data;
+            const parsed = parseFirstIssueOrReply<z.infer<typeof createScheduleSchema>>(
+                reply,
+                createScheduleSchema.safeParse(request.body),
+            );
+            if (!parsed) return;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
+            const { templateId, frequency, time, emailRecipients, dayOfWeek, dayOfMonth, isActive } = parsed;
 
             let targetTemplateId = templateId;
 
@@ -129,7 +136,8 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Delete schedule
     fastify.delete<{ Params: { id: string } }>('/schedules/:id', async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const result = await prisma.reportSchedule.deleteMany({
                 where: { id: request.params.id, accountId }
             });
@@ -143,7 +151,8 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Update schedule
     fastify.patch<{ Params: { id: string } }>('/schedules/:id', async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const { frequency, dayOfWeek, dayOfMonth, time, emailRecipients, isActive } = request.body as any;
 
             const existing = await prisma.reportSchedule.findFirst({
@@ -176,7 +185,8 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Get digest schedules only
     fastify.get('/digests', async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const digests = await prisma.reportSchedule.findMany({
                 where: { accountId, reportType: 'DIGEST' },
                 orderBy: { createdAt: 'desc' }
@@ -188,10 +198,14 @@ const analyticsReportsRoutes: FastifyPluginAsync = async (fastify) => {
     // Create a digest schedule
     fastify.post('/digests', async (request, reply) => {
         try {
-            const parsed = createDigestSchema.safeParse(request.body);
-            if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
-            const accountId = request.accountId;
-            const { frequency, dayOfWeek, time, emailRecipients, isActive } = request.body as any;
+            const parsed = parseFirstIssueOrReply<z.infer<typeof createDigestSchema>>(
+                reply,
+                createDigestSchema.safeParse(request.body),
+            );
+            if (!parsed) return;
+            const accountId = getRouteAccountIdOrReply(request, reply);
+            if (!accountId) return;
+            const { frequency, dayOfWeek, time, emailRecipients, isActive } = parsed;
 
             // Validate frequency for digests (only DAILY or WEEKLY)
             if (!['DAILY', 'WEEKLY'].includes(frequency)) {

@@ -14,6 +14,7 @@ import { prisma } from '../utils/prisma';
 import { MetaMessagingService } from '../services/messaging/MetaMessagingService';
 import { MetaTokenService } from '../services/meta/MetaTokenService';
 import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
+import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 /** Current Meta Graph API version */
 const API_VERSION = 'v24.0';
@@ -45,12 +46,11 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/meta/ads/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const query = request.query as { redirect?: string; reconnectId?: string };
             const frontendRedirect = query.redirect || '/settings?tab=ads';
             const reconnectId = query.reconnectId;
-
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             const { appId } = await MetaTokenService.getCredentials('META_ADS');
             const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
@@ -160,11 +160,10 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/meta/messaging/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const query = request.query as { redirect?: string };
             const frontendRedirect = query.redirect || '/settings?tab=channels';
-
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             // Use MetaTokenService for unified credential access
             const { appId } = await MetaTokenService.getCredentials('META_MESSAGING');

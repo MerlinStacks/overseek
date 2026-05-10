@@ -68,8 +68,11 @@ export function useMobileChat(conversationId: string | undefined) {
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isNearBottomRef = useRef(true);
+    const previousMessageCountRef = useRef(0);
 
     // Canned responses
     const {
@@ -317,8 +320,15 @@ export function useMobileChat(conversationId: string | undefined) {
         }
     }, [showCanned, handleSend]);
 
-    const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+        messagesEndRef.current?.scrollIntoView({ behavior });
+    }, []);
+
+    const handleMessagesScroll = useCallback(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+        const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        isNearBottomRef.current = distanceFromBottom < 120;
     }, []);
 
     // -------------------------------------------------------
@@ -336,7 +346,21 @@ export function useMobileChat(conversationId: string | undefined) {
         setConversation(null);
         setMessages([]);
         setShowMenu(false);
+        isNearBottomRef.current = true;
+        previousMessageCountRef.current = 0;
     }, [conversationId, currentAccount?.id]);
+
+    useEffect(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        container.addEventListener('scroll', handleMessagesScroll, { passive: true });
+        handleMessagesScroll();
+
+        return () => {
+            container.removeEventListener('scroll', handleMessagesScroll);
+        };
+    }, [handleMessagesScroll]);
 
     useEffect(() => {
         if (!socket || !conversationId || !user || !currentAccount?.id) {
@@ -391,7 +415,15 @@ export function useMobileChat(conversationId: string | undefined) {
     }, [socket, conversationId, user, currentAccount?.id, fetchConversation]);
 
     useEffect(() => {
-        scrollToBottom();
+        const hadMessages = previousMessageCountRef.current;
+        const hasNewMessages = messages.length > hadMessages;
+        previousMessageCountRef.current = messages.length;
+
+        if (messages.length === 0 || !hasNewMessages) return;
+        if (!isNearBottomRef.current) return;
+
+        const behavior: ScrollBehavior = hadMessages === 0 ? 'auto' : 'smooth';
+        scrollToBottom(behavior);
     }, [messages, scrollToBottom]);
 
     // -------------------------------------------------------
@@ -412,6 +444,7 @@ export function useMobileChat(conversationId: string | undefined) {
 
         // Refs
         messagesEndRef,
+        messagesContainerRef,
         inputRef,
         fileInputRef,
 

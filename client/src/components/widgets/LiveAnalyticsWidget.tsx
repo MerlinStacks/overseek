@@ -128,7 +128,7 @@ export function LiveAnalyticsWidget({ className }: WidgetProps) {
 
             <div className="mt-auto relative z-10">
                 <button
-                    onClick={() => navigate('/analytics/live')}
+                    onClick={() => navigate('/live')}
                     className="text-sm text-blue-600 font-medium hover:text-blue-700 flex items-center gap-1 transition-colors"
                 >
                     View Real-time Report <ArrowRight size={16} />

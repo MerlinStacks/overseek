@@ -2,7 +2,7 @@
  * SeoKeywordsPanel — Dashboard for Search Console keyword insights.
  *
  * Renders four sub-panels: low-hanging fruit, keyword gaps,
- * trending keywords, and AI recommendations.
+ * keyword movement insights, and AI recommendations.
  * Shows a connect prompt when Search Console isn't linked yet.
  *
  * Why glassmorphism cards: matches the app-wide premium design system
@@ -17,7 +17,7 @@ import {
 import {
     useSearchConsoleStatus,
     useKeywordRecommendations,
-    useKeywordTrends,
+    useKeywordMovers,
     useSearchAnalytics,
 } from '../../hooks/useSeoKeywords';
 import type {
@@ -59,12 +59,12 @@ export function SeoKeywordsPanel({ siteUrl }: { siteUrl?: string }) {
         return <LoadingState />;
     }
 
-    if (!isConnected) {
-        return <ConnectPrompt />;
-    }
-
     if (hasAuthError) {
         return <ReconnectPrompt />;
+    }
+
+    if (!isConnected) {
+        return <ConnectPrompt />;
     }
 
     return (
@@ -82,40 +82,16 @@ export function SeoKeywordsPanel({ siteUrl }: { siteUrl?: string }) {
 
 /** Prompt shown when Search Console isn't connected yet */
 function ConnectPrompt() {
-    const api = useApi();
-    const [loading, setLoading] = useState(false);
-
-    const handleConnect = async () => {
-        setLoading(true);
-        try {
-            const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
-            window.location.href = res.authUrl;
-        } catch {
-            setLoading(false);
-        }
-    };
-
     return (
-        <div className="flex flex-col items-center justify-center py-20 px-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-violet-500/20 dark:from-blue-500/10 dark:to-violet-500/10 rounded-3xl flex items-center justify-center mb-6 animate-float">
-                <Search className="w-10 h-10 text-blue-500 dark:text-blue-400" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                Connect Google Search Console
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md mb-8">
-                Link your Search Console to get AI-powered keyword recommendations,
-                discover low-hanging fruit opportunities, and track trending search queries.
-            </p>
-            <button
-                onClick={handleConnect}
-                disabled={loading}
-                className="btn-gradient btn-shimmer flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-base disabled:opacity-50"
-            >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
-                Connect Search Console
-            </button>
-        </div>
+        <SearchConsoleActionPrompt
+            title="Connect Google Search Console"
+            description="Link your Search Console to get AI-powered keyword recommendations, discover low-hanging fruit opportunities, and track trending search queries."
+            actionLabel="Connect Search Console"
+            icon={Search}
+            iconClassName="text-blue-500 dark:text-blue-400"
+            iconWrapClassName="bg-gradient-to-br from-blue-500/20 to-violet-500/20 dark:from-blue-500/10 dark:to-violet-500/10 animate-float"
+            buttonClassName="btn-gradient btn-shimmer"
+        />
     );
 }
 
@@ -125,10 +101,40 @@ function ConnectPrompt() {
  * clearly indicate this is a recovery action, not initial setup.
  */
 function ReconnectPrompt() {
+    return (
+        <SearchConsoleActionPrompt
+            title="Search Console Disconnected"
+            description="Your Google Search Console access has expired or been revoked. Reconnect to resume keyword tracking and SEO insights."
+            actionLabel="Reconnect Search Console"
+            icon={AlertTriangle}
+            iconClassName="text-amber-500 dark:text-amber-400"
+            iconWrapClassName="bg-gradient-to-br from-amber-500/20 to-red-500/20 dark:from-amber-500/10 dark:to-red-500/10"
+            buttonClassName="bg-amber-500 hover:bg-amber-600 text-white transition-colors"
+        />
+    );
+}
+
+function SearchConsoleActionPrompt({
+    title,
+    description,
+    actionLabel,
+    icon: Icon,
+    iconClassName,
+    iconWrapClassName,
+    buttonClassName,
+}: {
+    title: string;
+    description: string;
+    actionLabel: string;
+    icon: React.ElementType;
+    iconClassName: string;
+    iconWrapClassName: string;
+    buttonClassName: string;
+}) {
     const api = useApi();
     const [loading, setLoading] = useState(false);
 
-    const handleReconnect = async () => {
+    const handleAuthorize = async () => {
         setLoading(true);
         try {
             const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
@@ -140,23 +146,18 @@ function ReconnectPrompt() {
 
     return (
         <div className="flex flex-col items-center justify-center py-20 px-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-amber-500/20 to-red-500/20 dark:from-amber-500/10 dark:to-red-500/10 rounded-3xl flex items-center justify-center mb-6">
-                <AlertTriangle className="w-10 h-10 text-amber-500 dark:text-amber-400" />
+            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-6 ${iconWrapClassName}`}>
+                <Icon className={`w-10 h-10 ${iconClassName}`} />
             </div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                Search Console Disconnected
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md mb-8">
-                Your Google Search Console access has expired or been revoked.
-                Reconnect to resume keyword tracking and SEO insights.
-            </p>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">{title}</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md mb-8">{description}</p>
             <button
-                onClick={handleReconnect}
+                onClick={handleAuthorize}
                 disabled={loading}
-                className="flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-base bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
+                className={`flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-base disabled:opacity-50 ${buttonClassName}`}
             >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
-                Reconnect Search Console
+                {actionLabel}
             </button>
         </div>
     );
@@ -255,22 +256,23 @@ function LowHangingFruitPanel({ siteUrl }: { siteUrl?: string }) {
     );
 }
 
-/** Trending keywords: rising queries with impression growth */
+/** Trending keywords: biggest ranking movers over last 7 days */
 function TrendingPanel({ siteUrl }: { siteUrl?: string }) {
-    const { data, isLoading } = useKeywordTrends(siteUrl);
-    const items = data?.trends || [];
+    const { data, isLoading } = useKeywordMovers(siteUrl, 14);
+    const items = [...(data?.movers || data?.trends || [])]
+        .sort((a, b) => Math.abs(b.positionChange) - Math.abs(a.positionChange));
 
     return (
         <PanelCard
             title="Trending Keywords"
-            subtitle="Queries gaining traction this period"
+            subtitle="Biggest ranking movement: last 7 days vs previous 7"
             icon={TrendingUp}
             iconColor="text-green-500 dark:text-green-400"
             iconBg="bg-green-100 dark:bg-green-900/30"
             loading={isLoading}
         >
             {items.length === 0 ? (
-                <EmptyPanel message="No significant trending keywords detected yet." />
+                <EmptyPanel message="No significant keyword movement detected in the last 7 days." />
             ) : (
                 <div className="space-y-1">
                     {items.slice(0, 8).map((item: QueryTrend) => (
@@ -282,16 +284,17 @@ function TrendingPanel({ siteUrl }: { siteUrl?: string }) {
                                 </p>
                             </div>
                             <div className="flex items-center gap-3 shrink-0 ml-3">
-                                <span className={`text-sm font-semibold flex items-center gap-1 ${item.impressionGrowthPct > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+                                <span className={`text-sm font-semibold flex items-center gap-1 ${item.positionChange > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
                                     }`}>
-                                    {item.impressionGrowthPct > 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
-                                    {item.impressionGrowthPct > 0 ? '+' : ''}{item.impressionGrowthPct}%
+                                    {item.positionChange > 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                                    {item.positionChange > 0 ? '+' : '-'}{Math.abs(item.positionChange).toFixed(1)} pos
                                 </span>
-                                {item.positionChange > 0 && (
-                                    <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
-                                        ↑{item.positionChange} pos
-                                    </span>
-                                )}
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${item.impressionGrowthPct > 0
+                                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                                    : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50'
+                                    }`}>
+                                    {item.impressionGrowthPct > 0 ? '+' : ''}{item.impressionGrowthPct}% imp
+                                </span>
                             </div>
                         </div>
                     ))}

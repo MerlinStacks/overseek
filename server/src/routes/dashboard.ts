@@ -34,7 +34,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // GET /api/dashboard/ad-suggestions
-    fastify.get<{ Querystring: { refresh?: string } }>('/ad-suggestions', async (request, reply) => {
+    fastify.get('/ad-suggestions', async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'No account' });
 

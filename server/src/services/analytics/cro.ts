@@ -65,15 +65,6 @@ export class CROAnalytics {
         }
     }
 
-    static async getConversionByBrowser(accountId: string, startDate?: string, endDate?: string) {
-        try {
-            return await this.getConversionByDimension(accountId, 'browser', startDate, endDate);
-        } catch (error) {
-            Logger.error('[CROAnalytics] Conversion by browser error', { error });
-            return [];
-        }
-    }
-
     static async getBounceRate(accountId: string, startDate?: string, endDate?: string) {
         try {
             const dateFilter: any = {};

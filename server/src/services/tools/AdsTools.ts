@@ -177,12 +177,16 @@ export class AdsTools {
     }
 
     static async getAdOptimizationSuggestions(accountId: string, options?: AdOptimizerOptions) {
-        // Fetch user's business context for personalized recommendations
-        const contextRecord = await prisma.adSuggestionContext.findUnique({
-            where: { accountId },
-            select: { context: true }
-        });
-        const userContext = contextRecord?.context || undefined;
+        // Respect caller-provided context to avoid redundant DB reads.
+        // Fallback to stored context when caller does not provide one.
+        let userContext = options?.userContext;
+        if (userContext === undefined) {
+            const contextRecord = await prisma.adSuggestionContext.findUnique({
+                where: { accountId },
+                select: { context: true }
+            });
+            userContext = contextRecord?.context || undefined;
+        }
 
         // Run both the legacy optimizer and the new pipeline in parallel
         const [optimizerResult, pipelineResult] = await Promise.all([

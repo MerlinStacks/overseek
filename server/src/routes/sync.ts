@@ -17,14 +17,16 @@ const syncService = new SyncService();
 const syncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    const syncQueues = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'bom-inventory-sync'] as const;
-    const allowedEntities = new Set(['orders', 'products', 'customers', 'reviews', 'bom']);
+    const syncQueues = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'sync-pages', 'sync-blog-posts', 'bom-inventory-sync'] as const;
+    const allowedEntities = new Set(['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts', 'bom']);
     const mapEntityToQueue = (entityType: string): string | null => {
         switch (entityType) {
             case 'orders': return 'sync-orders';
             case 'products': return 'sync-products';
             case 'customers': return 'sync-customers';
             case 'reviews': return 'sync-reviews';
+            case 'pages': return 'sync-pages';
+            case 'blog-posts': return 'sync-blog-posts';
             case 'bom': return 'bom-inventory-sync';
             default: return null;
         }
@@ -53,7 +55,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         syncService.runSync(accountId, {
-            types: types || ['orders', 'products', 'customers', 'reviews'],
+            types: types || ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'],
             incremental: incremental !== false,
             triggerSource: 'MANUAL'
         }).catch(err => {
@@ -114,7 +116,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                     await queue.pause();
                     return { message: `Queue ${queueName} paused` };
                 } else {
-                    const names = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'bom-inventory-sync'];
+                    const names = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'sync-pages', 'sync-blog-posts', 'bom-inventory-sync'];
                     for (const n of names) await QueueFactory.getQueue(n).pause();
                     return { message: 'All queues paused' };
                 }
@@ -128,7 +130,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                     await queue.resume();
                     return { message: `Queue ${queueName} resumed` };
                 } else {
-                    const names = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'bom-inventory-sync'];
+                    const names = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'sync-pages', 'sync-blog-posts', 'bom-inventory-sync'];
                     for (const n of names) await QueueFactory.getQueue(n).resume();
                     return { message: 'All queues resumed' };
                 }
@@ -236,6 +238,8 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                             products: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'products'),
                             customers: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'customers'),
                             reviews: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'reviews'),
+                            pages: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'pages'),
+                            'blog-posts': await SyncScheduler.isAccountCircuitBroken(String(accountId), 'blog-posts'),
                         }
                     }
                 },
@@ -299,7 +303,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
 
         const entityTypes = entityType
             ? [entityType]
-            : ['orders', 'products', 'customers', 'reviews'];
+            : ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'];
 
         if (!entityTypes.every(e => allowedEntities.has(e))) {
             return reply.code(400).send({ error: 'Invalid entityType' });
@@ -324,7 +328,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Optionally kick off an immediate sync so the user sees immediate results
         syncService.runSync(String(accountId), {
-            types: entityType ? [entityType] : ['orders', 'products', 'customers', 'reviews'],
+            types: entityType ? [entityType] : ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'],
             incremental: true,
             triggerSource: 'MANUAL'
         }).catch(err => {

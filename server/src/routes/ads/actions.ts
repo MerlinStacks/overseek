@@ -9,6 +9,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { AdsService } from '../../services/ads';
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
+import { getAdsAccountIdOrReply, parsePositiveInt } from './routeHelpers';
 
 interface ScheduleActionBody {
     actionType: string;
@@ -25,13 +26,55 @@ interface ScheduleActionBody {
     recommendationId?: string;
 }
 
+function requiresBudgetAmount(actionType: string) {
+    return actionType === 'budget_increase' || actionType === 'budget_decrease';
+}
+
+function isStatusAction(actionType: string) {
+    return actionType === 'pause' || actionType === 'enable';
+}
+
+async function executeStatusAction(
+    platform: 'google' | 'meta',
+    adAccountId: string,
+    campaignId: string,
+    actionType: 'pause' | 'enable',
+) {
+    if (platform === 'meta') {
+        const status = actionType === 'pause' ? 'PAUSED' : 'ACTIVE';
+        return AdsService.updateMetaCampaignStatus(adAccountId, campaignId, status);
+    }
+
+    const status = actionType === 'pause' ? 'PAUSED' : 'ENABLED';
+    return AdsService.updateGoogleCampaignStatus(adAccountId, campaignId, status);
+}
+
+function getPlatformAccounts(
+    accounts: Array<{ id: string; platform: string }>,
+    platform: 'google' | 'meta' | 'both',
+) {
+    if (platform === 'both') {
+        return accounts.filter((account) => account.platform === 'GOOGLE' || account.platform === 'META');
+    }
+    return accounts.filter((account) => account.platform === platform.toUpperCase());
+}
+
+function resolveAdAccountId(
+    platformAccounts: Array<{ id: string }>,
+    requestedAdAccountId: string | undefined,
+): string | null {
+    if (requestedAdAccountId) return requestedAdAccountId;
+    if (platformAccounts.length === 1) return platformAccounts[0].id;
+    return null;
+}
+
 export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * POST /execute-action - Execute an actionable recommendation
      */
     fastify.post<{ Body: { actionType: string; platform: 'google' | 'meta' | 'both'; campaignId: string; parameters: any } }>('/execute-action', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const { actionType, platform, campaignId, parameters } = request.body;
@@ -42,28 +85,19 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Find the ad account
             const accounts = await AdsService.getAdAccounts(accountId);
-            const platformAccounts = platform === 'both'
-                ? accounts.filter(a => a.platform === 'GOOGLE' || a.platform === 'META')
-                : accounts.filter(a => a.platform === platform.toUpperCase());
+            const platformAccounts = getPlatformAccounts(accounts, platform);
 
             if (platformAccounts.length === 0) {
                 const platformLabel = platform === 'both' ? 'Google or Meta' : platform;
                 return reply.code(400).send({ error: `No connected ${platformLabel} ad accounts found` });
             }
 
-            let targetAccount = null;
-            let adAccountId = parameters.adAccountId;
-
+            const adAccountId = resolveAdAccountId(platformAccounts, parameters.adAccountId);
             if (!adAccountId) {
-                if (platformAccounts.length === 1) {
-                    targetAccount = platformAccounts[0];
-                    adAccountId = targetAccount.id;
-                } else {
-                    return reply.code(400).send({ error: 'Multiple ad accounts found. Please specify adAccountId.' });
-                }
-            } else {
-                targetAccount = platformAccounts.find(a => a.id === adAccountId);
+                return reply.code(400).send({ error: 'Multiple ad accounts found. Please specify adAccountId.' });
             }
+
+            const targetAccount = platformAccounts.find((account) => account.id === adAccountId);
 
             if (!targetAccount) {
                 return reply.code(404).send({ error: 'Target ad account not found' });
@@ -72,22 +106,18 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
             let success = false;
 
             if (platform === 'meta') {
-                if (actionType === 'budget_increase' || actionType === 'budget_decrease') {
+                if (requiresBudgetAmount(actionType)) {
                     if (!amount) return reply.code(400).send({ error: 'Amount is required for budget update' });
                     success = await AdsService.updateMetaCampaignBudget(targetAccount.id, campaignId, amount);
-                } else if (actionType === 'pause') {
-                    success = await AdsService.updateMetaCampaignStatus(targetAccount.id, campaignId, 'PAUSED');
-                } else if (actionType === 'enable') {
-                    success = await AdsService.updateMetaCampaignStatus(targetAccount.id, campaignId, 'ACTIVE');
+                } else if (isStatusAction(actionType)) {
+                    success = await executeStatusAction(platform, targetAccount.id, campaignId, actionType);
                 }
             } else if (platform === 'google') {
-                if (actionType === 'budget_increase' || actionType === 'budget_decrease') {
+                if (requiresBudgetAmount(actionType)) {
                     if (!amount) return reply.code(400).send({ error: 'Amount is required for budget update' });
                     success = await AdsService.updateGoogleCampaignBudget(targetAccount.id, campaignId, amount);
-                } else if (actionType === 'pause') {
-                    success = await AdsService.updateGoogleCampaignStatus(targetAccount.id, campaignId, 'PAUSED');
-                } else if (actionType === 'enable') {
-                    success = await AdsService.updateGoogleCampaignStatus(targetAccount.id, campaignId, 'ENABLED');
+                } else if (isStatusAction(actionType)) {
+                    success = await executeStatusAction(platform, targetAccount.id, campaignId, actionType);
                 } else if (actionType === 'keyword_add' || actionType === 'add_keyword') {
                     const { adGroupId, keyword, matchType, bid, suggestedCpc } = safeParams;
                     if (!adGroupId || !keyword || !matchType) {
@@ -134,8 +164,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /schedule-action - Schedule an action for later execution
      */
     fastify.post<{ Body: ScheduleActionBody }>('/schedule-action', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const { actionType, platform, campaignId, campaignName, parameters, scheduledFor, recommendationId } = request.body;
@@ -150,12 +180,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const accounts = await AdsService.getAdAccounts(accountId);
-            const platformAccounts = accounts.filter(a => a.platform === platform.toUpperCase());
-
-            let adAccountId = parameters.adAccountId;
-            if (!adAccountId && platformAccounts.length === 1) {
-                adAccountId = platformAccounts[0].id;
-            }
+            const platformAccounts = getPlatformAccounts(accounts, platform);
+            const adAccountId = resolveAdAccountId(platformAccounts, parameters.adAccountId) ?? undefined;
 
             const scheduled = await prisma.scheduledAdAction.create({
                 data: {
@@ -195,8 +221,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /scheduled-actions - List scheduled actions
      */
     fastify.get('/scheduled-actions', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const actions = await prisma.scheduledAdAction.findMany({
@@ -215,8 +241,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * DELETE /scheduled-actions/:id - Cancel a scheduled action
      */
     fastify.delete<{ Params: { id: string } }>('/scheduled-actions/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const { id } = request.params;
@@ -246,8 +272,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /create-campaign - Create a new ad campaign (Wizard)
      */
     fastify.post<{ Body: { type: 'SEARCH' | 'PMAX'; name: string; budget: number; keywords?: any[]; adCopy?: any; productIds?: string[] } }>('/create-campaign', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const { type, name, budget, keywords, adCopy } = request.body;
@@ -286,12 +312,12 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /roi/summary - Get ROI attribution summary
      */
     fastify.get<{ Querystring: { days?: string } }>('/roi/summary', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const { CoPilotROIService } = await import('../../services/CoPilotROIService');
-            const days = parseInt(request.query.days || '30', 10);
+            const days = parsePositiveInt(request.query.days, 30);
             const summary = await CoPilotROIService.getROISummary(accountId, days);
             return { success: true, data: summary };
         } catch (error: any) {
@@ -304,8 +330,8 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /roi/quick-stats - Get quick stats for dashboard widget
      */
     fastify.get('/roi/quick-stats', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
             const { CoPilotROIService } = await import('../../services/CoPilotROIService');
@@ -321,12 +347,12 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
      * GET /action-history - Get audit trail of AI actions
      */
     fastify.get<{ Querystring: { page?: string; limit?: string } }>('/action-history', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
-            const page = parseInt(request.query.page || '1', 10);
-            const limit = Math.min(parseInt(request.query.limit || '20', 10), 100);
+            const page = parsePositiveInt(request.query.page, 1);
+            const limit = Math.min(parsePositiveInt(request.query.limit, 20), 100);
             const skip = (page - 1) * limit;
 
             const [actions, total] = await Promise.all([

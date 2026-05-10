@@ -86,13 +86,13 @@ describe('SettingsPage tab behavior', () => {
         renderSettings('/settings');
 
         const user = userEvent.setup();
-        const emailButtons = screen.getAllByRole('button', { name: /Email/i });
+        const emailButtons = await screen.findAllByRole('button', { name: /Email/i });
         await user.click(emailButtons[0]);
 
         await waitFor(() => {
             expect(screen.getByTestId('location-search')).toHaveTextContent('tab=email');
         });
-        expect(screen.getAllByText('Email Settings Content').length).toBeGreaterThan(0);
+        expect((await screen.findAllByText('Email Settings Content')).length).toBeGreaterThan(0);
     });
 
     it('falls back to first visible tab when URL points to a hidden tab', async () => {

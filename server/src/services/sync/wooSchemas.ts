@@ -157,6 +157,48 @@ export const WooReviewSchema = z.object({
 
 export type WooReview = z.infer<typeof WooReviewSchema>;
 
+const WpRenderedSchema = z.object({
+    rendered: z.string().optional().or(z.literal('')),
+}).passthrough();
+
+export const WooPageSchema = z.object({
+    id: z.number(),
+    date: z.string().optional(),
+    date_gmt: z.string().optional(),
+    modified: z.string().optional(),
+    modified_gmt: z.string().optional(),
+    slug: z.string().optional(),
+    status: z.string().optional(),
+    type: z.string().optional(),
+    link: z.string().url().optional().or(z.literal('')),
+    title: WpRenderedSchema.optional(),
+    content: WpRenderedSchema.optional(),
+    excerpt: WpRenderedSchema.optional(),
+    author: z.number().optional()
+}).passthrough();
+
+export type WooPage = z.infer<typeof WooPageSchema>;
+
+export const WooPostSchema = z.object({
+    id: z.number(),
+    date: z.string().optional(),
+    date_gmt: z.string().optional(),
+    modified: z.string().optional(),
+    modified_gmt: z.string().optional(),
+    slug: z.string().optional(),
+    status: z.string().optional(),
+    type: z.string().optional(),
+    link: z.string().url().optional().or(z.literal('')),
+    title: WpRenderedSchema.optional(),
+    content: WpRenderedSchema.optional(),
+    excerpt: WpRenderedSchema.optional(),
+    author: z.number().optional(),
+    categories: z.array(z.number()).optional(),
+    tags: z.array(z.number()).optional()
+}).passthrough();
+
+export type WooPost = z.infer<typeof WooPostSchema>;
+
 export function safeParseProduct(data: unknown): WooProduct | null {
     const result = WooProductSchema.safeParse(data);
     return result.success ? result.data : null;
@@ -184,4 +226,14 @@ export function safeParseVariation(data: unknown): WooProductVariation | null {
 
 export function safeParseVariations(data: unknown[]): WooProductVariation[] {
     return data.map(item => safeParseVariation(item)).filter((v): v is WooProductVariation => v !== null);
+}
+
+export function safeParsePage(data: unknown): WooPage | null {
+    const result = WooPageSchema.safeParse(data);
+    return result.success ? result.data : null;
+}
+
+export function safeParsePost(data: unknown): WooPost | null {
+    const result = WooPostSchema.safeParse(data);
+    return result.success ? result.data : null;
 }

@@ -16,25 +16,34 @@ export class SearchConsoleTools {
      */
     static async getKeywordRecommendations(accountId: string) {
         try {
-            const [lowHanging, gaps, trending] = await Promise.all([
+            const [lowHanging, gaps, movers] = await Promise.all([
                 KeywordRecommendationService.getLowHangingFruit(accountId),
                 KeywordRecommendationService.getKeywordGaps(accountId),
-                KeywordRecommendationService.getTrendingKeywords(accountId)
+                KeywordRecommendationService.getKeywordMovers(accountId)
             ]);
 
             return {
                 lowHangingFruit: lowHanging.slice(0, 10),
                 keywordGaps: gaps.slice(0, 10),
-                trendingKeywords: trending.slice(0, 10),
+                keywordMovers: movers.slice(0, 10),
+                trendingKeywords: movers.slice(0, 10),
                 summary: {
                     opportunities: lowHanging.length,
                     gaps: gaps.length,
-                    trending: trending.length,
+                    movers: movers.length,
+                    trending: movers.length,
                     estimatedTotalUpside: lowHanging.reduce((sum, k) => sum + k.estimatedUpside, 0)
                 }
             };
         } catch (error: any) {
-            return { error: error.message || 'Failed to fetch keyword recommendations', lowHangingFruit: [], keywordGaps: [], trendingKeywords: [], summary: null };
+            return {
+                error: error.message || 'Failed to fetch keyword recommendations',
+                lowHangingFruit: [],
+                keywordGaps: [],
+                keywordMovers: [],
+                trendingKeywords: [],
+                summary: null
+            };
         }
     }
 

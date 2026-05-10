@@ -39,6 +39,7 @@ export const AnalyticsOverviewPage: React.FC = () => {
     const [exits, setExits] = useState<ExitData | null>(null);
 
     const dateRangeOption = useMemo(() => {
+        if (days === -1) return 'yesterday';
         if (days === 1) return 'today';
         if (days === 7) return '7d';
         if (days === 30) return '30d';
@@ -69,7 +70,14 @@ export const AnalyticsOverviewPage: React.FC = () => {
     const dateRange = useMemo(() => {
         const end = new Date();
         const start = new Date();
-        start.setDate(end.getDate() - days);
+
+        if (days === -1) {
+            start.setDate(end.getDate() - 1);
+            end.setDate(end.getDate() - 1);
+        } else {
+            start.setDate(end.getDate() - Math.max(days - 1, 0));
+        }
+
         return {
             startDate: start.toISOString().split('T')[0],
             endDate: end.toISOString().split('T')[0]

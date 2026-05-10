@@ -4,6 +4,8 @@ import { OrderSync } from '../services/sync/OrderSync';
 import { ProductSync } from '../services/sync/ProductSync';
 import { CustomerSync } from '../services/sync/CustomerSync';
 import { ReviewSync } from '../services/sync/ReviewSync';
+import { PageSync } from '../services/sync/PageSync';
+import { BlogPostSync } from '../services/sync/BlogPostSync';
 import { EventBus, EVENTS } from '../services/events';
 import { Worker } from 'bullmq';
 import { automationEngine } from '../services/AutomationEngine';
@@ -54,6 +56,16 @@ export async function startWorkers() {
 
     activeWorkers.push(QueueFactory.createWorker(QUEUES.REVIEWS, async (job) => {
         const syncer = new ReviewSync();
+        await syncer.perform(job.data, job);
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.PAGES, async (job) => {
+        const syncer = new PageSync();
+        await syncer.perform(job.data, job);
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.BLOG_POSTS, async (job) => {
+        const syncer = new BlogPostSync();
         await syncer.perform(job.data, job);
     }));
 

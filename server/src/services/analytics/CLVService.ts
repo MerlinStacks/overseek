@@ -61,7 +61,7 @@ export class CLVService {
 
             const customerOrders = new Map<string, {
                 orders: Array<{ date: Date; total: number }>;
-                email: string;
+                customerId?: number;
             }>();
 
             for (const order of orders) {
@@ -71,9 +71,13 @@ export class CLVService {
                 if (!email) continue;
 
                 if (!customerOrders.has(email)) {
-                    customerOrders.set(email, { orders: [], email });
+                    customerOrders.set(email, { orders: [] });
                 }
-                customerOrders.get(email)!.orders.push({
+                const customer = customerOrders.get(email)!;
+                if (customer.customerId == null && typeof rawData?.customer_id === 'number') {
+                    customer.customerId = rawData.customer_id;
+                }
+                customer.orders.push({
                     date: order.dateCreated,
                     total: Number(order.total)
                 });
@@ -169,14 +173,8 @@ export class CLVService {
             const customerSource = new Map<string, string>();
             const emailToCustomerId = new Map<number, string>();
 
-            for (const [email] of customerOrders) {
-                const rawData = orders.find((o) => {
-                    const r = o.rawData as Prisma.JsonObject | null;
-                    const billing = typeof r?.billing === 'object' && r?.billing !== null ? (r.billing as Prisma.JsonObject) : null;
-                    const bEmail = typeof billing?.email === 'string' ? billing.email.toLowerCase() : undefined;
-                    return bEmail === email;
-                })?.rawData as Prisma.JsonObject | null;
-                const customerId = typeof rawData?.customer_id === 'number' ? rawData.customer_id : undefined;
+            for (const [email, data] of customerOrders) {
+                const customerId = data.customerId;
                 if (customerId != null) {
                     emailToCustomerId.set(customerId, email);
                 }

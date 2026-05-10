@@ -5,14 +5,11 @@
  * State management delegated to useAdAI hook.
  */
 
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Sparkles, Calendar, Download, FileText, AlertTriangle } from 'lucide-react';
-import { AdContextModal } from '../components/marketing/AdContextModal';
 import { AddKeywordModal } from '../components/marketing/AddKeywordModal';
 import { RecommendationFeedbackModal } from '../components/marketing/RecommendationFeedbackModal';
 import { ScheduleActionModal } from '../components/marketing/ScheduleActionModal';
-import { CampaignWizard } from '../components/marketing/CampaignWizard/CampaignWizard';
 import { ImplementationGuideModal } from '../components/marketing/ImplementationGuideModal';
 import { StrategicThemeCard } from '../components/marketing/StrategicThemeCard';
 import { ActionableChangeCard } from '../components/marketing/ActionableChangeCard';
@@ -20,8 +17,6 @@ import { useAdAI } from '../hooks/useAdAI';
 
 export function AdAIPage() {
     const navigate = useNavigate();
-    const [showContextModal, setShowContextModal] = useState(false);
-    const [showCampaignWizard, setShowCampaignWizard] = useState(false);
 
     const {
         loading, refreshing, error,
@@ -56,9 +51,6 @@ export function AdAIPage() {
     return (
         <div className="-m-4 md:-m-6 lg:-m-8 min-h-[calc(100vh-4rem)] bg-gray-50">
             {/* Modals */}
-            {showContextModal && <AdContextModal isOpen={showContextModal} onClose={() => setShowContextModal(false)} />}
-            {showCampaignWizard && <CampaignWizard isOpen={showCampaignWizard} onClose={() => setShowCampaignWizard(false)} />}
-
             {activeKeywordRec && (
                 <AddKeywordModal
                     isOpen={keywordModalOpen}
@@ -178,7 +170,6 @@ export function AdAIPage() {
                                 key={rec.id}
                                 recommendation={rec}
                                 onImplementationGuide={() => openGuideModal(rec)}
-                                onApply={() => handleApply(rec)}
                             />
                         ))}
                     </div>

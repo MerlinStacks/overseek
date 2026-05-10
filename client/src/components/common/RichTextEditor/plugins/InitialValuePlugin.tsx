@@ -24,6 +24,29 @@ function normalizeHtml(html: string): string {
         .trim();
 }
 
+/**
+ * Preprocesses plain text content to preserve line breaks and whitespace
+ * before HTML parsing. If content contains HTML tags, returns as-is.
+ */
+function preprocessValue(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+
+    // If content already contains HTML tags, treat as HTML and return as-is
+    if (/<[a-z][\s\S]*>/i.test(trimmed)) {
+        return value;
+    }
+
+    // Plain text: escape HTML entities and convert whitespace to preserve formatting
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
+        .replace(/\r\n/g, '<br>')
+        .replace(/\n/g, '<br>');
+}
+
 export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
     const [editor] = useLexicalComposerContext();
     const lastExternalValueRef = useRef<string>('');
@@ -66,9 +89,10 @@ export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
                 return;
             }
 
-            // Parse and insert HTML content
+            // Parse and insert HTML content (preprocess to preserve plain-text formatting)
             const parser = new DOMParser();
-            const dom = parser.parseFromString(initialValue, 'text/html');
+            const processedValue = preprocessValue(initialValue);
+            const dom = parser.parseFromString(processedValue, 'text/html');
             const nodes = $generateNodesFromDOM(editor, dom);
 
             root.clear();

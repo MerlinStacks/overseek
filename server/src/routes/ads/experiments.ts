@@ -9,6 +9,7 @@ import { FastifyInstance } from 'fastify';
 import { CreativeVariantService, CreateExperimentParams, VariantContent } from '../../services/ads/CreativeVariantService';
 import { AdCopyGenerator } from '../../services/tools/AdCopyGenerator';
 import { requireAuthFastify } from '../../middleware/auth';
+import { getAdsAccountIdOrReply } from './routeHelpers';
 
 interface CreateExperimentBody {
     name: string;
@@ -42,13 +43,21 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
     // All routes require authentication
     fastify.addHook('preHandler', requireAuthFastify);
 
+    const ensureExperimentOwnership = async (id: string, accountId: string) => {
+        const experiment = await CreativeVariantService.getExperiment(id);
+        if (!experiment || experiment.accountId !== accountId) {
+            return null;
+        }
+        return experiment;
+    };
+
     /**
      * GET /api/ads/experiments
      * List all experiments for the account.
      */
     fastify.get<{ Querystring: { status?: string } }>('/', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { status } = request.query;
         const experiments = await CreativeVariantService.listExperiments(accountId, status);
@@ -77,8 +86,8 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const experiment = await CreativeVariantService.createExperiment(
             accountId,
@@ -93,13 +102,12 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
      * Get experiment details with variants.
      */
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
-        const experiment = await CreativeVariantService.getExperiment(id);
-
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -123,14 +131,12 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
-
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -157,15 +163,14 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
         const { baseHeadlines, baseDescriptions, variantCount, platform } = request.body;
 
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -203,14 +208,13 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
      * Refresh metrics for an experiment.
      */
     fastify.post<{ Params: { id: string } }>('/:id/refresh', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
 
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -227,14 +231,13 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
      * Analyze statistical significance.
      */
     fastify.post<{ Params: { id: string } }>('/:id/analyze', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
 
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -248,15 +251,14 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
      * End experiment and declare winner.
      */
     fastify.post<{ Params: { id: string }; Body: ConcludeBody }>('/:id/conclude', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
         const { winnerId } = request.body;
 
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -270,14 +272,13 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
      * Pause an experiment.
      */
     fastify.post<{ Params: { id: string } }>('/:id/pause', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
 
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 
@@ -291,14 +292,13 @@ export default async function experimentsRoutes(fastify: FastifyInstance) {
      * Resume a paused experiment.
      */
     fastify.post<{ Params: { id: string } }>('/:id/resume', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
 
-        // Verify experiment belongs to account
-        const experiment = await CreativeVariantService.getExperiment(id);
-        if (!experiment || experiment.accountId !== accountId) {
+        const experiment = await ensureExperimentOwnership(id, accountId);
+        if (!experiment) {
             return reply.code(404).send({ error: 'Experiment not found' });
         }
 

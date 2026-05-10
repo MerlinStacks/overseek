@@ -208,7 +208,7 @@ export function useAdAI() {
     // Derived state
     const recommendations = useMemo(() => {
         const recs = data?.actionableRecommendations || [];
-        return recs.sort((a, b) => {
+        return [...recs].sort((a, b) => {
             if (a.priority !== b.priority) return a.priority - b.priority;
             return (b.estimatedImpact?.revenueChange || 0) - (a.estimatedImpact?.revenueChange || 0);
         });

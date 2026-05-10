@@ -246,11 +246,9 @@ class OverSeek_Server_Tracking
             return $cookies;
         });
 
-        // General: send Vary header scoped to our tracking cookie so CDN/proxies
-        // don't invalidate cache for unrelated cookies.
-        if (!headers_sent() && !is_admin()) {
-            header('Vary: Cookie=_os_vid', false);
-        }
+        // Intentionally avoid sending a global Vary-by-cookie header.
+        // Cache plugin cookie exclusions above are enough, and a global Vary
+        // can explode cache variants on high-traffic stores.
     }
 
     /**
@@ -977,4 +975,3 @@ class OverSeek_Server_Tracking
     }
 
 }
-

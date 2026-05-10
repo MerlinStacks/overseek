@@ -3,22 +3,41 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
-import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
-import { z } from 'zod';
 import { cacheAside, CacheTTL } from '../../utils/cache';
 import { extractOrderTracking } from '../../utils/orderTracking';
+import { prisma } from '../../utils/prisma';
 import attributionRoutes from './attribution';
 import tagsRoutes from './tags';
 import bulkRoutes from './bulk';
+import { findOrderByAnyId, getOrderAccountIdOrReply, parseOrderIdParamOrReply } from './helpers';
 
-const orderIdParamSchema = z.object({
-    id: z.union([
-        z.string().uuid(),
-        z.string().regex(/^\d+$/, "ID must be a UUID or a numeric string")
-    ])
-});
+function parseOrderCustomerId(rawData: Record<string, unknown>): number | null {
+    const customerId = rawData.customer_id;
+    if (typeof customerId === 'number' && customerId > 0) return customerId;
+    const numericCustomerId = Number(customerId);
+    return Number.isFinite(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null;
+}
+
+async function findOrderCustomer(accountId: string, rawData: Record<string, unknown>) {
+    const customerId = parseOrderCustomerId(rawData);
+    if (!customerId) return null;
+
+    return prisma.wooCustomer.findUnique({
+        where: { accountId_wooId: { accountId, wooId: customerId } },
+        select: { id: true, wooId: true, ordersCount: true }
+    });
+}
+
+function buildOrderCustomerMeta(customer: { id: string; wooId: number; ordersCount: number } | null) {
+    if (!customer) return null;
+    return {
+        internalId: customer.id,
+        wooId: customer.wooId,
+        ordersCount: customer.ordersCount,
+    };
+}
 
 const ordersRoutes: FastifyPluginAsync = async (fastify) => {
     // Protect all order routes
@@ -28,10 +47,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
     // GET /api/orders?customerId=123&limit=5
     // GET /api/orders?billingEmail=guest@example.com&limit=5
     fastify.get('/', async (request, reply) => {
-        const accountId = request.user?.accountId;
-        if (!accountId) {
-            return reply.code(400).send({ error: 'accountId header is required' });
-        }
+        const accountId = getOrderAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const query = request.query as {
             customerId?: string;
@@ -96,66 +113,22 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get Order by ID (Internal ID or WooID)
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-        const parsed = orderIdParamSchema.safeParse(request.params);
-        if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message });
-        const { id } = parsed.data;
-        const accountId = request.user?.accountId;
-
-        if (!accountId) {
-            return reply.code(400).send({ error: 'accountId header is required' });
-        }
+        const id = parseOrderIdParamOrReply(request, reply);
+        if (!id) return;
+        const accountId = getOrderAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
-            let order;
-
-            // Try finding by internal UUID first (scoped to account to prevent IDOR)
-            order = await prisma.wooOrder.findFirst({
-                where: { id, accountId }
-            });
-
-            // If not found and ID is numeric, try finding by WooID
-            if (!order && !isNaN(Number(id))) {
-                order = await prisma.wooOrder.findUnique({
-                    where: {
-                        accountId_wooId: {
-                            accountId,
-                            wooId: Number(id)
-                        }
-                    }
-                });
-            }
+            const order = await findOrderByAnyId(accountId, id);
 
             if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
             // Lookup customer metadata for order count
-            const rawData = order.rawData as { customer_id?: number; tags?: string[] };
-            let customerMeta = null;
-
-            if (rawData.customer_id && rawData.customer_id > 0) {
-                const customer = await prisma.wooCustomer.findUnique({
-                    where: {
-                        accountId_wooId: {
-                            accountId,
-                            wooId: rawData.customer_id
-                        }
-                    },
-                    select: {
-                        id: true,
-                        wooId: true,
-                        ordersCount: true
-                    }
-                });
-
-                if (customer) {
-                    customerMeta = {
-                        internalId: customer.id,
-                        wooId: customer.wooId,
-                        ordersCount: customer.ordersCount
-                    };
-                }
-            }
+            const rawData = order.rawData as Record<string, unknown> & { tags?: string[] };
+            const customer = await findOrderCustomer(accountId, rawData);
+            const customerMeta = buildOrderCustomerMeta(customer);
 
             // Compute tags from product mappings (same as sync does)
             const { OrderTaggingService } = await import('../../services/OrderTaggingService');
@@ -189,27 +162,13 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get Fraud Score for an Order
     fastify.get<{ Params: { id: string } }>('/:id/fraud-score', async (request, reply) => {
-        const parsedParams = orderIdParamSchema.safeParse(request.params);
-        if (!parsedParams.success) return reply.code(400).send({ error: parsedParams.error.issues[0].message });
-        const { id } = parsedParams.data;
-        const accountId = request.user?.accountId;
-
-        if (!accountId) {
-            return reply.code(400).send({ error: 'accountId header is required' });
-        }
+        const id = parseOrderIdParamOrReply(request, reply);
+        if (!id) return;
+        const accountId = getOrderAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         try {
-            let order;
-
-            // Try finding by internal UUID first (scoped to account to prevent IDOR)
-            order = await prisma.wooOrder.findFirst({ where: { id, accountId } });
-
-            // If not found and ID is numeric, try finding by WooID
-            if (!order && !isNaN(Number(id))) {
-                order = await prisma.wooOrder.findUnique({
-                    where: { accountId_wooId: { accountId, wooId: Number(id) } }
-                });
-            }
+            const order = await findOrderByAnyId(accountId, id);
 
             if (!order) {
                 return reply.code(404).send({ error: 'Order not found' });
@@ -217,18 +176,10 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Get customer meta for order count
             const rawData = order.rawData as Record<string, unknown>;
-            const customerId = typeof rawData.customer_id === 'number' ? rawData.customer_id : Number(rawData.customer_id);
             let customerMeta = null;
 
-            if (customerId && customerId > 0) {
-                const customer = await prisma.wooCustomer.findUnique({
-                    where: { accountId_wooId: { accountId, wooId: customerId } },
-                    select: { ordersCount: true }
-                });
-                if (customer) {
-                    customerMeta = { ordersCount: customer.ordersCount };
-                }
-            }
+            const customer = await findOrderCustomer(accountId, rawData);
+            if (customer) customerMeta = { ordersCount: customer.ordersCount };
 
             const { FraudService } = await import('../../services/FraudService');
             const result = FraudService.calculateScore({ ...rawData, _customerMeta: customerMeta });

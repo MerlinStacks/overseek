@@ -16,8 +16,8 @@ interface UseAttachmentsOptions {
     onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
 }
 
-/** 25 MB per file — matches typical email provider limits. */
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+/** 10 MB per file — matches inbox relay limit. */
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 /** Maximum files that can be staged at once. */
 const MAX_FILE_COUNT = 10;
 
@@ -65,7 +65,7 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
         const oversized = incoming.filter(f => f.size > MAX_FILE_SIZE);
         if (oversized.length > 0) {
             const names = oversized.map(f => f.name).join(', ');
-            setAttachmentError(`File(s) exceed 25 MB limit: ${names}`);
+            setAttachmentError(`File(s) exceed 10 MB limit: ${names}`);
             if (fileInputRef.current) fileInputRef.current.value = '';
             return;
         }

@@ -77,17 +77,16 @@ export class GeographyAnalytics {
                     ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
                 },
                 include: {
-                    session: { select: { country: true, city: true } }
+                    session: { select: { country: true } }
                 }
             });
 
-            const orderGeoMap = new Map<number, { country: string | null; city: string | null }>();
+            const orderGeoMap = new Map<number, { country: string | null }>();
             for (const event of purchaseEvents) {
                 const orderId = (event.payload as any)?.orderId;
                 if (orderId && event.session) {
                     orderGeoMap.set(orderId, {
-                        country: event.session.country,
-                        city: event.session.city
+                        country: event.session.country
                     });
                 }
             }
@@ -97,7 +96,7 @@ export class GeographyAnalytics {
             for (const order of orders) {
                 const total = parseFloat(String(order.total)) || 0;
                 const geo = orderGeoMap.get(order.wooId);
-                let country = geo?.country || (order.rawData as any)?.billing?.country || 'Unknown';
+                const country = geo?.country || (order.rawData as any)?.billing?.country || 'Unknown';
 
                 if (!revenueByCountry.has(country)) {
                     revenueByCountry.set(country, { revenue: 0, orders: 0 });

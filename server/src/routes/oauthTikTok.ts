@@ -9,6 +9,7 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { TikTokMessagingService } from '../services/messaging/TikTokMessagingService';
 import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
+import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -16,11 +17,10 @@ const oauthTikTokRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/tiktok/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const query = request.query as { redirect?: string };
             const frontendRedirect = query.redirect || '/settings?tab=channels';
-
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             const credentials = await prisma.platformCredentials.findUnique({ where: { platform: 'TIKTOK_MESSAGING' } });
             if (!credentials) return reply.code(400).send({ error: 'TikTok messaging not configured' });

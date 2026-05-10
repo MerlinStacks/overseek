@@ -29,13 +29,18 @@ export const CLVPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const monthsBack = useMemo(() => {
+        if (days <= 0) return 1;
+        return Math.max(1, Math.ceil(days / 30));
+    }, [days]);
+
     useEffect(() => {
         const fetchData = async () => {
             if (!currentAccount || !token) return;
             setLoading(true);
             setError(null);
             try {
-                const result = await api.get<CLVData>(`/api/analytics/clv?monthsBack=${days}`, token, currentAccount.id);
+                const result = await api.get<CLVData>(`/api/analytics/clv?monthsBack=${monthsBack}`, token, currentAccount.id);
                 setData(result);
             } catch (error) {
                 const msg = error instanceof Error ? error.message : String(error);
@@ -46,7 +51,7 @@ export const CLVPage: React.FC = () => {
             }
         };
         fetchData();
-    }, [currentAccount, token, days]);
+    }, [currentAccount, token, monthsBack]);
 
     const maxCLV = useMemo(() => {
         if (!data?.monthlyTrend.length) return 0;

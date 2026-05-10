@@ -45,7 +45,7 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
         if (isOffline) return 'OFFLINE';
         if (isSyncing) return 'SYNCING';
 
-        const criticalEntities = ['orders', 'products', 'inventory'];
+        const criticalEntities = ['orders', 'products', 'inventory', 'pages', 'blog-posts'];
         const relevantLogs = (logs || []).filter(l => criticalEntities.includes(l.entityType));
         const latestLogs = relevantLogs.slice(0, 5);
         if (latestLogs.some(l => l.status === 'FAILED')) {

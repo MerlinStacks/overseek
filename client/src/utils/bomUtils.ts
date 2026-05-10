@@ -19,13 +19,13 @@ interface BOMItemCostData {
 function calculateBomItemCost(item: BOMItemCostData): number {
     let unitCost = 0;
 
-    if (item.internalProduct?.cogs) {
+    if (item.internalProduct?.cogs != null) {
         unitCost = Number(item.internalProduct.cogs);
-    } else if (item.childVariation?.cogs) {
+    } else if (item.childVariation?.cogs != null) {
         unitCost = Number(item.childVariation.cogs);
-    } else if (item.childProduct?.cogs) {
+    } else if (item.childProduct?.cogs != null) {
         unitCost = Number(item.childProduct.cogs);
-    } else if (item.supplierItem?.cost) {
+    } else if (item.supplierItem?.cost != null) {
         unitCost = Number(item.supplierItem.cost);
     }
 

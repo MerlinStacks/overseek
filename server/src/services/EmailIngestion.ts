@@ -2,7 +2,7 @@
  * Email Ingestion Service
  * 
  * Handles incoming emails from IMAP.
- * Uses three-tier conversation resolution: threading → email match → create new.
+ * Uses conversation resolution: threading → subject fallback → create new.
  */
 
 import { prisma } from '../utils/prisma';
@@ -269,41 +269,11 @@ export class EmailIngestion {
             }
         }
 
-        // TIER 2: Match by email address
+        // TIER 2: Create new conversation.
+        // Intentionally do not fall back to sender-email-only matching because
+        // that incorrectly merges brand new emails into old threads.
         const customer = await prisma.wooCustomer.findFirst({ where: { accountId, email: fromEmail } });
-        if (customer) {
-            const conv = await prisma.conversation.findFirst({
-                where: { accountId, wooCustomerId: customer.id, mergedIntoId: null, channel: 'EMAIL' },
-                orderBy: { updatedAt: 'desc' }
-            });
-            if (conv) return conv;
-        }
 
-        const guestConv = await prisma.conversation.findFirst({
-            where: { accountId, guestEmail: fromEmail, mergedIntoId: null, channel: 'EMAIL' },
-            orderBy: { updatedAt: 'desc' }
-        });
-        if (guestConv) {
-            const updates: any = {};
-            // Backfill guestName if missing but now available from email
-            if (!guestConv.guestName && fromName) {
-                updates.guestName = fromName;
-            }
-            // Backfill title if missing
-            if (!guestConv.title && cleanTitle) {
-                updates.title = cleanTitle;
-            }
-            if (Object.keys(updates).length > 0) {
-                await prisma.conversation.update({ where: { id: guestConv.id }, data: updates });
-                Logger.info('[EmailIngestion] Backfilled fields on existing conversation', {
-                    conversationId: guestConv.id,
-                    ...updates
-                });
-            }
-            return guestConv;
-        }
-
-        // TIER 3: Create new — reuse customer from Tier 2 lookup to avoid duplicate query
         const conv = await prisma.conversation.create({
             data: {
                 accountId,
@@ -502,4 +472,3 @@ export class EmailIngestion {
         }
     }
 }
-

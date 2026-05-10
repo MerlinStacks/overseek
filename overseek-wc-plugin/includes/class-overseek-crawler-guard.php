@@ -71,13 +71,13 @@ class OverSeek_Crawler_Guard
         add_filter('rest_pre_dispatch', array($this, 'maybe_block_rest_checkout'), 1, 3);
 
         // Immediate sync on cold start so new installs don't wait up to 1 hour
-        // with an empty block list. Uses a short-lived backoff transient to prevent
-        // hammering the API on every page load if the server is unreachable.
+        // with an empty block list. Schedule async cron instead of inline HTTP
+        // so customer requests do not block on remote network calls.
         $backoff_key = $this->transient_key . '_backoff';
         if (false === get_transient($this->transient_key) && false === get_transient($backoff_key)) {
-            // Set backoff BEFORE the call so concurrent requests don't all fire
+            // Set backoff BEFORE scheduling so concurrent requests don't all schedule.
             set_transient($backoff_key, 1, 5 * MINUTE_IN_SECONDS);
-            $this->sync_blocked_list();
+            wp_schedule_single_event(time() + 5, self::CRON_HOOK);
         }
     }
 

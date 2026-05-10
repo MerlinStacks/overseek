@@ -9,7 +9,7 @@ export class SyncService {
      * This now dispatches jobs to the Queue system.
      */
     async runSync(accountId: string, options: { types?: string[], incremental?: boolean, priority?: number, triggerSource?: 'SYSTEM' | 'MANUAL' | 'RETRY' } = {}) {
-        const types = options.types || ['orders', 'products', 'customers', 'reviews'];
+        const types = options.types || ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'];
         const incremental = options.incremental !== false; // Default true
         const priority = options.priority || 10;
         const triggerSource = options.triggerSource || 'SYSTEM';
@@ -17,7 +17,15 @@ export class SyncService {
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
         // OOM prevention: trim bloated queues before adding new jobs (sync queues only)
-        const SYNC_QUEUES = [QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS, QUEUES.BOM_SYNC];
+        const SYNC_QUEUES = [
+            QUEUES.ORDERS,
+            QUEUES.PRODUCTS,
+            QUEUES.CUSTOMERS,
+            QUEUES.REVIEWS,
+            QUEUES.PAGES,
+            QUEUES.BLOG_POSTS,
+            QUEUES.BOM_SYNC
+        ];
         for (const queueName of SYNC_QUEUES) {
             await QueueFactory.enforceMaxQueueDepth(queueName);
         }
@@ -84,6 +92,14 @@ export class SyncService {
 
         if (types.includes('reviews')) {
             await checkAndAddJob(QUEUES.REVIEWS, { accountId, incremental, triggerSource } as SyncJobData, `sync_reviews_${accountId.replace(/:/g, '_')}`);
+        }
+
+        if (types.includes('pages')) {
+            await checkAndAddJob(QUEUES.PAGES, { accountId, incremental, triggerSource } as SyncJobData, `sync_pages_${accountId.replace(/:/g, '_')}`);
+        }
+
+        if (types.includes('blog-posts')) {
+            await checkAndAddJob(QUEUES.BLOG_POSTS, { accountId, incremental, triggerSource } as SyncJobData, `sync_blog_posts_${accountId.replace(/:/g, '_')}`);
         }
 
         if (types.includes('bom')) {

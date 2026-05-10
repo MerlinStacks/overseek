@@ -3,13 +3,22 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
 import { SuppressionBodySchema } from './schemas';
+import { getEmailAccountIdOrReply, parseBodyOrReply } from './routeHelpers';
+
+function normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+}
+
+function normalizeScope(scope?: string) {
+    return scope === 'ALL' ? 'ALL' : 'MARKETING';
+}
 
 const emailSuppressionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
     fastify.get('/suppressions', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
         try {
             return await prisma.emailUnsubscribe.findMany({
                 where: { accountId },
@@ -22,19 +31,19 @@ const emailSuppressionRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/suppressions', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
-        const parse = SuppressionBodySchema.safeParse(request.body);
-        if (!parse.success) {
-            return reply.code(400).send({ error: 'Invalid input', issues: parse.error.flatten() });
-        }
-        const { email, scope, reason } = parse.data;
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const parsed = parseBodyOrReply(reply, SuppressionBodySchema.safeParse(request.body));
+        if (!parsed) return;
+        const { email, scope, reason } = parsed;
         if (!email) return reply.code(400).send({ error: 'Email is required' });
         try {
+            const normalizedEmail = normalizeEmail(email);
+            const normalizedScope = normalizeScope(scope);
             return await prisma.emailUnsubscribe.upsert({
-                where: { accountId_email: { accountId, email: email.trim().toLowerCase() } },
-                create: { accountId, email: email.trim().toLowerCase(), scope: scope === 'ALL' ? 'ALL' : 'MARKETING', reason: reason?.trim() || null },
-                update: { scope: scope === 'ALL' ? 'ALL' : 'MARKETING', reason: reason?.trim() || null }
+                where: { accountId_email: { accountId, email: normalizedEmail } },
+                create: { accountId, email: normalizedEmail, scope: normalizedScope, reason: reason?.trim() || null },
+                update: { scope: normalizedScope, reason: reason?.trim() || null }
             });
         } catch (error: any) {
             Logger.error('Failed to save email suppression', { error });
@@ -43,8 +52,8 @@ const emailSuppressionRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.delete('/suppressions/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const { id } = request.params as { id: string };
         try {
             const deleted = await prisma.emailUnsubscribe.deleteMany({ where: { id, accountId } });

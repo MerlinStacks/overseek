@@ -7,13 +7,67 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import fs from 'fs';
+import { z } from 'zod';
 import { requireAuthFastify } from '../../middleware/auth';
 import { ExecutiveReportService } from '../../services/ads/ExecutiveReportService';
+import { getAdsAccountIdOrReply } from './routeHelpers';
 
-interface GenerateReportBody {
-    startDate: string;
-    endDate: string;
-    includeAiSummary?: boolean;
+const generateReportBodySchema = z.object({
+    startDate: z.string().min(1),
+    endDate: z.string().min(1),
+    includeAiSummary: z.boolean().optional()
+});
+
+const executiveReportParamsSchema = z.object({
+    id: z.string().uuid()
+});
+
+const historyQuerySchema = z.object({
+    limit: z.coerce.number().int().min(1).max(100).optional()
+});
+
+function parseDateRangeOrReply(startDate: string, endDate: string, reply: any) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        reply.status(400).send({ error: 'Invalid date format' });
+        return null;
+    }
+
+    if (start > end) {
+        reply.status(400).send({ error: 'startDate must be before endDate' });
+        return null;
+    }
+
+    return { start, end };
+}
+
+function parseWithErrorOrReply<T>(
+    schema: z.ZodType<T>,
+    value: unknown,
+    reply: any,
+    error: string,
+    includeDetails: boolean = false,
+): T | null {
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+        return reply.status(400).send(
+            includeDetails
+                ? { error, details: parsed.error?.flatten?.() ?? parsed.error?.issues ?? [] }
+                : { error },
+        );
+    }
+    return parsed.data;
+}
+
+async function getReportOrReply(id: string, accountId: string, reply: any) {
+    const report = await ExecutiveReportService.getReport(id, accountId);
+    if (!report) {
+        reply.status(404).send({ error: 'Report not found' });
+        return null;
+    }
+    return report;
 }
 
 const reportsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -23,35 +77,23 @@ const reportsRoutes: FastifyPluginAsync = async (fastify) => {
      * Generate a new executive report.
      * POST /api/ads/reports/executive
      */
-    fastify.post<{ Body: GenerateReportBody }>('/executive', async (request, reply) => {
-        const accountId = request.accountId;
+    fastify.post('/executive', async (request, reply) => {
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
         const userId = (request.user as any)?.id;
-        const { startDate, endDate, includeAiSummary } = request.body;
+        const parsedBody = parseWithErrorOrReply(
+            generateReportBodySchema,
+            request.body,
+            reply,
+            'Invalid request body',
+            true,
+        );
+        if (!parsedBody) return;
 
-        if (!accountId) {
-            return reply.status(400).send({ error: 'No account selected' });
-        }
-
-        if (!startDate || !endDate) {
-            return reply.status(400).send({
-                error: 'Missing required fields: startDate and endDate'
-            });
-        }
-
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-
-        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-            return reply.status(400).send({
-                error: 'Invalid date format'
-            });
-        }
-
-        if (start > end) {
-            return reply.status(400).send({
-                error: 'startDate must be before endDate'
-            });
-        }
+        const { startDate, endDate, includeAiSummary } = parsedBody;
+        const dateRange = parseDateRangeOrReply(startDate, endDate, reply);
+        if (!dateRange) return;
+        const { start, end } = dateRange;
 
         const result = await ExecutiveReportService.generateReport(accountId, {
             startDate: start,
@@ -70,21 +112,20 @@ const reportsRoutes: FastifyPluginAsync = async (fastify) => {
      * Download a generated report.
      * GET /api/ads/reports/executive/:id
      */
-    fastify.get<{ Params: { id: string } }>('/executive/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        const { id } = request.params;
+    fastify.get('/executive/:id', async (request, reply) => {
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const parsedParams = parseWithErrorOrReply(
+            executiveReportParamsSchema,
+            request.params,
+            reply,
+            'Invalid report id',
+        );
+        if (!parsedParams) return;
+        const { id } = parsedParams;
 
-        if (!accountId) {
-            return reply.status(400).send({ error: 'No account selected' });
-        }
-
-        const report = await ExecutiveReportService.getReport(id, accountId);
-
-        if (!report) {
-            return reply.status(404).send({
-                error: 'Report not found'
-            });
-        }
+        const report = await getReportOrReply(id, accountId, reply);
+        if (!report) return;
 
         if (!fs.existsSync(report.filePath)) {
             return reply.status(404).send({
@@ -104,14 +145,19 @@ const reportsRoutes: FastifyPluginAsync = async (fastify) => {
      * List generated reports.
      * GET /api/ads/reports/history
      */
-    fastify.get<{ Querystring: { limit?: string } }>('/history', async (request, reply) => {
-        const accountId = request.accountId;
+    fastify.get('/history', async (request, reply) => {
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const parsedQuery = parseWithErrorOrReply(
+            historyQuerySchema,
+            request.query,
+            reply,
+            'Invalid query parameters',
+            true,
+        );
+        if (!parsedQuery) return;
 
-        if (!accountId) {
-            return reply.status(400).send({ error: 'No account selected' });
-        }
-
-        const limit = parseInt(request.query.limit || '10', 10);
+        const limit = parsedQuery.limit ?? 10;
 
         const reports = await ExecutiveReportService.listReports(accountId, limit);
 
@@ -132,21 +178,20 @@ const reportsRoutes: FastifyPluginAsync = async (fastify) => {
      * Delete a report.
      * DELETE /api/ads/reports/executive/:id
      */
-    fastify.delete<{ Params: { id: string } }>('/executive/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        const { id } = request.params;
+    fastify.delete('/executive/:id', async (request, reply) => {
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const parsedParams = parseWithErrorOrReply(
+            executiveReportParamsSchema,
+            request.params,
+            reply,
+            'Invalid report id',
+        );
+        if (!parsedParams) return;
+        const { id } = parsedParams;
 
-        if (!accountId) {
-            return reply.status(400).send({ error: 'No account selected' });
-        }
-
-        const report = await ExecutiveReportService.getReport(id, accountId);
-
-        if (!report) {
-            return reply.status(404).send({
-                error: 'Report not found'
-            });
-        }
+        const report = await getReportOrReply(id, accountId, reply);
+        if (!report) return;
 
         await ExecutiveReportService.deleteReport(id, accountId);
 

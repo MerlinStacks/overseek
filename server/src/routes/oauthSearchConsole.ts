@@ -13,6 +13,7 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
 import { getCredentials } from '../services/ads/types';
+import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 /** Why HMAC: prevent forged state params — an attacker could craft a state to link SC to their account */
 const STATE_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'overseek-oauth-state';
@@ -104,8 +105,8 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/search-console/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const creds = await getCredentials('GOOGLE_ADS');
             if (!creds?.clientId) {
@@ -234,8 +235,8 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/search-console/status', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const [accounts, account] = await Promise.all([
                 prisma.searchConsoleAccount.findMany({
@@ -312,8 +313,8 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.put('/search-console/default-site', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const { siteUrl } = request.body as { siteUrl: string };
             if (!siteUrl) return reply.code(400).send({ error: 'siteUrl is required' });
@@ -341,10 +342,9 @@ const oauthSearchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.delete('/search-console/disconnect', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const body = request.body as { siteUrl?: string } | undefined;
-
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             if (body?.siteUrl) {
                 await prisma.searchConsoleAccount.deleteMany({

@@ -14,7 +14,6 @@ import { ActionableRecommendation, isBudgetAction, isKeywordAction } from '../..
 interface ActionableChangeCardProps {
     recommendation: ActionableRecommendation;
     onImplementationGuide: () => void;
-    onApply: () => void;
 }
 
 /**
@@ -111,8 +110,7 @@ function extractMetrics(rec: ActionableRecommendation): { label: string; value: 
 
 export function ActionableChangeCard({
     recommendation,
-    onImplementationGuide,
-    onApply: _onApply
+    onImplementationGuide
 }: ActionableChangeCardProps) {
     const platformConfig = getPlatformConfig(recommendation.platform === 'both' ? 'google' : recommendation.platform);
     const campaignType = getCampaignType(recommendation);

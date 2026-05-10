@@ -9,6 +9,7 @@ import { FastifyInstance } from 'fastify';
 import { CampaignWizardService, WizardInput, CampaignProposal } from '../../services/ads/CampaignWizardService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { prisma } from '../../utils/prisma';
+import { getAdsAccountIdOrReply } from './routeHelpers';
 
 interface ProposeBody {
     productIds: string[];
@@ -54,8 +55,8 @@ export default async function wizardRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const input: WizardInput = request.body;
 
@@ -83,8 +84,8 @@ export default async function wizardRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { adAccountId, proposal } = request.body;
 
@@ -121,8 +122,8 @@ export default async function wizardRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { productIds, businessGoal, platform } = request.body;
 

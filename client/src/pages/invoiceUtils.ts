@@ -6,7 +6,7 @@ export const generateId = (): string => {
     } catch (e) {
         // Ignore
     }
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
 };
 
 export const TOOLBOX_ITEMS = [

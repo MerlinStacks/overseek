@@ -127,6 +127,8 @@ model Account {
   WooProduct    WooProduct[]
   WooCustomer   WooCustomer[]
   WooReview     WooReview[]
+  WooPage       WooPage[]
+  WooBlogPost   WooBlogPost[]
   Notification  Notification[]
   Supplier      Supplier[]
 
@@ -1294,6 +1296,60 @@ model WooReview {
   @@index([accountId, status])                 // Review moderation queries
   @@index([accountId, rating])                 // Star rating filters
   @@index([accountId, dateCreated(sort: Desc)]) // Recent reviews list
+}
+
+model WooPage {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId     Int
+  title     String
+  slug      String?
+  status    String?
+  permalink String?
+  content   String @db.Text
+  excerpt   String @db.Text
+
+  dateCreated  DateTime
+  dateModified DateTime
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, wooId])
+  @@index([accountId, status])
+  @@index([accountId, dateModified(sort: Desc)])
+}
+
+model WooBlogPost {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooId     Int
+  title     String
+  slug      String?
+  status    String?
+  permalink String?
+  content   String @db.Text
+  excerpt   String @db.Text
+
+  dateCreated  DateTime
+  dateModified DateTime
+
+  rawData Json
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, wooId])
+  @@index([accountId, status])
+  @@index([accountId, dateModified(sort: Desc)])
 }
 
 // --------------------------------------

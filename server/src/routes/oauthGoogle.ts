@@ -8,6 +8,7 @@ import { AdsService } from '../services/ads';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
+import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 const CALLBACK_SUFFIX = 'google/callback';
 const DEFAULT_REDIRECT = '/settings/integrations';
@@ -34,12 +35,11 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/google/authorize', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const query = request.query as { redirect?: string; reconnectId?: string };
             const frontendRedirect = sanitizeFrontendRedirect(query.redirect);
             const reconnectId = query.reconnectId;
-
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
 
             const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
             const callbackUrl = buildCallbackUrl(request, CALLBACK_SUFFIX);

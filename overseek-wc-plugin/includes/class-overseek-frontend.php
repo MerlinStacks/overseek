@@ -23,6 +23,15 @@ if (!defined('ABSPATH')) {
  */
 class OverSeek_Frontend
 {
+	private const CHAT_CONFIG_TTL = 1800;
+	private const CHAT_CONFIG_STALE_TTL = DAY_IN_SECONDS;
+	private const CHAT_CONFIG_REFRESH_HOOK = 'overseek_refresh_chat_config';
+
+	public function __construct()
+	{
+		add_action(self::CHAT_CONFIG_REFRESH_HOOK, array($this, 'handle_background_refresh'));
+	}
+
 	/**
 	 * Print scripts to the head if chat is enabled and within business hours.
 	 * Analytics is handled server-side - no JavaScript needed.
@@ -133,18 +142,52 @@ class OverSeek_Frontend
 	 */
 	private function get_chat_config(string $api_url, string $account_id): array
 	{
-		$transient_key = 'overseek_chat_config_' . md5($account_id);
-		$cached = get_transient($transient_key);
+		$fresh_key = 'overseek_chat_config_' . md5($account_id);
+		$stale_key = 'overseek_chat_config_stale_' . md5($account_id);
+
+		$cached = get_transient($fresh_key);
 
 		if ($cached !== false && is_array($cached)) {
 			return $cached;
+		}
+
+		$stale = get_transient($stale_key);
+		if ($stale !== false && is_array($stale)) {
+			$this->schedule_background_refresh($account_id);
+			return $stale;
+		}
+
+		return $this->refresh_chat_config($api_url, $account_id);
+	}
+
+	private function schedule_background_refresh(string $account_id): void
+	{
+		if ('' === $account_id) {
+			return;
+		}
+
+		if (!wp_next_scheduled(self::CHAT_CONFIG_REFRESH_HOOK, array($account_id))) {
+			wp_schedule_single_event(time(), self::CHAT_CONFIG_REFRESH_HOOK, array($account_id));
+		}
+	}
+
+	public function handle_background_refresh(string $account_id): void
+	{
+		$api_url = (string) get_option('overseek_api_url', '');
+		$this->refresh_chat_config($api_url, $account_id);
+	}
+
+	private function refresh_chat_config(string $api_url, string $account_id): array
+	{
+		if ('' === $api_url || '' === $account_id) {
+			return array();
 		}
 
 		$api_url = untrailingslashit($api_url);
 		$response = wp_remote_get(
 			$api_url . '/api/chat/config/' . $account_id,
 			[
-				'timeout' => 1,
+				'timeout' => 2,
 				'headers' => ['Accept' => 'application/json'],
 			]
 		);
@@ -160,13 +203,14 @@ class OverSeek_Frontend
 			return [];
 		}
 
-		// Cache for 30 minutes — config rarely changes and cache misses add
-		// up to 3 seconds of blocking latency on customer-facing pages.
-		set_transient($transient_key, $data, 30 * MINUTE_IN_SECONDS);
+		$fresh_key = 'overseek_chat_config_' . md5($account_id);
+		$stale_key = 'overseek_chat_config_stale_' . md5($account_id);
+
+		set_transient($fresh_key, $data, self::CHAT_CONFIG_TTL);
+		set_transient($stale_key, $data, self::CHAT_CONFIG_STALE_TTL);
 
 		return $data;
 	}
 
 }
-
 

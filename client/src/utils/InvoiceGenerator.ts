@@ -88,6 +88,7 @@ export const generateInvoicePDF = async (
         //    Use a real delay followed by frames for layout to settle.
         await delay(500);
         await nextFrame();
+        normalizeImageSources(container);
         await waitForImages(container);
         await nextFrame();
 
@@ -165,6 +166,22 @@ function waitForImages(container: HTMLElement): Promise<void[]> {
     );
 }
 
+function normalizeImageSources(container: HTMLElement): void {
+    const images = container.querySelectorAll('img');
+    images.forEach((img) => {
+        const rawSrc = img.getAttribute('src');
+        if (!rawSrc || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')) {
+            return;
+        }
+
+        try {
+            img.setAttribute('src', new URL(rawSrc, window.location.origin).toString());
+        } catch {
+            // Keep original src when parsing fails
+        }
+    });
+}
+
 /** Yields two animation frames to let the browser paint and layout settle. */
 function nextFrame(): Promise<void> {
     return new Promise((resolve) =>
@@ -193,6 +210,7 @@ async function captureInvoiceCanvas(container: HTMLElement, captureId: string): 
             );
             if (clonedContainer instanceof HTMLElement) {
                 inlineResolvedColors(clonedContainer);
+                normalizeImageSources(clonedContainer);
             }
         },
     } as const;

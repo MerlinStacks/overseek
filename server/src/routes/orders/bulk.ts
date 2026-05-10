@@ -6,6 +6,9 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
+import { getOrderRequestAccountIdOrReply } from './helpers';
+
+const VALID_ORDER_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
 
 const bulkRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -15,10 +18,8 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
      * Updates status in WooCommerce and syncs back to local database.
      */
     fastify.put('/bulk-status', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) {
-            return reply.code(400).send({ error: 'accountId header is required' });
-        }
+        const accountId = getOrderRequestAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const body = request.body as { orderIds: number[]; status: string };
 
@@ -30,9 +31,8 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'status is required' });
         }
 
-        const validStatuses = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
-        if (!validStatuses.includes(body.status)) {
-            return reply.code(400).send({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        if (!VALID_ORDER_STATUSES.includes(body.status)) {
+            return reply.code(400).send({ error: `Invalid status. Must be one of: ${VALID_ORDER_STATUSES.join(', ')}` });
         }
 
         // Limit bulk updates to prevent abuse

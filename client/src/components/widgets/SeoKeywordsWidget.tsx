@@ -10,7 +10,7 @@ import { WidgetProps } from './WidgetRegistry';
 import {
     useSearchConsoleStatus,
     useSearchAnalytics,
-    useKeywordTrends,
+    useKeywordMovers,
 } from '../../hooks/useSeoKeywords';
 import type { QueryAnalytics, QueryTrend } from '../../hooks/useSeoKeywords';
 import {
@@ -40,18 +40,16 @@ export function SeoKeywordsWidget({ className }: WidgetProps) {
     const connected = status?.connected ?? false;
 
     const { data: analyticsData, isLoading: analyticsLoading } = useSearchAnalytics(28);
-    const { data: trendsData, isLoading: trendsLoading } = useKeywordTrends();
+    const { data: trendsData, isLoading: trendsLoading } = useKeywordMovers(undefined, 14);
 
     const isLoading = statusLoading || (connected && (analyticsLoading || trendsLoading));
 
     const queries: QueryAnalytics[] = analyticsData?.queries ?? [];
-    const topKeywords = [...queries].sort((a, b) => b.clicks - a.clicks).slice(0, 5);
-
-    /* Pick the top 3 trending keywords by biggest position improvement (negative positionChange = improvement) */
-    const trends: QueryTrend[] = trendsData?.trends ?? [];
+    /* Pick keywords with largest movement over the last 7 days */
+    const trends: QueryTrend[] = trendsData?.movers ?? trendsData?.trends ?? [];
     const topMovers = [...trends]
-        .sort((a, b) => a.positionChange - b.positionChange)
-        .slice(0, 3);
+        .sort((a, b) => Math.abs(b.positionChange) - Math.abs(a.positionChange))
+        .slice(0, 5);
 
     /* Aggregate stats */
     const totalClicks = queries.reduce((sum, q) => sum + q.clicks, 0);
@@ -131,39 +129,14 @@ export function SeoKeywordsWidget({ className }: WidgetProps) {
                             />
                         </div>
 
-                        {/* Top Keywords */}
-                        <div className="space-y-1.5">
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Top Keywords
-                            </span>
-                            {topKeywords.map((kw, idx) => (
-                                <div
-                                    key={kw.query}
-                                    className="flex justify-between items-center text-sm px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors"
-                                >
-                                    <div className="flex gap-2 items-center overflow-hidden">
-                                        <span className="text-[10px] font-bold text-slate-400 w-4 text-right shrink-0">
-                                            {idx + 1}
-                                        </span>
-                                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate" title={kw.query}>
-                                            {kw.query}
-                                        </span>
-                                    </div>
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${positionColor(kw.position)}`}>
-                                        #{Math.round(kw.position)}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Trending Movers */}
+                        {/* Trending Keywords */}
                         {topMovers.length > 0 && (
                             <div className="space-y-1.5">
                                 <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                    Trending Movers
+                                    Trending Keywords (7d movement)
                                 </span>
                                 {topMovers.map((mv) => {
-                                    const improved = mv.positionChange < 0;
+                                    const improved = mv.positionChange > 0;
                                     return (
                                         <div
                                             key={mv.query}
@@ -172,15 +145,20 @@ export function SeoKeywordsWidget({ className }: WidgetProps) {
                                             <span className="font-medium text-slate-800 dark:text-slate-200 truncate" title={mv.query}>
                                                 {mv.query}
                                             </span>
-                                            <span
-                                                className={`flex items-center gap-0.5 text-xs font-bold shrink-0 ${improved
-                                                    ? 'text-emerald-600 dark:text-emerald-400'
-                                                    : 'text-rose-500 dark:text-rose-400'
-                                                    }`}
-                                            >
-                                                {improved ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                                                {Math.abs(mv.positionChange).toFixed(1)}
-                                            </span>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span
+                                                    className={`flex items-center gap-0.5 text-xs font-bold ${improved
+                                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                                        : 'text-rose-500 dark:text-rose-400'
+                                                        }`}
+                                                >
+                                                    {improved ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                                                    {Math.abs(mv.positionChange).toFixed(1)}
+                                                </span>
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${positionColor(mv.currentPosition)}`}>
+                                                    #{Math.round(mv.currentPosition)}
+                                                </span>
+                                            </div>
                                         </div>
                                     );
                                 })}

@@ -150,7 +150,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
             const syncSummary = {
                 totalAccounts: new Set(syncStates.map(s => s.accountId)).size,
-                entityTypes: ['orders', 'products', 'customers', 'reviews'].map(entityType => {
+                entityTypes: ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'].map(entityType => {
                     const states = syncStates.filter(s => s.entityType === entityType);
                     const withSync = states.filter(s => s.lastSyncedAt);
                     const oldestSync = withSync.length > 0
@@ -218,7 +218,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     where: whereClause,
                     include: { account: { select: { id: true, name: true } } },
                     orderBy: { updatedAt: 'desc' },
-                    take: limit * 4 // 4 entity types per account
+                    take: limit * 6 // 6 entity types per account
                 }),
                 prisma.syncLog.findMany({
                     where: whereClause,

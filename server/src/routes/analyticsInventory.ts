@@ -126,7 +126,13 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { days } = request.query as { days?: string };
-            const forecastDays = days ? parseInt(days, 10) : 30;
+            const parsedDays = days ? parseInt(days, 10) : 30;
+
+            if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+                return reply.code(400).send({ error: 'days must be a positive integer' });
+            }
+
+            const forecastDays = parsedDays;
 
             const forecasts = await InventoryForecastService.getSkuForecasts(accountId, forecastDays);
             return forecasts;
@@ -145,7 +151,13 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { threshold } = request.query as { threshold?: string };
-            const thresholdDays = threshold ? parseInt(threshold, 10) : 30;
+            const parsedThreshold = threshold ? parseInt(threshold, 10) : 30;
+
+            if (!Number.isFinite(parsedThreshold) || parsedThreshold <= 0) {
+                return reply.code(400).send({ error: 'threshold must be a positive integer' });
+            }
+
+            const thresholdDays = parsedThreshold;
 
             const alerts = await InventoryForecastService.getStockoutAlerts(accountId, thresholdDays);
             return alerts;

@@ -309,8 +309,12 @@ export function InvoiceDesigner() {
             initialItem.children = [];
         }
 
-        // If adding to a parent row, add as a child instead of to the grid
-        if (parentRowId) {
+        const parentRow = parentRowId
+            ? items.find(item => item.id === parentRowId && item.type === 'row')
+            : null;
+
+        // If adding to a valid parent row, add as a child instead of to the grid
+        if (parentRow) {
             setItems(prev => {
                 const newItems = [...prev, initialItem];
                 // Update the parent row's children array
@@ -336,32 +340,41 @@ export function InvoiceDesigner() {
         }
     };
 
-    // Handle drag-drop from sidebar
-    const handleDropItem = (type: string, targetRowId?: string) => {
-        addItem(type, targetRowId);
-    };
-
     const updateItem = (updates: Record<string, unknown>) => {
         setItems(prev => prev.map(i => i.id === selectedId ? { ...i, ...updates } : i));
     };
 
     const deleteItem = useCallback(() => {
         if (!selectedId) return;
-        // Also remove from any parent row's children array
+        const idsToDelete: Set<string> = new Set([selectedId]);
+
         setItems(prev => {
             const itemToDelete = prev.find(i => i.id === selectedId);
             if (!itemToDelete) return prev;
 
-            // Remove the item and update any parent that has it as a child
+            if (itemToDelete.type === 'row') {
+                const byId = new Map(prev.map(item => [item.id, item]));
+                const stack = [...(itemToDelete.children || [])];
+                while (stack.length > 0) {
+                    const childId = stack.pop();
+                    if (!childId || idsToDelete.has(childId)) continue;
+                    idsToDelete.add(childId);
+                    const childItem = byId.get(childId);
+                    if (childItem?.type === 'row' && childItem.children?.length) {
+                        stack.push(...childItem.children);
+                    }
+                }
+            }
+
             return prev
-                .filter(i => i.id !== selectedId)
+                .filter(i => !idsToDelete.has(i.id))
                 .map(item =>
-                    item.children?.includes(selectedId!)
-                        ? { ...item, children: item.children.filter((c: string) => c !== selectedId) }
+                    item.children?.some((childId: string) => idsToDelete.has(childId))
+                        ? { ...item, children: item.children.filter((c: string) => !idsToDelete.has(c)) }
                         : item
                 );
         });
-        setLayout(prev => prev.filter(l => l.i !== selectedId));
+        setLayout(prev => prev.filter(l => !idsToDelete.has(l.i)));
         setSelectedId(null);
         setIsDirty(true);
     }, [selectedId]);
@@ -373,38 +386,64 @@ export function InvoiceDesigner() {
         const sourceLayout = layout.find(l => l.i === selectedId);
         if (!source || !sourceLayout) return;
 
-        const newId = generateId();
-        const clonedItem = { ...JSON.parse(JSON.stringify(source)), id: newId };
-        const clonedLayout = {
-            ...sourceLayout,
-            i: newId,
-            y: sourceLayout.y + sourceLayout.h,
+        const itemsById = new Map(items.map(item => [item.id, item]));
+        const layoutById = new Map(layout.map(entry => [entry.i, entry]));
+        const newItems: DesignerItem[] = [];
+        const newLayouts: LayoutItem[] = [];
+        const idMap = new Map<string, string>();
+        const visiting = new Set<string>();
+
+        const cloneTree = (sourceId: string): string | null => {
+            if (idMap.has(sourceId)) return idMap.get(sourceId) || null;
+            if (visiting.has(sourceId)) return null;
+
+            const sourceItem = itemsById.get(sourceId);
+            if (!sourceItem) return null;
+
+            visiting.add(sourceId);
+
+            const newId = generateId();
+            idMap.set(sourceId, newId);
+
+            const clonedItem = JSON.parse(JSON.stringify(sourceItem)) as DesignerItem;
+            clonedItem.id = newId;
+
+            if (sourceItem.type === 'row') {
+                const mappedChildren: string[] = [];
+                for (const childId of sourceItem.children || []) {
+                    const clonedChildId = cloneTree(childId);
+                    if (clonedChildId) {
+                        mappedChildren.push(clonedChildId);
+                    }
+                }
+                clonedItem.children = mappedChildren;
+            }
+
+            newItems.push(clonedItem);
+
+            const sourceItemLayout = layoutById.get(sourceId);
+            if (sourceItemLayout) {
+                newLayouts.push({ ...sourceItemLayout, i: newId });
+            }
+
+            visiting.delete(sourceId);
+            return newId;
         };
 
-        // If duplicating a row, also duplicate its children
-        const newChildItems: DesignerItem[] = [];
-        const newChildLayouts: LayoutItem[] = [];
-        const sourceChildren = source.children ?? [];
-        if (source.type === 'row' && sourceChildren.length > 0) {
-            const newChildIds: string[] = [];
-            for (const childId of sourceChildren) {
-                const childItem = items.find(i => i.id === childId);
-                if (!childItem) continue;
-                const newChildId = generateId();
-                newChildIds.push(newChildId);
-                newChildItems.push({ ...JSON.parse(JSON.stringify(childItem)), id: newChildId });
-                // Row children may have layout entries too
-                const childLayout = layout.find(l => l.i === childId);
-                if (childLayout) {
-                    newChildLayouts.push({ ...childLayout, i: newChildId });
-                }
-            }
-            clonedItem.children = newChildIds;
+        const newRootId = cloneTree(selectedId);
+        if (!newRootId) return;
+
+        const rootLayoutIndex = newLayouts.findIndex(entry => entry.i === newRootId);
+        if (rootLayoutIndex >= 0) {
+            newLayouts[rootLayoutIndex] = {
+                ...newLayouts[rootLayoutIndex],
+                y: sourceLayout.y + sourceLayout.h,
+            };
         }
 
-        setItems(prev => [...prev, clonedItem, ...newChildItems]);
-        setLayout(prev => [...prev, clonedLayout, ...newChildLayouts]);
-        setSelectedId(newId);
+        setItems(prev => [...prev, ...newItems]);
+        setLayout(prev => [...prev, ...newLayouts]);
+        setSelectedId(newRootId);
         setIsDirty(true);
     }, [selectedId, items, layout]);
 
@@ -500,13 +539,14 @@ export function InvoiceDesigner() {
             return;
         }
         setIsDirty(true);
-    }, [layout, items, isLoading]);
+    }, [layout, items, name, templateSettings, isLoading]);
 
     // Warn on page close when dirty
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
             if (isDirtyRef.current) {
                 e.preventDefault();
+                e.returnValue = '';
             }
         };
         window.addEventListener('beforeunload', handler);
@@ -980,7 +1020,7 @@ export function InvoiceDesigner() {
                     selectedId={selectedId}
                     onLayoutChange={(l) => setLayout(l)}
                     onSelect={setSelectedId}
-                    onDropItem={handleDropItem}
+                    onDropItem={addItem}
                 />
 
                 {/* Right Sidebar - Properties Panel */}
@@ -1000,4 +1040,3 @@ export function InvoiceDesigner() {
         </div>
     );
 }
-

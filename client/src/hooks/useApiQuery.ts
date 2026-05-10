@@ -3,7 +3,7 @@ import {
     useMutation,
     useQueryClient,
     type QueryKey,
-    type UseQueryOptions,
+    type QueryObserverResult,
 } from '@tanstack/react-query';
 
 interface UseApiQueryOptions<TData> {
@@ -12,6 +12,7 @@ interface UseApiQueryOptions<TData> {
     enabled?: boolean;
     staleTime?: number;
     refetchOnWindowFocus?: boolean;
+    refetchInterval?: number;
 }
 
 interface UseApiQueryResult<TData> {
@@ -21,12 +22,17 @@ interface UseApiQueryResult<TData> {
     refetch: () => Promise<TData | undefined>;
 }
 
+interface MutateOptions<TData> {
+    onSuccess?: (data: TData) => void;
+}
+
 export function useApiQuery<TData>({
     queryKey,
     queryFn,
     enabled = true,
     staleTime = 0,
     refetchOnWindowFocus = true,
+    refetchInterval,
 }: UseApiQueryOptions<TData>): UseApiQueryResult<TData> {
     const result = useQuery<TData, Error>({
         queryKey,
@@ -34,16 +40,19 @@ export function useApiQuery<TData>({
         enabled,
         staleTime,
         refetchOnWindowFocus,
-    } as UseQueryOptions<TData, Error>);
+        refetchInterval,
+    });
+
+    const refetch = async (): Promise<TData | undefined> => {
+        const refetched: QueryObserverResult<TData, Error> = await result.refetch();
+        return refetched.data;
+    };
 
     return {
         data: result.data,
         isLoading: result.isLoading,
         error: result.error as Error | null,
-        refetch: async () => {
-            const refetched = await result.refetch();
-            return refetched.data;
-        },
+        refetch,
     };
 }
 
@@ -54,7 +63,7 @@ interface UseApiMutationOptions<TData, TVariables = void> {
 }
 
 interface UseApiMutationResult<TData, TVariables = void> {
-    mutate: (variables?: TVariables, options?: { onSuccess?: (data: TData) => void }) => void;
+    mutate: (variables?: TVariables, options?: MutateOptions<TData>) => void;
     mutateAsync: (variables?: TVariables) => Promise<TData>;
     isPending: boolean;
     error: Error | null;
@@ -78,7 +87,7 @@ export function useApiMutation<TData, TVariables = void>({
     });
 
     return {
-        mutate: (variables?: TVariables, options?: { onSuccess?: (data: TData) => void }) => {
+        mutate: (variables?: TVariables, options?: MutateOptions<TData>) => {
             if (options?.onSuccess) {
                 mutation.mutate(variables as TVariables, { onSuccess: options.onSuccess as any });
             } else {

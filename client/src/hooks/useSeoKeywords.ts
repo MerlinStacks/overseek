@@ -8,6 +8,27 @@
 import { useApiQuery, useApiMutation } from './useApiQuery';
 import { useApi } from './useApi';
 
+const SEARCH_CONSOLE_SCOPE = 'search-console';
+
+const scKey = (...parts: Array<string | number | null | undefined>) =>
+    [SEARCH_CONSOLE_SCOPE, ...parts] as const;
+
+const STATUS_KEY = scKey('status');
+const TRACKED_KEYWORDS_KEY = scKey('tracked-keywords');
+const KEYWORD_GROUPS_KEY = scKey('keyword-groups');
+const COMPETITORS_KEY = scKey('competitors');
+
+function withQuery(path: string, params: Record<string, string | number | undefined | null>) {
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null && value !== '') {
+            searchParams.set(key, String(value));
+        }
+    }
+    const query = searchParams.toString();
+    return query ? `${path}?${query}` : path;
+}
+
 /** Search Console connection status */
 interface SearchConsoleStatus {
     connected: boolean;
@@ -81,7 +102,7 @@ export function useSearchConsoleStatus() {
     const api = useApi();
 
     return useApiQuery<SearchConsoleStatus>({
-        queryKey: ['search-console', 'status'],
+        queryKey: STATUS_KEY,
         queryFn: () => api.get<SearchConsoleStatus>('/api/oauth/search-console/status'),
         enabled: api.isReady,
         staleTime: 5 * 60 * 1000,
@@ -94,7 +115,7 @@ export function useSetDefaultSite() {
     return useApiMutation({
         mutationFn: (siteUrl: string) =>
             api.put('/api/oauth/search-console/default-site', { siteUrl }),
-        invalidateQueries: [['search-console', 'status']],
+        invalidateQueries: [STATUS_KEY],
     });
 }
 
@@ -103,14 +124,11 @@ export function useSearchAnalytics(days: number = 28, siteUrl?: string) {
     const api = useApi();
 
     return useApiQuery<{ queries: QueryAnalytics[]; count: number }>({
-        queryKey: ['search-console', 'analytics', days, siteUrl],
-        queryFn: () => {
-            const params = new URLSearchParams({ days: String(days) });
-            if (siteUrl) params.set('siteUrl', siteUrl);
-            return api.get(`/api/search-console/analytics?${params}`);
-        },
+        queryKey: scKey('analytics', days, siteUrl),
+        queryFn: () => api.get(withQuery('/api/search-console/analytics', { days, siteUrl })),
         enabled: api.isReady,
         staleTime: 10 * 60 * 1000,
+        refetchInterval: 5 * 60 * 1000,
     });
 }
 
@@ -119,30 +137,28 @@ export function useKeywordRecommendations(siteUrl?: string) {
     const api = useApi();
 
     return useApiQuery<RecommendationsResponse>({
-        queryKey: ['search-console', 'recommendations', siteUrl],
-        queryFn: () => {
-            const params = siteUrl ? `?siteUrl=${encodeURIComponent(siteUrl)}` : '';
-            return api.get(`/api/search-console/recommendations${params}`);
-        },
+        queryKey: scKey('recommendations', siteUrl),
+        queryFn: () => api.get(withQuery('/api/search-console/recommendations', { siteUrl })),
         enabled: api.isReady,
         staleTime: 15 * 60 * 1000,
     });
 }
 
-/** Hook: Fetch trending keywords */
-export function useKeywordTrends(siteUrl?: string) {
+/** Hook: Fetch keywords with biggest ranking movement */
+export function useKeywordMovers(siteUrl?: string, days: number = 14) {
     const api = useApi();
 
-    return useApiQuery<{ trends: QueryTrend[]; count: number }>({
-        queryKey: ['search-console', 'trends', siteUrl],
-        queryFn: () => {
-            const params = siteUrl ? `?siteUrl=${encodeURIComponent(siteUrl)}` : '';
-            return api.get(`/api/search-console/trends${params}`);
-        },
+    return useApiQuery<{ movers: QueryTrend[]; count: number; trends?: QueryTrend[] }>({
+        queryKey: scKey('movers', siteUrl, days),
+        queryFn: () => api.get(withQuery('/api/search-console/movers', { siteUrl, days })),
         enabled: api.isReady,
         staleTime: 10 * 60 * 1000,
+        refetchInterval: 5 * 60 * 1000,
     });
 }
+
+/** @deprecated Use useKeywordMovers instead */
+export const useKeywordTrends = useKeywordMovers;
 
 export type {
     QueryAnalytics,
@@ -189,7 +205,7 @@ export function useTrackedKeywords() {
     const api = useApi();
 
     return useApiQuery<{ keywords: TrackedKeywordSummary[]; count: number }>({
-        queryKey: ['search-console', 'tracked-keywords'],
+        queryKey: TRACKED_KEYWORDS_KEY,
         queryFn: () => api.get('/api/search-console/tracked-keywords'),
         enabled: api.isReady,
         staleTime: 2 * 60 * 1000,
@@ -201,7 +217,7 @@ export function useKeywordHistory(keywordId: string | null, days: number = 30) {
     const api = useApi();
 
     return useApiQuery<{ history: RankHistoryPoint[]; count: number }>({
-        queryKey: ['search-console', 'keyword-history', keywordId, days],
+        queryKey: scKey('keyword-history', keywordId, days),
         queryFn: () => api.get(`/api/search-console/tracked-keywords/${keywordId}/history?days=${days}`),
         enabled: api.isReady && !!keywordId,
         staleTime: 5 * 60 * 1000,
@@ -214,7 +230,7 @@ export function useAddKeyword() {
     return useApiMutation({
         mutationFn: (data: { keyword: string; targetUrl?: string }) =>
             api.post('/api/search-console/tracked-keywords', data),
-        invalidateQueries: [['search-console', 'tracked-keywords']],
+        invalidateQueries: [TRACKED_KEYWORDS_KEY],
     });
 }
 
@@ -224,7 +240,7 @@ export function useDeleteKeyword() {
     return useApiMutation({
         mutationFn: (keywordId: string) =>
             api.delete(`/api/search-console/tracked-keywords/${keywordId}`),
-        invalidateQueries: [['search-console', 'tracked-keywords']],
+        invalidateQueries: [TRACKED_KEYWORDS_KEY],
     });
 }
 
@@ -234,7 +250,7 @@ export function useRefreshKeywords() {
     return useApiMutation({
         mutationFn: () =>
             api.post('/api/search-console/tracked-keywords/refresh'),
-        invalidateQueries: [['search-console', 'tracked-keywords']],
+        invalidateQueries: [TRACKED_KEYWORDS_KEY],
     });
 }
 
@@ -259,7 +275,7 @@ export interface KeywordGroup {
 export function useKeywordGroups() {
     const api = useApi();
     return useApiQuery<{ groups: KeywordGroup[]; count: number }>({
-        queryKey: ['search-console', 'keyword-groups'],
+        queryKey: KEYWORD_GROUPS_KEY,
         queryFn: () => api.get('/api/search-console/keyword-groups'),
         enabled: api.isReady,
         staleTime: 2 * 60 * 1000,
@@ -272,7 +288,7 @@ export function useCreateGroup() {
     return useApiMutation({
         mutationFn: (data: { name: string; color?: string }) =>
             api.post('/api/search-console/keyword-groups', data),
-        invalidateQueries: [['search-console', 'keyword-groups']],
+        invalidateQueries: [KEYWORD_GROUPS_KEY],
     });
 }
 
@@ -283,8 +299,8 @@ export function useDeleteGroup() {
         mutationFn: (groupId: string) =>
             api.delete(`/api/search-console/keyword-groups/${groupId}`),
         invalidateQueries: [
-            ['search-console', 'keyword-groups'],
-            ['search-console', 'tracked-keywords'],
+            KEYWORD_GROUPS_KEY,
+            TRACKED_KEYWORDS_KEY,
         ],
     });
 }
@@ -296,8 +312,8 @@ export function useAssignKeywordsToGroup() {
         mutationFn: (data: { keywordIds: string[]; groupId: string | null }) =>
             api.post('/api/search-console/keyword-groups/assign', data),
         invalidateQueries: [
-            ['search-console', 'keyword-groups'],
-            ['search-console', 'tracked-keywords'],
+            KEYWORD_GROUPS_KEY,
+            TRACKED_KEYWORDS_KEY,
         ],
     });
 }
@@ -317,7 +333,6 @@ export interface CompetitorDomain {
     lastCheckedAt: string | null;
     createdAt: string;
 }
-
 
 /** Competitor keyword with SERP position data */
 export interface CompetitorKeywordPosition {
@@ -354,7 +369,7 @@ export interface HeadToHeadRow {
 export function useCompetitors() {
     const api = useApi();
     return useApiQuery<{ competitors: CompetitorDomain[]; count: number }>({
-        queryKey: ['search-console', 'competitors'],
+        queryKey: COMPETITORS_KEY,
         queryFn: () => api.get('/api/search-console/competitors'),
         enabled: api.isReady,
         staleTime: 5 * 60 * 1000,
@@ -367,7 +382,7 @@ export function useAddCompetitor() {
     return useApiMutation({
         mutationFn: (data: { domain: string }) =>
             api.post('/api/search-console/competitors', data),
-        invalidateQueries: [['search-console', 'competitors']],
+        invalidateQueries: [COMPETITORS_KEY],
     });
 }
 
@@ -377,29 +392,27 @@ export function useRemoveCompetitor() {
     return useApiMutation({
         mutationFn: (competitorId: string) =>
             api.delete(`/api/search-console/competitors/${competitorId}`),
-        invalidateQueries: [['search-console', 'competitors']],
+        invalidateQueries: [COMPETITORS_KEY],
     });
 }
-
 
 /** Hook: Get tracked keyword positions for a competitor */
 export function useCompetitorKeywords(competitorId: string | null) {
     const api = useApi();
     return useApiQuery<{ keywords: CompetitorKeywordPosition[]; count: number }>({
-        queryKey: ['search-console', 'competitor-keywords', competitorId],
+        queryKey: scKey('competitor-keywords', competitorId),
         queryFn: () => api.get(`/api/search-console/competitors/${competitorId}/keywords`),
         enabled: api.isReady && !!competitorId,
         staleTime: 5 * 60 * 1000,
     });
 }
 
-
 /** Hook: Fetch recent significant competitor position changes */
 export function useCompetitorMovement(days: number = 7) {
     const api = useApi();
     return useApiQuery<{ movements: CompetitorMovement[]; count: number }>({
-        queryKey: ['search-console', 'competitor-movement', days],
-        queryFn: () => api.get(`/api/search-console/competitor-movement?days=${days}`),
+        queryKey: scKey('competitor-movement', days),
+        queryFn: () => api.get(withQuery('/api/search-console/competitor-movement', { days })),
         enabled: api.isReady,
         staleTime: 5 * 60 * 1000,
     });
@@ -409,8 +422,8 @@ export function useCompetitorMovement(days: number = 7) {
 export function useCompetitorHeadToHead(domain: string | null) {
     const api = useApi();
     return useApiQuery<{ rows: HeadToHeadRow[]; count: number }>({
-        queryKey: ['search-console', 'competitor-head-to-head', domain],
-        queryFn: () => api.get(`/api/search-console/competitor-head-to-head?domain=${domain}`),
+        queryKey: scKey('competitor-head-to-head', domain),
+        queryFn: () => api.get(withQuery('/api/search-console/competitor-head-to-head', { domain })),
         enabled: api.isReady && !!domain,
         staleTime: 5 * 60 * 1000,
     });
@@ -422,10 +435,10 @@ export function useRefreshCompetitorPositions() {
     return useApiMutation({
         mutationFn: () => api.post('/api/search-console/competitors/refresh'),
         invalidateQueries: [
-            ['search-console', 'competitors'],
-            ['search-console', 'competitor-keywords'],
-            ['search-console', 'competitor-movement'],
-            ['search-console', 'competitor-head-to-head'],
+            COMPETITORS_KEY,
+            scKey('competitor-keywords'),
+            scKey('competitor-movement'),
+            scKey('competitor-head-to-head'),
         ],
     });
 }
@@ -448,7 +461,7 @@ export interface KeywordRevenue {
 export function useKeywordRevenue() {
     const api = useApi();
     return useApiQuery<{ keywords: KeywordRevenue[]; count: number }>({
-        queryKey: ['search-console', 'keyword-revenue'],
+        queryKey: scKey('keyword-revenue'),
         queryFn: () => api.get('/api/search-console/keyword-revenue'),
         enabled: api.isReady,
         staleTime: 10 * 60 * 1000,
@@ -471,7 +484,7 @@ export interface CannibalizationResult {
 export function useCannibalization() {
     const api = useApi();
     return useApiQuery<{ keywords: CannibalizationResult[]; count: number }>({
-        queryKey: ['search-console', 'cannibalization'],
+        queryKey: scKey('cannibalization'),
         queryFn: () => api.get('/api/search-console/cannibalization'),
         enabled: api.isReady,
         staleTime: 15 * 60 * 1000,
@@ -520,7 +533,7 @@ export function useBulkImportKeywords() {
     return useApiMutation({
         mutationFn: (data: { keywords: string[]; targetUrl?: string }) =>
             api.post('/api/search-console/tracked-keywords/bulk', data),
-        invalidateQueries: [['search-console', 'tracked-keywords']],
+        invalidateQueries: [TRACKED_KEYWORDS_KEY],
     });
 }
 
@@ -553,7 +566,7 @@ export interface SeoDigest {
 export function useSeoDigest() {
     const api = useApi();
     return useApiQuery<SeoDigest>({
-        queryKey: ['search-console', 'seo-digest'],
+        queryKey: scKey('seo-digest'),
         queryFn: () => api.get('/api/search-console/seo-digest/preview'),
         enabled: api.isReady,
         staleTime: 15 * 60 * 1000,

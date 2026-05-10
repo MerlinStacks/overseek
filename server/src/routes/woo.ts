@@ -6,6 +6,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { WooService } from '../services/woo';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
+import { getAdsAccountIdOrReply } from './ads/routeHelpers';
 
 const wooRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -69,8 +70,8 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/orders', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const woo = await WooService.forAccount(accountId);
             const orders = await woo.getOrders({ per_page: 20 });
@@ -84,8 +85,8 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/products', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const woo = await WooService.forAccount(accountId);
             const query = request.query as Record<string, any>;
@@ -103,10 +104,10 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/configure', async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const { origin, wooUrl, wooConsumerKey, wooConsumerSecret } = request.body as any;
 
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
             const cleanOrigin = origin ? origin.replace(/\/$/, '') : '';
             if (!cleanOrigin) return reply.code(400).send({ error: 'Origin URL is required' });
 

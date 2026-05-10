@@ -32,7 +32,7 @@ class OverSeek_API {
 	 *
 	 * @var int
 	 */
-	private const MAX_ATTACHMENT_BYTES = 5242880;
+	private const MAX_ATTACHMENT_BYTES = 10485760;
 
 	/**
 	 * Register REST API routes.
@@ -328,4 +328,3 @@ class OverSeek_API {
 		return $attachment_paths;
 	}
 }
-

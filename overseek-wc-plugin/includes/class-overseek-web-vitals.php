@@ -43,7 +43,7 @@ class OverSeek_Web_Vitals
     {
         $this->api_url     = untrailingslashit(get_option('overseek_api_url', ''));
         $this->account_id  = get_option('overseek_account_id', '');
-        $this->sample_rate = (int) get_option('overseek_vitals_sample_rate', 100);
+        $this->sample_rate = (int) get_option('overseek_vitals_sample_rate', 25);
 
         if (empty($this->account_id) || empty($this->api_url)) {
             return;

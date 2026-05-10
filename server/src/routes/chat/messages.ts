@@ -13,8 +13,11 @@ import { Logger } from '../../utils/logger';
 import { routeMessageToChannel, sendEmailWithAttachments } from '../../utils/ChannelRouter';
 import path from 'path';
 import fs from 'fs';
+import { getRouteAccountIdOrReply } from '../routeHelpers';
 
 const attachmentsDir = path.join(__dirname, '../../../uploads/attachments');
+const MAX_RELAY_ATTACHMENTS = 10;
+const MAX_RELAY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 // Why: ensure the directory exists on startup so file writes don't crash with ENOENT
 fs.mkdirSync(attachmentsDir, { recursive: true });
@@ -26,9 +29,29 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
 
+        const getUserAndAccountOrReply = (
+            request: any,
+            reply: any,
+        ): { userId: string; accountId: string } | null => {
+            const userId = request.user?.id;
+            const accountId = request.accountId;
+            if (!userId || !accountId) {
+                reply.code(401).send({ error: 'Unauthorized' });
+                return null;
+            }
+            return { userId, accountId };
+        };
+
         const ensureConversationOwnership = async (conversationId: string, accountId: string) => {
             return prisma.conversation.findFirst({
                 where: { id: conversationId, accountId },
+                select: { id: true }
+            });
+        };
+
+        const ensureMessageOwnership = async (messageId: string, accountId: string) => {
+            return prisma.message.findFirst({
+                where: { id: messageId, conversation: { accountId } },
                 select: { id: true }
             });
         };
@@ -38,8 +61,8 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
             try {
                 const { content, type, isInternal, channel, emailAccountId } = request.body as any;
                 const userId = request.user?.id;
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+                const accountId = getRouteAccountIdOrReply(request, reply);
+                if (!accountId) return;
 
                 if (!content?.trim()) {
                     return reply.code(400).send({ error: 'Message content is required' });
@@ -60,7 +83,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 // Route to external channel if specified
                 if (channel) {
                     try {
-                        await routeMessageToChannel(request.params.id, content, channel, accountId!, emailAccountId);
+                        await routeMessageToChannel(request.params.id, content, channel, accountId, emailAccountId);
                     } catch (routingError: any) {
                         Logger.error('[ChannelRouting] Failed to route message', { channel, error: routingError.message });
                         // Don't fail the request - message is still stored
@@ -78,8 +101,8 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         fastify.post<{ Params: { id: string } }>('/:id/attachment', async (request, reply) => {
             let writeStream: fs.WriteStream | undefined;
             try {
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+                const accountId = getRouteAccountIdOrReply(request, reply);
+                if (!accountId) return;
                 if (!(await ensureConversationOwnership(request.params.id, accountId))) {
                     return reply.code(404).send({ error: 'Conversation not found' });
                 }
@@ -130,12 +153,9 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         fastify.post<{ Params: { id: string } }>('/:id/message-with-attachments', async (request, reply) => {
             try {
                 const conversationId = request.params.id;
-                const userId = request.user?.id;
-                const accountId = request.accountId;
-
-                if (!accountId || !userId) {
-                    return reply.code(401).send({ error: 'Unauthorized' });
-                }
+                const authContext = getUserAndAccountOrReply(request, reply);
+                if (!authContext) return;
+                const { userId, accountId } = authContext;
                 if (!(await ensureConversationOwnership(conversationId, accountId))) {
                     return reply.code(404).send({ error: 'Conversation not found' });
                 }
@@ -149,10 +169,27 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 // Track attachments with full paths for email relay
                 const attachments: Array<{ filename: string; path: string; contentType: string }> = [];
 
+                const cleanupAttachments = () => {
+                    for (const attachment of attachments) {
+                        try {
+                            if (attachment.path && fs.existsSync(attachment.path)) {
+                                fs.unlinkSync(attachment.path);
+                            }
+                        } catch {
+                            // Ignore cleanup errors.
+                        }
+                    }
+                };
+
                 if (request.isMultipart()) {
                     const parts = request.parts();
                     for await (const part of parts) {
                         if (part.type === 'file') {
+                            if (attachments.length >= MAX_RELAY_ATTACHMENTS) {
+                                cleanupAttachments();
+                                return reply.code(400).send({ error: `Maximum ${MAX_RELAY_ATTACHMENTS} attachments allowed` });
+                            }
+
                             // Save file with unique name
                             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
                             const ext = path.extname(part.filename || 'file');
@@ -168,6 +205,13 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                                 writeStream.on('finish', resolve);
                                 writeStream.on('error', reject);
                             });
+
+                            const stats = fs.statSync(filePath);
+                            if (stats.size > MAX_RELAY_ATTACHMENT_BYTES) {
+                                try { fs.unlinkSync(filePath); } catch { /* ignore cleanup errors */ }
+                                cleanupAttachments();
+                                return reply.code(400).send({ error: `Attachment exceeds 10 MB limit: ${part.filename}` });
+                            }
 
                             const attachmentUrl = `/uploads/attachments/${filename}`;
                             attachmentLinks.push(`[${part.filename}](${attachmentUrl})`);
@@ -237,16 +281,13 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
             try {
                 const { messageId } = request.params;
                 const { emoji } = request.body as any;
-                const userId = request.user?.id;
-                const accountId = request.accountId;
+                const authContext = getUserAndAccountOrReply(request, reply);
+                if (!authContext) return;
+                const { userId, accountId } = authContext;
 
                 if (!emoji) return reply.code(400).send({ error: 'Emoji is required' });
-                if (!userId || !accountId) return reply.code(400).send({ error: 'Account context required' });
 
-                const message = await prisma.message.findFirst({
-                    where: { id: messageId, conversation: { accountId } },
-                    select: { id: true }
-                });
+                const message = await ensureMessageOwnership(messageId, accountId);
                 if (!message) return reply.code(404).send({ error: 'Message not found' });
 
                 const existingReaction = await prisma.messageReaction.findUnique({
@@ -271,15 +312,11 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
 
         fastify.get<{ Params: { messageId: string } }>('/messages/:messageId/reactions', async (request, reply) => {
             try {
-                const accountId = request.accountId;
-                if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+                const accountId = getRouteAccountIdOrReply(request, reply);
+                if (!accountId) return;
                 const { messageId } = request.params;
 
-                // Verify message belongs to a conversation owned by this account
-                const message = await prisma.message.findFirst({
-                    where: { id: messageId, conversation: { accountId } },
-                    select: { id: true }
-                });
+                const message = await ensureMessageOwnership(messageId, accountId);
                 if (!message) return reply.code(404).send({ error: 'Message not found' });
 
                 const reactions = await prisma.messageReaction.findMany({
@@ -301,4 +338,3 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         });
     };
 };
-

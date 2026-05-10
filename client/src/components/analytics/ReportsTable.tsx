@@ -88,7 +88,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
                         <tr key={i} className="hover:bg-gray-50">
                             {isChannels && <><td className="p-4 font-medium">{row.channel}</td><td className="p-4 text-right">{row.sessions}</td></>}
                             {isCampaigns && <><td className="p-4 font-medium">{row.source} / {row.medium}</td><td className="p-4">{row.campaign}</td><td className="p-4 text-right">{row.sessions}</td></>}
-                            {isPages && <><td className="p-4 font-medium text-blue-600 truncate max-w-sm" title={row.url}>{row.url}</td>{activeView === 'pages' && <td className="p-4 text-gray-500 truncate max-w-xs">{row.title}</td>}<td className="p-4 text-right">{row.views || row.entries || row.exits}</td></>}
+                            {isPages && <><td className="p-4 font-medium text-blue-600 truncate max-w-sm" title={row.url}>{row.url}</td>{activeView === 'pages' && <td className="p-4 text-gray-500 truncate max-w-xs">{row.title}</td>}<td className="p-4 text-right">{row.views ?? row.entries ?? row.exits ?? 0}</td></>}
                             {isSearch && <><td className="p-4 font-medium">"{row.term}"</td><td className="p-4 text-right">{row.searches}</td></>}
                         </tr>
                     ))}

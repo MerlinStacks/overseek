@@ -20,6 +20,13 @@ const limitQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(50)
 });
 
+function sendBomError(reply: any, statusCode: number, error: string, code: string, details?: unknown) {
+    if (details !== undefined) {
+        return reply.code(statusCode).send({ error, code, details });
+    }
+    return reply.code(statusCode).send({ error, code });
+}
+
 async function mapWithConcurrency<T, R>(
     items: T[],
     concurrency: number,
@@ -52,7 +59,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const { productId } = request.params;
         const parsedQuery = variationQuerySchema.safeParse(request.query);
         if (!parsedQuery.success) {
-            return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+            return sendBomError(reply, 400, parsedQuery.error.issues[0]?.message || 'Invalid variationId', 'INVALID_VARIATION_ID');
         }
         const { variationId } = parsedQuery.data;
 
@@ -60,16 +67,13 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             const result = await BOMInventorySyncService.syncProductToWoo(accountId, productId, variationId);
 
             if (!result.success) {
-                return reply.code(400).send({
-                    error: result.error || 'Sync failed',
-                    result
-                });
+                return sendBomError(reply, 400, result.error || 'Sync failed', 'BOM_SYNC_FAILED', result);
             }
 
             return result;
         } catch (error) {
             Logger.error('Error syncing BOM inventory', { error, accountId, productId });
-            return reply.code(500).send({ error: 'Failed to sync inventory to WooCommerce' });
+            return sendBomError(reply, 500, 'Failed to sync inventory to WooCommerce', 'BOM_SYNC_EXCEPTION');
         }
     });
 
@@ -82,7 +86,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const { productId } = request.params;
         const parsedQuery = variationQuerySchema.safeParse(request.query);
         if (!parsedQuery.success) {
-            return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+            return sendBomError(reply, 400, parsedQuery.error.issues[0]?.message || 'Invalid variationId', 'INVALID_VARIATION_ID');
         }
         const { variationId } = parsedQuery.data;
 
@@ -189,8 +193,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (error: any) {
             Logger.error('Error diagnosing BOM sync', { error, accountId, productId });
-            return reply.code(500).send({
-                status: 'error',
+            return sendBomError(reply, 500, 'Failed to diagnose BOM sync', 'BOM_DIAGNOSE_EXCEPTION', {
                 reason: 'EXCEPTION',
                 message: error.message
             });
@@ -398,9 +401,8 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (err: any) {
             Logger.error('Error cancelling BOM sync', { error: err.message, accountId });
-            return reply.code(500).send({
-                success: false,
-                error: `Failed to cancel sync job: ${err.message}`
+            return sendBomError(reply, 500, 'Failed to cancel sync job', 'BOM_SYNC_CANCEL_FAILED', {
+                message: err.message
             });
         }
     });
@@ -545,7 +547,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (error) {
             Logger.error('Error fetching pending BOM changes', { error, accountId });
-            return reply.code(500).send({ error: 'Failed to fetch pending changes' });
+            return sendBomError(reply, 500, 'Failed to fetch pending changes', 'BOM_PENDING_CHANGES_FETCH_FAILED');
         }
     });
 
@@ -557,7 +559,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const parsedLimit = limitQuerySchema.safeParse(request.query);
         if (!parsedLimit.success) {
-            return reply.code(400).send({ error: parsedLimit.error.issues[0]?.message || 'Invalid limit' });
+            return sendBomError(reply, 400, parsedLimit.error.issues[0]?.message || 'Invalid limit', 'INVALID_LIMIT');
         }
         const { limit } = parsedLimit.data;
 
@@ -608,7 +610,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (error) {
             Logger.error('Error fetching BOM sync history', { error, accountId });
-            return reply.code(500).send({ error: 'Failed to fetch sync history' });
+            return sendBomError(reply, 500, 'Failed to fetch sync history', 'BOM_SYNC_HISTORY_FETCH_FAILED');
         }
     });
 
@@ -621,7 +623,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const parsedLimit = limitQuerySchema.safeParse(request.query);
         if (!parsedLimit.success) {
-            return reply.code(400).send({ error: parsedLimit.error.issues[0]?.message || 'Invalid limit' });
+            return sendBomError(reply, 400, parsedLimit.error.issues[0]?.message || 'Invalid limit', 'INVALID_LIMIT');
         }
         const { limit } = parsedLimit.data;
 
@@ -669,7 +671,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
             return { entries: enriched };
         } catch (error) {
             Logger.error('Error fetching consumption history', { error, accountId });
-            return reply.code(500).send({ error: 'Failed to fetch consumption history' });
+            return sendBomError(reply, 500, 'Failed to fetch consumption history', 'BOM_CONSUMPTION_HISTORY_FETCH_FAILED');
         }
     });
 };

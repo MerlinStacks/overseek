@@ -17,7 +17,7 @@ interface BOMPanelProps {
     variants?: VariantScopeOption[]; // Passed from parent
     fixedVariationId?: number; // If set, locks to this ID
     onSaveComplete?: () => void; // Optional callback after save completes
-    onCOGSUpdate?: (cogs: number) => void; // Optional callback to update parent COGS
+    onCOGSUpdate?: (cogs: number, hasItems: boolean) => void; // Optional callback to update parent COGS + presence
     onSyncComplete?: (newStock: number) => void; // Optional callback after sync completes
 }
 
@@ -83,6 +83,27 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     const [currentWooStock, setCurrentWooStock] = useState<number | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+    const extractBomApiError = async (res: Response, fallback: string): Promise<string> => {
+        try {
+            const data = await res.json() as { error?: string; code?: string; result?: { error?: string; code?: string } };
+            const code = data.code || data.result?.code;
+            const message = data.error || data.result?.error || fallback;
+            const codeMap: Record<string, string> = {
+                INVALID_VARIATION_ID: 'Invalid variation selected. Refresh and try again.',
+                PRODUCT_NOT_FOUND: 'Product not found. Re-sync products and try again.',
+                INVALID_BOM_PAYLOAD: 'Invalid BOM input. Check quantity and waste values.',
+                BOM_COMPONENT_OWNERSHIP_INVALID: 'One or more BOM components are invalid for this account.',
+                BOM_SAVE_FAILED: 'Failed to save BOM. Please try again.',
+                BOM_SYNC_FAILED: 'BOM sync was rejected. Check BOM components and stock values.',
+                BOM_SYNC_EXCEPTION: 'BOM sync failed on the server. Please retry shortly.',
+                EFFECTIVE_STOCK_CALC_FAILED: 'Could not calculate effective stock right now.'
+            };
+            return code ? (codeMap[code] || message) : message;
+        } catch {
+            return fallback;
+        }
+    };
 
     // 0 = Main Product, otherwise Variant ID
     // If fixedVariationId is defined, use it, else default to 0
@@ -258,13 +279,13 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         }
 
         let cost = 0;
-        if (item.internalProduct?.cogs) {
+        if (item.internalProduct?.cogs != null) {
             cost = Number(item.internalProduct.cogs);
-        } else if (item.childVariation?.cogs) {
+        } else if (item.childVariation?.cogs != null) {
             cost = Number(item.childVariation.cogs);
-        } else if (item.childProduct?.cogs) {
+        } else if (item.childProduct?.cogs != null) {
             cost = Number(item.childProduct.cogs);
-        } else if (item.supplierItem?.cost) {
+        } else if (item.supplierItem?.cost != null) {
             cost = Number(item.supplierItem.cost);
         }
 
@@ -298,6 +319,8 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 setEffectiveStock(data.effectiveStock);
                 setCurrentWooStock(data.currentWooStock);
             } else {
+                const errorMsg = await extractBomApiError(res, 'Failed to fetch effective BOM stock');
+                toast.error(errorMsg);
                 setEffectiveStock(null);
                 setCurrentWooStock(null);
             }
@@ -306,7 +329,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
             setEffectiveStock(null);
             setCurrentWooStock(null);
         }
-    }, [currentAccount, productId, selectedScope, token]);
+    }, [currentAccount, productId, selectedScope, token, toast]);
 
     useEffect(() => {
         if (!currentAccount || !productId || !canViewCogs) return;
@@ -336,6 +359,8 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 await fetchEffectiveStock();
                 onSyncComplete?.(data.newStock);
             } else {
+                const errorMsg = await extractBomApiError(res, 'Failed to sync inventory to WooCommerce');
+                toast.error(errorMsg);
                 setSyncStatus('error');
             }
         } catch (err) {
@@ -379,12 +404,12 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
 
             if (res.ok) {
                 fetchBOM();
-                if (bomItems.length > 0) {
-                    onCOGSUpdate?.(totalCost);
-                }
+                onCOGSUpdate?.(totalCost, bomItems.length > 0);
                 onSaveComplete?.();
                 return true;
             } else {
+                const errorMsg = await extractBomApiError(res, 'Failed to save BOM');
+                toast.error(errorMsg);
                 return false;
             }
         } catch (err) {
@@ -393,7 +418,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
         } finally {
             setSaving(false);
         }
-    }, [selectedScope, bomItems, productId, token, currentAccount, fetchBOM, onCOGSUpdate, totalCost, onSaveComplete]);
+    }, [selectedScope, bomItems, productId, token, currentAccount, fetchBOM, onCOGSUpdate, totalCost, onSaveComplete, toast]);
 
     useImperativeHandle(ref, () => ({
         save: handleSave

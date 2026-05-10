@@ -10,6 +10,7 @@ import { BudgetRebalancerService, RebalancerConfig } from '../../services/ads/Bu
 import { AdActionExecutor } from '../../services/ads/AdActionExecutor';
 import { requireAuthFastify } from '../../middleware/auth';
 import { prisma } from '../../utils/prisma';
+import { getAdsAccountIdOrReply } from './routeHelpers';
 
 interface AnalyzeBody {
     config?: Partial<RebalancerConfig>;
@@ -28,8 +29,8 @@ export default async function rebalancerRoutes(fastify: FastifyInstance) {
      * Analyze campaigns and generate rebalancing recommendations.
      */
     fastify.post<{ Body: AnalyzeBody }>('/analyze', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const config = request.body?.config || {};
         const result = await BudgetRebalancerService.analyzeAndRebalance(accountId, config);
@@ -55,8 +56,8 @@ export default async function rebalancerRoutes(fastify: FastifyInstance) {
             }
         }
     }, async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { actionId } = request.body;
 
@@ -79,8 +80,8 @@ export default async function rebalancerRoutes(fastify: FastifyInstance) {
      * Get current rebalancer configuration.
      */
     fastify.get('/settings', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const settings = await BudgetRebalancerService.getSettings(accountId);
         return { settings };
@@ -91,8 +92,8 @@ export default async function rebalancerRoutes(fastify: FastifyInstance) {
      * Get pending rebalance actions.
      */
     fastify.get('/pending', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const actions = await prisma.scheduledAdAction.findMany({
             where: {
@@ -112,8 +113,8 @@ export default async function rebalancerRoutes(fastify: FastifyInstance) {
      * Approve a pending rebalance action for execution.
      */
     fastify.post<{ Params: { id: string } }>('/approve/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
 
@@ -136,8 +137,8 @@ export default async function rebalancerRoutes(fastify: FastifyInstance) {
      * Cancel a pending rebalance action.
      */
     fastify.post<{ Params: { id: string } }>('/cancel/:id', async (request, reply) => {
-        const accountId = request.accountId;
-        if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+        const accountId = getAdsAccountIdOrReply(request, reply);
+        if (!accountId) return;
 
         const { id } = request.params;
 

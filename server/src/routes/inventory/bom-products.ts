@@ -5,6 +5,13 @@ import { bomVariationQuerySchema, bomSaveBodySchema } from './schemas';
 import { Logger } from '../../utils/logger';
 import { BOMInventorySyncService } from '../../services/BOMInventorySyncService';
 
+function sendBomError(reply: any, statusCode: number, error: string, code: string, details?: unknown) {
+    if (details !== undefined) {
+        return reply.code(statusCode).send({ error, code, details });
+    }
+    return reply.code(statusCode).send({ error, code });
+}
+
 function enrichBOMItems(bomItems: any[], accountId: string): Promise<any[]>;
 async function enrichBOMItems(bomItems: any[], accountId: string) {
     let enrichedItems = [...bomItems];
@@ -69,11 +76,11 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const { productId } = request.params as { productId: string };
         const parsedQuery = bomVariationQuerySchema.safeParse(request.query);
-        if (!parsedQuery.success) return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+        if (!parsedQuery.success) return sendBomError(reply, 400, parsedQuery.error.issues[0]?.message || 'Invalid variationId', 'INVALID_VARIATION_ID');
         const { variationId } = parsedQuery.data;
         try {
             const owned = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } });
-            if (!owned) return reply.code(404).send({ error: 'Product not found' });
+            if (!owned) return sendBomError(reply, 404, 'Product not found', 'PRODUCT_NOT_FOUND');
 
             const bom = await prisma.bOM.findUnique({
                 where: { productId_variationId: { productId, variationId } },
@@ -103,7 +110,7 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
             return { ...bom, items: enrichedItems };
         } catch (error: any) {
             Logger.error('Error fetching BOM', { error, productId, variationId });
-            return reply.code(500).send({ error: 'Failed to fetch BOM' });
+            return sendBomError(reply, 500, 'Failed to fetch BOM', 'BOM_FETCH_FAILED');
         }
     });
 
@@ -111,7 +118,7 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const { productId } = request.params as { productId: string };
         const parsedQuery = bomVariationQuerySchema.safeParse(request.query);
-        if (!parsedQuery.success) return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message || 'Invalid variationId' });
+        if (!parsedQuery.success) return sendBomError(reply, 400, parsedQuery.error.issues[0]?.message || 'Invalid variationId', 'INVALID_VARIATION_ID');
         const { variationId } = parsedQuery.data;
         try {
             const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(accountId, productId, variationId);
@@ -119,7 +126,7 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
             return { effectiveStock: calculation.effectiveStock, currentWooStock: calculation.currentWooStock, needsSync: calculation.needsSync, components: calculation.components };
         } catch (error: any) {
             Logger.error('Error calculating effective stock', { error, productId, variationId });
-            return reply.code(500).send({ error: 'Failed to calculate effective stock' });
+            return sendBomError(reply, 500, 'Failed to calculate effective stock', 'EFFECTIVE_STOCK_CALC_FAILED');
         }
     });
 
@@ -127,12 +134,12 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId!;
         const { productId } = request.params as { productId: string };
         const parsedBody = bomSaveBodySchema.safeParse(request.body);
-        if (!parsedBody.success) return reply.code(400).send({ error: parsedBody.error.issues[0]?.message || 'Invalid BOM payload' });
+        if (!parsedBody.success) return sendBomError(reply, 400, parsedBody.error.issues[0]?.message || 'Invalid BOM payload', 'INVALID_BOM_PAYLOAD');
         const { items, variationId } = parsedBody.data;
 
         try {
             const parent = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } });
-            if (!parent) return reply.code(404).send({ error: 'Product not found' });
+            if (!parent) return sendBomError(reply, 404, 'Product not found', 'PRODUCT_NOT_FOUND');
 
             const childProductIds = [...new Set(items.map(i => i.childProductId).filter(Boolean) as string[])];
             const internalProductIds = [...new Set(items.map(i => i.internalProductId).filter(Boolean) as string[])];
@@ -153,7 +160,7 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
                 (item.internalProductId && !validInternalSet.has(item.internalProductId)) ||
                 (item.supplierItemId && !validSupplierSet.has(item.supplierItemId))
             );
-            if (invalidItem) return reply.code(400).send({ error: 'BOM contains one or more components not owned by this account' });
+            if (invalidItem) return sendBomError(reply, 400, 'BOM contains one or more components not owned by this account', 'BOM_COMPONENT_OWNERSHIP_INVALID');
 
             const bom = await prisma.bOM.upsert({
                 where: { productId_variationId: { productId, variationId } },
@@ -198,21 +205,23 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
             if (hasBOMItems) {
                 totalCogs = updated!.items.reduce((sum, item) => {
                     let unitCost = 0;
-                    if (item.childVariation?.cogs) unitCost = Number(item.childVariation.cogs);
-                    else if (item.childProduct?.cogs) unitCost = Number(item.childProduct.cogs);
-                    else if (item.supplierItem?.cost) unitCost = Number(item.supplierItem.cost);
+                    if (item.internalProduct?.cogs != null) unitCost = Number(item.internalProduct.cogs);
+                    else if (item.childVariation?.cogs != null) unitCost = Number(item.childVariation.cogs);
+                    else if (item.childProduct?.cogs != null) unitCost = Number(item.childProduct.cogs);
+                    else if (item.supplierItem?.cost != null) unitCost = Number(item.supplierItem.cost);
                     return sum + (unitCost * Number(item.quantity) * (1 + Number(item.wasteFactor)));
                 }, 0);
-                if (variationId === 0) {
-                    await prisma.wooProduct.update({ where: { id: productId }, data: { cogs: totalCogs } });
-                } else {
-                    await prisma.productVariation.updateMany({ where: { productId, wooId: Number(variationId) }, data: { cogs: totalCogs } });
-                }
+            }
+
+            if (variationId === 0) {
+                await prisma.wooProduct.update({ where: { id: productId }, data: { cogs: hasBOMItems ? totalCogs : null } });
+            } else {
+                await prisma.productVariation.updateMany({ where: { productId, wooId: Number(variationId) }, data: { cogs: hasBOMItems ? totalCogs : null } });
             }
             return updated;
         } catch (error: any) {
             Logger.error('Error saving BOM', { error, productId, variationId });
-            return reply.code(500).send({ error: 'Failed to save BOM' });
+            return sendBomError(reply, 500, 'Failed to save BOM', 'BOM_SAVE_FAILED');
         }
     });
 };

@@ -101,7 +101,7 @@ class OverSeek_Admin
 		));
 		register_setting('overseek_options_group', 'overseek_vitals_sample_rate', array(
 			'type'              => 'integer',
-			'default'           => 100,
+			'default'           => 25,
 			'sanitize_callback' => function($val) {
 				$val = absint($val);
 				return max(1, min(100, $val));
@@ -152,7 +152,7 @@ class OverSeek_Admin
 		$connection_config  = (string) get_option('overseek_connection_config', '');
 		$relay_api_key      = (string) get_option('overseek_relay_api_key', '');
 		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
-		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 100);
+		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
 		$relay_endpoint     = home_url('/wp-json/overseek/v1/email-relay');
 		$is_configured      = !empty($api_url) && !empty($account_id);
 		$enabled_features   = array_filter(array(

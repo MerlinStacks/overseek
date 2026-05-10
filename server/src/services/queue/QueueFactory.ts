@@ -12,6 +12,8 @@ export const QUEUES = {
     PRODUCTS: 'sync-products',
     REVIEWS: 'sync-reviews',
     CUSTOMERS: 'sync-customers',
+    PAGES: 'sync-pages',
+    BLOG_POSTS: 'sync-blog-posts',
     REPORTS: 'report-generation',
     BOM_SYNC: 'bom-inventory-sync',
     AUTOMATIONS: 'automation-execution',
@@ -99,6 +101,7 @@ export class QueueFactory {
         // BullMQ kills the job thinking it's stalled, causing incomplete syncs.
         const isLongRunning = [
             QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS,
+            QUEUES.PAGES, QUEUES.BLOG_POSTS,
             QUEUES.BOM_SYNC, QUEUES.REPORTS
         ].includes(name);
 

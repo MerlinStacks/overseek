@@ -10,6 +10,7 @@ import { Logger } from '../../utils/logger';
 import { SearchToAdsIntelligenceService } from '../../services/ads/SearchToAdsIntelligenceService';
 import { NegativeKeywordAnalyzer } from '../../services/tools/analyzers/NegativeKeywordAnalyzer';
 import { CannibalizationAnalyzer } from '../../services/tools/analyzers/CannibalizationAnalyzer';
+import { getAdsAccountIdOrReply } from './routeHelpers';
 
 const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
 
@@ -19,8 +20,8 @@ const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/correlation', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const correlation = await SearchToAdsIntelligenceService.getCorrelation(accountId);
             return correlation;
@@ -36,8 +37,8 @@ const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/cannibalization', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const result = await CannibalizationAnalyzer.analyze(accountId);
             return result;
@@ -53,8 +54,8 @@ const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/negative-keywords', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const result = await NegativeKeywordAnalyzer.analyze(accountId);
             return result;
@@ -74,8 +75,8 @@ const intelligenceRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/summary', async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const [correlation, negativeKw] = await Promise.all([
                 SearchToAdsIntelligenceService.getCorrelation(accountId),

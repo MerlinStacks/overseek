@@ -2,11 +2,11 @@
  * Search Console API Routes — Fastify Plugin
  *
  * Exposes endpoints for fetching organic search analytics,
- * keyword recommendations, trending queries, and top pages.
+ * keyword recommendations, keyword movers, and top pages.
  * Data comes from Google Search Console + AI analysis.
  */
 
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { SearchConsoleService } from '../services/search-console/SearchConsoleService';
@@ -18,6 +18,7 @@ import { KeywordRevenueService } from '../services/search-console/KeywordRevenue
 import { CannibalizationService } from '../services/search-console/CannibalizationService';
 import { ContentBriefService } from '../services/search-console/ContentBriefService';
 import { SeoDigestService } from '../services/search-console/SeoDigestService';
+import { getAdsAccountIdOrReply } from './ads/routeHelpers';
 
 /**
  * Clamp and validate days query param. Prevents abuse and NaN injection.
@@ -30,6 +31,49 @@ function parseDays(raw: string | undefined, fallback: number = 28): number {
     return Math.min(n, 365);
 }
 
+function isBusinessValidationError(error: any, patterns: string[]) {
+    const message = error?.message || '';
+    return patterns.some((pattern) => message.includes(pattern));
+}
+
+function parseDaysAndSiteUrl(
+    request: FastifyRequest,
+    fallbackDays: number = 28,
+): { days: number; siteUrl?: string } {
+    const query = request.query as { days?: string; siteUrl?: string };
+    return {
+        days: parseDays(query.days, fallbackDays),
+        siteUrl: query.siteUrl,
+    };
+}
+
+function parseSiteUrl(request: FastifyRequest): string | undefined {
+    const query = request.query as { siteUrl?: string };
+    return query.siteUrl;
+}
+
+function parseRequiredDomainOrReply(request: FastifyRequest, reply: FastifyReply): string | null {
+    const query = request.query as { domain?: string };
+    if (!query.domain) {
+        reply.code(400).send({ error: 'domain is required' });
+        return null;
+    }
+    return query.domain;
+}
+
+function parseKeywordBodyOrReply(request: FastifyRequest, reply: FastifyReply): { keyword: string; keywordId?: string } | null {
+    const { keyword, keywordId } = request.body as { keyword?: string; keywordId?: string };
+    if (!keyword?.trim()) {
+        reply.code(400).send({ error: 'Keyword is required' });
+        return null;
+    }
+    return { keyword, keywordId };
+}
+
+function parseIdParam(request: FastifyRequest): string {
+    return (request.params as { id: string }).id;
+}
+
 const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
 
     /**
@@ -38,13 +82,11 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/analytics', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { days?: string; siteUrl?: string };
-            const days = parseDays(query.days);
-
-            const analytics = await SearchConsoleService.getSearchAnalytics(accountId, { days }, query.siteUrl);
+            const { days, siteUrl } = parseDaysAndSiteUrl(request);
+            const analytics = await SearchConsoleService.getSearchAnalytics(accountId, { days }, siteUrl);
 
             return { queries: analytics, count: analytics.length };
         } catch (error: any) {
@@ -59,8 +101,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/page-analytics', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const query = request.query as { pageUrl?: string; days?: string; siteUrl?: string };
             if (!query.pageUrl) return reply.code(400).send({ error: 'pageUrl is required' });
@@ -81,13 +123,11 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/pages', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { days?: string; siteUrl?: string };
-            const days = parseDays(query.days);
-
-            const pages = await SearchConsoleService.getTopPages(accountId, days, query.siteUrl);
+            const { days, siteUrl } = parseDaysAndSiteUrl(request);
+            const pages = await SearchConsoleService.getTopPages(accountId, days, siteUrl);
 
             return { pages, count: pages.length };
         } catch (error: any) {
@@ -96,37 +136,48 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    /**
-     * GET /api/search-console/trends — Trending/rising keywords
-     */
-    fastify.get('/trends', { preHandler: requireAuthFastify }, async (request, reply) => {
+    const getKeywordMoversHandler = async (
+        request: FastifyRequest<{ Querystring: { siteUrl?: string; days?: string } }>,
+        reply: FastifyReply
+    ) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { siteUrl?: string };
-            const trends = await KeywordRecommendationService.getTrendingKeywords(accountId, query.siteUrl);
+            const { days, siteUrl } = parseDaysAndSiteUrl(request, 14);
+            const movers = await KeywordRecommendationService.getKeywordMovers(accountId, siteUrl, days);
 
-            return { trends, count: trends.length };
+            return { movers, trends: movers, count: movers.length };
         } catch (error: any) {
-            Logger.error('Failed to fetch keyword trends', { error });
+            Logger.error('Failed to fetch keyword movers', { error });
             return reply.code(500).send({ error: error.message });
         }
-    });
+    };
+
+    /**
+     * GET /api/search-console/movers — Keywords with biggest ranking movement
+     * Query params: days (default 14, interpreted as last half vs previous half)
+     */
+    fastify.get('/movers', { preHandler: requireAuthFastify }, getKeywordMoversHandler);
+
+    /**
+     * GET /api/search-console/trends — Legacy alias for /movers
+     */
+    fastify.get('/trends', { preHandler: requireAuthFastify }, getKeywordMoversHandler);
 
     /**
      * GET /api/search-console/recommendations — AI keyword recommendations
      */
     fastify.get('/recommendations', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { siteUrl?: string };
+            const siteUrl = parseSiteUrl(request);
             const [lowHanging, gaps, aiRecs] = await Promise.all([
-                KeywordRecommendationService.getLowHangingFruit(accountId, query.siteUrl),
-                KeywordRecommendationService.getKeywordGaps(accountId, query.siteUrl),
-                KeywordRecommendationService.getAIRecommendations(accountId, query.siteUrl)
+                KeywordRecommendationService.getLowHangingFruit(accountId, siteUrl),
+                KeywordRecommendationService.getKeywordGaps(accountId, siteUrl),
+                KeywordRecommendationService.getAIRecommendations(accountId, siteUrl)
             ]);
 
             return {
@@ -145,11 +196,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/low-hanging-fruit', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { siteUrl?: string };
-            const opportunities = await KeywordRecommendationService.getLowHangingFruit(accountId, query.siteUrl);
+            const opportunities = await KeywordRecommendationService.getLowHangingFruit(accountId, parseSiteUrl(request));
 
             return { opportunities, count: opportunities.length };
         } catch (error: any) {
@@ -163,11 +213,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/keyword-gaps', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { siteUrl?: string };
-            const gaps = await KeywordRecommendationService.getKeywordGaps(accountId, query.siteUrl);
+            const gaps = await KeywordRecommendationService.getKeywordGaps(accountId, parseSiteUrl(request));
 
             return { gaps, count: gaps.length };
         } catch (error: any) {
@@ -185,8 +234,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/tracked-keywords', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const keywords = await KeywordTrackingService.listKeywords(accountId);
 
@@ -203,18 +252,20 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/tracked-keywords', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { keyword, targetUrl } = request.body as { keyword: string; targetUrl?: string };
-            if (!keyword?.trim()) return reply.code(400).send({ error: 'Keyword is required' });
+            const keywordBody = parseKeywordBodyOrReply(request, reply);
+            if (!keywordBody) return;
+            const { keyword } = keywordBody;
+            const { targetUrl } = request.body as { targetUrl?: string };
 
             const tracked = await KeywordTrackingService.addKeyword(accountId, keyword, targetUrl);
 
             return reply.code(201).send(tracked);
         } catch (error: any) {
             // Surface business-logic errors (limit reached, validation) as 400
-            const isBizError = error.message?.includes('Maximum') || error.message?.includes('must be');
+            const isBizError = isBusinessValidationError(error, ['Maximum', 'must be']);
             if (isBizError) {
                 return reply.code(400).send({ error: error.message });
             }
@@ -229,8 +280,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/tracked-keywords/bulk', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const { keywords, targetUrl } = request.body as { keywords: string[]; targetUrl?: string };
             if (!keywords?.length) return reply.code(400).send({ error: 'Keywords array is required' });
@@ -250,10 +301,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.delete('/tracked-keywords/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { id } = request.params as { id: string };
+            const id = parseIdParam(request);
             await KeywordTrackingService.deleteKeyword(accountId, id);
 
             return { success: true };
@@ -269,12 +320,11 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/tracked-keywords/:id/history', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { id } = request.params as { id: string };
-            const query = request.query as { days?: string };
-            const days = parseDays(query.days, 30);
+            const id = parseIdParam(request);
+            const { days } = parseDaysAndSiteUrl(request, 30);
 
             const history = await KeywordTrackingService.getHistory(accountId, id, days);
 
@@ -290,8 +340,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/tracked-keywords/refresh', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const updated = await KeywordTrackingService.refreshPositions(accountId);
 
@@ -311,8 +361,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/keyword-groups', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const groups = await KeywordGroupService.listGroups(accountId);
             return { groups, count: groups.length };
@@ -328,8 +378,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/keyword-groups', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const { name, color } = request.body as { name: string; color?: string };
             if (!name?.trim()) return reply.code(400).send({ error: 'Group name is required' });
@@ -350,10 +400,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.put('/keyword-groups/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { id } = request.params as { id: string };
+            const id = parseIdParam(request);
             const body = request.body as { name?: string; color?: string };
             const group = await KeywordGroupService.updateGroup(accountId, id, body);
             return group;
@@ -368,10 +418,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.delete('/keyword-groups/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { id } = request.params as { id: string };
+            const id = parseIdParam(request);
             await KeywordGroupService.deleteGroup(accountId, id);
             return { success: true };
         } catch (error: any) {
@@ -386,8 +436,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/keyword-groups/assign', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const { keywordIds, groupId } = request.body as { keywordIds: string[]; groupId: string | null };
             if (!keywordIds?.length) return reply.code(400).send({ error: 'keywordIds array is required' });
@@ -409,8 +459,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/competitors', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const competitors = await CompetitorAnalysisService.listCompetitors(accountId);
             return { competitors, count: competitors.length };
@@ -426,8 +476,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/competitors', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const { domain } = request.body as { domain: string };
             if (!domain?.trim()) return reply.code(400).send({ error: 'Domain is required' });
@@ -435,7 +485,7 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
             const competitor = await CompetitorAnalysisService.addCompetitor(accountId, domain);
             return reply.code(201).send(competitor);
         } catch (error: any) {
-            const isBizError = error.message?.includes('Maximum') || error.message?.includes('Invalid');
+            const isBizError = isBusinessValidationError(error, ['Maximum', 'Invalid']);
             if (isBizError) return reply.code(400).send({ error: error.message });
             Logger.error('Failed to add competitor', { error });
             return reply.code(500).send({ error: error.message });
@@ -447,10 +497,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.delete('/competitors/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { id } = request.params as { id: string };
+            const id = parseIdParam(request);
             await CompetitorAnalysisService.removeCompetitor(accountId, id);
             return { success: true };
         } catch (error: any) {
@@ -464,8 +514,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/competitor-analysis', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const query = request.query as { domain?: string };
             const analysis = await CompetitorAnalysisService.analyzeCompetitor(accountId, query.domain);
@@ -514,11 +564,10 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/competitor-movement', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { days?: string };
-            const days = parseDays(query.days, 7);
+            const { days } = parseDaysAndSiteUrl(request, 7);
 
             const movements = await CompetitorAnalysisService.getCompetitorMovement(accountId, days);
             return { movements, count: movements.length };
@@ -534,13 +583,13 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/competitor-head-to-head', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const query = request.query as { domain?: string };
-            if (!query.domain) return reply.code(400).send({ error: 'domain is required' });
+            const domain = parseRequiredDomainOrReply(request, reply);
+            if (!domain) return;
 
-            const rows = await CompetitorAnalysisService.getHeadToHead(accountId, query.domain);
+            const rows = await CompetitorAnalysisService.getHeadToHead(accountId, domain);
             return { rows, count: rows.length };
         } catch (error: any) {
             Logger.error('Failed to fetch head-to-head data', { error });
@@ -553,8 +602,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/competitors/refresh', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             // Sync keywords first, then refresh positions
             await CompetitorAnalysisService.syncCompetitorKeywords(accountId);
@@ -575,8 +624,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/keyword-revenue', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const report = await KeywordRevenueService.getRevenueReport(accountId);
             return { keywords: report, count: report.length };
@@ -595,8 +644,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/cannibalization', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const results = await CannibalizationService.detectCannibalization(accountId);
             return { keywords: results, count: results.length };
@@ -616,11 +665,12 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/content-brief', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
-            const { keyword, keywordId } = request.body as { keyword: string; keywordId?: string };
-            if (!keyword?.trim()) return reply.code(400).send({ error: 'Keyword is required' });
+            const keywordBody = parseKeywordBodyOrReply(request, reply);
+            if (!keywordBody) return;
+            const { keyword, keywordId } = keywordBody;
 
             const brief = await ContentBriefService.generateBrief(accountId, keyword, keywordId);
             return brief;
@@ -639,8 +689,8 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/seo-digest/preview', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'No account selected' });
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const digest = await SeoDigestService.generateDigest(accountId);
             return digest;

@@ -15,7 +15,7 @@ interface VariantExpandedDetailsProps {
     onSyncComplete?: (newStock: number) => void;
     onFieldChange: (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => void;
     onMultiFieldChange: (updates: Partial<ProductVariant>) => void;
-    onBomCogsUpdate: (cogs: number) => void;
+    onBomCogsUpdate: (cogs: number, hasItems: boolean) => void;
     canViewCogs: boolean;
     isGoldPriceEnabled: boolean;
     bomCogs: number | null;
@@ -38,7 +38,7 @@ export function VariantExpandedDetails({
     calculateGoldCogs
 }: VariantExpandedDetailsProps) {
     const goldCogs = calculateGoldCogs(v);
-    const hasBom = bomCogs != null && bomCogs > 0;
+    const hasBom = bomCogs !== null;
     const hasGold = goldCogs != null && goldCogs > 0;
 
     return (
@@ -197,7 +197,7 @@ function ProfitMarginDisplay({
     goldCogs: number | null;
 }) {
     const sellingPrice = parseFloat(v.salePrice || '') || parseFloat(v.price || '') || 0;
-    const hasBom = bomCogs != null && bomCogs > 0;
+    const hasBom = bomCogs !== null;
     const hasGold = goldCogs != null && goldCogs > 0;
 
     let effectiveCogs = 0;

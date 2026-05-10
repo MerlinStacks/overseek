@@ -19,7 +19,8 @@ const cohortRoutes: FastifyPluginAsync = async (fastify) => {
     }>('/retention', async (request, reply) => {
         try {
             const accountId = request.accountId;
-            const months = parseInt(request.query.months || '6', 10);
+            const parsedMonths = Number.parseInt(request.query.months || '6', 10);
+            const months = Number.isFinite(parsedMonths) && parsedMonths > 0 ? parsedMonths : 6;
 
             const cohorts = await CustomerCohortService.getRetentionCohorts(accountId, months);
             return cohorts;

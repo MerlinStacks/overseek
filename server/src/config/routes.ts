@@ -59,6 +59,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // Search Console (SEO Keywords & Recommendations)
     const searchConsoleRoutes = (await import('../routes/searchConsole')).default;
     await fastify.register(searchConsoleRoutes, { prefix: '/api/search-console' });
+    const contentRoutes = (await import('../routes/content')).default;
+    await fastify.register(contentRoutes, { prefix: '/api/content' });
 
     // Email
     const emailRoutes = (await import('../routes/email')).default;

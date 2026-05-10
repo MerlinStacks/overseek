@@ -136,15 +136,16 @@ export class KeywordRecommendationService {
     }
 
     /**
-     * Find trending keywords: queries with significant impression growth.
-     * Surfaces emerging search interest that could represent product demand.
+     * Find trending keywords based on biggest position movement.
+     * Uses the last 7 days vs previous 7 days (when days=14).
      */
-    static async getTrendingKeywords(accountId: string, siteUrl?: string): Promise<QueryTrend[]> {
-        const trends = await SearchConsoleService.getSearchTrends(accountId, 28, siteUrl);
+    static async getKeywordMovers(accountId: string, siteUrl?: string, days: number = 14): Promise<QueryTrend[]> {
+        const trends = await SearchConsoleService.getSearchTrends(accountId, days, siteUrl);
 
-        // Filter for meaningful growth (>30% impression increase, decent volume)
+        // Filter low-signal rows and return largest absolute movers.
         return trends
-            .filter(t => t.impressionGrowthPct >= 30 && t.currentImpressions >= 20)
+            .filter(t => t.currentImpressions >= 20 && t.previousPosition > 0)
+            .sort((a, b) => Math.abs(b.positionChange) - Math.abs(a.positionChange))
             .slice(0, 25);
     }
 
@@ -156,7 +157,7 @@ export class KeywordRecommendationService {
         try {
             const [lowHanging, trends, topQueries, products] = await Promise.all([
                 this.getLowHangingFruit(accountId, siteUrl),
-                this.getTrendingKeywords(accountId, siteUrl),
+                this.getKeywordMovers(accountId, siteUrl),
                 SearchConsoleService.getSearchAnalytics(accountId, { days: 28, rowLimit: 50 }, siteUrl),
                 prisma.wooProduct.findMany({
                     where: { accountId, stockStatus: 'instock' },
@@ -240,6 +241,11 @@ export class KeywordRecommendationService {
             Logger.error('Failed to generate AI keyword recommendations', { error, accountId });
             return [];
         }
+    }
+
+    /** @deprecated Use getKeywordMovers instead */
+    static async getTrendingKeywords(accountId: string, siteUrl?: string, days: number = 14): Promise<QueryTrend[]> {
+        return this.getKeywordMovers(accountId, siteUrl, days);
     }
 }
 

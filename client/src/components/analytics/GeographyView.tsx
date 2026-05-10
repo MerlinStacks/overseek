@@ -35,9 +35,7 @@ export const GeographyView: React.FC<{ dateRange: string }> = ({ dateRange }) =>
         setLoading(true);
         try {
             const range = getDateRange(dateRange);
-            const [countriesRes] = await Promise.all([
-                api.get<CountryData[]>(`/api/analytics/geography/countries?startDate=${range.startDate}&endDate=${range.endDate}`, token, currentAccount.id),
-            ]);
+            const countriesRes = await api.get<CountryData[]>(`/api/analytics/geography/countries?startDate=${range.startDate}&endDate=${range.endDate}`, token, currentAccount.id);
             setCountries(countriesRes || []);
         } catch (e) {
             Logger.error('Failed to fetch geography data:', { error: e });
