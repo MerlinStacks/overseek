@@ -538,6 +538,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
     const pages = getPagedLayout();
 
     // Read-only mode should preserve the designer's exact placement/size.
+    // Use react-grid-layout in static mode so PDF export matches editor geometry.
     if (readOnly) {
         const sortedLayout = [...layout].sort((a, b) => (a.y - b.y) || (a.x - b.x));
         const maxRowBottom = sortedLayout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
@@ -545,34 +546,43 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
         return (
             <div
-                className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50 p-4"
+                className="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50"
                 style={{ minHeight: pageMode === 'multi' ? '297mm' : 'auto' }}
             >
-                <div
-                    className="grid gap-x-4 gap-y-2"
-                    style={{
-                        gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
-                        gridTemplateRows: `repeat(${Math.max(1, maxRowBottom)}, 30px)`,
-                        minHeight: `${pageHeightPx}px`,
-                    }}
-                >
-                    {sortedLayout.map((l) => {
-                        const itemConfig = items.find(i => i.id === l.i);
-                        if (!itemConfig) return null;
+                <div style={{ minHeight: `${pageHeightPx}px` }}>
+                    <ResponsiveGridLayout
+                        className="layout"
+                        layouts={{ lg: sortedLayout }}
+                        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                        cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+                        rowHeight={30}
+                        // @ts-expect-error - width prop type mismatch
+                        width={794}
+                        isDraggable={false}
+                        isResizable={false}
+                        compactType={null}
+                        preventCollision={true}
+                        margin={[16, 8]}
+                        useCSSTransforms={false}
+                        isBounded={true}
+                        resizeHandles={[]}
+                    >
+                        {sortedLayout.map((l) => {
+                            const itemConfig = items.find(i => i.id === l.i);
+                            if (!itemConfig) {
+                                return <div key={l.i} className="hidden" />;
+                            }
 
-                        return (
-                            <div
-                                key={l.i}
-                                style={{
-                                    gridColumn: `${l.x + 1} / span ${Math.max(1, l.w)}`,
-                                    gridRow: `${l.y + 1} / span ${Math.max(1, l.h)}`,
-                                    minWidth: 0,
-                                }}
-                            >
-                                {renderContent(itemConfig)}
-                            </div>
-                        );
-                    })}
+                            return (
+                                <div
+                                    key={l.i}
+                                    className="bg-white overflow-hidden min-w-0"
+                                >
+                                    {renderContent(itemConfig)}
+                                </div>
+                            );
+                        })}
+                    </ResponsiveGridLayout>
                 </div>
             </div>
         );

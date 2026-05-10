@@ -311,7 +311,16 @@ class OverSeek_API {
 				continue;
 			}
 
-			$temp_path = wp_tempnam( $safe_filename );
+			$content_type = '';
+			if ( ! empty( $attachment['contentType'] ) && is_string( $attachment['contentType'] ) ) {
+				$content_type = sanitize_text_field( $attachment['contentType'] );
+			} elseif ( ! empty( $attachment['content_type'] ) && is_string( $attachment['content_type'] ) ) {
+				$content_type = sanitize_text_field( $attachment['content_type'] );
+			}
+
+			$safe_filename = $this->ensure_attachment_extension( $safe_filename, $content_type );
+
+			$temp_path = $this->create_temp_attachment_path( $safe_filename );
 			if ( ! $temp_path ) {
 				continue;
 			}
@@ -326,5 +335,68 @@ class OverSeek_API {
 		}
 
 		return $attachment_paths;
+	}
+
+	/**
+	 * Create a temporary file path while preserving the source extension.
+	 *
+	 * @param string $safe_filename Sanitized attachment filename.
+	 * @return string|false
+	 */
+	private function create_temp_attachment_path( string $safe_filename ) {
+		$temp_dir = trailingslashit( get_temp_dir() );
+		$extension = pathinfo( $safe_filename, PATHINFO_EXTENSION );
+		$basename = pathinfo( $safe_filename, PATHINFO_FILENAME );
+		$basename = '' !== $basename ? $basename : 'attachment';
+
+		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
+			$suffix = wp_generate_password( 12, false, false );
+			$candidate_name = '' !== $extension
+				? sprintf( '%s-%s.%s', $basename, $suffix, $extension )
+				: sprintf( '%s-%s', $basename, $suffix );
+			$candidate_path = $temp_dir . $candidate_name;
+
+			if ( ! file_exists( $candidate_path ) ) {
+				return $candidate_path;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Ensure attachment filename has an extension using MIME type fallback.
+	 *
+	 * @param string $safe_filename Sanitized attachment filename.
+	 * @param string $content_type Attachment MIME type.
+	 * @return string
+	 */
+	private function ensure_attachment_extension( string $safe_filename, string $content_type ): string {
+		if ( '' !== pathinfo( $safe_filename, PATHINFO_EXTENSION ) ) {
+			return $safe_filename;
+		}
+
+		$mime_map = [
+			'application/pdf' => 'pdf',
+			'image/jpeg'      => 'jpg',
+			'image/png'       => 'png',
+			'image/gif'       => 'gif',
+			'text/plain'      => 'txt',
+			'text/csv'        => 'csv',
+			'application/zip' => 'zip',
+			'application/msword' => 'doc',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+			'application/vnd.ms-excel' => 'xls',
+			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+		];
+
+		$normalized_type = strtolower( trim( $content_type ) );
+		$extension = isset( $mime_map[ $normalized_type ] ) ? $mime_map[ $normalized_type ] : '';
+
+		if ( '' === $extension ) {
+			return $safe_filename;
+		}
+
+		return $safe_filename . '.' . $extension;
 	}
 }
