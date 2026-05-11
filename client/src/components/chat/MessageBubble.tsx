@@ -54,7 +54,6 @@ export const MessageBubble = memo(function MessageBubble({
     onReactionToggle
 }: MessageBubbleProps) {
     const [showQuoted, setShowQuoted] = useState(false);
-    const [isHovered, setIsHovered] = useState(false);
     const { user } = useAuth();
 
     const isMe = message.senderType === 'AGENT';
@@ -228,8 +227,6 @@ export const MessageBubble = memo(function MessageBubble({
                 "mb-3 transition-colors group",
                 isMe ? "flex justify-end" : "flex justify-start"
             )}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
         >
             {/* Chat-style layout */}
             <div className={cn(
@@ -358,10 +355,10 @@ export const MessageBubble = memo(function MessageBubble({
                         )}
 
                         {/* Reply button on hover */}
-                        {isHovered && onQuoteReply && (
+                        {onQuoteReply && (
                             <button
                                 onClick={() => onQuoteReply(message)}
-                                className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                                className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-all opacity-0 group-hover:opacity-100"
                                 title="Reply"
                             >
                                 <Reply size={12} />

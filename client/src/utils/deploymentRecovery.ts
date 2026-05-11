@@ -114,12 +114,22 @@ function markReloadAttempted(): void {
  */
 export function isChunkLoadError(error: Error | string): boolean {
     const message = typeof error === 'string' ? error : error?.message || '';
+    const lowerMessage = message.toLowerCase();
+
+    // Require deployment/chunk context to avoid false positives from generic module errors
+    const hasChunkContext =
+        lowerMessage.includes('chunk') ||
+        lowerMessage.includes('dynamically imported module') ||
+        lowerMessage.includes('/assets/') ||
+        lowerMessage.includes('assets/');
+
+    if (!hasChunkContext) return false;
+
     return (
         message.includes('Failed to fetch dynamically imported module') ||
         message.includes('Loading chunk') ||
         message.includes('ChunkLoadError') ||
         message.includes('Loading CSS chunk') ||
-        message.includes("Couldn't resolve module") ||
         message.includes('error loading dynamically imported module')
     );
 }
