@@ -9,7 +9,7 @@
  * - Smart attachment handling with image thumbnails
  * - Email signature detection
  */
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, useRef, memo } from 'react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { cn } from '../../utils/cn';
@@ -54,6 +54,7 @@ export const MessageBubble = memo(function MessageBubble({
     onReactionToggle
 }: MessageBubbleProps) {
     const [showQuoted, setShowQuoted] = useState(false);
+    const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
     const { user } = useAuth();
 
     const isMe = message.senderType === 'AGENT';
@@ -194,10 +195,25 @@ export const MessageBubble = memo(function MessageBubble({
         });
     }, [quotedContent]);
 
-    const handleContentClick = (e: React.MouseEvent) => {
-        // Don't intercept clicks when the user has selected text (allows highlight + copy)
+    const handleContentPointerDown = (e: React.MouseEvent) => {
+        pointerDownRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleContentPointerUp = (e: React.MouseEvent) => {
+        const start = pointerDownRef.current;
+        pointerDownRef.current = null;
+
+        // Don't intercept when the user has selected text (allows highlight + copy)
         const selection = window.getSelection();
         if (selection && selection.toString().length > 0) return;
+
+        // Ignore drag/release interactions used for text highlighting
+        if (start) {
+            const dx = Math.abs(e.clientX - start.x);
+            const dy = Math.abs(e.clientY - start.y);
+            const moved = dx + dy;
+            if (moved > 6) return;
+        }
 
         const target = e.target as HTMLElement;
         if (target.tagName === 'IMG' && onImageClick) {
@@ -282,7 +298,8 @@ export const MessageBubble = memo(function MessageBubble({
                                         : "[&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-gray-400"
                                 )
                             )}
-                            onClick={handleContentClick}
+                            onMouseDown={handleContentPointerDown}
+                            onMouseUp={handleContentPointerUp}
                             dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                         />
 

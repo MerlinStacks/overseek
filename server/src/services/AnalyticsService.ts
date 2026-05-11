@@ -8,6 +8,7 @@
 import { prisma } from '../utils/prisma';
 import { cacheAside, CacheTTL, CacheNamespace } from '../utils/cache';
 import { getProfitabilityReport as getProfitReport } from './ProfitabilityReportService';
+import { isBot } from './tracking/TrafficAnalyzer';
 
 export class AnalyticsService {
     /**
@@ -21,11 +22,81 @@ export class AnalyticsService {
         if (!accountId) throw new Error("Account ID is required");
         const skip = (page - 1) * limit;
 
-        const whereClause: any = { accountId };
         if (liveMode) {
             const threeMinsAgo = new Date(Date.now() - 3 * 60 * 1000);
-            whereClause.lastActiveAt = { gte: threeMinsAgo };
-        } else if (startDate && endDate) {
+            const sessions = await prisma.analyticsSession.findMany({
+                where: {
+                    accountId,
+                    lastActiveAt: { gte: threeMinsAgo },
+                    userAgent: { not: null },
+                },
+                orderBy: { lastActiveAt: 'desc' },
+                take: 300,
+                select: {
+                    id: true,
+                    visitorId: true,
+                    email: true,
+                    ipAddress: true,
+                    country: true,
+                    city: true,
+                    lastActiveAt: true,
+                    currentPath: true,
+                    referrer: true,
+                    deviceType: true,
+                    browser: true,
+                    os: true,
+                    utmSource: true,
+                    utmMedium: true,
+                    utmCampaign: true,
+                    lastTouchSource: true,
+                    wooCustomerId: true,
+                    totalVisits: true,
+                    firstTouchSource: true,
+                    firstTouchAt: true,
+                    cartValue: true,
+                    cartItems: true,
+                    currency: true,
+                    userAgent: true,
+                    _count: { select: { events: true } },
+                    events: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 10,
+                        select: { id: true, type: true, url: true, pageTitle: true, createdAt: true, payload: true }
+                    }
+                }
+            });
+
+            const filteredLiveSessions = sessions.filter((session) => {
+                if (!session.userAgent || session.userAgent.trim() === '') return false;
+                return !isBot(session.userAgent);
+            });
+
+            const pagedSessions = filteredLiveSessions.slice(skip, skip + limit);
+
+            const wooCustomerIds = pagedSessions.map(s => s.wooCustomerId).filter((id): id is number => id !== null);
+            const customerMap = new Map<number, { firstName: string | null; lastName: string | null; email: string }>();
+
+            if (wooCustomerIds.length > 0) {
+                const customers = await prisma.wooCustomer.findMany({
+                    where: { accountId, wooId: { in: wooCustomerIds } },
+                    select: { wooId: true, firstName: true, lastName: true, email: true }
+                });
+                for (const c of customers) {
+                    customerMap.set(c.wooId, { firstName: c.firstName, lastName: c.lastName, email: c.email });
+                }
+            }
+
+            const data = pagedSessions.map(({ userAgent: _userAgent, ...session }) => ({
+                ...session,
+                customer: session.wooCustomerId ? customerMap.get(session.wooCustomerId) || null : null
+            }));
+
+            const total = filteredLiveSessions.length;
+            return { data, total, page, totalPages: Math.ceil(total / limit) };
+        }
+
+        const whereClause: any = { accountId };
+        if (startDate && endDate) {
             // Date range filtering for historical visitor counts
             whereClause.createdAt = {
                 gte: new Date(startDate),

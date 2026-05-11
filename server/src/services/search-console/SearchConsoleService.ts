@@ -64,6 +64,10 @@ interface AnalyticsOptions {
 
 export class SearchConsoleService {
 
+    private static sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     /**
      * Per-account lock to prevent concurrent token refreshes.
      * Why: two parallel 401s would both trigger refresh, wasting Google quota
@@ -178,7 +182,23 @@ export class SearchConsoleService {
         }
 
         if (!response.ok) {
-            const errText = await response.text();
+            let errText = await response.text();
+
+            // Retry transient Google backend errors (500/502/503/504) with small backoff.
+            if ([500, 502, 503, 504].includes(response.status)) {
+                const retryDelaysMs = [300, 900];
+
+                for (const delayMs of retryDelaysMs) {
+                    await this.sleep(delayMs);
+                    const retried = await doFetch(accessToken);
+                    if (retried.ok) {
+                        return retried.json() as Promise<T>;
+                    }
+                    response = retried;
+                    errText = await response.text();
+                }
+            }
+
             throw new Error(`Search Console API error (${response.status}): ${errText}`);
         }
 

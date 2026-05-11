@@ -114,6 +114,9 @@ export function isBot(userAgent: string): boolean {
 
     const ua = userAgent.toLowerCase();
 
+    const genericBotSignal = /\b(bot|crawler|spider|crawl|scraper|fetcher|scanner|headless)\b/;
+    if (genericBotSignal.test(ua)) return true;
+
     const botPatterns = [
         // Major search engine bots
         'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider',
@@ -128,8 +131,7 @@ export function isBot(userAgent: string): boolean {
         'ccbot', 'cohere-ai', 'bytespider', 'petalbot',
         'amazonbot', 'applebot',
 
-        // Generic bot indicators (use boundary-aware patterns to avoid
-        // false positives on real browsers — e.g. bare 'bot' matches 'About')
+        // Generic bot indicators
         'bot/', '/bot', 'bot;', 'spider/', 'crawl/', 'scraper',
         'headless', 'phantom', 'selenium', 'puppeteer', 'playwright',
         'wget', 'curl', 'python-requests', 'python-urllib',

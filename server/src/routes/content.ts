@@ -5,9 +5,10 @@ import { getRouteAccountIdOrReply } from './routeHelpers';
 import { z } from 'zod';
 import { WooService } from '../services/woo';
 import { calculateContentSeoScore } from '@overseek/core';
+import { buildContentLookupWhere } from './contentHelpers';
 
 const contentIdParamSchema = z.object({
-    id: z.string().uuid(),
+    id: z.string().min(1),
 });
 
 const updateContentBodySchema = z.object({
@@ -111,7 +112,7 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return;
 
         const { id } = contentIdParamSchema.parse(request.params);
-        const item = await prisma.wooPage.findFirst({ where: { id, accountId }, select: contentSelect });
+        const item = await prisma.wooPage.findFirst({ where: buildContentLookupWhere(id, accountId), select: contentSelect });
         if (!item) return reply.code(404).send({ error: 'Page not found' });
         return item;
     });
@@ -121,7 +122,7 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return;
 
         const { id } = contentIdParamSchema.parse(request.params);
-        const item = await prisma.wooBlogPost.findFirst({ where: { id, accountId }, select: contentSelect });
+        const item = await prisma.wooBlogPost.findFirst({ where: buildContentLookupWhere(id, accountId), select: contentSelect });
         if (!item) return reply.code(404).send({ error: 'Post not found' });
         return item;
     });
@@ -133,7 +134,7 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         const { id } = contentIdParamSchema.parse(request.params);
         const payload = updateContentBodySchema.parse(request.body);
 
-        const current = await prisma.wooPage.findFirst({ where: { id, accountId } });
+        const current = await prisma.wooPage.findFirst({ where: buildContentLookupWhere(id, accountId) });
         if (!current) return reply.code(404).send({ error: 'Page not found' });
 
         const woo = await WooService.forAccount(accountId);
@@ -155,7 +156,7 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         const updated = await prisma.wooPage.update({
-            where: { id },
+            where: { id: current.id },
             data: {
                 ...(payload.title !== undefined ? { title: payload.title } : {}),
                 ...(payload.content !== undefined ? { content: payload.content } : {}),
@@ -178,7 +179,7 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         const { id } = contentIdParamSchema.parse(request.params);
         const payload = updateContentBodySchema.parse(request.body);
 
-        const current = await prisma.wooBlogPost.findFirst({ where: { id, accountId } });
+        const current = await prisma.wooBlogPost.findFirst({ where: buildContentLookupWhere(id, accountId) });
         if (!current) return reply.code(404).send({ error: 'Post not found' });
 
         const woo = await WooService.forAccount(accountId);
@@ -200,7 +201,7 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         const updated = await prisma.wooBlogPost.update({
-            where: { id },
+            where: { id: current.id },
             data: {
                 ...(payload.title !== undefined ? { title: payload.title } : {}),
                 ...(payload.content !== undefined ? { content: payload.content } : {}),
