@@ -36,6 +36,7 @@ export function SeoContentPage() {
     const [editorOpen, setEditorOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({ title: '', content: '', excerpt: '', focusKeyword: '' });
+    const [contentView, setContentView] = useState<'code' | 'visual' | 'split'>('code');
 
     const endpoint = useMemo(() => tab === 'pages' ? '/api/content/pages' : '/api/content/posts', [tab]);
 
@@ -100,6 +101,7 @@ export function SeoContentPage() {
                 excerpt: data.excerpt || '',
                 focusKeyword: data.seoData?.focusKeyword || '',
             });
+            setContentView('code');
             setEditorOpen(true);
         } catch (e: any) {
             setError(e?.message || 'Failed to load content details');
@@ -210,8 +212,54 @@ export function SeoContentPage() {
                             <textarea value={form.excerpt} onChange={(e) => setForm((s) => ({ ...s, excerpt: e.target.value }))} rows={4} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1">Content</label>
-                            <textarea value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} rows={14} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <label className="block text-sm font-medium">Content</label>
+                                <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => setContentView('code')}
+                                        className={`px-3 py-1.5 text-xs ${contentView === 'code' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                                    >
+                                        Code
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setContentView('visual')}
+                                        className={`px-3 py-1.5 text-xs border-l border-slate-300 dark:border-slate-700 ${contentView === 'visual' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                                    >
+                                        Visual
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setContentView('split')}
+                                        className={`px-3 py-1.5 text-xs border-l border-slate-300 dark:border-slate-700 ${contentView === 'split' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                                    >
+                                        Split
+                                    </button>
+                                </div>
+                            </div>
+                            {contentView === 'code' ? (
+                                <textarea value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} rows={14} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
+                            ) : contentView === 'visual' ? (
+                                <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[352px] max-h-[352px] overflow-y-auto p-4">
+                                    {form.content.trim() ? (
+                                        <div className="prose prose-slate max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: form.content }} />
+                                    ) : (
+                                        <p className="text-sm text-slate-500 dark:text-slate-400">No content to preview yet.</p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                    <textarea value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} rows={14} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
+                                    <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[352px] max-h-[352px] overflow-y-auto p-4">
+                                        {form.content.trim() ? (
+                                            <div className="prose prose-slate max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: form.content }} />
+                                        ) : (
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">No content to preview yet.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setEditorOpen(false)} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800">Cancel</button>

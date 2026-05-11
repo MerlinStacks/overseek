@@ -73,7 +73,7 @@ async function fetchContentList(
     const { page, limit, q } = parseListQuery(query);
     const where = buildWhere(accountId, query, q);
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
         model.findMany({
             where,
             orderBy: { dateModified: 'desc' },
@@ -83,6 +83,28 @@ async function fetchContentList(
         }),
         model.count({ where }),
     ]);
+
+    const items = rawItems.map((item: any) => {
+        const focusKeyword = (item?.seoData as any)?.focusKeyword ?? '';
+        const seoResult = calculateContentSeoScore({
+            title: item?.title ?? '',
+            content: item?.content ?? '',
+            excerpt: item?.excerpt ?? '',
+            slug: item?.slug ?? null,
+            permalink: item?.permalink ?? null,
+            focusKeyword,
+        });
+
+        return {
+            ...item,
+            seoScore: seoResult.score,
+            seoData: {
+                ...(item?.seoData ?? {}),
+                focusKeyword,
+                analysis: seoResult.tests,
+            },
+        };
+    });
 
     return {
         items,

@@ -469,6 +469,26 @@ export class InvoiceService {
             // Find item config by ID
             const getItemConfig = (id: string) => items.find((i: any) => i.id === id);
 
+            const footerStartByPage = new Map<number, number>();
+            sortedGrid.forEach((gridItem: any) => {
+                const itemConfig = getItemConfig(gridItem.i);
+                if (!itemConfig || itemConfig.type !== 'footer') return;
+                const rowIndex = Number(gridItem.y || 0);
+                const pageIndex = Math.floor(rowIndex / rowsPerPage);
+                const localRow = rowIndex % rowsPerPage;
+                const footerY = marginTop + (localRow * rowHeight);
+                const current = footerStartByPage.get(pageIndex);
+                if (current === undefined || footerY < current) {
+                    footerStartByPage.set(pageIndex, footerY);
+                }
+            });
+
+            const getPageContentLimitY = (pageIndex: number) => {
+                const footerStart = footerStartByPage.get(pageIndex);
+                if (typeof footerStart === 'number') return Math.max(marginTop + 40, footerStart - 10);
+                return marginTop + pageHeight - 16;
+            };
+
             let currentPageIndex = 0;
             const ensurePage = (targetIndex: number) => {
                 while (currentPageIndex < targetIndex) {
@@ -478,7 +498,7 @@ export class InvoiceService {
             };
 
             // Render a single block
-            const renderBlock = (itemConfig: any, x: number, width: number, startY: number): number => {
+            const renderBlock = (itemConfig: any, x: number, width: number, startY: number, height = 60): number => {
                 if (!itemConfig) return 0;
 
                 let blockHeight = 0;
@@ -487,21 +507,57 @@ export class InvoiceService {
                 switch (type) {
                     case 'header': {
                         // Header with logo and business details
-                        doc.fontSize(10);
-                        if (itemConfig.businessDetails) {
-                            const lines = itemConfig.businessDetails.split('\n');
-                            lines.forEach((line: string, i: number) => {
-                                doc.text(line, x + width - 200, startY + (i * 12), { width: 200, align: 'right' });
-                            });
-                            blockHeight = Math.max(blockHeight, lines.length * 12 + 10);
+                        const logoWidth = Math.min(120, Math.max(80, width * 0.35));
+                        const detailsWidth = Math.max(90, Math.min(220, width - logoWidth - 10));
+                        const detailsX = x + width - detailsWidth;
+                        const availableHeight = Math.max(30, height - 4);
+
+                        const businessText = String(itemConfig.businessDetails || '').trim();
+                        const hasTaxId = Boolean(complianceSettings?.taxIdValue);
+                        const taxLabel = complianceSettings?.taxIdLabel || 'Tax ID';
+                        const taxText = `${taxLabel}: ${complianceSettings?.taxIdValue || ''}`;
+
+                        let businessFontSize = 10;
+                        let taxFontSize = 9;
+
+                        for (let font = 11; font >= 8; font -= 1) {
+                            const nextTaxFont = Math.max(8, font - 1);
+                            let requiredHeight = 0;
+
+                            if (businessText) {
+                                doc.font('Helvetica').fontSize(font);
+                                requiredHeight += doc.heightOfString(businessText, { width: detailsWidth, align: 'right' });
+                            }
+
+                            if (hasTaxId) {
+                                if (requiredHeight > 0) requiredHeight += 4;
+                                doc.font('Helvetica-Bold').fontSize(nextTaxFont);
+                                requiredHeight += doc.heightOfString(taxText, { width: detailsWidth, align: 'right' });
+                            }
+
+                            if (requiredHeight <= availableHeight) {
+                                businessFontSize = font;
+                                taxFontSize = nextTaxFont;
+                                break;
+                            }
                         }
-                        if (complianceSettings?.taxIdValue) {
-                            const taxLabel = complianceSettings.taxIdLabel || 'Tax ID';
-                            doc.font('Helvetica-Bold').fontSize(9);
-                            doc.text(`${taxLabel}: ${complianceSettings.taxIdValue}`, x + width - 200, startY + blockHeight, { width: 200, align: 'right' });
-                            doc.font('Helvetica').fontSize(10);
-                            blockHeight += 14;
+
+                        let detailsY = startY;
+                        if (businessText) {
+                            doc.font('Helvetica').fontSize(businessFontSize);
+                            doc.text(businessText, detailsX, detailsY, { width: detailsWidth, align: 'right' });
+                            detailsY += doc.heightOfString(businessText, { width: detailsWidth, align: 'right' });
                         }
+
+                        if (hasTaxId) {
+                            if (detailsY > startY) detailsY += 4;
+                            doc.font('Helvetica-Bold').fontSize(taxFontSize);
+                            doc.text(taxText, detailsX, detailsY, { width: detailsWidth, align: 'right' });
+                            detailsY += doc.heightOfString(taxText, { width: detailsWidth, align: 'right' });
+                        }
+
+                        blockHeight = Math.max(blockHeight, detailsY - startY);
+
                         if (itemConfig.logo) {
                             try {
                                 // Resolve relative URL to local file path
@@ -509,7 +565,8 @@ export class InvoiceService {
                                 if (logoUrl.startsWith('/uploads/')) {
                                     const localPath = path.join(__dirname, '../../', logoUrl.replace(/^\//, ''));
                                     if (fs.existsSync(localPath)) {
-                                        doc.image(localPath, x, startY, { width: 120, height: 60, fit: [120, 60] });
+                                        const logoHeight = Math.max(40, Math.min(60, availableHeight));
+                                        doc.image(localPath, x, startY, { width: logoWidth, height: logoHeight, fit: [logoWidth, logoHeight] });
                                     } else {
                                         Logger.warn('Logo file not found on disk', { logoUrl, localPath });
                                     }
@@ -518,7 +575,8 @@ export class InvoiceService {
                                 Logger.warn('Failed to render logo in PDF', { error: e });
                             }
                         }
-                        blockHeight = Math.max(blockHeight, 60);
+                        blockHeight = Math.max(blockHeight, Math.min(60, availableHeight));
+                        doc.font('Helvetica').fontSize(10);
                         break;
                     }
 
@@ -614,36 +672,47 @@ export class InvoiceService {
                         let tableY = startY + 18;
                         doc.font('Helvetica').fontSize(9);
 
-                        lineItems.forEach((item: any) => {
-                            // Check for page break
-                            if (tableY > 720) {
-                                doc.addPage();
-                                currentPageIndex += 1;
-                                tableY = 50;
-                                doc.fontSize(9).font('Helvetica-Bold');
-                                doc.text('Description', tableX, tableY);
-                                doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
-                                doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
-                                doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
-                                doc.moveTo(tableX, tableY + 12).lineTo(tableX + fullTableWidth, tableY + 12).stroke();
-                                tableY += 18;
-                                doc.font('Helvetica').fontSize(9);
-                            }
+                        const renderTableHeader = () => {
+                            doc.fontSize(9).font('Helvetica-Bold');
+                            doc.text('Description', tableX, tableY);
+                            doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
+                            doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
+                            doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
+                            doc.moveTo(tableX, tableY + 12).lineTo(tableX + fullTableWidth, tableY + 12).stroke();
+                            tableY += 18;
+                            doc.font('Helvetica').fontSize(9);
+                        };
 
+                        const moveTableToNextPage = () => {
+                            doc.addPage();
+                            currentPageIndex += 1;
+                            tableY = marginTop;
+                            renderTableHeader();
+                        };
+
+                        lineItems.forEach((item: any) => {
                             const itemName = item.name || 'Product';
                             const qty = item.quantity || 1;
                             const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
+                            const itemMeta = getInvoiceItemMeta(item).slice(0, 6);
+
+                            const titleHeight = Math.max(12, doc.heightOfString(itemName, { width: descWidth - 10 }));
+                            const metaHeight = itemMeta.length > 0 ? 12 + (itemMeta.length * 10) : 0;
+                            const estimatedRowHeight = titleHeight + metaHeight + 14;
+                            const contentLimitY = getPageContentLimitY(currentPageIndex);
+                            if ((tableY + estimatedRowHeight) > contentLimitY) {
+                                moveTableToNextPage();
+                            }
 
                             doc.text(itemName, tableX, tableY, { width: descWidth - 10 });
                             doc.text(String(qty), tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
 
-                            const itemMeta = getInvoiceItemMeta(item);
                             if (itemMeta.length > 0) {
                                 tableY += 12;
                                 doc.fontSize(8).fillColor('#64748b');
-                                itemMeta.slice(0, 6).forEach((meta) => {
+                                itemMeta.forEach((meta) => {
                                     doc.text(
                                         decodeInvoiceEntities(`${meta.label}: ${meta.value}`),
                                         tableX + 10,
@@ -660,6 +729,11 @@ export class InvoiceService {
 
                         // Totals integrated into table — use rawData for consistency
                         const rawOrderData = order.rawData as any || {};
+                        const contentLimitY = getPageContentLimitY(currentPageIndex);
+                        const estimatedTotalsHeight = 90;
+                        if ((tableY + estimatedTotalsHeight) > contentLimitY) {
+                            moveTableToNextPage();
+                        }
                         doc.moveTo(tableX, tableY).lineTo(tableX + fullTableWidth, tableY).stroke();
                         tableY += 10;
 
@@ -842,7 +916,7 @@ export class InvoiceService {
                             children.forEach((childId: string, idx: number) => {
                                 const childConfig = getItemConfig(childId);
                                 if (childConfig) {
-                                    const childHeight = renderBlock(childConfig, x + (idx * childWidth), childWidth - 10, startY);
+                                    const childHeight = renderBlock(childConfig, x + (idx * childWidth), childWidth - 10, startY, height);
                                     maxChildHeight = Math.max(maxChildHeight, childHeight);
                                 }
                             });
@@ -873,7 +947,8 @@ export class InvoiceService {
                 const itemWidth = Math.max(colWidth, (gridItem.w || 1) * colWidth);
                 const itemY = marginTop + (localRow * rowHeight);
 
-                renderBlock(itemConfig, itemX, itemWidth, itemY);
+                const itemHeight = Math.max(rowHeight, (gridItem.h || 1) * rowHeight);
+                renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);
             });
 
             // Register handlers before ending doc to avoid race condition

@@ -145,10 +145,11 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                         </div>
                         {/* Business Details Section - Right Aligned with Auto-Fit */}
                         <div
-                            className="flex-1 text-right text-slate-700 leading-relaxed overflow-hidden"
+                            className="flex-1 h-full text-right text-slate-700 overflow-hidden"
                             style={{
-                                containerType: 'inline-size',
-                                fontSize: 'clamp(10px, 2.2cqw, 14px)',
+                                containerType: 'size',
+                                fontSize: 'clamp(8px, min(2.2cqw, 3.2cqh), 14px)',
+                                lineHeight: 1.35,
                             }}
                         >
                             {itemConfig.businessDetails ? (
