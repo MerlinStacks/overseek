@@ -1,7 +1,7 @@
 /**
- * Marketing Co-Pilot Configuration
+ * Marketing Intelligence Configuration
  * 
- * Centralized configuration for all AI Marketing Co-Pilot thresholds,
+ * Centralized configuration for all AI Marketing Intelligence thresholds,
  * periods, and constants. Eliminates magic numbers across analyzers.
  */
 

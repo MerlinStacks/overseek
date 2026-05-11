@@ -4,7 +4,7 @@
  * Curated best practices and platform-specific rules for ad optimization.
  * Rules are evaluated against campaign context to generate relevant recommendations.
  * 
- * Part of AI Marketing Co-Pilot Phase 4.
+ * Part of AI Marketing Intelligence Phase 4.
  */
 
 import { CampaignType } from '../AdContext';

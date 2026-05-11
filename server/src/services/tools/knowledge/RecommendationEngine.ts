@@ -4,7 +4,7 @@
  * Unified recommendation generation with explainability and confidence scoring.
  * Combines analyzer outputs with knowledge base rules.
  * 
- * Part of AI Marketing Co-Pilot Phase 4.
+ * Part of AI Marketing Intelligence Phase 4.
  */
 
 import { MarketingKnowledgeBase, AnalysisContext, MatchedRecommendation } from './MarketingKnowledgeBase';

@@ -597,7 +597,7 @@ export class AdCopyGenerator {
     /**
      * Generate N variants of base ad copy for A/B testing.
      * Each variant uses a different messaging angle.
-     * Part of AI Co-Pilot v2 - Phase 4: Creative A/B Engine.
+     * Part of AI Marketing Intelligence v2 - Phase 4: Creative A/B Engine.
      */
     static async generateVariants(
         accountId: string,

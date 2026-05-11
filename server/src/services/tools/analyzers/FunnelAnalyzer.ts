@@ -4,7 +4,7 @@
  * Provides funnel-aware campaign analysis with stage-appropriate metrics.
  * Awareness campaigns are judged on reach/CPM, conversion campaigns on ROAS.
  * 
- * Part of AI Marketing Co-Pilot Phase 3.
+ * Part of AI Marketing Intelligence Phase 3.
  */
 
 import { prisma } from '../../../utils/prisma';

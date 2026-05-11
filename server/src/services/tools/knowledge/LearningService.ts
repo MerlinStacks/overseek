@@ -4,7 +4,7 @@
  * Manages account-specific marketing learnings that extend the static knowledge base.
  * Supports user-created rules and AI-derived suggestions (requiring approval).
  * 
- * Part of AI Marketing Co-Pilot Phase 4.
+ * Part of AI Marketing Intelligence Phase 4.
  */
 
 import { prisma } from '../../../utils/prisma';

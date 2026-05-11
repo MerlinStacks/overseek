@@ -1,5 +1,5 @@
 /**
- * Utility modules for AI Marketing Co-Pilot
+ * Utility modules for AI Marketing Intelligence
  */
 
 export * from './StatisticalUtils';

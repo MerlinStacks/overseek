@@ -4,7 +4,7 @@
  * Analyzes performance by device, geography, and other audience dimensions.
  * Provides bid adjustment recommendations based on segment performance.
  * 
- * Part of AI Marketing Co-Pilot Phase 3.
+ * Part of AI Marketing Intelligence Phase 3.
  */
 
 import { prisma } from '../../../utils/prisma';

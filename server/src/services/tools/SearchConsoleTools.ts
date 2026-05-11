@@ -1,7 +1,7 @@
 /**
  * Search Console AI Tools
  *
- * Tool handlers for the AI co-pilot to access Search Console data
+ * Tool handlers for the AI marketing intelligence to access Search Console data
  * and keyword recommendations during conversational analysis.
  */
 

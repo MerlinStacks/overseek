@@ -1,7 +1,7 @@
 /**
  * Knowledge Module Index
  * 
- * AI Marketing Co-Pilot Knowledge Base and Recommendation Engine.
+ * AI Marketing Intelligence Knowledge Base and Recommendation Engine.
  */
 
 export { MarketingKnowledgeBase } from './MarketingKnowledgeBase';

@@ -8,10 +8,8 @@ import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
 import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
 import { CampaignsList } from '../components/marketing/CampaignsList';
-import { ExperimentsPanel } from '../components/marketing/ExperimentsPanel';
-import { ExecutiveReportsPanel } from '../components/marketing/ExecutiveReportsPanel';
 import { AdIntelligencePanel } from '../components/marketing/AdIntelligencePanel';
-import { Mail, Megaphone, BarChart2, FlaskConical, FileText, Zap } from 'lucide-react';
+import { Mail, Megaphone, BarChart2, Zap } from 'lucide-react';
 
 // Lazy-load EmailDesignEditor to prevent react-email-editor from polluting React singleton
 const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
@@ -38,8 +36,8 @@ export function MarketingPage() {
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Initialize activeTab from URL query param or default to 'campaigns'
-    type TabId = 'campaigns' | 'performance' | 'ads' | 'experiments' | 'reports' | 'intelligence';
-    const validTabs: TabId[] = ['campaigns', 'performance', 'ads', 'experiments', 'reports', 'intelligence'];
+    type TabId = 'campaigns' | 'performance' | 'ads' | 'intelligence';
+    const validTabs: TabId[] = ['campaigns', 'performance', 'ads', 'intelligence'];
     const tabFromUrl = searchParams.get('tab') as TabId | null;
     const [activeTab, setActiveTab] = useState<TabId>(
         tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'campaigns'
@@ -62,8 +60,6 @@ export function MarketingPage() {
     const adTabs: Array<{ id: TabId; label: string; icon: typeof Mail }> = isAdTrackingEnabled ? [
         { id: 'performance', label: 'Ad Performance', icon: BarChart2 },
         { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
-        { id: 'experiments', label: 'A/B Tests', icon: FlaskConical },
-        { id: 'reports', label: 'Reports', icon: FileText },
         { id: 'intelligence', label: 'Intelligence', icon: Zap },
     ] : [];
 
@@ -155,16 +151,6 @@ export function MarketingPage() {
                     </ErrorBoundary>
                 )}
                 {activeTab === 'ads' && <AdsView />}
-                {activeTab === 'experiments' && (
-                    <ErrorBoundary>
-                        <ExperimentsPanel />
-                    </ErrorBoundary>
-                )}
-                {activeTab === 'reports' && (
-                    <ErrorBoundary>
-                        <ExecutiveReportsPanel />
-                    </ErrorBoundary>
-                )}
                 {activeTab === 'intelligence' && (
                     <ErrorBoundary>
                         <AdIntelligencePanel />

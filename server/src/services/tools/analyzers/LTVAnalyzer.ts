@@ -4,7 +4,7 @@
  * Calculates Customer Lifetime Value by acquisition channel
  * and provides LTV-adjusted optimization recommendations.
  * 
- * Part of AI Marketing Co-Pilot Phase 2.
+ * Part of AI Marketing Intelligence Phase 2.
  */
 
 import { prisma } from '../../../utils/prisma';

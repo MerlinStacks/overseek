@@ -26,13 +26,11 @@ import {
     X,
     BookOpen,
     Zap,
-    Brain,
     HelpCircle,
     UsersRound,
     Filter,
     TrendingDown,
     RefreshCw,
-    Activity,
     Search,
     Bot,
     FileText
@@ -76,8 +74,7 @@ const navItems = [
         children: [
             { icon: LineChart, label: 'Overview', path: '/analytics' },
             { icon: DollarSign, label: 'Revenue', path: '/analytics/revenue' },
-            { icon: GitBranch, label: 'Attribution', path: '/analytics/attribution' },
-            { icon: TrendingUp, label: 'Cohorts', path: '/analytics/cohorts' },
+            { icon: GitBranch, label: 'Attribution & Cohorts', path: '/analytics/attribution' },
             { icon: BarChart3, label: 'Acquisition', path: '/live' },
             { icon: BarChart3, label: 'Reports', path: '/reports' },
             { icon: Bot, label: 'Bot Shield', path: '/crawlers' },
@@ -88,9 +85,7 @@ const navItems = [
         label: 'Growth',
         icon: TrendingUp,
         children: [
-            { icon: Brain, label: 'AI Co-Pilot', path: '/marketing/ai' },
             { icon: Megaphone, label: 'Paid Ads', path: '/ads' },
-            { icon: Activity, label: 'CAPI Health', path: '/conversions/health' },
             { icon: Zap, label: 'Flows', path: '/flows' },
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
             { icon: Star, label: 'Reviews', path: '/reviews' },

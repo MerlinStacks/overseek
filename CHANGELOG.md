@@ -243,7 +243,7 @@ All notable changes to this project will be documented in this file.
 ## [2.0.1] - 2026-01-17
 
 ### ✨ Enhancements
-- **AI Co-Pilot Optimization**: Implemented 5-minute TTL localStorage caching to prevent redundant per-visit analysis.
+- **AI Marketing Intelligence Optimization**: Implemented 5-minute TTL localStorage caching to prevent redundant per-visit analysis.
 - **Email Message Rendering**: Enhanced quote detection for Gmail, Outlook, and iOS Mail with collapsible "View more" for long threads.
 - **Inbox Composer**: Added "From" dropdown for agents to select sending email account when replying.
 - **Product Editor**: BOM products now correctly update Cost of Goods Sold (COGS) calculations.
@@ -254,7 +254,7 @@ All notable changes to this project will be documented in this file.
 - **Auto-Reply Sender**: Auto-replies now send from the email account that received the original message.
 - **Email Ingestion**: Improved IMAP reliability with parallel polling, batch limits, and exponential backoff.
 - **Guest Order Linking**: Inbox now correctly links conversations to WooCommerce orders via billing email for guests.
-- **Layout Containment**: Resolved fixed positioning conflicts on AI Co-Pilot page.
+- **Layout Containment**: Resolved fixed positioning conflicts on AI Marketing Intelligence page.
 - **React Hook Errors**: Fixed "Invalid hook call" errors in FlowsPage and AdminDashboard components.
 
 ### ⚙️ Infrastructure
@@ -267,7 +267,7 @@ All notable changes to this project will be documented in this file.
 
 ## [2.0.0] - 2026-01-14
 
-### 🤖 AI Marketing Co-Pilot
+### 🤖 AI Marketing Intelligence
 - **Intelligent Ad Optimization**: Complete 6-phase AI advisor replacing traditional digital marketing agents.
   - Phase 1: Multi-Period Analysis (7d/30d/90d) with historical snapshots and statistical significance.
   - Phase 2: Cross-Channel Attribution with LTV-based optimization.

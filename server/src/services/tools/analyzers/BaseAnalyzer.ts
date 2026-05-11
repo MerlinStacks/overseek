@@ -1,7 +1,7 @@
 /**
  * Base Analyzer
  * 
- * Abstract base class for all AI Marketing Co-Pilot analyzers.
+ * Abstract base class for all AI Marketing Intelligence analyzers.
  * Provides common structure, error handling, and timing.
  */
 

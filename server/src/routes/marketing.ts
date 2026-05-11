@@ -272,7 +272,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // =========================================================================
-    // AI Recommendation Tracking (AI Marketing Co-Pilot Phase 5)
+    // AI Recommendation Tracking (AI Marketing Intelligence Phase 5)
     // =========================================================================
 
     /**
@@ -373,7 +373,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     // =========================================================================
-    // Marketing Learnings (AI Marketing Co-Pilot Phase 4)
+    // Marketing Learnings (AI Marketing Intelligence Phase 4)
     // =========================================================================
 
     /**
@@ -516,7 +516,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // =========================================================================
-    // Ad Alerts (AI Marketing Co-Pilot Phase 6)
+    // Ad Alerts (AI Marketing Intelligence Phase 6)
     // =========================================================================
 
     /**

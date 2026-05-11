@@ -38,7 +38,7 @@ export const EVENTS = {
         ACCOUNT_DISCONNECTED: 'social:account_disconnected',
     },
     AD: {
-        ALERT: 'ad:alert', // AI Marketing Co-Pilot Phase 6
+        ALERT: 'ad:alert', // AI Marketing Intelligence Phase 6
         AUTH_EXPIRED: 'ad:auth_expired', // Token expired, user must reconnect
     },
     INVENTORY: {

@@ -45,39 +45,6 @@ export class MarketingScheduler {
             jobId: 'weekly-digest-monday'
         });
         Logger.info('Scheduled Weekly Performance Digest (Monday at 9 AM UTC)');
-
-
-        // Budget Rebalancer Analysis (Every 6 hours)
-        // Analyzes campaigns and generates ROAS-based recommendations
-        await this.queue.add('budget-rebalancer', {}, {
-            repeat: { pattern: '0 */6 * * *' },
-            jobId: 'budget-rebalancer-6h'
-        });
-        Logger.info('Scheduled Budget Rebalancer Analysis (Every 6 hours)');
-
-        // Auto-Execute Pending Actions (Every 15 minutes)
-        // Executes scheduled actions that have autoExecute enabled
-        await this.queue.add('execute-pending-actions', {}, {
-            repeat: { pattern: '*/15 * * * *' },
-            jobId: 'execute-pending-actions-15m'
-        });
-        Logger.info('Scheduled Auto-Execute Pending Actions (Every 15 minutes)');
-
-        // Experiment Metrics Refresh (Every 4 hours)
-        // Refreshes performance metrics for active A/B experiments
-        await this.queue.add('experiment-metrics-refresh', {}, {
-            repeat: { pattern: '0 */4 * * *' },
-            jobId: 'experiment-metrics-4h'
-        });
-        Logger.info('Scheduled Experiment Metrics Refresh (Every 4 hours)');
-
-        // Experiment Significance Check (Daily at 6 AM UTC)
-        // Analyzes experiments and auto-pauses underperforming variants
-        await this.queue.add('experiment-significance-check', {}, {
-            repeat: { pattern: '0 6 * * *' },
-            jobId: 'experiment-significance-daily'
-        });
-        Logger.info('Scheduled Experiment Significance Check (Daily at 6 AM UTC)');
     }
 
 
@@ -461,7 +428,7 @@ export class MarketingScheduler {
 
 
     /**
-     * Assess outcomes of implemented recommendations (AI Marketing Co-Pilot Phase 5)
+     * Assess outcomes of implemented recommendations (AI Marketing Intelligence Phase 5)
      */
     static async dispatchOutcomeAssessment() {
         Logger.info('[Scheduler] Starting recommendation outcome assessment');
@@ -574,91 +541,4 @@ export class MarketingScheduler {
             Logger.error('[Scheduler] Weekly digest dispatch failed', { error });
         }
     }
-
-
-    /**
-     * Dispatch budget rebalancer analysis for all accounts.
-     * Part of AI Co-Pilot v2 - Phase 3: Campaign Automation.
-     */
-    static async dispatchBudgetRebalancer() {
-        try {
-            const { BudgetRebalancerService } = await import('../ads/BudgetRebalancerService');
-
-            Logger.info('[Scheduler] Starting budget rebalancer analysis');
-
-            const result = await BudgetRebalancerService.processAllAccounts();
-
-            Logger.info('[Scheduler] Budget rebalancer complete', {
-                processed: result.processed,
-                recommendations: result.recommendations
-            });
-        } catch (error) {
-            Logger.error('[Scheduler] Budget rebalancer dispatch failed', { error });
-        }
-    }
-
-    /**
-     * Execute pending auto-execute actions.
-     * Part of AI Co-Pilot v2 - Phase 3: Campaign Automation.
-     */
-    static async dispatchPendingActions() {
-        try {
-            const { AdActionExecutor } = await import('../ads/AdActionExecutor');
-
-            const result = await AdActionExecutor.processPendingActions();
-
-            if (result.processed > 0) {
-                Logger.info('[Scheduler] Pending actions processed', {
-                    processed: result.processed,
-                    succeeded: result.succeeded,
-                    failed: result.failed
-                });
-            }
-        } catch (error) {
-            Logger.error('[Scheduler] Pending actions dispatch failed', { error });
-        }
-    }
-
-    /**
-     * Refresh metrics for all running A/B experiments.
-     * Part of AI Co-Pilot v2 - Phase 4: Creative A/B Engine.
-     */
-    static async dispatchExperimentMetricsRefresh() {
-        try {
-            const { CreativeVariantService } = await import('../ads/CreativeVariantService');
-
-            Logger.info('[Scheduler] Starting experiment metrics refresh');
-
-            const result = await CreativeVariantService.refreshAllExperiments();
-
-            Logger.info('[Scheduler] Experiment metrics refresh complete', {
-                refreshed: result.refreshed
-            });
-        } catch (error) {
-            Logger.error('[Scheduler] Experiment metrics refresh failed', { error });
-        }
-    }
-
-    /**
-     * Check experiments for statistical significance and auto-pause losers.
-     * Part of AI Co-Pilot v2 - Phase 4: Creative A/B Engine.
-     */
-    static async dispatchExperimentSignificanceCheck() {
-        try {
-            const { CreativeVariantService } = await import('../ads/CreativeVariantService');
-
-            Logger.info('[Scheduler] Starting experiment significance check');
-
-            const pausedCount = await CreativeVariantService.checkAndPauseLosers();
-
-            if (pausedCount > 0) {
-                Logger.info('[Scheduler] Experiment significance check complete', {
-                    variantsPaused: pausedCount
-                });
-            }
-        } catch (error) {
-            Logger.error('[Scheduler] Experiment significance check failed', { error });
-        }
-    }
 }
-

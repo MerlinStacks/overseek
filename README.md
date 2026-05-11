@@ -22,7 +22,7 @@
 </p>
 <p align="center">
   <img src="docs/screenshots/analytics.png" alt="Analytics" width="48%">
-  <img src="docs/screenshots/ai-copilot.png" alt="AI Co-Pilot" width="48%">
+  <img src="docs/screenshots/ai-copilot.png" alt="AI Marketing Intelligence" width="48%">
 </p>
 <p align="center">
   <img src="docs/screenshots/inventory.png" alt="Inventory Management" width="48%">
@@ -41,7 +41,7 @@ OverSeek fixes that. It's a self-hosted dashboard that syncs with your WooCommer
 
 - 📊 **Real-time analytics** — See who's on your site right now, what's in their cart, and where they came from
 - 💬 **Unified inbox** — Email, live chat, Facebook, Instagram—all in one place with AI-drafted replies
-- 🤖 **AI marketing co-pilot** — Analyzes your ads across Google, Meta, and TikTok with confidence-scored recommendations
+- 🤖 **AI marketing intelligence** — Analyzes your ads across Google, Meta, and TikTok with confidence-scored recommendations
 - 📦 **Inventory & warehouse** — Stock alerts based on sales velocity, BOM management, purchase orders, and picklists
 - ⚡ **Marketing automation** — Abandoned cart flows, welcome series, post-purchase emails with visual flow builder
 - 📧 **Business intelligence** — Daily/weekly email digests, customer cohort analysis, and product performance rankings
@@ -148,7 +148,7 @@ See your store in real-time. Live visitors on a globe, add-to-cart events stream
 ### 💬 Unified Inbox
 One inbox for everything. Emails (via IMAP), live chat widget, Facebook messages, Instagram DMs. Canned responses with rich text support, AI-drafted replies, and conversation search. Multi-select conversation merge and full interaction history timeline.
 
-### 🤖 AI Marketing Co-Pilot
+### 🤖 AI Marketing Intelligence
 Connect your Google Ads, Meta Ads, and TikTok Ads accounts. The AI analyzes your campaigns across 7, 30, and 90-day windows, spots trends, and gives you specific recommendations—with confidence scores so you know what to trust. Includes AI-powered ad copy generation, creative A/B experiment tracking, and proactive alerts for performance regressions. Stock-aware optimization automatically excludes out-of-stock items.
 
 ### 📈 Business Intelligence

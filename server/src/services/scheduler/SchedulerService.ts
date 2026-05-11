@@ -96,19 +96,6 @@ export class SchedulerService {
                     await MarketingScheduler.dispatchWeeklyDigests();
                     break;
 
-                case 'budget-rebalancer':
-                    await MarketingScheduler.dispatchBudgetRebalancer();
-                    break;
-                case 'execute-pending-actions':
-                    await MarketingScheduler.dispatchPendingActions();
-                    break;
-                case 'experiment-metrics-refresh':
-                    await MarketingScheduler.dispatchExperimentMetricsRefresh();
-                    break;
-                case 'experiment-significance-check':
-                    await MarketingScheduler.dispatchExperimentSignificanceCheck();
-                    break;
-
                 // Why: stale repeatable job from a previous deployment persists
                 // in Redis. No-op until the job is properly removed or re-implemented.
                 case 'audience-refresh':

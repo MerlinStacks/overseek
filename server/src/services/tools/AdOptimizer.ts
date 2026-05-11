@@ -20,9 +20,9 @@ import {
 } from './advisors';
 import { processSearchSuggestions } from './advisors/SearchAdvisor';
 
-// Import multi-period analyzer (AI Marketing Co-Pilot Phase 1)
-// Import cross-channel and LTV analyzers (AI Marketing Co-Pilot Phase 2)
-// Import funnel and audience analyzers (AI Marketing Co-Pilot Phase 3)
+// Import multi-period analyzer (AI Marketing Intelligence Phase 1)
+// Import cross-channel and LTV analyzers (AI Marketing Intelligence Phase 2)
+// Import funnel and audience analyzers (AI Marketing Intelligence Phase 3)
 import {
     MultiPeriodAnalyzer,
     CrossChannelAnalyzer,
@@ -31,7 +31,7 @@ import {
     AudienceAnalyzer
 } from './analyzers';
 
-// Import knowledge base (AI Marketing Co-Pilot Phase 4)
+// Import knowledge base (AI Marketing Intelligence Phase 4)
 import { RecommendationEngine } from './knowledge';
 
 export interface AdOptimizerOptions {
@@ -133,7 +133,7 @@ export class AdOptimizer {
                 processBudgetSuggestions(metaAnalysis, 'Meta', suggestions);
             }
 
-            // Multi-period analysis (AI Marketing Co-Pilot Phase 1)
+            // Multi-period analysis (AI Marketing Intelligence Phase 1)
             const multiPeriodAnalysis = await MultiPeriodAnalyzer.analyze(accountId);
             if (multiPeriodAnalysis.hasData) {
                 combinedSummary.multiPeriod = {
@@ -147,7 +147,7 @@ export class AdOptimizer {
                 }
             }
 
-            // Cross-channel analysis (AI Marketing Co-Pilot Phase 2)
+            // Cross-channel analysis (AI Marketing Intelligence Phase 2)
             const crossChannelAnalysis = await CrossChannelAnalyzer.analyze(accountId);
             if (crossChannelAnalysis.hasData) {
                 combinedSummary.crossChannel = {
@@ -160,7 +160,7 @@ export class AdOptimizer {
                 }
             }
 
-            // LTV analysis (AI Marketing Co-Pilot Phase 2)
+            // LTV analysis (AI Marketing Intelligence Phase 2)
             const ltvAnalysis = await LTVAnalyzer.analyze(accountId);
             if (ltvAnalysis.hasData) {
                 combinedSummary.ltv = {
@@ -173,7 +173,7 @@ export class AdOptimizer {
                 }
             }
 
-            // Funnel analysis (AI Marketing Co-Pilot Phase 3)
+            // Funnel analysis (AI Marketing Intelligence Phase 3)
             const funnelAnalysis = await FunnelAnalyzer.analyze(accountId);
             if (funnelAnalysis.hasData) {
                 combinedSummary.funnel = {
@@ -186,7 +186,7 @@ export class AdOptimizer {
                 }
             }
 
-            // Audience analysis (AI Marketing Co-Pilot Phase 3)
+            // Audience analysis (AI Marketing Intelligence Phase 3)
             const audienceAnalysis = await AudienceAnalyzer.analyze(accountId);
             if (audienceAnalysis.hasData) {
                 combinedSummary.audience = {
@@ -199,7 +199,7 @@ export class AdOptimizer {
                 }
             }
 
-            // Knowledge-base recommendations (AI Marketing Co-Pilot Phase 4)
+            // Knowledge-base recommendations (AI Marketing Intelligence Phase 4)
             const trends = multiPeriodAnalysis.hasData ? {
                 roas: multiPeriodAnalysis.trends.performance_trajectory === 'improving' ? 'improving' as const :
                     multiPeriodAnalysis.trends.performance_trajectory === 'declining' ? 'declining' as const : 'stable' as const,

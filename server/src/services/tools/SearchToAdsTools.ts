@@ -1,7 +1,7 @@
 /**
  * Search-to-Ads Intelligence Tools
  *
- * AI co-pilot tool handlers that expose the SC↔Ads intelligence bridge
+ * AI marketing intelligence tool handlers that expose the SC↔Ads intelligence bridge
  * data during conversational analysis. Surfaces cannibalization,
  * negative keyword candidates, and organic/paid correlation insights.
  */

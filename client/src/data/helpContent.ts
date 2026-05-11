@@ -57,7 +57,7 @@ Instead of loading data from WooCommerce every time you click a page, OverSeek m
 - **Global Command Palette**: Press \`Cmd+K\` (or \`Ctrl+K\`) to navigate anywhere.
 - **Customizable Dashboard**: Drag-and-drop widgets with 17+ analytics and operations options.
 - **Dark Mode**: Premium Glassmorphism design with full light/dark/system theme support.
-- **AI Marketing Co-Pilot**: Intelligent ad optimization with actionable recommendations.
+- **AI Marketing Intelligence**: Intelligent ad optimization with actionable recommendations.
 - **3-Tier Notifications**: In-app, real-time socket, and push notifications.
 - **Mobile PWA**: Full-featured companion app for on-the-go management.
 - **Team Management**: Invite team members with custom roles and granular permissions.
@@ -712,54 +712,10 @@ Go to **Reports > Products** and toggle between "Top Performers" and "Bottom Per
         id: 'col-ai-marketing',
         title: 'AI & Marketing Intelligence',
         slug: 'ai-marketing',
-        description: 'AI Marketing Co-Pilot, Ad Platform Connections, and Optimization.',
+        description: 'AI Marketing Intelligence, Ad Platform Connections, and Optimization.',
         icon: 'TrendingUp',
         order: 4,
         articles: [
-            {
-                id: 'art-ai-copilot',
-                title: 'AI Marketing Co-Pilot Guide',
-                slug: 'ai-marketing-copilot',
-                excerpt: 'Using the intelligent ad optimization advisor to improve campaign performance.',
-                order: 0,
-                collectionSlug: 'ai-marketing',
-                updatedAt: LAST_UPDATED,
-                content: `# AI Marketing Co-Pilot
-
-The AI Marketing Co-Pilot is an intelligent advisor that analyzes your advertising data and provides actionable optimization recommendations.
-
-## How It Works
-
-Instead of manually analyzing spreadsheets, the Co-Pilot:
-1. **Aggregates Data**: Pulls metrics from Google Ads and Meta Ads
-2. **Analyzes Trends**: Compares 7d, 30d, and 90d performance windows
-3. **Applies Intelligence**: Uses marketing best practices and statistical analysis
-4. **Generates Recommendations**: Provides specific, actionable suggestions
-
-## Key Capabilities
-
-### Multi-Period Analysis
-See how campaigns perform across different timeframes with statistical significance scoring to filter out noise.
-
-### Cross-Channel Attribution
-Understand how Google and Meta Ads work together—does Google assist Meta conversions or vice versa?
-
-### LTV-Based Optimization
-Move beyond immediate ROAS to focus on Customer Lifetime Value and payback periods.
-
-### Funnel-Aware Insights
-Different expectations for Top-of-Funnel (awareness) vs. Bottom-of-Funnel (conversion) campaigns.
-
-## Understanding Recommendations
-
-Each suggestion includes:
-- **Confidence Score**: How reliable is this recommendation (based on data volume)
-- **Expected Impact**: Estimated improvement if implemented
-- **Reasoning**: Why the AI made this suggestion
-
-## Taking Action
-Review recommendations in **Marketing > Co-Pilot**. Mark suggestions as "Implemented" or "Dismissed" to help the system learn your preferences.`
-            },
             {
                 id: 'art-ad-connections',
                 title: 'Connecting Ad Platforms',

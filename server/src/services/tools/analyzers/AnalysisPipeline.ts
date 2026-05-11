@@ -1,7 +1,7 @@
 /**
  * Analysis Pipeline
  * 
- * Orchestrates all AI Marketing Co-Pilot analyzers, runs them in parallel,
+ * Orchestrates all AI Marketing Intelligence analyzers, runs them in parallel,
  * and merges results into a unified format.
  */
 

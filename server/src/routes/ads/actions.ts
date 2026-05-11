@@ -309,41 +309,6 @@ export const adsActionsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     /**
-     * GET /roi/summary - Get ROI attribution summary
-     */
-    fastify.get<{ Querystring: { days?: string } }>('/roi/summary', async (request, reply) => {
-        const accountId = getAdsAccountIdOrReply(request, reply);
-        if (!accountId) return;
-
-        try {
-            const { CoPilotROIService } = await import('../../services/CoPilotROIService');
-            const days = parsePositiveInt(request.query.days, 30);
-            const summary = await CoPilotROIService.getROISummary(accountId, days);
-            return { success: true, data: summary };
-        } catch (error: any) {
-            Logger.error('Failed to get ROI summary', { error });
-            return reply.code(500).send({ error: error.message });
-        }
-    });
-
-    /**
-     * GET /roi/quick-stats - Get quick stats for dashboard widget
-     */
-    fastify.get('/roi/quick-stats', async (request, reply) => {
-        const accountId = getAdsAccountIdOrReply(request, reply);
-        if (!accountId) return;
-
-        try {
-            const { CoPilotROIService } = await import('../../services/CoPilotROIService');
-            const stats = await CoPilotROIService.getQuickStats(accountId);
-            return { success: true, data: stats };
-        } catch (error: any) {
-            Logger.error('Failed to get ROI quick stats', { error });
-            return reply.code(500).send({ error: error.message });
-        }
-    });
-
-    /**
      * GET /action-history - Get audit trail of AI actions
      */
     fastify.get<{ Querystring: { page?: string; limit?: string } }>('/action-history', async (request, reply) => {

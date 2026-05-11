@@ -4,7 +4,7 @@
  * Analyzes site search data and organic traffic to find keyword gaps.
  * Identifies high-converting keywords that aren't being bid on.
  * 
- * Part of AI Marketing Co-Pilot Actionable Suggestions Enhancement.
+ * Part of AI Marketing Intelligence Actionable Suggestions Enhancement.
  */
 
 import { prisma } from '../../../utils/prisma';

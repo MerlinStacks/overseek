@@ -1,5 +1,5 @@
 /**
- * Statistical Utilities for AI Marketing Co-Pilot
+ * Statistical Utilities for AI Marketing Intelligence
  * 
  * Provides statistical significance testing and confidence scoring
  * for ad performance recommendations.

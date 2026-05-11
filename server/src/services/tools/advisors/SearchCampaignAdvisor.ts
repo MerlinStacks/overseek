@@ -4,7 +4,7 @@
  * Generates actionable recommendations for Google Search campaigns.
  * Focused on keyword opportunities with real revenue projections based on historical data.
  * 
- * Part of AI Marketing Co-Pilot Enhancement - Search Campaign Suggestions.
+ * Part of AI Marketing Intelligence Enhancement - Search Campaign Suggestions.
  */
 
 import { Logger } from '../../../utils/logger';

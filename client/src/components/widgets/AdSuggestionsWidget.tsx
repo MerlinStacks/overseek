@@ -81,7 +81,7 @@ export function AdSuggestionsWidget(_props: WidgetProps) {
     };
 
     const handleNavigate = () => {
-        navigate('/marketing/ai');
+        navigate('/marketing?tab=performance');
     };
 
     if (loading) {

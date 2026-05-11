@@ -4,7 +4,7 @@
  * Fetches and compares ad performance across multiple time periods (7d, 30d, 90d)
  * to detect trends, anomalies, and provide data-backed recommendations.
  * 
- * Part of AI Marketing Co-Pilot Phase 1.
+ * Part of AI Marketing Intelligence Phase 1.
  */
 
 import { prisma } from '../../../utils/prisma';

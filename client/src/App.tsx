@@ -48,7 +48,6 @@ const InboxPage = lazy(() => import('./pages/InboxPage').then(m => ({ default: m
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 const PaidAdsPage = lazy(() => import('./pages/PaidAdsPage').then(m => ({ default: m.PaidAdsPage })));
 const CAPIHealthPage = lazy(() => import('./pages/CAPIHealthPage').then(m => ({ default: m.CAPIHealthPage })));
-const AdAIPage = lazy(() => import('./pages/AdAIPage').then(m => ({ default: m.AdAIPage })));
 const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.SeoPage })));
 const SeoContentPage = lazy(() => import('./pages/SeoContentPage').then(m => ({ default: m.SeoContentPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
@@ -66,7 +65,6 @@ const UserProfilePage = lazy(() => import('./pages/UserProfilePage').then(m => (
 const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOverviewPage').then(m => ({ default: m.AnalyticsOverviewPage })));
 const RevenuePage = lazy(() => import('./pages/analytics/RevenuePage').then(m => ({ default: m.RevenuePage })));
 const AttributionPage = lazy(() => import('./pages/analytics/AttributionPage').then(m => ({ default: m.AttributionPage })));
-const CohortsPage = lazy(() => import('./pages/analytics/CohortsPage').then(m => ({ default: m.CohortsPage })));
 const CLVPage = lazy(() => import('./pages/analytics/CLVPage').then(m => ({ default: m.CLVPage })));
 
 // Admin pages
@@ -246,7 +244,6 @@ function App() {
                                                 <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
                                                 <Route path="/ads" element={<AccountGuard><PaidAdsPage /></AccountGuard>} />
                                                 <Route path="/conversions/health" element={<AccountGuard><CAPIHealthPage /></AccountGuard>} />
-                                                <Route path="/marketing/ai" element={<AccountGuard><AdAIPage /></AccountGuard>} />
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><BroadcastsPage /></AccountGuard>} />
@@ -256,7 +253,7 @@ function App() {
                                                 <Route path="/analytics" element={<AccountGuard><AnalyticsOverviewPage /></AccountGuard>} />
                                                 <Route path="/analytics/revenue" element={<AccountGuard><RevenuePage /></AccountGuard>} />
                                                 <Route path="/analytics/attribution" element={<AccountGuard><AttributionPage /></AccountGuard>} />
-                                                <Route path="/analytics/cohorts" element={<AccountGuard><CohortsPage /></AccountGuard>} />
+                                                <Route path="/analytics/cohorts" element={<Navigate to="/analytics/attribution" replace />} />
                                                 <Route path="/analytics/clv" element={<AccountGuard><CLVPage /></AccountGuard>} />
 
                                                 <Route path="/reviews" element={<AccountGuard><ReviewsPage /></AccountGuard>} />

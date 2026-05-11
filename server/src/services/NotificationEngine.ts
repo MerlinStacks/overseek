@@ -68,7 +68,7 @@ export class NotificationEngine {
         // Social Message Events
         EventBus.on(EVENTS.SOCIAL.MESSAGE_RECEIVED, this.handleSocialMessage.bind(this));
 
-        // Ad Performance Alerts (AI Marketing Co-Pilot Phase 6)
+        // Ad Performance Alerts (AI Marketing Intelligence Phase 6)
         EventBus.on(EVENTS.AD.ALERT, this.handleAdAlert.bind(this));
 
         // Ad Account Auth Expired
@@ -294,7 +294,7 @@ export class NotificationEngine {
     }
 
     /**
-     * Handle ad performance alert (AI Marketing Co-Pilot Phase 6)
+     * Handle ad performance alert (AI Marketing Intelligence Phase 6)
      */
     private static async handleAdAlert(data: {
         accountId: string;

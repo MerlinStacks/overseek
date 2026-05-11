@@ -12,10 +12,6 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { adsActionsRoutes } from './ads/actions';
 import { adCopyRoutes } from './ads/copy';
-import rebalancerRoutes from './ads/rebalancer';
-import wizardRoutes from './ads/wizard';
-import experimentsRoutes from './ads/experiments';
-import reportsRoutes from './ads/reports';
 import intelligenceRoutes from './ads/intelligence';
 import { getAdsAccountIdOrReply, parsePositiveInt } from './ads/routeHelpers';
 
@@ -127,18 +123,6 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     // Register ad copy generation routes
     await fastify.register(adCopyRoutes, { prefix: '/copy' });
 
-
-    // Register budget rebalancer routes (Phase 3: Campaign Automation)
-    await fastify.register(rebalancerRoutes, { prefix: '/rebalancer' });
-
-    // Register campaign wizard routes (Phase 3: Campaign Automation)
-    await fastify.register(wizardRoutes, { prefix: '/wizard' });
-
-    // Register A/B experiments routes (Phase 4: Creative A/B Engine)
-    await fastify.register(experimentsRoutes, { prefix: '/experiments' });
-
-    // Register executive reports routes (Phase 5: Executive Report Generation)
-    await fastify.register(reportsRoutes, { prefix: '/reports' });
 
     // Register SC↔Ads intelligence routes (Phase 6: Search Intelligence)
     await fastify.register(intelligenceRoutes, { prefix: '/intelligence' });

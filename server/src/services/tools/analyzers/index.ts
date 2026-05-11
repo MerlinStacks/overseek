@@ -1,7 +1,7 @@
 /**
  * Analyzers Index
  * 
- * AI Marketing Co-Pilot analysis modules.
+ * AI Marketing Intelligence analysis modules.
  */
 
 // Base infrastructure

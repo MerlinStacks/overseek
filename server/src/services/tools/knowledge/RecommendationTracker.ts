@@ -1,10 +1,10 @@
 /**
  * Recommendation Tracker
  * 
- * Tracks AI Marketing Co-Pilot recommendations, user interactions,
+ * Tracks AI Marketing Intelligence recommendations, user interactions,
  * and outcomes for continuous learning.
  * 
- * Part of AI Marketing Co-Pilot Phase 5.
+ * Part of AI Marketing Intelligence Phase 5.
  */
 
 import { prisma } from '../../../utils/prisma';

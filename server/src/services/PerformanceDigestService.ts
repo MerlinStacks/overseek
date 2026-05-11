@@ -2,7 +2,7 @@
  * Performance Digest Service
  * 
  * Generates AI-powered weekly/monthly performance summaries
- * and sends them via email. Part of AI Co-Pilot v2.
+ * and sends them via email. Part of AI Marketing Intelligence.
  */
 
 import { prisma } from '../utils/prisma';
@@ -527,7 +527,7 @@ OUTPUT FORMAT (JSON only):
         </div>
         
         <div class="footer">
-            Powered by AI Co-Pilot • ${new Date().getFullYear()}<br>
+            Powered by AI Marketing Intelligence • ${new Date().getFullYear()}<br>
             <a href="#" style="color: #8b5cf6;">View Full Dashboard</a>
         </div>
     </div>

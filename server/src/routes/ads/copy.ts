@@ -2,7 +2,7 @@
  * Ad Copy Generation Routes
  * 
  * REST endpoints for AI-powered ad copy generation.
- * Part of AI Co-Pilot v2 Phase 1.
+ * Part of AI Marketing Intelligence v2 Phase 1.
  */
 
 import { FastifyPluginAsync } from 'fastify';

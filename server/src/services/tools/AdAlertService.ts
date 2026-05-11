@@ -4,7 +4,7 @@
  * Proactive monitoring and alerting for ad performance issues.
  * Integrates with NotificationEngine for push notifications.
  * 
- * Part of AI Marketing Co-Pilot Phase 6.
+ * Part of AI Marketing Intelligence Phase 6.
  */
 
 import { prisma } from '../../utils/prisma';

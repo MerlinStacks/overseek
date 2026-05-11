@@ -4,7 +4,7 @@
  * Provides executive-level marketing intelligence beyond campaign-level optimization.
  * Thinks like a CMO, not just a campaign manager.
  * 
- * Part of AI Marketing Co-Pilot Phase 4: Strategic Intelligence Layer.
+ * Part of AI Marketing Intelligence Phase 4: Strategic Intelligence Layer.
  */
 
 import { Logger } from '../../../utils/logger';

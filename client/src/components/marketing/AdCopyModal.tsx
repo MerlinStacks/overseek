@@ -2,7 +2,7 @@
  * AdCopyModal - AI Ad Copy Generator UI
  * 
  * Modal component for generating ad copy with tone presets
- * and platform selection. Part of AI Co-Pilot v2.
+ * and platform selection. Part of AI Marketing Intelligence v2.
  */
 
 import { useState, useEffect, useCallback } from 'react';

@@ -1,7 +1,7 @@
 /**
  * Analysis Types
  * 
- * Shared type definitions for the AI Marketing Co-Pilot analysis pipeline.
+ * Shared type definitions for the AI Marketing Intelligence analysis pipeline.
  */
 
 import { SuggestionCategory } from '../config/MarketingCopilotConfig';

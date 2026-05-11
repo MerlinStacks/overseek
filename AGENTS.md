@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-OverSeek v2 is a self-hosted WooCommerce command center (analytics, unified inbox, AI co-pilot, inventory management). It is a monorepo with a React 19 frontend, Fastify 5 backend, and a WordPress/WooCommerce plugin.
+OverSeek v2 is a self-hosted WooCommerce command center (analytics, unified inbox, AI marketing intelligence, inventory management). It is a monorepo with a React 19 frontend, Fastify 5 backend, and a WordPress/WooCommerce plugin.
 
 ## Commands
 

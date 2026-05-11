@@ -4,7 +4,7 @@
  * Identifies products that are selling well but not being advertised,
  * or products that should have dedicated campaigns based on performance.
  * 
- * Part of AI Marketing Co-Pilot Actionable Suggestions Enhancement.
+ * Part of AI Marketing Intelligence Actionable Suggestions Enhancement.
  */
 
 import { prisma } from '../../../utils/prisma';

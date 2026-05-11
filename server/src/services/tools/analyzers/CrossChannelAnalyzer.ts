@@ -4,7 +4,7 @@
  * Correlates Google and Meta ad performance using attribution data.
  * Identifies assisted conversions and provides cross-platform budget recommendations.
  * 
- * Part of AI Marketing Co-Pilot Phase 2.
+ * Part of AI Marketing Intelligence Phase 2.
  */
 
 import { prisma } from '../../../utils/prisma';
