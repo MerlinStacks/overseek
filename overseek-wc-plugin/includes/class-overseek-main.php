@@ -75,6 +75,8 @@ class OverSeek_Main
 		add_action('admin_menu', [$admin, 'add_menu_page']);
 		add_action('admin_init', [$admin, 'register_settings']);
 		add_action('admin_enqueue_scripts', [$admin, 'enqueue_assets']);
+		add_action('admin_post_overseek_sync_blocked_agents', [$admin, 'handle_sync_blocked_agents']);
+		add_action('admin_post_overseek_test_bot_shield', [$admin, 'handle_test_bot_shield']);
 
 		// Initialize Frontend.
 		$frontend = new OverSeek_Frontend();
@@ -108,4 +110,3 @@ class OverSeek_Main
 		new OverSeek_Web_Vitals();
 	}
 }
-

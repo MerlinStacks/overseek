@@ -128,8 +128,7 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
             } catch (authError: any) {
                 Logger.error('Credential Verification Failed', { error: authError.message });
                 return reply.code(401).send({
-                    error: 'Invalid WooCommerce Credentials. Please check your Consumer Key and Secret.',
-                    details: authError.message
+                    error: 'Invalid WooCommerce credentials. Please check your Consumer Key and Secret.'
                 });
             }
 
@@ -144,8 +143,7 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
 
                 if (pluginError.response?.status === 401) {
                     return reply.code(401).send({
-                        error: 'Configuration failed. Your API Key appears to be "Read Only". Please generate new WooCommerce keys with "Read/Write" permissions.',
-                        details: pluginError.response.data
+                        error: 'Configuration failed. Your API key appears to be read-only. Generate new WooCommerce keys with Read/Write permissions.'
                     });
                 }
 
@@ -171,9 +169,8 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             return reply.code(500).send({
-                error: `${userMessage} (${error.message}) - ${JSON.stringify(error.response?.data || {})}`,
-                technical_details: error.message,
-                woo_response: error.response?.data
+                error: userMessage,
+                requestId: (request as any).requestId
             });
         }
     });

@@ -30,7 +30,6 @@ const loginSchema = z.object({
 });
 
 const resetPasswordSchema = z.object({
-    email: z.string().email(),
     token: z.string(),
     newPassword: z.string().min(8, 'Password must be at least 8 characters')
 });
@@ -518,12 +517,17 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             if (!parsed.success) {
                 return reply.code(400).send({ error: parsed.error.issues[0].message });
             }
-            const { email, token, newPassword } = parsed.data;
+            const { token, newPassword } = parsed.data;
 
             // Hash the incoming token to compare against stored hash
             const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
-            const user = await prisma.user.findUnique({ where: { email } });
+            const user = await prisma.user.findFirst({
+                where: {
+                    resetToken: hashedToken,
+                    resetTokenExpiry: { gte: new Date() }
+                }
+            });
             if (!user || !user.resetToken || user.resetToken !== hashedToken || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
                 return reply.code(400).send({ error: 'Invalid or expired token' });
             }

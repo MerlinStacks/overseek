@@ -151,7 +151,8 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 
             const ecommerceTypes = ['add_to_cart', 'remove_from_cart', 'cart_view', 'checkout_view', 'checkout_start', 'purchase'];
             if (ecommerceTypes.includes(type)) {
-                Logger.info('E-commerce event received', { type, visitorId, accountId, payload });
+                const payloadKeys = payload && typeof payload === 'object' ? Object.keys(payload) : [];
+                Logger.info('E-commerce event received', { type, visitorId, accountId, payloadKeys });
             }
 
             return { success: true };
@@ -223,6 +224,14 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!accountId || !visitorId || !eventName) {
                 return reply.code(400).send({ error: 'Missing required fields' });
+            }
+
+            if (!(await isValidAccount(accountId))) {
+                return reply.code(400).send({ error: 'Invalid account' });
+            }
+
+            if (isRateLimited(accountId)) {
+                return reply.code(429).send({ error: 'Rate limit exceeded' });
             }
 
             await TrackingService.processEvent({

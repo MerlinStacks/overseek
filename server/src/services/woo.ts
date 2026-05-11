@@ -59,6 +59,14 @@ export class WooService {
 
     private static readonly MAX_AGENTS = 50;
 
+    private static shouldRejectUnauthorizedTls(): boolean {
+        const allowInsecure = process.env.ALLOW_INSECURE_TLS === 'true';
+        if (allowInsecure && process.env.NODE_ENV !== 'production') {
+            return false;
+        }
+        return true;
+    }
+
     static getAgentMetrics() {
         let sockets = 0;
         let freeSockets = 0;
@@ -97,7 +105,7 @@ export class WooService {
         }
 
         agent = new https.Agent({
-            rejectUnauthorized: false,
+            rejectUnauthorized: WooService.shouldRejectUnauthorizedTls(),
             servername: hostname,
             keepAlive: true,
             maxSockets: 10,
@@ -349,6 +357,56 @@ export class WooService {
             context: 'view'
         };
         return this.requestWpWithRetry('posts', apiParams);
+    }
+
+    async updatePage(id: number, data: { title?: string; content?: string; excerpt?: string; status?: string }, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug(`[Demo] Updated Page ${id}`, { data });
+            return { id, ...data };
+        }
+
+        const wpApi = new WooCommerceRestApi({
+            url: this.url,
+            consumerKey: this.consumerKey,
+            consumerSecret: this.consumerSecret,
+            version: 'wp/v2' as any,
+            queryStringAuth: true,
+            axiosConfig: this.axiosConfig
+        });
+
+        const response = await wpApi.put(`pages/${id}`, data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(this.accountId, userId || null, 'UPDATE', 'PAGE', id.toString(), data);
+        }
+
+        return response.data;
+    }
+
+    async updatePost(id: number, data: { title?: string; content?: string; excerpt?: string; status?: string }, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug(`[Demo] Updated Post ${id}`, { data });
+            return { id, ...data };
+        }
+
+        const wpApi = new WooCommerceRestApi({
+            url: this.url,
+            consumerKey: this.consumerKey,
+            consumerSecret: this.consumerSecret,
+            version: 'wp/v2' as any,
+            queryStringAuth: true,
+            axiosConfig: this.axiosConfig
+        });
+
+        const response = await wpApi.put(`posts/${id}`, data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(this.accountId, userId || null, 'UPDATE', 'BLOG_POST', id.toString(), data);
+        }
+
+        return response.data;
     }
 
     /**

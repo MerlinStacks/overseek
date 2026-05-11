@@ -8,6 +8,8 @@
  */
 
 import { FastifyRequest } from 'fastify';
+import crypto from 'crypto';
+import { redisClient } from '../utils/redis';
 
 /**
  * Derive the external-facing API base URL.
@@ -65,4 +67,57 @@ export function buildFrontendUrl(
         url.searchParams.set(key, value);
     }
     return url.toString();
+}
+
+type OauthStatePayload = {
+    accountId: string;
+    frontendRedirect: string;
+    reconnectId?: string;
+    provider: string;
+};
+
+function getOauthStateSecret(): string {
+    return process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET || 'local-dev-oauth-state-secret';
+}
+
+export async function createSignedOauthState(payload: OauthStatePayload): Promise<string> {
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const exp = Date.now() + (10 * 60 * 1000);
+    const body = { ...payload, nonce, exp };
+    const encodedBody = Buffer.from(JSON.stringify(body)).toString('base64url');
+    const signature = crypto.createHmac('sha256', getOauthStateSecret()).update(encodedBody).digest('base64url');
+
+    try {
+        await redisClient.set(`oauth:state:${nonce}`, '1', 'EX', 10 * 60);
+    } catch {
+        // Keep OAuth operational if Redis is temporarily unavailable.
+    }
+
+    return `${encodedBody}.${signature}`;
+}
+
+export async function verifySignedOauthState<T extends OauthStatePayload>(state: string): Promise<T | null> {
+    if (!state || !state.includes('.')) return null;
+
+    const [encodedBody, signature] = state.split('.', 2);
+    const expectedSignature = crypto.createHmac('sha256', getOauthStateSecret()).update(encodedBody).digest('base64url');
+
+    if (signature !== expectedSignature) return null;
+
+    try {
+        const parsed = JSON.parse(Buffer.from(encodedBody, 'base64url').toString('utf-8')) as T & { nonce: string; exp: number };
+        if (!parsed?.nonce || !parsed?.exp || parsed.exp < Date.now()) return null;
+
+        try {
+            const redisKey = `oauth:state:${parsed.nonce}`;
+            const consumed = await redisClient.del(redisKey);
+            if (consumed === 0) return null;
+        } catch {
+            // If Redis is unavailable, signature+expiry still protects integrity.
+        }
+
+        return parsed as T;
+    } catch {
+        return null;
+    }
 }

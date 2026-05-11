@@ -128,6 +128,44 @@
 	margin: 0 0 18px;
 }
 
+.overseek-admin__tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 0 0 18px;
+	padding: 12px;
+	border: 1px solid var(--overseek-border);
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.72);
+}
+
+.overseek-admin__tab {
+	border: 1px solid rgba(29, 53, 87, 0.18);
+	background: rgba(255, 255, 255, 0.92);
+	color: #24425f;
+	border-radius: 999px;
+	padding: 8px 14px;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.overseek-admin__tab:hover {
+	border-color: rgba(15, 118, 110, 0.35);
+	color: #0b5f58;
+}
+
+.overseek-admin__tab.is-active {
+	background: rgba(15, 118, 110, 0.12);
+	border-color: rgba(15, 118, 110, 0.45);
+	color: #0b5f58;
+}
+
+.overseek-admin__tab-panel[hidden] {
+	display: none !important;
+}
+
 .overseek-admin__grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -136,6 +174,17 @@
 
 .overseek-admin__card {
 	padding: 24px;
+}
+
+.overseek-admin__card--muted {
+	opacity: 0.7;
+	background: rgba(249, 251, 253, 0.88);
+	border-style: dashed;
+}
+
+.overseek-admin__card--muted .overseek-admin__callout,
+.overseek-admin__card--muted .overseek-admin__keyvals > div {
+	background: rgba(245, 248, 251, 0.7);
 }
 
 .overseek-admin__card-header {

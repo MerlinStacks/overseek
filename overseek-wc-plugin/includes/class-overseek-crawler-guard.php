@@ -40,6 +40,15 @@ class OverSeek_Crawler_Guard
     /** @var int Transient TTL in seconds (2 hours — buffer beyond 1-hour cron). */
     private const TRANSIENT_TTL = 7200;
 
+    /** @var int Cache age in seconds after which we trigger recovery sync. */
+    private const STALE_AFTER = 3 * HOUR_IN_SECONDS;
+
+    /** @var string Transient key suffix for last sync error details. */
+    private const ERROR_SUFFIX = '_last_error';
+
+    /** @var string Transient key suffix for last sync attempt timestamp. */
+    private const ATTEMPT_SUFFIX = '_last_attempt';
+
     /**
      * Initialize the crawler guard.
      * Hooks into template_redirect (priority 1) to block bots before page render.
@@ -100,6 +109,16 @@ class OverSeek_Crawler_Guard
             return;
         }
 
+        $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper((string) $_SERVER['REQUEST_METHOD']) : 'GET';
+        if ($method !== 'GET' && $method !== 'HEAD') {
+            return;
+        }
+
+        $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '';
+        if ($this->should_skip_path($uri)) {
+            return;
+        }
+
         $user_agent = isset($_SERVER['HTTP_USER_AGENT'])
             ? strtolower($_SERVER['HTTP_USER_AGENT'])
             : '';
@@ -111,8 +130,13 @@ class OverSeek_Crawler_Guard
         $cached = get_transient($this->transient_key);
         if (empty($cached) || !is_array($cached)) {
             // Fail-open: no cache = no blocking, but still report unknown bots
+            $this->maybe_schedule_recovery_sync();
             $this->maybe_report_bot($user_agent);
             return;
+        }
+
+        if ($this->is_cache_stale($cached)) {
+            $this->maybe_schedule_recovery_sync();
         }
 
         $patterns   = isset($cached['patterns']) && is_array($cached['patterns']) ? $cached['patterns'] : array();
@@ -169,7 +193,12 @@ class OverSeek_Crawler_Guard
 
         $cached = get_transient($this->transient_key);
         if (empty($cached) || !is_array($cached)) {
+            $this->maybe_schedule_recovery_sync();
             return $result;
+        }
+
+        if ($this->is_cache_stale($cached)) {
+            $this->maybe_schedule_recovery_sync();
         }
 
         $patterns = isset($cached['patterns']) && is_array($cached['patterns']) ? $cached['patterns'] : array();
@@ -331,6 +360,7 @@ HTML;
      */
     public function sync_blocked_list(): void
     {
+        set_transient($this->transient_key . self::ATTEMPT_SUFFIX, time(), DAY_IN_SECONDS);
         $url = $this->api_url . '/api/crawlers/blocked-agents';
 
         $response = wp_remote_get($url, array(
@@ -343,27 +373,126 @@ HTML;
         ));
 
         if (is_wp_error($response)) {
+            set_transient($this->transient_key . self::ERROR_SUFFIX, 'Network error: ' . $response->get_error_message(), DAY_IN_SECONDS);
             // Fail silently — stale transient still in use
             return;
         }
 
         $status = wp_remote_retrieve_response_code($response);
         if ($status !== 200) {
+            set_transient($this->transient_key . self::ERROR_SUFFIX, 'API returned HTTP ' . (string) $status, DAY_IN_SECONDS);
             return;
         }
 
         $data = OverSeek_HTTP_Utils::decode_json_response($response);
 
         if (!is_array($data)) {
+            set_transient($this->transient_key . self::ERROR_SUFFIX, 'Invalid JSON payload from API', DAY_IN_SECONDS);
             return;
         }
 
+        $raw_patterns = isset($data['patterns']) && is_array($data['patterns']) ? $data['patterns'] : array();
+        $patterns = $this->normalize_patterns($raw_patterns);
+
         $cache_data = array(
-            'patterns'      => isset($data['patterns']) && is_array($data['patterns']) ? $data['patterns'] : array(),
+            'patterns'      => $patterns,
             'blockPageHtml' => isset($data['blockPageHtml']) ? $data['blockPageHtml'] : '',
+            'fetchedAt'     => time(),
         );
 
         set_transient($this->transient_key, $cache_data, self::TRANSIENT_TTL);
+        delete_transient($this->transient_key . self::ERROR_SUFFIX);
+    }
+
+    /**
+     * Normalize and deduplicate blocked patterns.
+     *
+     * @param array<int, mixed> $raw_patterns Raw API patterns.
+     * @return array<int, string>
+     */
+    private function normalize_patterns(array $raw_patterns): array
+    {
+        $normalized = array();
+
+        foreach ($raw_patterns as $pattern) {
+            if (!is_string($pattern)) {
+                continue;
+            }
+            $value = strtolower(trim($pattern));
+            if ($value === '') {
+                continue;
+            }
+            $normalized[$value] = true;
+        }
+
+        return array_keys($normalized);
+    }
+
+    /**
+     * Skip expensive bot checks for non-page routes.
+     */
+    private function should_skip_path(string $request_uri): bool
+    {
+        if ($request_uri === '') {
+            return false;
+        }
+
+        $path = (string) wp_parse_url($request_uri, PHP_URL_PATH);
+        if ($path === '') {
+            return false;
+        }
+
+        if (
+            strpos($path, '/wp-admin/') === 0 ||
+            strpos($path, '/wp-content/') === 0 ||
+            strpos($path, '/wp-includes/') === 0 ||
+            strpos($path, '/wp-json/') === 0
+        ) {
+            return true;
+        }
+
+        if (strpos($path, '/feed') !== false || strpos($request_uri, 'preview=true') !== false) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Schedule a near-term one-off sync if cron is delayed or cache is stale.
+     *
+     * Uses a short backoff transient to prevent scheduling storms.
+     */
+    private function maybe_schedule_recovery_sync(): void
+    {
+        $backoff_key = $this->transient_key . '_recover_backoff';
+        if (false !== get_transient($backoff_key)) {
+            return;
+        }
+
+        set_transient($backoff_key, 1, 5 * MINUTE_IN_SECONDS);
+        wp_schedule_single_event(time() + 15, self::CRON_HOOK);
+    }
+
+    /**
+     * Determine whether cached block data is stale.
+     *
+     * Backward compatibility: older cache payloads without fetchedAt are treated
+     * as stale so they trigger a background refresh but continue serving safely.
+     *
+     * @param mixed $cached Cached transient payload.
+     */
+    private function is_cache_stale($cached): bool
+    {
+        if (!is_array($cached)) {
+            return true;
+        }
+
+        if (!isset($cached['fetchedAt']) || !is_numeric($cached['fetchedAt'])) {
+            return true;
+        }
+
+        return ((int) $cached['fetchedAt']) < (time() - self::STALE_AFTER);
     }
 
     /**

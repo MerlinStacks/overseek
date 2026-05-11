@@ -1309,6 +1309,8 @@ model WooPage {
   permalink String?
   content   String @db.Text
   excerpt   String @db.Text
+  seoScore  Int?   @default(0)
+  seoData   Json?  @default("{}")
 
   dateCreated  DateTime
   dateModified DateTime
@@ -1336,6 +1338,8 @@ model WooBlogPost {
   permalink String?
   content   String @db.Text
   excerpt   String @db.Text
+  seoScore  Int?   @default(0)
+  seoData   Json?  @default("{}")
 
   dateCreated  DateTime
   dateModified DateTime

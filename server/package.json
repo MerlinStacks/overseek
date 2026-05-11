@@ -13,6 +13,7 @@
         "lint": "eslint ."
     },
     "dependencies": {
+        "@overseek/core": "1.0.0",
         "@bull-board/api": "^6.16.2",
         "@bull-board/fastify": "^6.16.2",
         "@elastic/elasticsearch": "^9.2.0",

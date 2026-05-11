@@ -142,9 +142,9 @@ export function LoginPage() {
                             </div>
 
                             <div className="text-sm">
-                                <a href="#" className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
+                                <Link to="/forgot-password" className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
                                     Forgot password?
-                                </a>
+                                </Link>
                             </div>
                         </div>
 
@@ -169,4 +169,3 @@ export function LoginPage() {
         </div>
     );
 }
-

@@ -13,7 +13,7 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { MetaMessagingService } from '../services/messaging/MetaMessagingService';
 import { MetaTokenService } from '../services/meta/MetaTokenService';
-import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
+import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState } from './oauthHelpers';
 import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 /** Current Meta Graph API version */
@@ -53,7 +53,12 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             const reconnectId = query.reconnectId;
 
             const { appId } = await MetaTokenService.getCredentials('META_ADS');
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
+            const state = await createSignedOauthState({
+                accountId,
+                frontendRedirect,
+                reconnectId,
+                provider: 'META_ADS'
+            });
 
             const callbackUrl = buildCallbackUrl(request, 'meta/ads/callback');
 
@@ -83,13 +88,11 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             }
             if (!code || !state) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
-            let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
-            try {
-                stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-                if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
-            } catch {
+            const stateData = await verifySignedOauthState<{ accountId: string; frontendRedirect: string; reconnectId?: string; provider: string }>(state);
+            if (!stateData || stateData.provider !== 'META_ADS') {
                 return reply.redirect(buildFrontendUrl(defaultPath, { error: 'invalid_state' }));
             }
+            if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
 
             const { appId, appSecret } = await MetaTokenService.getCredentials('META_ADS');
             const callbackUrl = buildCallbackUrl(request, 'meta/ads/callback');
@@ -167,7 +170,11 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Use MetaTokenService for unified credential access
             const { appId } = await MetaTokenService.getCredentials('META_MESSAGING');
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect })).toString('base64url');
+            const state = await createSignedOauthState({
+                accountId,
+                frontendRedirect,
+                provider: 'META_MESSAGING'
+            });
 
             const callbackUrl = buildCallbackUrl(request, 'meta/messaging/callback');
 
@@ -197,7 +204,10 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
             }
             if (!code || !state) return reply.redirect(buildFrontendUrl(defaultPath, { error: 'missing_params' }));
 
-            const stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
+            const stateData = await verifySignedOauthState<{ accountId: string; frontendRedirect: string; provider: string }>(state);
+            if (!stateData || stateData.provider !== 'META_MESSAGING') {
+                return reply.redirect(buildFrontendUrl(defaultPath, { error: 'invalid_state' }));
+            }
             if (stateData.frontendRedirect) redirectPath = stateData.frontendRedirect;
             const accountId = stateData.accountId;
 

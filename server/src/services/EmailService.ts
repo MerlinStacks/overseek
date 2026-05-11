@@ -25,6 +25,14 @@ export class EmailService {
     private static readonly RELAY_MAX_ATTACHMENTS = 10;
     private static readonly RELAY_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
+    private shouldRejectUnauthorizedTls(): boolean {
+        const allowInsecure = process.env.ALLOW_INSECURE_TLS === 'true';
+        if (allowInsecure && process.env.NODE_ENV !== 'production') {
+            return false;
+        }
+        return true;
+    }
+
     // -------------------
     // Sending (SMTP)
     // -------------------
@@ -52,7 +60,7 @@ export class EmailService {
                 pass: decryptedPassword,
             },
             tls: {
-                rejectUnauthorized: false,
+                rejectUnauthorized: this.shouldRejectUnauthorizedTls(),
                 servername: account.smtpHost
             },
             // Timeout configuration to prevent infinite hangs
@@ -481,7 +489,7 @@ export class EmailService {
                         pass: account.password,
                     },
                     tls: {
-                        rejectUnauthorized: false,
+                        rejectUnauthorized: this.shouldRejectUnauthorizedTls(),
                         servername: account.host
                     }
                 });
@@ -505,7 +513,7 @@ export class EmailService {
                     },
                     logger: false,
                     tls: {
-                        rejectUnauthorized: false,
+                        rejectUnauthorized: this.shouldRejectUnauthorizedTls(),
                     } as any
                 });
 
@@ -582,7 +590,7 @@ export class EmailService {
             greetingTimeout: 10000,   // 10 second greeting timeout (reduced)
             socketTimeout: 30000,     // 30 second socket timeout (reduced from 60s)
             tls: {
-                rejectUnauthorized: false,
+                rejectUnauthorized: this.shouldRejectUnauthorizedTls(),
             } as any
         });
 

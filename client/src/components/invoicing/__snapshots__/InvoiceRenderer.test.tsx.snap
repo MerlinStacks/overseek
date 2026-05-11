@@ -3,200 +3,207 @@
 exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal footer from settings 1`] = `
 <div>
   <div
-    class="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50 p-4"
+    class="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50"
     style="min-height: auto;"
   >
     <div
-      class="grid gap-x-4 gap-y-2"
-      style="grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: repeat(4, 30px); min-height: 120px;"
+      style="min-height: 120px;"
     >
       <div
-        style="grid-column: 1 / span 6; grid-row: 1 / span 2; min-width: 0;"
+        class="react-grid-layout layout"
+        style="height: 160px;"
       >
         <div
-          class="py-3"
-        >
-          <table
-            class="w-full text-sm table-fixed"
-          >
-            <tbody>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Invoice Number:
-                </td>
-                <td
-                  class="font-medium text-slate-800"
-                >
-                  INV-01234
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Invoice Date:
-                </td>
-                <td
-                  class="font-medium text-slate-800"
-                >
-                  26/04/2026
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Due Date:
-                </td>
-                <td
-                  class="font-medium text-slate-800"
-                >
-                  03/05/2026
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Order Number:
-                </td>
-                <td
-                  class="font-medium text-slate-800"
-                >
-                  1001
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Order Date:
-                </td>
-                <td
-                  class="font-medium text-slate-800"
-                >
-                  20/04/2026
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Payment Method:
-                </td>
-                <td
-                  class="font-medium text-slate-800 break-words"
-                >
-                  Card
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                >
-                  Shipping Method:
-                </td>
-                <td
-                  class="font-medium text-slate-800 break-words"
-                >
-                  Express
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div
-        style="grid-column: 7 / span 6; grid-row: 1 / span 2; min-width: 0;"
-      >
-        <div
-          class="py-2 border border-cyan-200 rounded-lg bg-cyan-50/40 p-3"
+          class="react-grid-item bg-white overflow-hidden min-w-0 react-resizable-hide react-resizable"
+          style="top: 8px; left: 16px; width: 616px; height: 68px; position: absolute;"
         >
           <div
-            class="text-xs uppercase tracking-wider text-cyan-700 font-semibold mb-2"
+            class="py-3"
           >
-            Payment
-          </div>
-          <div
-            class="space-y-2"
-          >
-            <div
-              class="text-sm text-cyan-700 break-all"
+            <table
+              class="w-full text-sm table-fixed"
             >
-              Pay now
-              : 
-              https://pay.example.com/invoice/INV-01234
-            </div>
-            <div
-              class="w-16 h-16 rounded-md border border-cyan-300 bg-white grid grid-cols-4 gap-0.5 p-1"
-            >
-              <div
-                class="bg-cyan-700 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-700 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-700 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-700 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-700 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-100 rounded-xs"
-              />
-              <div
-                class="bg-cyan-700 rounded-xs"
-              />
-            </div>
+              <tbody>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Invoice Number:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800"
+                  >
+                    INV-01234
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Invoice Date:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800"
+                  >
+                    26/04/2026
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Due Date:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800"
+                  >
+                    03/05/2026
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Order Number:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800"
+                  >
+                    1001
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Order Date:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800"
+                  >
+                    20/04/2026
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Payment Method:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800 break-words"
+                  >
+                    Card
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                  >
+                    Shipping Method:
+                  </td>
+                  <td
+                    class="font-medium text-slate-800 break-words"
+                  >
+                    Express
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
-      <div
-        style="grid-column: 1 / span 12; grid-row: 3 / span 2; min-width: 0;"
-      >
         <div
-          class="py-3 text-center text-sm text-slate-500 bg-white relative z-20"
+          class="react-grid-item bg-white overflow-hidden min-w-0 react-resizable-hide react-resizable"
+          style="top: 8px; left: 648px; width: 616px; height: 68px; position: absolute;"
         >
-          <div>
-            Thanks for your order
-          </div>
           <div
-            class="mt-1 text-xs text-slate-400 whitespace-pre-wrap"
+            class="py-2 border border-cyan-200 rounded-lg bg-cyan-50/40 p-3"
           >
-            ABN 12 345 678 901
+            <div
+              class="text-xs uppercase tracking-wider text-cyan-700 font-semibold mb-2"
+            >
+              Payment
+            </div>
+            <div
+              class="space-y-2"
+            >
+              <div
+                class="text-sm text-cyan-700 break-all"
+              >
+                Pay now
+                : 
+                https://pay.example.com/invoice/INV-01234
+              </div>
+              <div
+                class="w-16 h-16 rounded-md border border-cyan-300 bg-white grid grid-cols-4 gap-0.5 p-1"
+              >
+                <div
+                  class="bg-cyan-700 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-700 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-700 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-700 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-700 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-100 rounded-xs"
+                />
+                <div
+                  class="bg-cyan-700 rounded-xs"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          class="react-grid-item bg-white overflow-hidden min-w-0 react-resizable-hide react-resizable"
+          style="top: 84px; left: 16px; width: 1248px; height: 68px; position: absolute;"
+        >
+          <div
+            class="py-3 text-center text-sm text-slate-500 bg-white relative z-20"
+          >
+            <div>
+              Thanks for your order
+            </div>
+            <div
+              class="mt-1 text-xs text-slate-400 whitespace-pre-wrap"
+            >
+              ABN 12 345 678 901
+            </div>
           </div>
         </div>
       </div>

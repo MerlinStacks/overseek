@@ -40,6 +40,14 @@ class OverSeek_Admin
 			array(),
 			OVERSEEK_WC_VERSION
 		);
+
+		wp_enqueue_script(
+			'overseek-admin-tabs',
+			OVERSEEK_WC_PLUGIN_URL . 'assets/admin-tabs.js',
+			array(),
+			OVERSEEK_WC_VERSION,
+			true
+		);
 	}
 
 	/**
@@ -164,6 +172,13 @@ class OverSeek_Admin
 		$status_description = $is_configured
 			? 'Your store is linked. Save updates here and verify activity from the OverSeek dashboard.'
 			: 'Paste the connection JSON from your OverSeek dashboard to finish linking this store.';
+		$bot_shield_health  = $this->get_bot_shield_health($account_id, $is_configured);
+		$sync_notice        = isset($_GET['overseek_bot_shield_notice'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_bot_shield_notice']))
+			: '';
+		$test_notice        = isset($_GET['overseek_bot_shield_test'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_bot_shield_test']))
+			: '';
 		?>
 		<div class="wrap overseek-admin">
 			<div class="overseek-admin__hero">
@@ -199,13 +214,31 @@ class OverSeek_Admin
 			</div>
 
 			<?php settings_errors('overseek_connection_config'); ?>
+			<?php if ($sync_notice === 'success') : ?>
+				<div class="notice notice-success is-dismissible"><p>Bot Shield sync completed successfully.</p></div>
+			<?php elseif ($sync_notice === 'failed') : ?>
+				<div class="notice notice-error is-dismissible"><p>Bot Shield sync failed. Verify account connection, API URL, and outbound connectivity.</p></div>
+			<?php endif; ?>
+			<?php if ($test_notice === 'pass') : ?>
+				<div class="notice notice-success is-dismissible"><p>Bot Shield test passed: cached patterns are available and matcher is operational.</p></div>
+			<?php elseif ($test_notice === 'warn') : ?>
+				<div class="notice notice-warning is-dismissible"><p>Bot Shield test warning: no cached patterns available yet.</p></div>
+			<?php endif; ?>
 
 			<form method="post" action="options.php" class="overseek-admin__form">
 				<?php settings_fields('overseek_options_group'); ?>
 				<?php do_settings_sections('overseek_options_group'); ?>
 
+				<div class="overseek-admin__tabs" role="tablist" aria-label="OverSeek settings sections">
+					<button type="button" class="overseek-admin__tab is-active" role="tab" aria-selected="true" data-tab-target="connection">Connection</button>
+					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="bot-shield">Bot Shield</button>
+					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="storefront">Storefront</button>
+					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="email-relay">Email Relay</button>
+					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="privacy">Privacy</button>
+				</div>
+
 				<div class="overseek-admin__grid">
-					<section class="overseek-admin__card">
+					<section class="overseek-admin__card <?php echo !$is_configured ? 'overseek-admin__card--muted' : ''; ?> overseek-admin__tab-panel" data-tab-panel="connection">
 						<div class="overseek-admin__card-header">
 							<div>
 								<h2>Connection</h2>
@@ -239,7 +272,73 @@ class OverSeek_Admin
 						</div>
 					</section>
 
-					<section class="overseek-admin__card">
+					<section class="overseek-admin__card overseek-admin__tab-panel" data-tab-panel="bot-shield" hidden>
+						<div class="overseek-admin__card-header">
+							<div>
+								<h2>Bot Shield Health</h2>
+								<p>Quick visibility into crawler block-list sync status on this store.</p>
+							</div>
+							<span class="overseek-admin__status <?php echo esc_attr($bot_shield_health['statusClass']); ?>">
+								<?php echo esc_html($bot_shield_health['statusLabel']); ?>
+							</span>
+						</div>
+
+						<div class="overseek-admin__callout">
+							<strong><?php echo esc_html($bot_shield_health['headline']); ?></strong>
+							<p><?php echo esc_html($bot_shield_health['message']); ?></p>
+						</div>
+						<?php if (!empty($bot_shield_health['syncError'])) : ?>
+							<div class="notice notice-warning inline"><p><strong>Last sync error:</strong> <?php echo esc_html($bot_shield_health['syncError']); ?></p></div>
+						<?php endif; ?>
+						<?php if (!empty($bot_shield_health['cronWarning'])) : ?>
+							<div class="notice notice-warning inline"><p><strong>Cron warning:</strong> <?php echo esc_html($bot_shield_health['cronWarning']); ?></p></div>
+						<?php endif; ?>
+
+						<div class="overseek-admin__keyvals">
+							<div>
+								<span class="overseek-admin__key">Last successful sync</span>
+								<code><?php echo esc_html($bot_shield_health['lastSyncLabel']); ?></code>
+							</div>
+							<div>
+								<span class="overseek-admin__key">Blocked patterns cached</span>
+								<code><?php echo esc_html((string) $bot_shield_health['patternCount']); ?></code>
+							</div>
+						</div>
+
+						<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top: 10px;">
+							<input type="hidden" name="action" value="overseek_sync_blocked_agents" />
+							<?php wp_nonce_field('overseek_sync_blocked_agents', 'overseek_sync_nonce'); ?>
+							<?php submit_button(
+								'Sync Bot Shield now',
+								'secondary',
+								'submit',
+								false,
+								array(
+									'disabled' => !$is_configured,
+									'title'    => $is_configured ? 'Fetch latest blocked crawler list from OverSeek.' : 'Connect your OverSeek account to enable Bot Shield sync.',
+								)
+							); ?>
+						</form>
+
+						<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top: 8px;">
+							<input type="hidden" name="action" value="overseek_test_bot_shield" />
+							<?php wp_nonce_field('overseek_test_bot_shield', 'overseek_test_nonce'); ?>
+							<?php submit_button(
+								'Test Bot Shield',
+								'secondary',
+								'submit',
+								false,
+								array(
+									'disabled' => !$is_configured,
+									'title'    => $is_configured ? 'Run a local health test against cached bot patterns.' : 'Connect your OverSeek account to enable Bot Shield tests.',
+								)
+							); ?>
+						</form>
+
+						<p class="overseek-admin__hint">If this remains stale, check WP-Cron and run a real server cron for <code>wp-cron.php</code> every 5 minutes.</p>
+					</section>
+
+					<section class="overseek-admin__card overseek-admin__tab-panel" data-tab-panel="storefront" hidden>
 						<div class="overseek-admin__card-header">
 							<div>
 								<h2>Storefront Features</h2>
@@ -263,7 +362,7 @@ class OverSeek_Admin
 						</label>
 					</section>
 
-					<section class="overseek-admin__card">
+					<section class="overseek-admin__card overseek-admin__tab-panel" data-tab-panel="email-relay" hidden>
 						<div class="overseek-admin__card-header">
 							<div>
 								<h2>Email Relay</h2>
@@ -284,7 +383,7 @@ class OverSeek_Admin
 						</div>
 					</section>
 
-					<section class="overseek-admin__card">
+					<section class="overseek-admin__card overseek-admin__tab-panel" data-tab-panel="privacy" hidden>
 						<div class="overseek-admin__card-header">
 							<div>
 								<h2>Privacy Controls</h2>
@@ -348,5 +447,170 @@ class OverSeek_Admin
 			</span>
 		</label>
 		<?php
+	}
+
+	/**
+	 * Build Bot Shield health snapshot for admin UI.
+	 *
+	 * @param string $account_id Account ID from settings.
+	 * @param bool   $is_configured Whether connection is configured.
+	 * @return array<string, mixed>
+	 */
+	private function get_bot_shield_health($account_id, $is_configured)
+	{
+		if (!$is_configured || empty($account_id)) {
+			return array(
+				'statusClass'   => 'is-warning',
+				'statusLabel'   => 'Not available',
+				'headline'      => 'Connect this store first.',
+				'message'       => 'Bot Shield health appears after connection settings are saved.',
+				'lastSyncLabel' => 'Not available',
+				'patternCount'  => 0,
+				'syncError'     => '',
+				'cronWarning'   => '',
+			);
+		}
+
+		$transient_key = 'overseek_blocked_agents_' . OverSeek_Crypto_Utils::hash_key_fragment($account_id, 8);
+		$cached = get_transient($transient_key);
+		$sync_error = (string) get_transient($transient_key . '_last_error');
+		$last_attempt = (int) get_transient($transient_key . '_last_attempt');
+		$cron_warning = '';
+		if ((defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) && $last_attempt === 0) {
+			$cron_warning = 'DISABLE_WP_CRON is enabled and no Bot Shield sync attempt has been recorded yet.';
+		} elseif ($last_attempt > 0 && (time() - $last_attempt) > (2 * HOUR_IN_SECONDS)) {
+			$cron_warning = 'Last Bot Shield sync attempt is older than 2 hours. WP-Cron may be delayed.';
+		}
+
+		if (!is_array($cached)) {
+			return array(
+				'statusClass'   => 'is-warning',
+				'statusLabel'   => 'Sync needed',
+				'headline'      => 'No Bot Shield cache found yet.',
+				'message'       => 'The plugin will fail-open until blocked agents are synced from OverSeek.',
+				'lastSyncLabel' => 'Never',
+				'patternCount'  => 0,
+				'syncError'     => $sync_error,
+				'cronWarning'   => $cron_warning,
+			);
+		}
+
+		$patterns = isset($cached['patterns']) && is_array($cached['patterns']) ? $cached['patterns'] : array();
+		$fetched_at = isset($cached['fetchedAt']) && is_numeric($cached['fetchedAt']) ? (int) $cached['fetchedAt'] : 0;
+		$age_seconds = $fetched_at > 0 ? (time() - $fetched_at) : PHP_INT_MAX;
+
+		if ($fetched_at > 0) {
+			$last_sync_label = sprintf(
+				'%s (%s ago)',
+				wp_date('Y-m-d H:i:s', $fetched_at),
+				human_time_diff($fetched_at, time())
+			);
+		} else {
+			$last_sync_label = 'Unknown (legacy cache payload)';
+		}
+
+		$is_stale = $age_seconds > (3 * HOUR_IN_SECONDS);
+		if ($is_stale) {
+			return array(
+				'statusClass'   => 'is-warning',
+				'statusLabel'   => 'Stale',
+				'headline'      => 'Bot Shield cache is stale.',
+				'message'       => 'Crawler rules may be out of date. Verify WP-Cron execution and OverSeek API reachability.',
+				'lastSyncLabel' => $last_sync_label,
+				'patternCount'  => count($patterns),
+				'syncError'     => $sync_error,
+				'cronWarning'   => $cron_warning,
+			);
+		}
+
+		return array(
+			'statusClass'   => 'is-connected',
+			'statusLabel'   => 'Healthy',
+			'headline'      => 'Bot Shield sync is healthy.',
+			'message'       => 'Blocked crawler patterns are cached and actively enforceable on this store.',
+			'lastSyncLabel' => $last_sync_label,
+			'patternCount'  => count($patterns),
+			'syncError'     => $sync_error,
+			'cronWarning'   => $cron_warning,
+		);
+	}
+
+	/**
+	 * Handle manual Bot Shield sync action from admin settings.
+	 *
+	 * @return void
+	 */
+	public function handle_sync_blocked_agents()
+	{
+		if (!current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have permission to access this page.', 'overseek-wc'));
+		}
+
+		check_admin_referer('overseek_sync_blocked_agents', 'overseek_sync_nonce');
+
+		$guard = new OverSeek_Crawler_Guard();
+		$guard->sync_blocked_list();
+
+		$account_id = (string) get_option('overseek_account_id', '');
+		$transient_key = '';
+		if (!empty($account_id)) {
+			$transient_key = 'overseek_blocked_agents_' . OverSeek_Crypto_Utils::hash_key_fragment($account_id, 8);
+		}
+
+		$cached = !empty($transient_key) ? get_transient($transient_key) : false;
+		$notice = is_array($cached) ? 'success' : 'failed';
+
+		$redirect = add_query_arg(
+			array(
+				'page' => 'overseek',
+				'overseek_bot_shield_notice' => $notice,
+			),
+			admin_url('admin.php')
+		);
+
+		wp_safe_redirect($redirect);
+		exit;
+	}
+
+	/**
+	 * Run a local Bot Shield operational test against cached patterns.
+	 *
+	 * @return void
+	 */
+	public function handle_test_bot_shield()
+	{
+		if (!current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have permission to access this page.', 'overseek-wc'));
+		}
+
+		check_admin_referer('overseek_test_bot_shield', 'overseek_test_nonce');
+
+		$account_id = (string) get_option('overseek_account_id', '');
+		$test_result = 'warn';
+
+		if (!empty($account_id)) {
+			$transient_key = 'overseek_blocked_agents_' . OverSeek_Crypto_Utils::hash_key_fragment($account_id, 8);
+			$cached = get_transient($transient_key);
+			$patterns = is_array($cached) && isset($cached['patterns']) && is_array($cached['patterns'])
+				? $cached['patterns']
+				: array();
+
+			if (!empty($patterns)) {
+				$first_pattern = strtolower((string) $patterns[0]);
+				$ua = 'OverSeek-Health-Check/' . $first_pattern;
+				$test_result = (strpos(strtolower($ua), $first_pattern) !== false) ? 'pass' : 'warn';
+			}
+		}
+
+		$redirect = add_query_arg(
+			array(
+				'page' => 'overseek',
+				'overseek_bot_shield_test' => $test_result,
+			),
+			admin_url('admin.php')
+		);
+
+		wp_safe_redirect($redirect);
+		exit;
 	}
 }

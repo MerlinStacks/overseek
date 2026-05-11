@@ -20,6 +20,7 @@ import { registerCAPIPlatforms } from './config/capi';
 import { initializeSocketIO } from './config/socket';
 import { subscribeEventBus } from './config/events';
 import { setupSocketHandlers } from './config/socketHandlers';
+import { requireSuperAdminFastify } from './middleware/auth';
 
 QueueFactory.init();
 
@@ -41,9 +42,19 @@ async function build() {
             const allowed = envOrigins.length > 0
                 ? envOrigins
                 : (process.env.CLIENT_URL ? [process.env.CLIENT_URL, 'http://localhost:5173'] : ['http://localhost:5173']);
-            const enforce = envOrigins.length > 0;
-            if (!origin || allowed.includes(origin) || origin === '*') cb(null, true);
-            else cb(null, !enforce);
+
+            // Allow non-browser clients / same-origin requests with no Origin header.
+            if (!origin) {
+                cb(null, true);
+                return;
+            }
+
+            if (origin === '*') {
+                cb(null, false);
+                return;
+            }
+
+            cb(null, allowed.includes(origin));
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic'],
@@ -105,10 +116,19 @@ async function build() {
     });
 
     // Cache headers
-    fastify.addHook('onSend', async (_request, reply, payload) => {
-        reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        reply.header('Pragma', 'no-cache');
-        reply.header('Expires', '0');
+    fastify.addHook('onSend', async (request, reply, payload) => {
+        const path = request.url.split('?')[0];
+
+        // Preserve explicit/static cache strategy for uploaded assets.
+        if (path.startsWith('/uploads/')) return payload;
+
+        // Only force no-store on sensitive/public-ingest endpoints.
+        const shouldDisableCache = path.startsWith('/api/auth/') || path.startsWith('/api/tracking/') || path.startsWith('/health');
+        if (shouldDisableCache) {
+            reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            reply.header('Pragma', 'no-cache');
+            reply.header('Expires', '0');
+        }
         return payload;
     });
 
@@ -118,7 +138,10 @@ async function build() {
 
     // Bull Board
     const bullBoardAdapter = QueueFactory.createBoard();
-    await fastify.register(bullBoardAdapter.registerPlugin(), { prefix: '/admin/queues' });
+    await fastify.register(async (adminScope) => {
+        adminScope.addHook('preHandler', requireSuperAdminFastify);
+        await adminScope.register(bullBoardAdapter.registerPlugin(), { prefix: '/admin/queues' });
+    });
 
     // Health check
     fastify.get('/health-fastify', async () => {
@@ -126,10 +149,6 @@ async function build() {
         try {
             const health = await esClient.cluster.health();
             esStatus = health.status;
-            if (esStatus !== 'red') {
-                const { IndexingService } = await import('./services/search/IndexingService');
-                await IndexingService.initializeIndices();
-            }
         } catch { esStatus = 'unreachable'; }
         return { status: 'ok', framework: 'fastify', timestamp: new Date().toISOString(), services: { elasticsearch: esStatus, socket: 'active' } };
     });
