@@ -1,6 +1,6 @@
 import { Search, Bell, HelpCircle, User, LogOut, Shield, Menu } from 'lucide-react';
 import { Logger } from '../../utils/logger';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -32,6 +32,30 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [showNotifications, setShowNotifications] = useState(false);
+    const notificationsRef = useRef<HTMLDivElement>(null);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+            const target = event.target as Node;
+
+            if (showNotifications && notificationsRef.current && !notificationsRef.current.contains(target)) {
+                setShowNotifications(false);
+            }
+
+            if (isUserMenuOpen && userMenuRef.current && !userMenuRef.current.contains(target)) {
+                setIsUserMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [showNotifications, isUserMenuOpen]);
 
     // Poll Notifications with visibility-awareness
     const fetchNotifications = useCallback(async () => {
@@ -94,47 +118,49 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
                 </button>
 
                 <div className="flex items-center gap-4 border-l border-gray-100 pl-6 relative">
-                    {/* Notification Bell */}
-                    <button
-                        onClick={() => setShowNotifications(!showNotifications)}
-                        className={`text-gray-400 hover:text-gray-600 relative ${showNotifications ? 'text-gray-600 bg-gray-100 rounded-lg p-1' : ''}`}
-                    >
-                        <Bell size={20} />
-                        {unreadCount > 0 && (
-                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-bold">
-                                {unreadCount > 9 ? '9+' : unreadCount}
-                            </span>
-                        )}
-                    </button>
+                    <div className="relative" ref={notificationsRef}>
+                        {/* Notification Bell */}
+                        <button
+                            onClick={() => setShowNotifications(!showNotifications)}
+                            className={`text-gray-400 hover:text-gray-600 relative ${showNotifications ? 'text-gray-600 bg-gray-100 rounded-lg p-1' : ''}`}
+                        >
+                            <Bell size={20} />
+                            {unreadCount > 0 && (
+                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-bold">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                </span>
+                            )}
+                        </button>
 
-                    {/* Notification Dropdown */}
-                    {showNotifications && (
-                        <div className="absolute top-12 right-0 w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
-                            <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
-                                {unreadCount > 0 && (
-                                    <button onClick={markAllRead} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                                        Mark all read
-                                    </button>
-                                )}
-                            </div>
-                            <div className="max-h-80 overflow-y-auto">
-                                {notifications.length === 0 ? (
-                                    <div className="p-8 text-center text-gray-500 text-sm">No new notifications</div>
-                                ) : (
-                                    notifications.map(n => (
-                                        <div key={n.id} className={`p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!n.isRead ? 'bg-blue-50/50' : ''}`}>
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="text-sm font-medium text-gray-900">{n.title}</span>
-                                                <span className="text-[10px] text-gray-400">{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {/* Notification Dropdown */}
+                        {showNotifications && (
+                            <div className="absolute top-12 right-0 w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                                <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
+                                    {unreadCount > 0 && (
+                                        <button onClick={markAllRead} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                                            Mark all read
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="max-h-80 overflow-y-auto">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-8 text-center text-gray-500 text-sm">No new notifications</div>
+                                    ) : (
+                                        notifications.map(n => (
+                                            <div key={n.id} className={`p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!n.isRead ? 'bg-blue-50/50' : ''}`}>
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <span className="text-sm font-medium text-gray-900">{n.title}</span>
+                                                    <span className="text-[10px] text-gray-400">{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-600 leading-relaxed">{n.message}</p>
                                             </div>
-                                            <p className="text-xs text-gray-600 leading-relaxed">{n.message}</p>
-                                        </div>
-                                    ))
-                                )}
+                                        ))
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     <Link to="/help" className="text-gray-400 hover:text-gray-600">
                         <HelpCircle size={20} />
@@ -142,7 +168,7 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
 
 
                     {/* User Dropdown */}
-                    <div className="relative">
+                    <div className="relative" ref={userMenuRef}>
                         <button
                             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                             className="flex items-center gap-3 pl-2 hover:bg-gray-50 rounded-lg p-1 transition-colors"

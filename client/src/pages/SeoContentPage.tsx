@@ -4,9 +4,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { SeoAnalysisPanel, type SeoTest } from '../components/Seo/SeoAnalysisPanel';
+import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { calculateContentSeoScore } from '@overseek/core';
 
 type Tab = 'pages' | 'posts';
+type EditorTab = 'content' | 'seo';
 type SortField = 'title' | 'status' | 'dateModified' | 'seoScore';
 type SortDirection = 'asc' | 'desc';
 
@@ -42,6 +44,7 @@ export function SeoContentPage() {
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({ title: '', content: '', excerpt: '', focusKeyword: '' });
     const [contentView, setContentView] = useState<'code' | 'visual' | 'split'>('code');
+    const [editorTab, setEditorTab] = useState<EditorTab>('content');
     const [sortField, setSortField] = useState<SortField>('dateModified');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -111,6 +114,7 @@ export function SeoContentPage() {
                     excerpt: data.excerpt || '',
                     focusKeyword: data.seoData?.focusKeyword || '',
                 });
+                setEditorTab('content');
                 setContentView('split');
             } catch (e: any) {
                 setError(e?.message || 'Failed to load content details');
@@ -200,6 +204,27 @@ export function SeoContentPage() {
         setSortDirection('asc');
     };
 
+    const visualPreviewDoc = useMemo(() => {
+        const html = form.content?.trim();
+        if (!html) return '';
+
+        return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base target="_blank" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #fff; color: #111827; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+    }, [form.content]);
+
     const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
         <button
             type="button"
@@ -242,21 +267,35 @@ export function SeoContentPage() {
                     </button>
                     {editorLoading && <div className="p-4 text-sm text-slate-500">Loading content editor...</div>}
                     {!editorLoading && selected && (
-                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                            <div className="xl:col-span-2 space-y-4">
-                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Edit {tab === 'pages' ? 'Page' : 'Post'}</h2>
-                                <div>
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div className="flex-1">
                                     <label className="block text-sm font-medium mb-1">Title</label>
                                     <input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Focus Keyword</label>
-                                    <input value={form.focusKeyword} onChange={(e) => setForm((s) => ({ ...s, focusKeyword: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" placeholder="e.g. woocommerce seo tips" />
+                                <div className="shrink-0">
+                                    <SeoScoreBadge score={liveSeoPreview.score} size="md" tests={liveSeoPreview.tests} />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Excerpt</label>
-                                    <textarea value={form.excerpt} onChange={(e) => setForm((s) => ({ ...s, excerpt: e.target.value }))} rows={4} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
-                                </div>
+                            </div>
+
+                            <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditorTab('content')}
+                                    className={`px-3 py-2 text-sm ${editorTab === 'content' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                                >
+                                    Page Content
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditorTab('seo')}
+                                    className={`px-3 py-2 text-sm border-l border-slate-300 dark:border-slate-700 ${editorTab === 'seo' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                                >
+                                    SEO Breakdown & Meta Data
+                                </button>
+                            </div>
+
+                            {editorTab === 'content' ? (
                                 <div>
                                     <div className="mb-1 flex items-center justify-between gap-2">
                                         <label className="block text-sm font-medium">Content</label>
@@ -289,7 +328,12 @@ export function SeoContentPage() {
                                     ) : contentView === 'visual' ? (
                                         <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[528px] max-h-[528px] overflow-y-auto p-4">
                                             {form.content.trim() ? (
-                                                <div className="prose prose-slate max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: form.content }} />
+                                                <iframe
+                                                    title="SEO content visual preview"
+                                                    srcDoc={visualPreviewDoc}
+                                                    className="w-full h-[496px] rounded-md border border-slate-200"
+                                                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+                                                />
                                             ) : (
                                                 <p className="text-sm text-slate-500 dark:text-slate-400">No content to preview yet.</p>
                                             )}
@@ -299,7 +343,12 @@ export function SeoContentPage() {
                                             <textarea value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} rows={22} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
                                             <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[528px] max-h-[528px] overflow-y-auto p-4">
                                                 {form.content.trim() ? (
-                                                    <div className="prose prose-slate max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: form.content }} />
+                                                    <iframe
+                                                        title="SEO content split preview"
+                                                        srcDoc={visualPreviewDoc}
+                                                        className="w-full h-[496px] rounded-md border border-slate-200"
+                                                        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+                                                    />
                                                 ) : (
                                                     <p className="text-sm text-slate-500 dark:text-slate-400">No content to preview yet.</p>
                                                 )}
@@ -307,17 +356,37 @@ export function SeoContentPage() {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex justify-end gap-2">
-                                    <button onClick={closeEditor} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800">Cancel</button>
-                                    <button disabled={saving} onClick={saveEditor} className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">{saving ? 'Saving...' : 'Save changes'}</button>
+                            ) : (
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30">
+                                        <SeoAnalysisPanel
+                                            score={liveSeoPreview.score}
+                                            tests={liveSeoPreview.tests}
+                                            focusKeyword={form.focusKeyword}
+                                        />
+                                    </div>
+                                    <div className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30">
+                                        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Meta Data</h3>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Focus Keyword</label>
+                                            <input value={form.focusKeyword} onChange={(e) => setForm((s) => ({ ...s, focusKeyword: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" placeholder="e.g. woocommerce seo tips" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Excerpt</label>
+                                            <textarea value={form.excerpt} onChange={(e) => setForm((s) => ({ ...s, excerpt: e.target.value }))} rows={5} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900" />
+                                        </div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                                            <p><span className="font-medium">Status:</span> {selected.status || 'unknown'}</p>
+                                            <p><span className="font-medium">Slug:</span> {selected.slug || '-'}</p>
+                                            <p><span className="font-medium">Permalink:</span> {selected.permalink || '-'}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div>
-                                <SeoAnalysisPanel
-                                    score={liveSeoPreview.score}
-                                    tests={liveSeoPreview.tests}
-                                    focusKeyword={form.focusKeyword}
-                                />
+                            )}
+
+                            <div className="flex justify-end gap-2">
+                                <button onClick={closeEditor} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800">Cancel</button>
+                                <button disabled={saving} onClick={saveEditor} className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">{saving ? 'Saving...' : 'Save changes'}</button>
                             </div>
                         </div>
                     )}

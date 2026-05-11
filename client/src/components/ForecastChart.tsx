@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import { echarts, graphic, type EChartsOption } from '../utils/echarts';
-import { Loader2, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Loader2, TrendingUp } from 'lucide-react';
 
 
 interface ForecastData {
@@ -26,6 +26,12 @@ interface ForecastRow {
     sales: number;
 }
 
+interface ForecastApiResponse {
+    forecast?: ForecastRow[];
+    confidence?: 'high' | 'medium' | 'low';
+    warning?: string;
+}
+
 interface ForecastProps {
     dateRange: { startDate: string, endDate: string };
 }
@@ -35,6 +41,8 @@ export function ForecastChart({ dateRange }: ForecastProps) {
     const { currentAccount } = useAccount();
     const [data, setData] = useState<ForecastData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [warning, setWarning] = useState<string | null>(null);
+    const [confidence, setConfidence] = useState<'high' | 'medium' | 'low' | null>(null);
 
     const fetchForecast = useCallback(async () => {
         setIsLoading(true);
@@ -53,7 +61,14 @@ export function ForecastChart({ dateRange }: ForecastProps) {
 
             if (historyRes.ok && forecastRes.ok) {
                 const history: SalesHistoryRow[] = await historyRes.json();
-                const forecast: ForecastRow[] = await forecastRes.json();
+                const rawForecast: ForecastRow[] | ForecastApiResponse = await forecastRes.json();
+                const forecast = Array.isArray(rawForecast)
+                    ? rawForecast
+                    : Array.isArray(rawForecast.forecast)
+                        ? rawForecast.forecast
+                        : [];
+                const forecastWarning = Array.isArray(rawForecast) ? null : (rawForecast.warning || null);
+                const forecastConfidence = Array.isArray(rawForecast) ? null : (rawForecast.confidence || null);
 
                 const processed: ForecastData[] = history.map((d) => ({
                     date: d.date,
@@ -79,14 +94,34 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 });
 
                 setData(processed);
+                setWarning(forecastWarning);
+                setConfidence(forecastConfidence);
+            } else {
+                setData([]);
+                setWarning(null);
+                setConfidence(null);
             }
 
         } catch (error) {
             Logger.error('An error occurred', { error: error });
+            setWarning(null);
+            setConfidence(null);
         } finally {
             setIsLoading(false);
         }
     }, [dateRange.startDate, dateRange.endDate, token, currentAccount?.id]);
+
+    const confidenceBadgeClass = confidence === 'high'
+        ? 'bg-emerald-100 text-emerald-700'
+        : confidence === 'medium'
+            ? 'bg-amber-100 text-amber-700'
+            : confidence === 'low'
+                ? 'bg-rose-100 text-rose-700'
+                : 'bg-purple-100 text-purple-700';
+
+    const confidenceLabel = confidence
+        ? `${confidence.charAt(0).toUpperCase()}${confidence.slice(1)} Confidence`
+        : 'AI Powered';
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -167,18 +202,27 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                     <h3 className="text-lg font-bold text-gray-900">Sales Forecast</h3>
                     <p className="text-sm text-gray-500">Predicted sales for the next 30 days based on recent trends</p>
                 </div>
-                <div className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
-                    <TrendingUp size={14} /> AI Powered
+                <div className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${confidenceBadgeClass}`}>
+                    <TrendingUp size={14} /> {confidenceLabel}
                 </div>
             </div>
 
-            <div className="w-full" style={{ height: '300px' }}>
+            {warning && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 flex items-start gap-2">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <span>{warning}</span>
+                </div>
+            )}
+
+            <div className="w-full">
+                <div style={{ height: '300px' }}>
                 <ReactEChartsCore
                     echarts={echarts}
                     option={getChartOptions()}
                     style={{ height: '100%', width: '100%' }}
                     opts={{ renderer: 'svg' }}
                 />
+                </div>
 
                 {/* Legend */}
                 <div className="flex justify-center mt-4 gap-6 text-sm">

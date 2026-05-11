@@ -19,7 +19,6 @@ import {
     PenTool,
     ChevronDown,
     Star,
-    ShieldAlert,
     LineChart,
     DollarSign,
     GitBranch,
@@ -33,8 +32,7 @@ import {
     RefreshCw,
     Search,
     Bot,
-    FileText,
-    Activity
+    FileText
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -51,6 +49,8 @@ interface SidebarProps {
     /** Whether we're in mobile mode (drawer behavior) */
     isMobile?: boolean;
 }
+
+const SIDEBAR_COLLAPSED_KEY = 'overseek:sidebar-collapsed';
 
 const navItems = [
     { type: 'link', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -104,14 +104,22 @@ const navItems = [
  *  it only re-renders when its own props (`isOpen`, `onClose`, `isMobile`) change
  *  rather than on every parent re-render from DashboardLayout. */
 export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(() => {
+        if (typeof window === 'undefined') return false;
+        return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    });
     const { currentAccount } = useAccount();
     const accountId = currentAccount?.id;
-    const { user, token } = useAuth();
+    const { token } = useAuth();
     const { socket } = useSocket();
     const { hasPermission } = usePermissions(); // Permission hook
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+    }, [collapsed]);
 
     /** Why useMemo: Permission filtering was running on every render (every route change).
      *  Permissions and nav items rarely change — only when user role or account changes. */
@@ -158,10 +166,13 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     useEffect(() => {
         if (!accountId || !token) return;
 
+        const controller = new AbortController();
+
         // Check for unread conversations count
         const checkUnread = async () => {
             try {
                 const res = await fetch('/api/chat/unread-count', {
+                    signal: controller.signal,
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': accountId
@@ -171,7 +182,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     const data = await res.json();
                     setHasUnread(data.count > 0);
                 }
-            } catch {
+            } catch (error) {
+                if ((error as Error).name === 'AbortError') return;
                 // Silently fail
             }
         };
@@ -197,11 +209,16 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             socket.on('conversation:read', handleConversationRead);
 
             return () => {
+                controller.abort();
                 socket.off('conversation:updated', handleNewMessage);
                 socket.off('message:new', handleNewMessage);
                 socket.off('conversation:read', handleConversationRead);
             };
         }
+
+        return () => {
+            controller.abort();
+        };
     }, [accountId, token, socket, location.pathname]);
 
     // Clear unread when on inbox page
@@ -301,6 +318,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                 to={item.path!}
                                 onMouseEnter={() => prefetch(item.path!)}
                                 onFocus={() => prefetch(item.path!)}
+                                title={collapsed && !isMobile ? item.label : undefined}
+                                aria-label={collapsed && !isMobile ? item.label : undefined}
                                 className={({ isActive }) => cn(
                                     "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActive
@@ -335,6 +354,9 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         <div key={item.label} className="mb-1">
                             <button
                                 onClick={() => toggleGroup(item.label)}
+                                aria-expanded={isExpanded}
+                                aria-label={collapsed && !isMobile ? item.label : undefined}
+                                title={collapsed && !isMobile ? item.label : undefined}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActiveGroup && !isExpanded
@@ -358,10 +380,22 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                     <div className="absolute left-full ml-2 top-0 bg-white border border-gray-200 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
                                         <div className="font-semibold text-xs text-gray-400 mb-2 px-2 uppercase">{item.label}</div>
                                         {item.children?.map(child => (
-                                            <div key={child.path} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600">
+                                            <NavLink
+                                                key={child.path}
+                                                to={child.path}
+                                                end
+                                                onMouseEnter={() => prefetch(child.path)}
+                                                onFocus={() => prefetch(child.path)}
+                                                className={({ isActive }) => cn(
+                                                    "flex items-center gap-2 px-2 py-1.5 text-sm rounded-md",
+                                                    isActive
+                                                        ? "bg-blue-500/10 text-blue-600 font-medium"
+                                                        : "text-gray-600 hover:bg-slate-100/80 hover:text-slate-800"
+                                                )}
+                                            >
                                                 <child.icon size={16} />
                                                 <span>{child.label}</span>
-                                            </div>
+                                            </NavLink>
                                         ))}
                                     </div>
                                 )}
@@ -375,6 +409,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                             key={child.path}
                                             to={child.path}
                                             end
+                                            onMouseEnter={() => prefetch(child.path)}
+                                            onFocus={() => prefetch(child.path)}
                                             className={({ isActive }) => cn(
                                                 "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm",
                                                 isActive
@@ -392,52 +428,14 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     );
                 })}
 
-                {user?.isSuperAdmin && (
-                    <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-600/40 space-y-1">
-                        <NavLink
-                            to="/admin"
-                            className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
-                                isActive
-                                    ? "bg-gradient-to-r from-slate-800 to-slate-700 text-white font-medium shadow-lg shadow-slate-800/25"
-                                    : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200"
-                            )}
-                        >
-                            <ShieldAlert size={22} strokeWidth={1.5} />
-                            {(!collapsed || isMobile) && <span>Super Admin</span>}
-
-                            {collapsed && !isMobile && (
-                                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
-                                    Super Admin
-                                </div>
-                            )}
-                        </NavLink>
-                        <NavLink
-                            to="/admin/diagnostics"
-                            className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 group relative text-sm",
-                                isActive
-                                    ? "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-600 font-medium"
-                                    : "text-slate-500 hover:bg-slate-100/80 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
-                            )}
-                        >
-                            <Activity size={18} strokeWidth={1.5} />
-                            {(!collapsed || isMobile) && <span>System Health</span>}
-
-                            {collapsed && !isMobile && (
-                                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
-                                    System Health
-                                </div>
-                            )}
-                        </NavLink>
-                    </div>
-                )}
             </div>
 
             <div className="mt-auto px-3 pb-3 space-y-2 border-t border-slate-200/60 dark:border-slate-600/40 pt-3">
                 {/* Settings Link (Pinned Bottom) */}
                 <NavLink
                     to="/settings"
+                    title={collapsed && !isMobile ? 'Settings' : undefined}
+                    aria-label={collapsed && !isMobile ? 'Settings' : undefined}
                     className={({ isActive }) => cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative mb-2",
                         isActive

@@ -655,6 +655,7 @@ export class InvoiceService {
                     case 'order_table': {
                         // Respect saved grid width/position so generated output follows designer layout.
                         doc.fontSize(9).font('Helvetica-Bold');
+                        const tableFooterSafetyBuffer = 18;
                         const tableX = x;
                         const fullTableWidth = width;
                         const descWidth = fullTableWidth * 0.55;
@@ -711,7 +712,7 @@ export class InvoiceService {
                             const metaSpacingHeight = itemMeta.length > 0 ? 12 : 0;
                             const pageBreakSafetyBuffer = 6;
                             const estimatedRowHeight = titleHeight + metaSpacingHeight + metaHeight + 14 + pageBreakSafetyBuffer;
-                            const contentLimitY = getPageContentLimitY(currentPageIndex);
+                            const contentLimitY = getPageContentLimitY(currentPageIndex) - tableFooterSafetyBuffer;
                             if ((tableY + estimatedRowHeight) > contentLimitY) {
                                 moveTableToNextPage();
                             }
@@ -721,8 +722,11 @@ export class InvoiceService {
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
 
+                            const consumedTitleHeight = Math.max(12, titleHeight);
+                            tableY += consumedTitleHeight;
+
                             if (itemMeta.length > 0) {
-                                tableY += 12;
+                                tableY += 2;
                                 doc.fontSize(8).fillColor('#64748b');
                                 itemMeta.forEach((meta) => {
                                     const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
@@ -744,12 +748,12 @@ export class InvoiceService {
                                 doc.fillColor('black').fontSize(9);
                             }
 
-                            tableY += 14;
+                            tableY += 8;
                         });
 
                         // Totals integrated into table — use rawData for consistency
                         const rawOrderData = order.rawData as any || {};
-                        const contentLimitY = getPageContentLimitY(currentPageIndex);
+                        const contentLimitY = getPageContentLimitY(currentPageIndex) - tableFooterSafetyBuffer;
                         const estimatedTotalsHeight = 90;
                         if ((tableY + estimatedTotalsHeight) > contentLimitY) {
                             moveTableToNextPage();
