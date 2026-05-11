@@ -22,13 +22,16 @@ COPY client/package.json client/
 
 # Install dependencies (legacy-peer-deps for React 19 compatibility)
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --workspace=client --legacy-peer-deps --prefer-offline --no-audit
+    npm install --workspace=client --workspace=@overseek/core --legacy-peer-deps --prefer-offline --no-audit
 
 # Copy source code and shared package used by invoice renderer
 COPY client/ ./client/
 COPY packages/overseek-core/ ./packages/overseek-core/
 
 WORKDIR /app/client
+
+# Build shared workspace package required by client imports
+RUN npm run build -w @overseek/core
 
 # Build production bundle (skip tsc, let vite handle it)
 RUN npx vite build
