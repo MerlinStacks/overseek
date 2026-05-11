@@ -7,15 +7,13 @@ import { randomUUID } from 'crypto';
 import {
     DEFAULT_INVOICE_TEMPLATE_SETTINGS,
     buildInvoiceNumber,
+    decodeInvoiceEntities,
     formatInvoiceCurrency,
     formatInvoiceDate,
+    getInvoiceItemMeta,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
-} from '../../../packages/overseek-core/dist/invoiceRenderModel';
-import {
-    decodeInvoiceEntities,
-    getInvoiceItemMeta,
-} from '../../../packages/overseek-core/dist/invoiceItemUtils';
+} from '@overseek/core';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 
@@ -886,4 +884,3 @@ export class InvoiceService {
         });
     }
 }
-
