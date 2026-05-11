@@ -101,7 +101,7 @@ export function SettingsPage() {
                 { id: 'email', label: 'Email', icon: Mail },
                 { id: 'channels', label: 'Channels', icon: Share2 },
                 { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
-                { id: 'conversions', label: 'Tracking Pixels', icon: Zap, hidden: !isAdTrackingEnabled },
+                { id: 'conversions', label: 'Tracking & CAPI Health', icon: Zap, hidden: !isAdTrackingEnabled },
                 { id: 'webhooks', label: 'Webhooks', icon: Webhook },
                 { id: 'sync', label: 'Sync Status', icon: RefreshCw },
             ]
@@ -199,7 +199,7 @@ export function SettingsPage() {
                 </SettingsCard>
             ),
             conversions: (
-                <SettingsCard title="Tracking Pixels & CAPI" description="Manage client-side pixel tags and server-side conversion tracking for all ad platforms.">
+                <SettingsCard title="Tracking Pixels, CAPI & Health" description="Manage client-side pixel tags, server-side conversion tracking, and open the delivery health dashboard.">
                     <CAPISettings />
                 </SettingsCard>
             ),
@@ -315,4 +315,3 @@ function SettingsCard({ title, description, children }: { title: string; descrip
         </div>
     );
 }
-

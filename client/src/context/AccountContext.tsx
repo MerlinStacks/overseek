@@ -7,6 +7,7 @@ interface Account {
     id: string;
     name: string;
     domain: string | null;
+    sitemapUrl?: string | null;
     currency: string;
     wooUrl: string;
     wooConsumerKey?: string;

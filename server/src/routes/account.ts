@@ -21,7 +21,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/', async (request, reply) => {
         try {
             const userId = request.user!.id;
-            const { name, domain, wooUrl, wooConsumerKey, wooConsumerSecret } = request.body as any;
+            const { name, domain, sitemapUrl, wooUrl, wooConsumerKey, wooConsumerSecret } = request.body as any;
 
             if (!name || !wooUrl || !wooConsumerKey || !wooConsumerSecret) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -32,7 +32,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
 
             const account = await prisma.account.create({
                 data: {
-                    name, domain, wooUrl, wooConsumerKey, wooConsumerSecret,
+                    name, domain, sitemapUrl, wooUrl, wooConsumerKey, wooConsumerSecret,
                     users: { create: { userId, role: 'OWNER' } }
                 }
             });
@@ -81,7 +81,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { accountId } = request.params;
             const {
-                name, domain, wooUrl, wooConsumerKey, wooConsumerSecret, webhookSecret,
+                name, domain, sitemapUrl, wooUrl, wooConsumerKey, wooConsumerSecret, webhookSecret,
                 openRouterApiKey, aiModel, appearance,
                 goldPrice, refreshGoldPrice,
                 goldPrice18ct, goldPrice9ct, goldPrice18ctWhite, goldPrice9ctWhite, goldPriceMargin,
@@ -94,7 +94,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(403).send({ error: 'Forbidden' });
             }
 
-            const data: any = { name, domain, wooUrl, wooConsumerKey, openRouterApiKey, aiModel, appearance };
+            const data: any = { name, domain, sitemapUrl, wooUrl, wooConsumerKey, openRouterApiKey, aiModel, appearance };
             if (typeof revenueTaxInclusive === 'boolean') data.revenueTaxInclusive = revenueTaxInclusive;
             if (wooConsumerSecret?.trim()) data.wooConsumerSecret = wooConsumerSecret;
             if (webhookSecret !== undefined) data.webhookSecret = webhookSecret?.trim() || null;
@@ -528,4 +528,3 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default accountRoutes;
-

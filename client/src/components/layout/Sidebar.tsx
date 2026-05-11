@@ -33,7 +33,8 @@ import {
     RefreshCw,
     Search,
     Bot,
-    FileText
+    FileText,
+    Activity
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';

@@ -15,6 +15,7 @@ export function GeneralSettings() {
     const [formData, setFormData] = useState({
         name: '',
         domain: '',
+        sitemapUrl: '',
         wooUrl: '',
         wooConsumerKey: '',
         wooConsumerSecret: '',
@@ -26,6 +27,7 @@ export function GeneralSettings() {
             setFormData({
                 name: currentAccount.name || '',
                 domain: currentAccount.domain || '',
+                sitemapUrl: currentAccount.sitemapUrl || '',
                 wooUrl: currentAccount.wooUrl || '',
                 wooConsumerKey: currentAccount.wooConsumerKey || '',
                 wooConsumerSecret: '', // Don't show existing secret for security, only if updating
@@ -46,6 +48,10 @@ export function GeneralSettings() {
         }
         if (formData.wooUrl && !isValidUrl(formData.wooUrl)) {
             toast.error('Please enter a valid Store URL (must start with http:// or https://).');
+            return false;
+        }
+        if (formData.sitemapUrl && !isValidUrl(formData.sitemapUrl)) {
+            toast.error('Please enter a valid Sitemap URL (must start with http:// or https://).');
             return false;
         }
         return true;
@@ -143,6 +149,19 @@ export function GeneralSettings() {
                             onChange={handleChange}
                         />
                     </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Sitemap URL</label>
+                    <input
+                        type="url"
+                        name="sitemapUrl"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
+                        placeholder="https://mystore.com/sitemap_index.xml"
+                        value={formData.sitemapUrl}
+                        onChange={handleChange}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Optional. Used for SEO and crawl workflows.</p>
                 </div>
 
                 <div className="border-t border-gray-100 pt-6">

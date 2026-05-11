@@ -195,6 +195,7 @@ export function DashboardPage() {
     }, [widgets, isLayoutLocked]);
 
     const addWidget = (key: string) => {
+        if (isLayoutLocked) return;
         const entry = WidgetRegistry[key];
         const newWidget: WidgetInstance = {
             id: `new-${Date.now()}`,
@@ -206,6 +207,12 @@ export function DashboardPage() {
         debouncedSave(updated);
         setShowAddWidget(false);
     };
+
+    useEffect(() => {
+        if (isLayoutLocked) {
+            setShowAddWidget(false);
+        }
+    }, [isLayoutLocked]);
 
     const removeWidget = (id: string) => {
         const updated = widgets.filter(w => w.id !== id);
@@ -276,13 +283,25 @@ export function DashboardPage() {
                         {isLayoutLocked ? 'Locked' : 'Editing'}
                     </button>
 
+                    <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
+                        {isLayoutLocked ? 'Unlock to add, remove, and rearrange widgets' : 'You can add, remove, and rearrange widgets'}
+                    </span>
+
                     <div className="relative" ref={addWidgetRef}>
                         <button
-                            onClick={() => setShowAddWidget(!showAddWidget)}
+                            onClick={() => {
+                                if (isLayoutLocked) return;
+                                setShowAddWidget(!showAddWidget);
+                            }}
                             aria-label="Add dashboard widget"
                             aria-expanded={showAddWidget}
                             aria-controls="dashboard-widget-menu"
-                            className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5"
+                            disabled={isLayoutLocked}
+                            title={isLayoutLocked ? 'Unlock to add widgets' : 'Add Widget'}
+                            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 ${isLayoutLocked
+                                ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed shadow-none'
+                                : 'bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5'
+                                }`}
                         >
                             <Plus size={16} /> Add Widget
                         </button>

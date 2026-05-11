@@ -97,12 +97,17 @@ export class InboxAIService {
             }
 
             // 6. Fetch the inbox_draft_reply prompt template
-            const promptTemplate = await prisma.aIPrompt.findUnique({
-                where: { promptId: 'inbox_draft_reply' }
-            });
+            const [accountPromptTemplate, globalPromptTemplate] = await Promise.all([
+                prisma.accountAIPrompt.findUnique({
+                    where: { accountId_promptId: { accountId, promptId: 'inbox_draft_reply' } }
+                }),
+                prisma.aIPrompt.findUnique({
+                    where: { promptId: 'inbox_draft_reply' }
+                })
+            ]);
 
             // Use default prompt if none configured
-            const basePrompt = promptTemplate?.content || this.getDefaultPrompt();
+            const basePrompt = accountPromptTemplate?.content || globalPromptTemplate?.content || this.getDefaultPrompt();
 
             // 7. Build the full prompt with context
             const fullPrompt = this.injectVariables(basePrompt, context, policies);

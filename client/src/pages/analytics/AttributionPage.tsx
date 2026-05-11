@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
-import { GitBranch, ArrowRight } from 'lucide-react';
+import { GitBranch, ArrowRight, TrendingUp } from 'lucide-react';
 
 interface AttributionData {
     firstTouch: { source: string; count: number }[];
@@ -13,11 +13,20 @@ interface AttributionData {
     totalSessions: number;
 }
 
+interface CohortData {
+    cohorts: {
+        week: string;
+        totalVisitors: number;
+        retention: { week: number; count: number; rate: number }[];
+    }[];
+}
+
 export const AttributionPage: React.FC = () => {
     const [days, setDays] = useState(1); // Default to Today
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const [data, setData] = useState<AttributionData | null>(null);
+    const [cohortData, setCohortData] = useState<CohortData | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -25,10 +34,15 @@ export const AttributionPage: React.FC = () => {
             if (!currentAccount || !token) return;
             setLoading(true);
             try {
-                const result = await api.get<AttributionData>(`/api/tracking/attribution?days=${days}`, token, currentAccount.id);
-                setData(result);
+                const [attributionResult, cohortsResult] = await Promise.all([
+                    api.get<AttributionData>(`/api/tracking/attribution?days=${days}`, token, currentAccount.id),
+                    api.get<CohortData>('/api/tracking/cohorts', token, currentAccount.id),
+                ]);
+
+                setData(attributionResult);
+                setCohortData(cohortsResult);
             } catch (error) {
-                Logger.error('Failed to fetch attribution:', { error: error });
+                Logger.error('Failed to fetch attribution/cohorts analytics:', { error: error });
             } finally {
                 setLoading(false);
             }
@@ -53,12 +67,25 @@ export const AttributionPage: React.FC = () => {
         return colors[index % colors.length];
     };
 
+    const getRetentionColor = (rate: number) => {
+        if (rate >= 70) return 'bg-green-500 text-white';
+        if (rate >= 50) return 'bg-green-400 text-white';
+        if (rate >= 30) return 'bg-yellow-400 text-gray-900';
+        if (rate >= 15) return 'bg-orange-400 text-white';
+        return 'bg-red-400 text-white';
+    };
+
+    const formatWeek = (week: string) => {
+        const date = new Date(week);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
     return (
         <div className="p-6 space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Attribution Analysis</h1>
-                    <p className="text-sm text-gray-500 mt-1">Compare first-touch vs last-touch attribution.</p>
+                    <h1 className="text-2xl font-bold text-gray-900">Attribution & Cohort Analysis</h1>
+                    <p className="text-sm text-gray-500 mt-1">Compare attribution channels and track retention by cohort in one place.</p>
                 </div>
                 <DateRangeFilter value={days} onChange={setDays} />
             </div>
@@ -164,6 +191,67 @@ export const AttributionPage: React.FC = () => {
                     </p>
                 </CardContent>
             </Card>
+
+            <Card className="border-0 shadow-xs overflow-hidden">
+                <CardHeader>
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-indigo-500" />
+                        Cohort Retention Matrix
+                    </CardTitle>
+                    <p className="text-xs text-gray-500">Track visitor retention over time by signup week.</p>
+                </CardHeader>
+                <CardContent className="p-0">
+                    {!cohortData || !cohortData.cohorts.length ? (
+                        <div className="p-6 text-sm text-gray-500">No cohort data available yet. Check back after a few weeks.</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-gray-50">
+                                        <th className="text-left px-4 py-3 font-medium text-gray-600">Cohort</th>
+                                        <th className="text-center px-4 py-3 font-medium text-gray-600">Users</th>
+                                        <th className="text-center px-4 py-3 font-medium text-gray-600">Week 0</th>
+                                        <th className="text-center px-4 py-3 font-medium text-gray-600">Week 1</th>
+                                        <th className="text-center px-4 py-3 font-medium text-gray-600">Week 2</th>
+                                        <th className="text-center px-4 py-3 font-medium text-gray-600">Week 3</th>
+                                        <th className="text-center px-4 py-3 font-medium text-gray-600">Week 4</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {cohortData.cohorts.map((cohort, i) => (
+                                        <tr key={cohort.week} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                            <td className="px-4 py-3 font-medium text-gray-900">{formatWeek(cohort.week)}</td>
+                                            <td className="text-center px-4 py-3 text-gray-600">{cohort.totalVisitors}</td>
+                                            {[0, 1, 2, 3, 4].map(weekNum => {
+                                                const retention = cohort.retention.find(r => r.week === weekNum);
+                                                if (!retention) return <td key={weekNum} className="text-center px-4 py-3 text-gray-300">-</td>;
+                                                return (
+                                                    <td key={weekNum} className="text-center px-2 py-2">
+                                                        <span className={`inline-block px-3 py-1 rounded-md text-xs font-medium ${getRetentionColor(retention.rate)}`}>
+                                                            {retention.rate}%
+                                                        </span>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {cohortData && cohortData.cohorts.length > 0 && (
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>Retention:</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> 70%+</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-400 rounded-sm"></span> 50-69%</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 bg-yellow-400 rounded-sm"></span> 30-49%</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 bg-orange-400 rounded-sm"></span> 15-29%</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-400 rounded-sm"></span> &lt;15%</span>
+                </div>
+            )}
         </div>
     );
 };

@@ -112,21 +112,91 @@ const policiesRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Get AI prompts (read-only, non-admin)
+    // Get AI prompts for account (with fallback to global defaults)
     fastify.get('/ai-prompts', async (request, reply) => {
+        const accountId = request.user?.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
         try {
-            const prompts = await prisma.aIPrompt.findMany({
-                orderBy: { promptId: 'asc' }
-            });
-            return prompts.map(p => ({
+            const [globalPrompts, accountPrompts] = await Promise.all([
+                prisma.aIPrompt.findMany({ orderBy: { promptId: 'asc' } }),
+                prisma.accountAIPrompt.findMany({ where: { accountId }, orderBy: { promptId: 'asc' } })
+            ]);
+
+            const byPromptId = new Map(globalPrompts.map(p => [p.promptId, {
                 id: p.promptId,
                 name: p.name,
                 content: p.content,
-                updatedAt: p.updatedAt
-            }));
+                updatedAt: p.updatedAt,
+                isAccountOverride: false
+            }]));
+
+            for (const p of accountPrompts) {
+                byPromptId.set(p.promptId, {
+                    id: p.promptId,
+                    name: p.name,
+                    content: p.content,
+                    updatedAt: p.updatedAt,
+                    isAccountOverride: true
+                });
+            }
+
+            return Array.from(byPromptId.values()).sort((a, b) => a.id.localeCompare(b.id));
         } catch (error) {
-            Logger.error('Failed to fetch AI prompts', { error });
+            Logger.error('Failed to fetch AI prompts', { error, accountId });
             return reply.code(500).send({ error: 'Failed to fetch AI prompts' });
+        }
+    });
+
+    // Upsert account-level AI prompt override
+    fastify.put<{ Params: { promptId: string }; Body: { content?: string; name?: string } }>('/ai-prompts/:promptId', async (request, reply) => {
+        const accountId = request.user?.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        const { promptId } = request.params;
+        const { content, name } = request.body;
+
+        if (!content?.trim()) {
+            return reply.code(400).send({ error: 'Content is required' });
+        }
+
+        try {
+            const saved = await prisma.accountAIPrompt.upsert({
+                where: {
+                    accountId_promptId: { accountId, promptId }
+                },
+                update: { content: content.trim(), name },
+                create: { accountId, promptId, content: content.trim(), name }
+            });
+
+            return {
+                id: saved.promptId,
+                name: saved.name,
+                content: saved.content,
+                updatedAt: saved.updatedAt,
+                isAccountOverride: true
+            };
+        } catch (error) {
+            Logger.error('Failed to save account AI prompt', { error, accountId, promptId });
+            return reply.code(500).send({ error: 'Failed to save AI prompt' });
+        }
+    });
+
+    // Delete account-level AI prompt override (reverts to global default)
+    fastify.delete<{ Params: { promptId: string } }>('/ai-prompts/:promptId', async (request, reply) => {
+        const accountId = request.user?.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        const { promptId } = request.params;
+
+        try {
+            await prisma.accountAIPrompt.deleteMany({
+                where: { accountId, promptId }
+            });
+            return { success: true };
+        } catch (error) {
+            Logger.error('Failed to delete account AI prompt override', { error, accountId, promptId });
+            return reply.code(500).send({ error: 'Failed to reset AI prompt' });
         }
     });
 

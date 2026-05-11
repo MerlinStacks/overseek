@@ -65,6 +65,7 @@ model Account {
   id     String  @id @default(uuid())
   name   String
   domain String? // e.g. "mystore.com"
+  sitemapUrl String?
 
   // WooCommerce Connection (Secrets should be encrypted at app level)
   wooUrl            String
@@ -158,6 +159,7 @@ model Account {
   
   // Policies & SOP
   policies          Policy[]
+  aiPrompts         AccountAIPrompt[]
   
   // Push Notifications
   pushSubscriptions PushSubscription[]
@@ -2386,6 +2388,26 @@ model AIPrompt {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Stores account-specific AI prompt overrides.
+/// If an override does not exist, system falls back to AIPrompt defaults.
+model AccountAIPrompt {
+  id        String @id @default(uuid())
+  accountId String
+
+  /// Prompt identifier, e.g. "product_description", "inbox_draft_reply"
+  promptId  String
+  content   String @db.Text
+  name      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, promptId])
+  @@index([accountId])
 }
 
 // --------------------------------------

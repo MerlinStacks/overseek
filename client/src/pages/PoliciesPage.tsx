@@ -23,6 +23,7 @@ interface AIPrompt {
     name: string | null;
     content: string;
     updatedAt: string;
+    isAccountOverride?: boolean;
 }
 
 const typeConfig = {
@@ -41,6 +42,9 @@ export function PoliciesPage() {
     const [selectedPrompt, setSelectedPrompt] = useState<AIPrompt | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [expandedTypes, setExpandedTypes] = useState<string[]>(['POLICY', 'SOP', 'TRAINING']);
+    const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+    const [formPromptContent, setFormPromptContent] = useState('');
+    const [savingPrompt, setSavingPrompt] = useState(false);
 
     // Form state
     const [formTitle, setFormTitle] = useState('');
@@ -79,11 +83,21 @@ export function PoliciesPage() {
             const res = await fetch('/api/policies/ai-prompts', {
                 headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' }
             });
-            if (res.ok) setAIPrompts(await res.json());
+            if (res.ok) {
+                const prompts = await res.json();
+                setAIPrompts(prompts);
+                setSelectedPrompt(prev => {
+                    if (!prev) return prev;
+                    const refreshed = prompts.find((p: AIPrompt) => p.id === prev.id);
+                    if (!refreshed) return prev;
+                    setFormPromptContent(current => (isEditingPrompt ? current : (refreshed.content || '')));
+                    return refreshed;
+                });
+            }
         } catch (e) {
             Logger.error('Failed to fetch AI prompts:', { error: e });
         }
-    }, [token, currentAccount?.id]);
+    }, [token, currentAccount?.id, isEditingPrompt]);
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -122,6 +136,79 @@ export function PoliciesPage() {
         setSelectedPrompt(prompt);
         setSelectedPolicy(null);
         setIsEditing(false);
+        setIsEditingPrompt(false);
+        setFormPromptContent(prompt.content || '');
+    };
+
+    const handleSavePrompt = async () => {
+        if (!selectedPrompt) return;
+        if (!formPromptContent.trim()) {
+            showToast('No prompt content entered');
+            return;
+        }
+
+        setSavingPrompt(true);
+        try {
+            const res = await fetch(`/api/policies/ai-prompts/${selectedPrompt.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                },
+                body: JSON.stringify({
+                    content: formPromptContent,
+                    name: selectedPrompt.name || promptLabelMap[selectedPrompt.id] || selectedPrompt.id
+                })
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                showToast(data?.error || 'Failed to save AI prompt');
+                return;
+            }
+
+            const updated = await res.json();
+            setSelectedPrompt(updated);
+            setIsEditingPrompt(false);
+            await fetchAIPrompts();
+            showToast('AI prompt saved successfully', 'success');
+        } catch (e) {
+            Logger.error('Failed to save AI prompt override:', { error: e });
+            showToast('Failed to save AI prompt — network error');
+        } finally {
+            setSavingPrompt(false);
+        }
+    };
+
+    const handleResetPrompt = async () => {
+        if (!selectedPrompt) return;
+
+        setSavingPrompt(true);
+        try {
+            const res = await fetch(`/api/policies/ai-prompts/${selectedPrompt.id}`, {
+                method: 'DELETE',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount?.id || ''
+                }
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                showToast(data?.error || 'Failed to reset AI prompt');
+                return;
+            }
+
+            await fetchAIPrompts();
+            setIsEditingPrompt(false);
+            showToast('AI prompt reset to default', 'success');
+        } catch (e) {
+            Logger.error('Failed to reset AI prompt override:', { error: e });
+            showToast('Failed to reset AI prompt — network error');
+        } finally {
+            setSavingPrompt(false);
+        }
     };
 
     const handleSave = async () => {
@@ -317,10 +404,10 @@ export function PoliciesPage() {
                                                     : "hover:bg-gray-50 text-gray-600"
                                             )}
                                         >
-                                            <Lock size={12} className="text-gray-400 shrink-0" />
-                                            <span className="truncate flex-1">
-                                                {prompt.name || promptLabelMap[prompt.id] || prompt.id}
-                                            </span>
+                                        {prompt.isAccountOverride ? <Edit2 size={12} className="text-blue-500 shrink-0" /> : <Lock size={12} className="text-gray-400 shrink-0" />}
+                                        <span className="truncate flex-1">
+                                            {prompt.name || promptLabelMap[prompt.id] || prompt.id}
+                                        </span>
                                         </button>
                                     ))}
                                 </div>
@@ -357,18 +444,72 @@ export function PoliciesPage() {
                                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
                                             AI Prompt
                                         </span>
-                                        <Lock size={12} className="text-gray-400" />
-                                        <span className="text-xs text-gray-500">Read-only • Manage in Admin {'>'} AI Prompts</span>
+                                        {selectedPrompt.isAccountOverride ? (
+                                            <span className="text-xs text-blue-600">Account override active</span>
+                                        ) : (
+                                            <span className="text-xs text-gray-500">Using default template</span>
+                                        )}
                                     </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {isEditingPrompt ? (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    setIsEditingPrompt(false);
+                                                    setFormPromptContent(selectedPrompt.content || '');
+                                                }}
+                                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                                disabled={savingPrompt}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSavePrompt}
+                                                disabled={savingPrompt}
+                                                className="flex items-center gap-1 px-4 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                <Save size={16} />
+                                                {savingPrompt ? 'Saving...' : 'Save'}
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    setIsEditingPrompt(true);
+                                                    setFormPromptContent(selectedPrompt.content || '');
+                                                }}
+                                                className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                            >
+                                                <Edit2 size={18} />
+                                            </button>
+                                            <button
+                                                onClick={handleResetPrompt}
+                                                disabled={savingPrompt}
+                                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                                Reset
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
                             {/* AI Prompt Content */}
                             <div className="flex-1 overflow-y-auto p-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
-                                        {selectedPrompt.content || <span className="text-gray-400 italic">No content</span>}
-                                    </pre>
+                                    {isEditingPrompt ? (
+                                        <textarea
+                                            value={formPromptContent}
+                                            onChange={e => setFormPromptContent(e.target.value)}
+                                            className="w-full min-h-[420px] border border-gray-300 rounded-lg p-3 font-mono text-sm text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                                        />
+                                    ) : (
+                                        <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
+                                            {selectedPrompt.content || <span className="text-gray-400 italic">No content</span>}
+                                        </pre>
+                                    )}
                                 </div>
                             </div>
                         </>

@@ -23,8 +23,14 @@ export const AnalyticsStatsWidget = ({ className, dateRange }: WidgetProps) => {
     useEffect(() => {
         const fetchStats = async () => {
             if (!currentAccount || !token) return;
+            setLoading(true);
             try {
-                const data = await api.get<StatsData>(`/api/tracking/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, token, currentAccount.id);
+                const start = new Date(dateRange.startDate);
+                const end = new Date(dateRange.endDate);
+                const msPerDay = 24 * 60 * 60 * 1000;
+                const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
+
+                const data = await api.get<StatsData>(`/api/tracking/stats?days=${days}`, token, currentAccount.id);
                 setStats(data);
             } catch (error) {
                 Logger.error('Failed to fetch stats:', { error: error });

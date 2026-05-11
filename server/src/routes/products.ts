@@ -674,9 +674,14 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
-            const promptConfig = await prisma.aIPrompt.findUnique({
-                where: { promptId: 'product_description' }
-            });
+            const [accountPromptConfig, globalPromptConfig] = await Promise.all([
+                prisma.accountAIPrompt.findUnique({
+                    where: { accountId_promptId: { accountId, promptId: 'product_description' } }
+                }),
+                prisma.aIPrompt.findUnique({
+                    where: { promptId: 'product_description' }
+                })
+            ]);
 
             const defaultPrompt = `{{search_keywords}}
 Rewrite the following product description to be more engaging, SEO-friendly, and persuasive.
@@ -690,7 +695,7 @@ Current Description:
 
 Return ONLY the rewritten description in Markdown format. Do not include any conversational preamble.`;
 
-            let promptContent = promptConfig?.content || defaultPrompt;
+            let promptContent = accountPromptConfig?.content || globalPromptConfig?.content || defaultPrompt;
 
             const resolvedFocusKeyword = focusKeyword || '';
 

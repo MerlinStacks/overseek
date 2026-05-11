@@ -71,17 +71,38 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 aggs: {
                     products: {
                         nested: { path: 'line_items' },
-                        aggs: { by_product: { terms: { field: 'line_items.productId', size: 10000 }, aggs: { total_qty: { sum: { field: 'line_items.quantity' } } } } }
+                        aggs: {
+                            by_product: {
+                                terms: { field: 'line_items.productId', size: 10000 },
+                                aggs: { total_qty: { sum: { field: 'line_items.quantity' } } }
+                            },
+                            by_variation: {
+                                terms: { field: 'line_items.variationId', size: 10000 },
+                                aggs: { total_qty: { sum: { field: 'line_items.quantity' } } }
+                            }
+                        }
                     }
                 }
             });
 
-            const salesMap = new Map<number, number>();
-            const buckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
-            buckets.forEach((b: any) => { if (b.key) salesMap.set(b.key, b.total_qty.value); });
+            const productSalesMap = new Map<string, number>();
+            const variationSalesMap = new Map<string, number>();
 
-            const buildReportEntry = (id: string, name: string, sku: string | null, image: string | null, stock: number, salesWooId: number) => {
-                const sold30d = salesMap.get(salesWooId) || 0;
+            const productBuckets = (response.aggregations as any)?.products?.by_product?.buckets || [];
+            productBuckets.forEach((b: any) => {
+                if (b.key !== undefined && b.key !== null) {
+                    productSalesMap.set(String(b.key), Number(b.total_qty.value) || 0);
+                }
+            });
+
+            const variationBuckets = (response.aggregations as any)?.products?.by_variation?.buckets || [];
+            variationBuckets.forEach((b: any) => {
+                if (b.key !== undefined && b.key !== null && String(b.key) !== '0') {
+                    variationSalesMap.set(String(b.key), Number(b.total_qty.value) || 0);
+                }
+            });
+
+            const buildReportEntry = (id: string, name: string, sku: string | null, image: string | null, stock: number, sold30d: number) => {
                 const dailyRate = sold30d / 30;
 
                 let daysRemaining = 999;
@@ -95,8 +116,14 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
             };
 
             const report = [
-                ...products.map(p => buildReportEntry(p.id, p.name, p.sku, p.mainImage, p.stock_quantity || 0, p.wooId)),
-                ...variantRows.map(v => buildReportEntry(v.id, v.sku ? `${v.name} (${v.sku})` : v.name, v.sku, v.mainImage, v.stock_quantity || 0, v.parentWooId))
+                ...products.map(p => {
+                    const sold30d = productSalesMap.get(String(p.wooId)) || 0;
+                    return buildReportEntry(p.id, p.name, p.sku, p.mainImage, p.stock_quantity || 0, sold30d);
+                }),
+                ...variantRows.map(v => {
+                    const sold30d = variationSalesMap.get(String(v.wooId)) || 0;
+                    return buildReportEntry(v.id, v.sku ? `${v.name} (${v.sku})` : v.name, v.sku, v.mainImage, v.stock_quantity || 0, sold30d);
+                })
             ];
 
             report.sort((a, b) => {
