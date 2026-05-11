@@ -21,6 +21,9 @@ COPY package.json package-lock.json ./
 # Create placeholder for sibling workspace (client) - required for npm workspace resolution
 RUN mkdir -p client && echo '{"name":"client-stub","version":"1.0.0"}' > client/package.json
 
+# Copy shared core package.json (required for workspace dependency resolution)
+COPY packages/overseek-core/package.json packages/overseek-core/
+
 # Copy server package.json
 COPY server/package.json server/
 
@@ -63,6 +66,9 @@ COPY package.json package-lock.json ./
 
 # Create client stub for workspace resolution
 RUN mkdir -p client && echo '{"name":"client-stub","version":"1.0.0"}' > client/package.json
+
+# Copy shared core package.json for workspace dependency resolution
+COPY packages/overseek-core/package.json packages/overseek-core/
 
 # Copy server package.json and install production dependencies only
 COPY server/package.json server/

@@ -196,6 +196,10 @@ export const MessageBubble = memo(function MessageBubble({
     }, [quotedContent]);
 
     const handleContentClick = (e: React.MouseEvent) => {
+        // Don't intercept clicks when the user has selected text (allows highlight + copy)
+        const selection = window.getSelection();
+        if (selection && selection.toString().length > 0) return;
+
         const target = e.target as HTMLElement;
         if (target.tagName === 'IMG' && onImageClick) {
             e.preventDefault();
@@ -271,7 +275,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {/* Message content */}
                         <div
                             className={cn(
-                                "text-sm leading-relaxed",
+                                "text-sm leading-relaxed select-text",
                                 !isHtmlContent && "whitespace-pre-wrap",
                                 isHtmlContent && cn(
                                     "[&_table]:max-w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:cursor-pointer",
@@ -320,7 +324,7 @@ export const MessageBubble = memo(function MessageBubble({
                                 {showQuoted && sanitizedQuotedContent && (
                                     <div
                                         className={cn(
-                                            "mt-2 pl-3 border-l-2 text-xs opacity-80 max-h-96 overflow-y-auto",
+                                            "mt-2 pl-3 border-l-2 text-xs opacity-80 max-h-96 overflow-y-auto select-text",
                                             isMe ? "border-blue-400" : "border-gray-300"
                                         )}
                                         dangerouslySetInnerHTML={{ __html: sanitizedQuotedContent }}

@@ -3,21 +3,32 @@
 # Build stage - compile React/Vite to optimized static files
 FROM node:22-slim AS builder
 
-WORKDIR /app/client
+WORKDIR /app
 
 # Increase Node memory for large builds
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Copy package files first for better layer caching
-COPY client/package*.json ./
+# Copy root workspace files for npm workspace resolution
+COPY package.json package-lock.json ./
+
+# Create server stub for workspace resolution
+RUN mkdir -p server && echo '{"name":"overseek-server","version":"1.0.0"}' > server/package.json
+
+# Copy shared core package.json (required for workspace dependency resolution)
+COPY packages/overseek-core/package.json packages/overseek-core/
+
+# Copy client package.json
+COPY client/package.json client/
 
 # Install dependencies (legacy-peer-deps for React 19 compatibility)
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --legacy-peer-deps --prefer-offline --no-audit
+    npm install --workspace=client --legacy-peer-deps --prefer-offline --no-audit
 
 # Copy source code and shared package used by invoice renderer
-COPY client/ ./
-COPY packages/overseek-core /app/packages/overseek-core
+COPY client/ ./client/
+COPY packages/overseek-core/ ./packages/overseek-core/
+
+WORKDIR /app/client
 
 # Build production bundle (skip tsc, let vite handle it)
 RUN npx vite build
