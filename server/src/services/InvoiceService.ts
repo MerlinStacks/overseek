@@ -697,8 +697,20 @@ export class InvoiceService {
                             const itemMeta = getInvoiceItemMeta(item).slice(0, 6);
 
                             const titleHeight = Math.max(12, doc.heightOfString(itemName, { width: descWidth - 10 }));
-                            const metaHeight = itemMeta.length > 0 ? 12 + (itemMeta.length * 10) : 0;
-                            const estimatedRowHeight = titleHeight + metaHeight + 14;
+                            const metaHeight = itemMeta.reduce((acc, meta) => {
+                                const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
+                                const singleMetaHeight = Math.max(
+                                    10,
+                                    doc.heightOfString(metaText, {
+                                        width: descWidth - 20,
+                                        lineGap: 0
+                                    })
+                                );
+                                return acc + singleMetaHeight;
+                            }, 0);
+                            const metaSpacingHeight = itemMeta.length > 0 ? 12 : 0;
+                            const pageBreakSafetyBuffer = 6;
+                            const estimatedRowHeight = titleHeight + metaSpacingHeight + metaHeight + 14 + pageBreakSafetyBuffer;
                             const contentLimitY = getPageContentLimitY(currentPageIndex);
                             if ((tableY + estimatedRowHeight) > contentLimitY) {
                                 moveTableToNextPage();
@@ -713,13 +725,21 @@ export class InvoiceService {
                                 tableY += 12;
                                 doc.fontSize(8).fillColor('#64748b');
                                 itemMeta.forEach((meta) => {
+                                    const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
+                                    const metaLineHeight = Math.max(
+                                        10,
+                                        doc.heightOfString(metaText, {
+                                            width: descWidth - 20,
+                                            lineGap: 0
+                                        })
+                                    );
                                     doc.text(
-                                        decodeInvoiceEntities(`${meta.label}: ${meta.value}`),
+                                        metaText,
                                         tableX + 10,
                                         tableY,
                                         { width: descWidth - 20 }
                                     );
-                                    tableY += 10;
+                                    tableY += metaLineHeight;
                                 });
                                 doc.fillColor('black').fontSize(9);
                             }
